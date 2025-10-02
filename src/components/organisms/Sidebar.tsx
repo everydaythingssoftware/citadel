@@ -25,8 +25,9 @@ import {
 	title as addBookFormTitle,
 } from "../molecules/AddBookForm";
 import { SwitchLibraryForm } from "../molecules/SwitchLibraryForm";
-import { appWindow } from "@tauri-apps/api/window";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { addBookByDragDrop } from "@/lib/services/library/_internal/addBook";
+const appWindow = getCurrentWebviewWindow()
 
 export const Sidebar = () => {
 	const { library, state, eventEmitter } = useLibrary();

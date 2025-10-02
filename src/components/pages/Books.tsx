@@ -21,8 +21,8 @@ import {
 import { type UseFormReturnType, useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { Link } from "@tanstack/react-router";
-import { clipboard, path } from "@tauri-apps/api";
-import { open } from "@tauri-apps/api/shell";
+import {  path } from "@tauri-apps/api";
+import { open } from "@tauri-apps/plugin-shell";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookCover } from "../atoms/BookCover";
 import { F7ListBullet } from "../icons/F7ListBullet";
@@ -32,6 +32,7 @@ import { BookTable } from "../molecules/BookTable";
 import { TablerCopy } from "../icons/TablerCopy";
 import { F7Pencil } from "../icons/F7Pencil";
 import { useLoadBooks } from "@/lib/hooks/use-load-books";
+import * as clipboard from "@tauri-apps/plugin-clipboard-manager"
 
 interface BookSearchOptions {
 	search_for_author?: string;

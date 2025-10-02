@@ -2,8 +2,9 @@ import type { ImportableBookMetadata } from "@/bindings";
 import { LibraryEvents } from "@/lib/contexts/library";
 import { LibraryEventNames } from "@/lib/contexts/library/context";
 import { EventEmitter } from "@/lib/event";
-import { dialog } from "@tauri-apps/api";
+import {  } from "@tauri-apps/api";
 import type { Library } from "./_types";
+import * as dialog from "@tauri-apps/plugin-dialog"
 
 export const addBookByDragDrop = async (
 	library: Library,

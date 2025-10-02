@@ -1,5 +1,5 @@
 import { commands } from "@/bindings";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 
 export async function pickLibrary() {
 	const selected = await open({

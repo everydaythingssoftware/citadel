@@ -1,97 +1,42 @@
 {
-	"$schema": "../node_modules/@tauri-apps/cli/schema.json",
-	"build": {
-		"beforeBuildCommand": "bun run build:web",
-		"beforeDevCommand": "bun run dev:web",
-		"devPath": "http://localhost:1420",
-		"distDir": "../dist"
-	},
-	"package": {
-		"productName": "Citadel",
-		"version": "0.3.0"
-	},
-	"tauri": {
-		"allowlist": {
-			"dialog": {
-				"open": true,
-				"message": true
-			},
-			"http": {
-				"all": true,
-				"request": true,
-				"scope": ["http://*", "https://*"]
-			},
-			"clipboard": {
-				"writeText": true
-			},
-			"path": {
-				"all": true
-			},
-			"fs": {
-				"createDir": true,
-				"readDir": true,
-				"readFile": true,
-				"writeFile": true,
-				"scope": ["$APPCONFIG", "$APPCONFIG/*", "$RESOURCE/*"]
-			},
-			"protocol": {
-				"asset": true,
-				"assetScope": []
-			},
-			"shell": {
-				"open": "(^/|((!-).*:).*)|.*"
-			},
-			"window": {
-				"all": false,
-				"close": true,
-				"hide": true,
-				"show": true,
-				"maximize": true,
-				"minimize": true,
-				"unmaximize": true,
-				"unminimize": true,
-				"startDragging": true
-			}
-		},
-		"bundle": {
-			"active": true,
-			"category": "Utility",
-			"copyright": "© 2024 Everyday Things Software",
-			"deb": {
-				"depends": []
-			},
-			"externalBin": [],
-			"icon": [
-				"icons/32x32.png",
-				"icons/128x128.png",
-				"icons/128x128@2x.png",
-				"icons/icon.icns",
-				"icons/icon.ico"
-			],
-			"identifier": "software.everydaythings.citadel",
-			"longDescription": "",
-			"macOS": {
-				"entitlements": null,
-				"exceptionDomain": "",
-				"frameworks": [],
-				"providerShortName": null,
-				"signingIdentity": null
-			},
-			"resources": ["resources/empty_7_2_calibre_lib.zip"],
-			"shortDescription": "",
-			"targets": "all",
-			"windows": {
-				"certificateThumbprint": null,
-				"digestAlgorithm": "sha256",
-				"timestampUrl": ""
-			}
-		},
-		"security": {
-			"csp": ""
-		},
-		"updater": {
-			"active": false
-		},
-		"windows": []
-	}
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "Citadel",
+  "version": "0.3.0",
+  "identifier": "software.everydaythings.citadel",
+  "build": {
+    "beforeBuildCommand": "bun run build:web",
+    "beforeDevCommand": "bun run dev:web",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "bundle": {
+    "active": true,
+    "category": "Utility",
+    "copyright": "© 2024 Everyday Things Software",
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+        "resources/empty_7_2_calibre_lib.zip"
+    ],
+    "linux": {
+        "deb": {
+            "depends": []
+        }
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "macOS": {
+        "frameworks": [],
+        "minimumSystemVersion": ""
+    }
+  }
 }
