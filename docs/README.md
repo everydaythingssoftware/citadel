@@ -8,7 +8,7 @@ browser engine installed on the user's system.
 
 ## 📚 Architecture Documentation
 
-**New architectural recommendations and analysis:**
+`ai-docs/` is point-in-time AI-generated analysis; it may not reflect the current code.
 
 - **[Architecture Recommendations](../ai-docs/ARCHITECTURE_RECOMMENDATIONS.md)** - Detailed recommendations for Svelte-inspired React + Tauri/remote architecture
 - **[Migration Example](../ai-docs/MIGRATION_EXAMPLE.md)** - Step-by-step guide for migrating the books feature to the new architecture
@@ -21,15 +21,14 @@ browser engine installed on the user's system.
 **Start here if you're:**
 - 🚀 **New to the project**: Read the Overview below, then [Architecture Recommendations](../ai-docs/ARCHITECTURE_RECOMMENDATIONS.md)
 - 🔧 **Adding a feature**: Check [Patterns Quick Reference](../ai-docs/PATTERNS_QUICK_REFERENCE.md)
-- 🏗️ **Planning refactoring**: Review [Architecture Analysis](../ai-docs/ARCHITECTURE_ANALYSIS.md) and [Migration Example](./MIGRATION_EXAMPLE.md)
+- 🏗️ **Planning refactoring**: Review [Architecture Summary](../ai-docs/ARCHITECTURE_SUMMARY.md) and [Migration Example](../ai-docs/MIGRATION_EXAMPLE.md)
 
 ## Overview
 
-There are two ways to use Citadel: bundled in one app or as a headless server & web app.
-The headless server is still in progress, so we'll focus on the bundled app.
+Citadel ships as a single bundled desktop app; a headless server & web app is exploratory only.
 
 <figure>
-  <img src="./assets/images/arch-overview.png" alt="Diagram showing that the UI has a Calibre client that uses IPC to talk to the backend's calibre adapter, which calls out to libcalibre. Space is left open to demonstrate that other clients and adapters are possible." /
+  <img src="./assets/images/arch-overview.png" alt="Diagram showing that the UI has a Calibre client that uses IPC to talk to the backend's calibre adapter, which calls out to libcalibre. Space is left open to demonstrate that other clients and adapters are possible." />
   <figcaption>Overview of how the UI talks to <code>libcalibre</code>.</figcaption>
 </figure>
 
@@ -54,8 +53,10 @@ Modules are deep, and errors are defined out of existence. For more, see
 
 ### Frontend
 
-- Use store/s as single source of truth
-  - Provides automatic UI updates via subscriptions
-  - Implements a thin layer over Tauri/remote backends which allows us to build
-  quickly but retain local/remote support
-  - See [Architecture Recommendations](../ai-docs/ARCHITECTURE_RECOMMENDATIONS.md) for details
+- Stores are a thin layer over the Tauri/remote backends; components subscribe
+  to stores instead of calling commands directly.
+- Book browsing is paged: the library store keeps a query cache
+  (`src/lib/book-page-cache.ts`) with one entry per filter/sort combination —
+  the total match count plus sparse 100-book pages fetched on demand and
+  invalidated (by generation stamp) after mutations. Authors and the tag
+  vocabulary are still loaded as full lists.

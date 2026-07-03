@@ -35,7 +35,7 @@ File: `.github/workflows/release.yml`
 
 ## Channel behavior
 
-- Endpoint: `https://github.com/every-day-things/citadel/releases/latest/download/latest.json`
+- Endpoint: `https://github.com/everydaythingssoftware/citadel/releases/latest/download/latest.json`
 - This tracks latest non-prerelease release, so nightly prereleases are excluded.
 
 ## Quick verification

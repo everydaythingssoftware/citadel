@@ -1,7 +1,7 @@
 # Design
 
 Citadel's visual system. Tokens live in `src/styles.css` (`--ctd-*`, light +
-dark via `data-mantine-color-scheme`); the Mantine theme is `src/lib/theme.ts`.
+dark via `data-theme` on `<html>`, set by `src/lib/theme-manager.ts`).
 
 ## Direction
 
@@ -28,20 +28,21 @@ Books. Anti-reference: Calibre's cluttered chrome, generic web-app SaaS.
 
 - System stack everywhere: `-apple-system, BlinkMacSystemFont, "SF Pro Text"…`.
   Headings same family at 600. No display/serif fonts in UI chrome.
-- Root size 14px (desktop density). Sidebar section headers: `size="xs"`,
-  600, uppercase, 0.05em tracking, `--ctd-ink-soft`.
-- Page titles are modest (`Title order={3}`), toolbar-scale, not hero-scale.
+- Root size 14px (desktop density). Sidebar section headers: 12px, 600,
+  uppercase, 0.05em tracking, `--ctd-ink-soft`.
+- Page titles are modest (`h3`-level, ~16px), toolbar-scale, not hero-scale.
 
 ## Materials (Liquid Glass)
 
-- On macOS the webview is transparent over an `NSVisualEffectView` (sidebar
-  material, `window-vibrancy` crate, applied in `src-tauri/src/main.rs`). The
-  toolbar + sidebar L-region is real glass: desktop color shows through.
+- On macOS the webview is transparent over an `NSVisualEffectView` (Tauri
+  `set_effects` with `Effect::Popover` + `EffectState::FollowsWindowActiveState`,
+  applied in `src-tauri/src/main.rs`). The toolbar + sidebar L-region is real
+  glass: desktop color shows through.
 - `:root[data-vibrancy]` (set in `src/main.tsx` on macOS only) swaps
   `--ctd-nav-bg`/`--ctd-header-bg` to faint tints (alpha 0.2–0.3) and the
   page background to transparent. Elsewhere the opaque fallbacks apply —
   never assume transparency exists.
-- The native window appearance is kept in sync with the Mantine scheme via
+- The native window appearance is kept in sync with the app theme via
   `setTheme` (`useNativeThemeSync` in `src/routes/__root.tsx`), so forced
   dark Citadel gets dark glass on a light desktop. Requires the
   `core:window:allow-set-theme` capability.

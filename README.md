@@ -1,12 +1,16 @@
 # Citadel
 
-[![Quality checks](https://github.com/every-day-things/citadel/actions/workflows/quality.yml/badge.svg)](https://github.com/every-day-things/citadel/actions/workflows/quality.yml)
-[![Build](https://github.com/every-day-things/citadel/actions/workflows/build.yml/badge.svg)](https://github.com/every-day-things/citadel/actions/workflows/build.yml)
+[![Quality checks](https://github.com/everydaythingssoftware/citadel/actions/workflows/quality.yml/badge.svg)](https://github.com/everydaythingssoftware/citadel/actions/workflows/quality.yml)
+[![Build](https://github.com/everydaythingssoftware/citadel/actions/workflows/build.yml/badge.svg)](https://github.com/everydaythingssoftware/citadel/actions/workflows/build.yml)
 [![](https://dcbadge.limes.pink/api/server/Hh6gRmqBbC?style=flat)](https://discord.gg/Hh6gRmqBbC)
 
 Manage your ebook library with Citadel. Backwards compatible with Calibre.
 
-https://github.com/every-day-things/citadel/assets/17505728/a3879896-8404-4333-98cb-5e1e0060b42e
+<!-- Demo video: GitHub only renders a player for user-attachment URLs. To (re)place it:
+     drag citadel-demo-light.mp4 into any GitHub comment box, copy the generated
+     https://github.com/user-attachments/assets/… URL, and paste it on the line below. -->
+
+https://github.com/user-attachments/assets/REPLACE-ME-WITH-UPLOADED-VIDEO-UUID
 
 **Citadel is early software; it is likely full of bugs and lacking features.**
 
@@ -24,26 +28,22 @@ https://github.com/every-day-things/citadel/assets/17505728/a3879896-8404-4333-9
 
 ## Downloading
 
-> [!WARNING]
-> Citadel is _very_ early in development. It may crash, or be missing basic features. It may corrupt your ebook library.
->
-> **Back up your Calibre library regularly if you use Citadel on it.**
+(Semi-) stable builds are available in [Releases](https://github.com/everydaythingssoftware/citadel/releases).
 
-(Semi-) stable builds are available in [Releases](https://github.com/every-day-things/citadel/releases).
-
-Development builds are available from [GitHub actions](https://github.com/every-day-things/citadel/actions/workflows/build.yml).
+Development builds are available from [GitHub actions](https://github.com/everydaythingssoftware/citadel/actions/workflows/build.yml).
 
 Please report any issues or crashes you experience while using any version of Citadel!
 
 ### Installing on macOS
 
-Builds aren't signed (yet) — if you open Citadel.app directly, you'll get a warning that the file is "damaged".
+Current releases are signed and notarized: download the `.dmg` from [Releases](https://github.com/everydaythingssoftware/citadel/releases), drag Citadel to Applications, and open it. No quarantine workarounds needed.
 
-[Removing the Quarantine attribute from the file](https://superuser.com/questions/526920/how-to-remove-quarantine-from-file-permissions-in-os-x) resolves this. For example,
-
-```fish
-xattr -d com.apple.quarantine /Applications/Citadel.app/
-```
+> [!NOTE]
+> Development builds from [GitHub Actions](https://github.com/everydaythingssoftware/citadel/actions/workflows/build.yml) are _not_ signed. macOS will report those as "damaged"; [removing the quarantine attribute](https://superuser.com/questions/526920/how-to-remove-quarantine-from-file-permissions-in-os-x) resolves this:
+>
+> ```fish
+> xattr -d com.apple.quarantine /Applications/Citadel.app/
+> ```
 
 ## Developing
 
@@ -96,7 +96,6 @@ bun run build
 ### Auto-updater and releases
 
 Citadel can check for app updates and install them on request. Automatic update checks can be disabled in Settings (`Auto updates: On/Off`), and installs are always explicit (`Install and restart`). For maintainer setup and release workflow details, see [`docs/updater-and-releases.md`](docs/updater-and-releases.md).
-
 
 ## Additional Credit & Related Projects
 
