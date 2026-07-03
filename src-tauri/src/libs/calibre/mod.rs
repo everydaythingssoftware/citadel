@@ -26,13 +26,24 @@ pub struct CalibreClientConfig {
 #[tauri::command]
 #[specta::specta]
 pub fn init_client(
+    handle: tauri::AppHandle,
     state: tauri::State<CitadelState>,
     library_path: String,
 ) -> Result<CalibreClientConfig, String> {
+    use tauri::Manager;
+
     state.init_library(library_path.clone())?;
-    Ok(CalibreClientConfig {
-        library_path: library_path.clone(),
-    })
+
+    // Full-resolution covers are served over the asset protocol straight from
+    // the library folder. Without this grant they only render when the folder
+    // was picked through a dialog this install (persisted scope), so covers
+    // break for restored/hand-edited settings.
+    handle
+        .asset_protocol_scope()
+        .allow_directory(&library_path, true)
+        .map_err(|e| format!("Failed to allow library dir: {}", e))?;
+
+    Ok(CalibreClientConfig { library_path })
 }
 
 #[derive(Serialize, Deserialize, specta::Type, Debug)]
