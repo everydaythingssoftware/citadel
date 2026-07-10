@@ -11,6 +11,7 @@ pub mod persistence;
 mod queries;
 pub(crate) mod schema;
 pub mod sorting;
+pub mod stats;
 pub mod types;
 pub mod util;
 
@@ -22,6 +23,7 @@ pub use library::{
     BookIdentifier, BookPage, BookQuery, BookSortOrder, BookUpdate, Library, SeriesSummary,
     TagSummary,
 };
+pub use stats::{library_stats, LibraryStats};
 pub use types::{AuthorId, BookFileId, BookId};
 
 // Keep entity exports that are needed internally (for operations/queries)

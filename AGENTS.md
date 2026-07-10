@@ -63,3 +63,14 @@ the background — no window focus, no macOS permissions:
 `tauri-wd` (W3C WebDriver CLI for WebDriverIO suites) launches its own app
 instance — never run it while `bun run dev` is up; two instances fight over the
 settings store and library database.
+
+## macOS permissions (TCC)
+
+Reading `~/Library/Preferences/**` from the app process (e.g. Calibre's
+`global.py.json` for library detection) triggers no TCC prompt and needs no
+entitlement — Preferences is not a TCC-protected location for non-sandboxed
+apps. Verified empirically 2026-07-10 (CDL-19): the read succeeded in a live
+debug build with zero `com.apple.TCC` log events at the moment of access.
+TCC-protected user folders are Desktop/Documents/Downloads and app data like
+Photos or Mail. When checking, use `/usr/bin/log show --predicate 'subsystem ==
+"com.apple.TCC"'` — bare `log` is a zsh builtin that silently shadows it.

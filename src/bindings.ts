@@ -24,6 +24,46 @@ async clbCmdCreateLibrary(libraryRoot: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Find an existing Calibre library for first-run onboarding: Calibre's own
+ * config (`global.py.json`) first, then the default `~/Calibre Library`
+ * folder. `None` means nothing detected — never an error.
+ */
+async clbQueryDetectCalibreLibrary() : Promise<DetectedLibrary | null> {
+    return await TAURI_INVOKE("clb_query_detect_calibre_library");
+},
+/**
+ * Read-only peek at the library under `library_root`, without touching the
+ * app's active library state — safe to call on a path the user has merely
+ * pointed at.
+ */
+async clbQueryLibraryStats(libraryRoot: string) : Promise<Result<LibraryStats, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_library_stats", { libraryRoot }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Best-effort cloud-sync detection for a candidate library path, backing the
+ * warn-don't-block onboarding UX. Unknown providers report unsynced.
+ */
+async clbQueryPathSyncStatus(path: string) : Promise<SyncStatus> {
+    return await TAURI_INVOKE("clb_query_path_sync_status", { path });
+},
+/**
+ * Suggested folder for a brand-new library (`~/Citadel`). Resolved only —
+ * nothing is created until `clb_cmd_create_library`.
+ */
+async clbQueryDefaultNewLibraryPath() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_default_new_library_path") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbQuerySearchBooks(query: string) : Promise<Result<LibraryBook[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_search_books", { query }) };
@@ -349,6 +389,19 @@ export type CustomValueDto = { Bool: boolean } | { Int: number } | { Float: numb
  * RFC3339 datetime string, e.g. `2024-01-15T10:30:00+00:00`.
  */
 { Datetime: string } | { Enumeration: string }
+export type DetectedLibrary = { path: string; source: DetectionSource }
+/**
+ * Where [`detect_calibre_library`] found its hit.
+ */
+export type DetectionSource = 
+/**
+ * `library_path` in Calibre's own `global.py.json`.
+ */
+"calibre-config" | 
+/**
+ * Calibre's default `~/Calibre Library` folder.
+ */
+"default-folder"
 /**
  * Book identifiers, such as ISBN, DOI, Google Books ID, etc.
  */
@@ -411,6 +464,11 @@ limit: number | null; offset: number }
  */
 export type LibrarySeries = { id: number; name: string; book_count: number }
 /**
+ * Headline counts for the post-open reveal. i64 mirrors SQLite's COUNT;
+ * exported to TS as `number` (see the bigint exporter setting in main.rs).
+ */
+export type LibraryStats = { book_count: number; author_count: number }
+/**
  * One tag in the library; `name` is what the tag autocomplete suggests.
  */
 export type LibraryTag = { id: number; name: string }
@@ -434,6 +492,12 @@ export type MetadataProvider = "hardcover" | "loc" | "dnb" | "k10plus" | "openli
 export type NewAuthor = { name: string; sortable_name: string | null }
 export type ProviderStatus = { provider: MetadataProvider; is_valid: boolean; message: string }
 export type RemoteFile = { url: string }
+/**
+ * Best-effort cloud-sync verdict for a candidate library path. Informational
+ * only — the UX warns, it never blocks. Unknown providers (Seafile, Syncthing,
+ * …) report `synced: false`.
+ */
+export type SyncStatus = { synced: boolean; provider: string | null }
 export type UpdateCheckResult = { has_update: boolean; version: string | null }
 
 /** tauri-specta globals **/

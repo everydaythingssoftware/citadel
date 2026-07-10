@@ -24,6 +24,11 @@ fn run_tauri_backend() -> std::io::Result<()> {
         calibre::init_client,
         calibre::query::clb_query_is_path_valid_library,
         calibre::command::clb_cmd_create_library,
+        // First-run onboarding: detection-led library setup (CDL-19)
+        calibre::query::clb_query_detect_calibre_library,
+        calibre::query::clb_query_library_stats,
+        calibre::query::clb_query_path_sync_status,
+        calibre::query::clb_query_default_new_library_path,
         // Book query commands
         calibre::query::clb_query_search_books,
         calibre::query::clb_query_books,
@@ -65,7 +70,12 @@ fn run_tauri_backend() -> std::io::Result<()> {
 
     #[cfg(debug_assertions)] // <- Only export on non-release builds
     builder
-        .export(Typescript::default(), "../src/bindings.ts")
+        .export(
+            // i64 fields (LibraryStats counts) export as `number`; fine for
+            // values far below 2^53, which library counts always are.
+            Typescript::default().bigint(specta_typescript::BigIntExportBehavior::Number),
+            "../src/bindings.ts",
+        )
         .expect("Failed to export typescript bindings");
 
     let mut tauri_builder = tauri::Builder::default();

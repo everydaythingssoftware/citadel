@@ -10,6 +10,7 @@ use crate::libs::file_formats;
 use crate::{book::LibraryBook, state::CitadelState};
 
 use super::custom_columns::{BookCustomValue, CustomColumnDef, CustomValueDto};
+use super::onboarding::{self, DetectedLibrary, SyncStatus};
 use super::ImportableFile;
 
 #[tauri::command]
@@ -290,4 +291,128 @@ pub fn clb_query_get_custom_values_for_book(
 pub fn clb_query_is_path_valid_library(library_root: String) -> bool {
     let db_path = libcalibre::util::get_db_path(&library_root);
     db_path.is_some()
+}
+
+/// Find an existing Calibre library for first-run onboarding: Calibre's own
+/// config (`global.py.json`) first, then the default `~/Calibre Library`
+/// folder. `None` means nothing detected — never an error.
+#[tauri::command]
+#[specta::specta]
+pub fn clb_query_detect_calibre_library(handle: tauri::AppHandle) -> Option<DetectedLibrary> {
+    use tauri::Manager;
+
+    let home = handle.path().home_dir().ok()?;
+    onboarding::detect_calibre_library(&home)
+}
+
+/// Headline counts for the post-open reveal. i64 mirrors SQLite's COUNT;
+/// exported to TS as `number` (see the bigint exporter setting in main.rs).
+#[derive(Serialize, Deserialize, specta::Type, Clone, Copy, Debug)]
+pub struct LibraryStats {
+    pub book_count: i64,
+    pub author_count: i64,
+}
+
+/// Read-only peek at the library under `library_root`, without touching the
+/// app's active library state — safe to call on a path the user has merely
+/// pointed at.
+#[tauri::command]
+#[specta::specta]
+pub fn clb_query_library_stats(library_root: String) -> Result<LibraryStats, String> {
+    let db_path = libcalibre::util::get_db_path(&library_root)
+        .ok_or_else(|| format!("No Calibre library at '{library_root}'"))?;
+    let stats = libcalibre::library_stats(&db_path).map_err(|e| e.to_string())?;
+    Ok(LibraryStats {
+        book_count: stats.book_count,
+        author_count: stats.author_count,
+    })
+}
+
+/// Best-effort cloud-sync detection for a candidate library path, backing the
+/// warn-don't-block onboarding UX. Unknown providers report unsynced.
+#[tauri::command]
+#[specta::specta]
+pub fn clb_query_path_sync_status(path: String) -> SyncStatus {
+    onboarding::path_sync_status(Path::new(&path))
+}
+
+/// Suggested folder for a brand-new library (`~/Citadel`). Resolved only —
+/// nothing is created until `clb_cmd_create_library`.
+#[tauri::command]
+#[specta::specta]
+pub fn clb_query_default_new_library_path(handle: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+
+    let home = handle
+        .path()
+        .home_dir()
+        .map_err(|e| format!("Cannot resolve home directory: {e}"))?;
+    Ok(onboarding::default_new_library_path(&home))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The same artifact `clb_cmd_create_library` extracts, so the stats peek
+    /// is tested against a real freshly-created library.
+    fn extract_empty_library(target: &Path) {
+        let zip_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/empty_7_2_calibre_lib.zip");
+        let file = std::fs::File::open(zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        archive.extract(target).unwrap();
+    }
+
+    #[test]
+    fn library_stats_on_fresh_library_are_zero() {
+        let tmp = tempfile::tempdir().unwrap();
+        extract_empty_library(tmp.path());
+
+        let stats = clb_query_library_stats(tmp.path().to_string_lossy().into_owned()).unwrap();
+        assert_eq!(stats.book_count, 0);
+        assert_eq!(stats.author_count, 0);
+    }
+
+    #[test]
+    fn library_stats_count_books_and_distinct_authors() {
+        let tmp = tempfile::tempdir().unwrap();
+        extract_empty_library(tmp.path());
+
+        let library_root = tmp.path().to_string_lossy().into_owned();
+        let db_path = libcalibre::util::get_db_path(&library_root).unwrap();
+        let mut lib = libcalibre::Library::new(db_path).unwrap();
+        lib.add_book(test_book("Book One", vec!["Ann Author"]))
+            .unwrap();
+        lib.add_book(test_book("Book Two", vec!["Ann Author", "Bob Writer"]))
+            .unwrap();
+
+        let stats = clb_query_library_stats(library_root).unwrap();
+        assert_eq!(stats.book_count, 2);
+        assert_eq!(stats.author_count, 2);
+    }
+
+    #[test]
+    fn library_stats_error_on_non_library_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let result = clb_query_library_stats(tmp.path().to_string_lossy().into_owned());
+        assert!(result.is_err());
+    }
+
+    fn test_book(title: &str, authors: Vec<&str>) -> libcalibre::BookAdd {
+        libcalibre::BookAdd {
+            title: title.to_string(),
+            author_names: authors.into_iter().map(String::from).collect(),
+            tags: None,
+            series: None,
+            series_index: None,
+            publisher: None,
+            publication_date: None,
+            rating: None,
+            comments: None,
+            identifiers: std::collections::HashMap::new(),
+            language: None,
+            file_paths: Vec::new(),
+        }
+    }
 }
