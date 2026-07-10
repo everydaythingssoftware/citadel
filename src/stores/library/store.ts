@@ -115,6 +115,12 @@ interface LibraryStoreState {
 	coverThumbs: ReadonlyMap<LibraryBook["id"], CoverThumbnail>;
 	/** Unfiltered library size (for "N of M books"); null until known. */
 	libraryTotal: number | null;
+	/**
+	 * True once the open-time thumbnail seed (the cheap index read) has landed
+	 * for the current library. The first-run flow's "Preparing covers" stage
+	 * holds until this flips; background thumbnail generation continues after.
+	 */
+	coversSeeded: boolean;
 
 	// Authors state
 	authors: LibraryAuthor[];
@@ -140,6 +146,7 @@ const initialState = {
 	staleBookSnapshot: null as BookSnapshot | null,
 	coverThumbs: new Map<LibraryBook["id"], CoverThumbnail>(),
 	libraryTotal: null,
+	coversSeeded: false,
 	authors: [],
 	authorsLoading: false,
 	authorsError: null,
@@ -204,9 +211,20 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 	 */
 	const warmCoverThumbs = async (): Promise<void> => {
 		const { library } = get();
-		if (!library) return;
+		if (!library) {
+			set({ coversSeeded: true });
+			return;
+		}
 		try {
 			mergeCoverThumbs(await library.listCoverThumbnails());
+		} catch (error) {
+			console.error("Failed to seed cover thumbnails:", error);
+		} finally {
+			// Even a failed seed unblocks anything waiting on it (the first-run
+			// flow's cover stage); the grid just falls back to placeholders.
+			set({ coversSeeded: true });
+		}
+		try {
 			mergeCoverThumbs(await library.warmCoverThumbnails());
 		} catch (error) {
 			console.error("Failed to warm cover thumbnails:", error);
@@ -395,6 +413,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 					staleBookSnapshot: null,
 					coverThumbs: new Map<LibraryBook["id"], CoverThumbnail>(),
 					libraryTotal: null,
+					coversSeeded: false,
 				}));
 
 				try {

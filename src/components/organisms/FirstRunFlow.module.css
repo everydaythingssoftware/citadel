@@ -1,0 +1,438 @@
+/* CDL-19 first-run flow, transcribed from the locked prototype
+ * (ai-docs/design/cdl-19-first-run/morphing-card-improved.html): one card on
+ * the window background, morphing between states. Prototype token names map
+ * to the app's real tokens (--ctd-nav-hover → --ctd-nav-hover-bg,
+ * --ctd-danger* → --ctd-danger-bg). */
+
+/* Full-window setup layer. Sits over the app shell (z 100/105) so the app
+ * can mount and open beneath it, but below toasts (130); on handoff it fades
+ * out while the card dissolves and the app beneath takes over. */
+.layer {
+	position: fixed;
+	inset: 0;
+	z-index: 120;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: var(--ctd-bg);
+	transition: opacity 200ms ease-out 120ms;
+}
+
+.layerHandoff {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.card {
+	width: 400px;
+	max-width: 94%;
+	background: var(--ctd-surface);
+	border: 1px solid var(--ctd-border);
+	border-radius: var(--ctd-radius-panel);
+	box-shadow: var(--ctd-shadow-soft);
+	transition:
+		transform 220ms ease-out,
+		opacity 200ms ease-out;
+}
+
+.layerHandoff .card {
+	transform: scale(1.05);
+	opacity: 0;
+}
+
+.cardInner {
+	position: relative;
+	overflow: hidden;
+	transition: height 200ms ease-out;
+}
+
+.view {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	padding: 26px 28px 22px;
+}
+
+.view:focus {
+	outline: none;
+}
+
+.viewHasBack {
+	padding-top: 44px;
+}
+
+.viewEnter {
+	opacity: 0;
+	transform: translateY(6px);
+}
+
+.viewEnterOn {
+	opacity: 1;
+	transform: none;
+	transition:
+		opacity 170ms ease-out 40ms,
+		transform 200ms ease-out 40ms;
+}
+
+.viewExit {
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 120ms ease-out;
+}
+
+/* Visually-hidden live region: state changes, stage progress, and settled
+ * reveal counts are announced without visible chrome. */
+.sr {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* ------------------------------ card views ------------------------------ */
+
+.mark {
+	display: flex;
+	justify-content: center;
+	color: var(--ctd-ink-soft);
+	margin-bottom: 12px;
+}
+
+.title {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	line-height: 1.3;
+	text-align: center;
+	color: var(--ctd-ink);
+}
+
+.titleSm {
+	font-size: 15px;
+}
+
+.lede {
+	margin: 6px auto 0;
+	font-size: 13px;
+	color: var(--ctd-ink-soft);
+	text-align: center;
+	max-width: 36ch;
+}
+
+.back {
+	position: absolute;
+	top: 12px;
+	left: 10px;
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--ctd-ink-soft);
+	background: none;
+	border: none;
+	border-radius: 5px;
+	padding: 4px 8px 4px 5px;
+	cursor: pointer;
+}
+
+.back:hover:not(:disabled) {
+	color: var(--ctd-ink);
+	background: var(--ctd-nav-hover-bg);
+}
+
+.back:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--ctd-focus-ring);
+}
+
+.back:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+
+.well {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	margin: 18px 0 0;
+	padding: 8px 12px;
+	background: var(--ctd-bg);
+	border: 1px solid var(--ctd-border);
+	border-radius: var(--ctd-radius-control);
+	font-size: 13px;
+	text-align: left;
+	transition: border-color 160ms ease-out;
+}
+
+.well svg {
+	flex: none;
+	color: var(--ctd-ink-soft);
+}
+
+.pathText {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	color: var(--ctd-ink);
+}
+
+.wellChange {
+	margin-left: auto;
+	flex: none;
+}
+
+.wellBad {
+	border-color: oklch(from var(--ctd-danger-bg) l c h / 0.45);
+}
+
+.src {
+	margin: 8px 2px 0;
+	font-size: 11.5px;
+	color: var(--ctd-ink-soft);
+	text-align: center;
+}
+
+.srcChecking {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+}
+
+.helper {
+	margin: 8px 2px 0;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--ctd-ink-soft);
+	text-align: left;
+}
+
+.err {
+	display: flex;
+	align-items: flex-start;
+	gap: 7px;
+	margin: 10px 2px 0;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--ctd-danger-bg);
+	text-align: left;
+}
+
+.err svg {
+	flex: none;
+	margin-top: 1.5px;
+}
+
+.actions {
+	margin-top: 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.escapes {
+	display: flex;
+	justify-content: space-between;
+	gap: 2px;
+	flex-wrap: wrap;
+	width: 100%;
+}
+
+/* Prototype .btn.sm metrics: the paired escapes must share one quiet row. */
+.escapeBtn {
+	height: 24px;
+	font-size: 12px;
+	padding: 0 9px;
+}
+
+.rowActions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 20px;
+}
+
+.crossover {
+	display: flex;
+	justify-content: center;
+	margin-top: 2px;
+}
+
+.divider {
+	height: 1px;
+	background: var(--ctd-border);
+	margin: 18px -28px 0;
+}
+
+.escapesAfterDivider {
+	margin-top: 14px;
+}
+
+/* Chooser rows: two equal ways in, control-weight, never card-in-card. */
+.choices {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 18px;
+}
+
+.choice {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 11px 13px;
+	text-align: left;
+	font: inherit;
+	background: var(--ctd-control-bg-strong);
+	border: 1px solid var(--ctd-border);
+	border-radius: 8px;
+	box-shadow: var(--ctd-control-shadow);
+	color: var(--ctd-ink);
+	cursor: pointer;
+	transition: background-color 120ms ease-out;
+}
+
+.choice:hover:not(:disabled) {
+	background: var(--ctd-bg);
+}
+
+.choice:focus-visible {
+	outline: none;
+	box-shadow:
+		var(--ctd-control-shadow),
+		0 0 0 3px var(--ctd-focus-ring);
+}
+
+.choice:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+
+.choiceIcon {
+	flex: none;
+	color: var(--ctd-ink-soft);
+}
+
+.choiceTitle {
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.3;
+}
+
+.choiceDesc {
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+	margin-top: 1px;
+	line-height: 1.4;
+}
+
+.choiceChevron {
+	margin-left: auto;
+	flex: none;
+	color: var(--ctd-ink-soft);
+}
+
+/* Opening stages: stage-level only, indeterminate, no percentages. */
+.stages {
+	list-style: none;
+	margin: 16px auto 4px;
+	padding: 0;
+	width: 200px;
+	display: flex;
+	flex-direction: column;
+	gap: 11px;
+}
+
+.stageRow {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 13px;
+	color: var(--ctd-ink-soft);
+	transition: color 160ms ease-out;
+}
+
+.stageActive {
+	color: var(--ctd-ink);
+}
+
+.stageGlyph {
+	width: 16px;
+	height: 16px;
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.stageDot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	border: 1.5px solid currentColor;
+	opacity: 0.45;
+}
+
+/* Reveal count-up. */
+.count {
+	margin-top: 12px;
+	font-size: 34px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+	text-align: center;
+	color: var(--ctd-ink);
+	font-variant-numeric: tabular-nums;
+}
+
+.countSub {
+	text-align: center;
+	font-size: 14px;
+	color: var(--ctd-ink-soft);
+	margin-top: 1px;
+	font-variant-numeric: tabular-nums;
+}
+
+.revealActions {
+	margin-top: 22px;
+}
+
+.retryNote {
+	margin: 10px 2px 0;
+	font-size: 12px;
+	color: var(--ctd-danger-bg);
+	text-align: center;
+}
+
+.busyLabel {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.layer,
+	.card,
+	.cardInner,
+	.viewEnter,
+	.viewEnterOn,
+	.viewExit,
+	.well,
+	.stageRow {
+		transition-duration: 0.01ms !important;
+	}
+
+	.viewEnter {
+		opacity: 1;
+		transform: none;
+	}
+}

@@ -4,9 +4,11 @@ import { commands } from "@/bindings";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import { F7Gear } from "@/components/icons/F7Gear";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
+import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
 import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
 import classes from "@/components/organisms/SettingsPanes.module.css";
 import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
+import { ADOPT_INVALID_ERROR } from "@/lib/first-run/machine";
 import { useAppUpdates } from "@/lib/hooks/use-app-updates";
 import { getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
@@ -278,19 +280,18 @@ const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
 	const platform = usePlatform();
 
 	const addNewLibraryByPath = useCallback(
-		async (form: SwitchLibraryForm) => {
+		async (form: SwitchLibraryForm): Promise<AddLibraryResult> => {
 			const isPathValidLibrary = await commands.clbQueryIsPathValidLibrary(
 				form.libraryPath,
 			);
 
-			if (isPathValidLibrary) {
-				const newLibraryId = await createLibrary(form.libraryPath);
-				await setActiveLibrary(newLibraryId);
-				closeSettings();
-			} else {
-				// TODO: You could create a new library, if you like.
-				console.error("Invalid library path selected");
+			if (!isPathValidLibrary) {
+				return { ok: false, message: ADOPT_INVALID_ERROR };
 			}
+			const newLibraryId = await createLibrary(form.libraryPath);
+			await setActiveLibrary(newLibraryId);
+			closeSettings();
+			return { ok: true };
 		},
 		[closeSettings],
 	);
@@ -317,7 +318,7 @@ const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
 				<SwitchLibraryForm
 					currentLibraryId={activeLibraryId}
 					libraries={libraries}
-					onSubmit={(form) => void addNewLibraryByPath(form)}
+					onSubmit={addNewLibraryByPath}
 					selectExistingLibrary={selectExistingLibrary}
 					selectNewLibrary={async () => {
 						const path = await platform.dialogs.openDirectory({
