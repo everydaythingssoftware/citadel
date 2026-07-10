@@ -74,3 +74,16 @@ debug build with zero `com.apple.TCC` log events at the moment of access.
 TCC-protected user folders are Desktop/Documents/Downloads and app data like
 Photos or Mail. When checking, use `/usr/bin/log show --predicate 'subsystem ==
 "com.apple.TCC"'` — bare `log` is a zsh builtin that silently shadows it.
+
+## SQLite on macOS persists WAL sidecars
+
+Citadel links Apple's system SQLite (`/usr/lib/libsqlite3.dylib`), which
+enables `SQLITE_FCNTL_PERSIST_WAL` by default: `-wal`/`-shm` sidecars survive
+a clean close of the last connection, for every WAL database and every
+connection (verified empirically 2026-07-10, CDL-19 — even `/usr/bin/sqlite3`
+leaves them). No connection-level dance (`PRAGMA query_only` off, explicit
+`wal_checkpoint`, even `journal_mode=DELETE`) removes both files; a connection
+that ever set `query_only=ON` additionally never checkpoints at close. Don't
+write tests asserting sidecar deletion — assert the database file's bytes are
+unchanged and tolerate the two sidecars. Calibre-managed libraries are
+journal-mode and stay fully byte-clean under read-only access.

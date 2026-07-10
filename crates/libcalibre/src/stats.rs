@@ -20,6 +20,13 @@ pub struct LibraryStats {
 /// a database the user has only *pointed at*, not opened. `query_only` turns
 /// any accidental write into a hard error; `busy_timeout` tolerates a
 /// concurrently running Calibre/Citadel holding the write lock.
+///
+/// Calibre-managed libraries are journal-mode and stay byte-clean under this
+/// read. A WAL-mode database (one Citadel itself opened before) additionally
+/// grows `-wal`/`-shm` sidecars: reading WAL requires them, and on macOS they
+/// survive close for every connection app-wide — Apple's system SQLite
+/// enables `SQLITE_FCNTL_PERSIST_WAL` by default. The database file itself is
+/// never modified either way.
 pub fn library_stats(db_path: &ValidDbPath) -> Result<LibraryStats, CalibreError> {
     use crate::schema::{authors, books};
 

@@ -399,6 +399,69 @@ mod tests {
         assert!(result.is_err());
     }
 
+    fn dir_listing(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn library_stats_leave_journal_mode_library_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        extract_empty_library(tmp.path());
+
+        let before = dir_listing(tmp.path());
+        let stats = clb_query_library_stats(tmp.path().to_string_lossy().into_owned()).unwrap();
+        assert_eq!(stats.book_count, 0);
+        assert_eq!(dir_listing(tmp.path()), before);
+    }
+
+    /// A WAL-mode library (Citadel itself opened it before) can't stay
+    /// byte-identical on disk: reading WAL requires `-wal`/`-shm` sidecars,
+    /// which macOS persists past close for every connection (see
+    /// `library_stats`). Honest contract: the database file's bytes never
+    /// change, and nothing beyond those two sidecars appears.
+    #[test]
+    fn library_stats_on_wal_mode_library_add_at_most_wal_sidecars() {
+        use diesel::connection::SimpleConnection;
+        use diesel::prelude::*;
+
+        let tmp = tempfile::tempdir().unwrap();
+        extract_empty_library(tmp.path());
+
+        let db_file = tmp.path().join("metadata.db");
+        diesel::SqliteConnection::establish(db_file.to_str().unwrap())
+            .unwrap()
+            .batch_execute("PRAGMA journal_mode = WAL;")
+            .unwrap();
+        let db_bytes = std::fs::read(&db_file).unwrap();
+        assert_eq!(
+            &db_bytes[18..20],
+            &[2, 2],
+            "fixture did not persist WAL mode"
+        );
+        let before = dir_listing(tmp.path());
+
+        let stats = clb_query_library_stats(tmp.path().to_string_lossy().into_owned()).unwrap();
+        assert_eq!(stats.book_count, 0);
+        assert_eq!(stats.author_count, 0);
+
+        assert_eq!(std::fs::read(&db_file).unwrap(), db_bytes);
+        let new_files: Vec<String> = dir_listing(tmp.path())
+            .into_iter()
+            .filter(|name| !before.contains(name))
+            .collect();
+        assert!(
+            new_files
+                .iter()
+                .all(|name| name == "metadata.db-wal" || name == "metadata.db-shm"),
+            "unexpected new files: {new_files:?}"
+        );
+    }
+
     fn test_book(title: &str, authors: Vec<&str>) -> libcalibre::BookAdd {
         libcalibre::BookAdd {
             title: title.to_string(),
