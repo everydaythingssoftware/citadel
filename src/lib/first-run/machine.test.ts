@@ -439,9 +439,12 @@ describe("cloud warning interposes on both paths, warn-then-allow", () => {
 		const continued = run({ snapshot: warned.snapshot, effects: [] }, [
 			{ type: "CLOUD_CONTINUE" },
 		]);
+		// The grace window holds the warning card (Continue becomes the
+		// spinner) instead of flashing the chooser the user already left.
 		expect(continued.snapshot.step).toMatchObject({
 			id: "opening",
-			via: "picker",
+			via: "cloud-warn",
+			provider: "iCloud Drive",
 		});
 		expect(continued.effects).toContainEqual({
 			kind: "commit-library",

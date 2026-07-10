@@ -40,9 +40,15 @@ export interface Detection {
 export type FlowRoot = "found" | "chooser" | "broken";
 
 /** What committed the open — decides what the card shows during the grace
- * window (found's inline spinner, the frozen root, the create card, or the
- * broken card's checking state). */
-export type CommitVia = "found" | "picker" | "open-instead" | "retry";
+ * window (found's inline spinner, the frozen root, the create card, the
+ * broken card's checking state, or the held cloud warning when it was the
+ * screen that committed). */
+export type CommitVia =
+	| "found"
+	| "picker"
+	| "open-instead"
+	| "retry"
+	| "cloud-warn";
 
 export type CreateErrorCode =
 	| "folder-not-empty"
@@ -104,6 +110,7 @@ export type FlowStep =
 			root: FlowRoot;
 			path: string;
 			via: CommitVia;
+			provider: string | null;
 			phase: "grace" | "staged";
 			stage: 0 | 1 | 2;
 	  }
@@ -298,8 +305,13 @@ const proceed = (
 			effects: [{ kind: "create-library", path }],
 		};
 	}
-	const via: CommitVia =
-		commit.kind === "adopt-found"
+	// When the cloud warning was the screen that committed, the grace window
+	// holds it (Continue becomes the inline spinner) instead of flashing the
+	// root the user left two steps ago.
+	const warned = snapshot.step.id === "cloud-warn" ? snapshot.step : null;
+	const via: CommitVia = warned
+		? "cloud-warn"
+		: commit.kind === "adopt-found"
 			? "found"
 			: commit.kind === "adopt-picked"
 				? "picker"
@@ -308,7 +320,15 @@ const proceed = (
 		snapshot: {
 			...snapshot,
 			committed: true,
-			step: { id: "opening", root, path, via, phase: "grace", stage: 0 },
+			step: {
+				id: "opening",
+				root,
+				path,
+				via,
+				provider: warned?.provider ?? null,
+				phase: "grace",
+				stage: 0,
+			},
 		},
 		effects: [{ kind: "commit-library", path }],
 	};
@@ -400,6 +420,7 @@ export const transition = (
 							root: "broken",
 							path,
 							via: "retry",
+							provider: null,
 							phase: "grace",
 							stage: 0,
 						},

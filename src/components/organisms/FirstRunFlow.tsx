@@ -496,6 +496,7 @@ interface CloudWarnViewProps {
 	path: string;
 	provider: string;
 	home: string | null;
+	busy: boolean;
 	onCancel: () => void;
 	onContinue: () => void;
 }
@@ -504,6 +505,7 @@ const CloudWarnView = ({
 	path,
 	provider,
 	home,
+	busy,
 	onCancel,
 	onContinue,
 }: CloudWarnViewProps) => (
@@ -518,11 +520,16 @@ const CloudWarnView = ({
 			conflict with its database.
 		</p>
 		<div className={styles.rowActions}>
-			<Button variant="default" onClick={onCancel}>
+			<Button variant="default" disabled={busy} onClick={onCancel}>
 				Cancel
 			</Button>
-			<Button variant="primary" data-autofocus="true" onClick={onContinue}>
-				Continue
+			<Button
+				variant="primary"
+				data-autofocus="true"
+				disabled={busy}
+				onClick={onContinue}
+			>
+				{busy ? <BusyLabel text="Opening…" /> : "Continue"}
 			</Button>
 		</div>
 	</>
@@ -939,6 +946,7 @@ const resolveView = (
 						path={step.path}
 						provider={step.provider}
 						home={home}
+						busy={false}
 						onCancel={() => send({ type: "CLOUD_CANCEL" })}
 						onContinue={() => send({ type: "CLOUD_CONTINUE" })}
 					/>
@@ -963,6 +971,24 @@ const resolveView = (
 					return openInsteadView(step.path);
 				case "retry":
 					return brokenView("checking", false);
+				case "cloud-warn":
+					// Same view key as the interactive warning: the card holds
+					// still and only Continue morphs into the spinner.
+					return {
+						key: "cloud",
+						label: "This folder is synced",
+						hasBack: false,
+						node: (
+							<CloudWarnView
+								path={step.path}
+								provider={step.provider ?? "A cloud service"}
+								home={home}
+								busy={true}
+								onCancel={() => {}}
+								onContinue={() => {}}
+							/>
+						),
+					};
 				default:
 					return null;
 			}
