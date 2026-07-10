@@ -8,6 +8,9 @@ export interface SwitchLibraryForm {
 	libraryPath: string;
 }
 
+/** Outcome of submitting a new library path; errors render inline. */
+export type AddLibraryResult = { ok: true } | { ok: false; message: string };
+
 export type SelectFirstLibraryProps = AddNewLibraryPathFomProps;
 
 export const SelectFirstLibrary = (props: SelectFirstLibraryProps) => {
@@ -77,7 +80,7 @@ export const SwitchLibraryForm = ({
 };
 
 interface AddNewLibraryPathFomProps {
-	onSubmit: (formData: SwitchLibraryForm) => void;
+	onSubmit: (formData: SwitchLibraryForm) => Promise<AddLibraryResult>;
 	selectNewLibrary: () => Promise<Option<string>>;
 }
 
@@ -97,7 +100,10 @@ const AddNewLibraryPathForm = ({
 					setError("Library path is required");
 					return;
 				}
-				onSubmit({ libraryPath });
+				safeAsyncEventHandler(async () => {
+					const result = await onSubmit({ libraryPath });
+					setError(result.ok ? undefined : result.message);
+				})();
 			}}
 		>
 			<FormField

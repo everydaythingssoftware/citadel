@@ -12,9 +12,9 @@ import { usePlatform } from "@/lib/platform/context";
 import { checkForUpdates } from "@/lib/services/app-updates";
 import { useApplyColorScheme } from "@/lib/theme-manager";
 import { safeAsyncEventHandler } from "$lib/async";
-import { FirstTimeSetup } from "./components/pages/firstTimeSetup";
+import { FirstRunGate } from "./components/organisms/FirstRunFlow";
 import { routeTree } from "./routeTree.gen";
-import { useActiveLibraryPath, useSettings } from "./stores/settings/store";
+import { useSettings } from "./stores/settings/store";
 
 /**
  * Full-window pending fallback for routes that suspend past `defaultPendingMs`
@@ -54,7 +54,6 @@ declare module "@tanstack/react-router" {
 export const App = () => {
 	const hydrated = useSettings((state) => state.hydrated);
 	const theme = useSettings((state) => state.theme);
-	const libraryPath = useActiveLibraryPath();
 	const platform = usePlatform();
 	useApplyColorScheme(theme);
 
@@ -106,21 +105,18 @@ export const App = () => {
 		return null;
 	}
 
-	if (!libraryPath.isSome) {
-		return (
-			<TooltipProvider>
-				<Toaster />
-				<FirstTimeSetup />
-			</TooltipProvider>
-		);
-	}
-
+	// FirstRunGate decides the boot path: first run (no library) and
+	// broken-path (configured library fails validation) render the CDL-19
+	// flow, which mounts the app beneath its card once a library is
+	// committed; a healthy boot renders the app untouched.
 	return (
 		<TooltipProvider>
 			<Toaster />
-			<LibraryStoreInitializer>
-				<RouterProvider router={router} />
-			</LibraryStoreInitializer>
+			<FirstRunGate>
+				<LibraryStoreInitializer>
+					<RouterProvider router={router} />
+				</LibraryStoreInitializer>
+			</FirstRunGate>
 		</TooltipProvider>
 	);
 };

@@ -29,7 +29,10 @@ export const Primary: Story = {
 				libraries={args.libraries}
 				selectExistingLibrary={() => Promise.resolve()}
 				selectNewLibrary={() => Promise.resolve(some("/path/to/new/library"))}
-				onSubmit={(data) => console.log("Updated library path", data)}
+				onSubmit={(data) => {
+					console.log("Updated library path", data);
+					return Promise.resolve({ ok: true as const });
+				}}
 			/>
 		);
 	},
@@ -63,7 +66,10 @@ export const HasManyLibraries: Story = {
 					return Promise.resolve();
 				}}
 				selectNewLibrary={() => Promise.resolve(some("/path/to/new/library"))}
-				onSubmit={(data) => console.log("Updated library path", data)}
+				onSubmit={(data) => {
+					console.log("Updated library path", data);
+					return Promise.resolve({ ok: true as const });
+				}}
 			/>
 		);
 	},
@@ -73,7 +79,10 @@ export const FirstLibrary: Story = {
 	render: () => (
 		<SelectFirstLibrary
 			selectNewLibrary={() => Promise.resolve(some("/path/to/new/library"))}
-			onSubmit={(data) => console.log("Updated library path", data)}
+			onSubmit={(data) => {
+				console.log("Updated library path", data);
+				return Promise.resolve({ ok: true as const });
+			}}
 		/>
 	),
 };
