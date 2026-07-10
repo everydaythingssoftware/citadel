@@ -240,9 +240,10 @@
 
 .escapes {
 	display: flex;
-	justify-content: center;
+	justify-content: space-between;
 	gap: 2px;
 	flex-wrap: wrap;
+	width: 100%;
 }
 
 /* Prototype .btn.sm metrics: the paired escapes must share one quiet row. */
