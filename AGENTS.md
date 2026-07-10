@@ -63,3 +63,27 @@ the background — no window focus, no macOS permissions:
 `tauri-wd` (W3C WebDriver CLI for WebDriverIO suites) launches its own app
 instance — never run it while `bun run dev` is up; two instances fight over the
 settings store and library database.
+
+## macOS permissions (TCC)
+
+Reading `~/Library/Preferences/**` from the app process (e.g. Calibre's
+`global.py.json` for library detection) triggers no TCC prompt and needs no
+entitlement — Preferences is not a TCC-protected location for non-sandboxed
+apps. Verified empirically 2026-07-10 (CDL-19): the read succeeded in a live
+debug build with zero `com.apple.TCC` log events at the moment of access.
+TCC-protected user folders are Desktop/Documents/Downloads and app data like
+Photos or Mail. When checking, use `/usr/bin/log show --predicate 'subsystem ==
+"com.apple.TCC"'` — bare `log` is a zsh builtin that silently shadows it.
+
+## SQLite on macOS persists WAL sidecars
+
+Citadel links Apple's system SQLite (`/usr/lib/libsqlite3.dylib`), which
+enables `SQLITE_FCNTL_PERSIST_WAL` by default: `-wal`/`-shm` sidecars survive
+a clean close of the last connection, for every WAL database and every
+connection (verified empirically 2026-07-10, CDL-19 — even `/usr/bin/sqlite3`
+leaves them). No connection-level dance (`PRAGMA query_only` off, explicit
+`wal_checkpoint`, even `journal_mode=DELETE`) removes both files; a connection
+that ever set `query_only=ON` additionally never checkpoints at close. Don't
+write tests asserting sidecar deletion — assert the database file's bytes are
+unchanged and tolerate the two sidecars. Calibre-managed libraries are
+journal-mode and stay fully byte-clean under read-only access.

@@ -685,6 +685,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-webdriver-automation",
  "tauri-specta",
+ "tempfile",
  "urlencoding",
  "uuid",
  "zip 0.6.6",

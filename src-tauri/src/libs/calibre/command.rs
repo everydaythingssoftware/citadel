@@ -7,8 +7,15 @@ use crate::libs::cover_thumbs::{self, CoverThumbnail};
 use crate::state::CitadelState;
 
 use super::custom_columns::CustomValueDto;
+use super::onboarding::{self, CreateTargetBlocker};
 use super::AuthorUpdate;
 use super::BookUpdate;
+
+/// Exact error strings `clb_cmd_create_library` returns when it refuses the
+/// target folder. The frontend matches on them to offer alternatives: "open
+/// it instead" for an existing library, "pick another folder" for content.
+pub const ERR_CREATE_LIBRARY_TARGET_IS_LIBRARY: &str = "create-library/already-a-library";
+pub const ERR_CREATE_LIBRARY_TARGET_NOT_EMPTY: &str = "create-library/folder-not-empty";
 
 #[tauri::command]
 #[specta::specta]
@@ -50,6 +57,20 @@ pub fn clb_cmd_create_library(
     handle: tauri::AppHandle,
     library_root: String,
 ) -> Result<(), String> {
+    // Never unpack into a folder that already holds anything real: extraction
+    // into a populated folder silently interleaves library files with the
+    // user's data. A missing folder is fine — extract() creates it.
+    match onboarding::create_target_blocker(std::path::Path::new(&library_root)) {
+        Ok(None) => {}
+        Ok(Some(CreateTargetBlocker::AlreadyALibrary)) => {
+            return Err(ERR_CREATE_LIBRARY_TARGET_IS_LIBRARY.to_string())
+        }
+        Ok(Some(CreateTargetBlocker::NotEmpty)) => {
+            return Err(ERR_CREATE_LIBRARY_TARGET_NOT_EMPTY.to_string())
+        }
+        Err(e) => return Err(format!("Failed to inspect '{library_root}': {e}")),
+    }
+
     let resource_path = handle
         .path()
         .resolve(
