@@ -64,6 +64,29 @@ the background — no window focus, no macOS permissions:
 instance — never run it while `bun run dev` is up; two instances fight over the
 settings store and library database.
 
+Endpoint response shapes differ: `/screenshot` returns `{"data": "<base64>"}`
+while `/script/execute` returns `{"value": ...}`.
+
+## Testing first-run / onboarding states (dev build)
+
+The dev build's settings live at `~/Library/Application Support/
+software.everydaythings.citadel.dev/settings.json` (separate bundle id from
+prod). Back the file up, edit, test, restore byte-exact — and quit the app
+before each edit, since the app persists settings on change:
+
+- Fresh run: set `activeLibraryId` to `""` → boot decision runs detection.
+- No-detection chooser: also rename `~/Library/Preferences/calibre/
+  global.py.json` aside (restore immediately); detection falls back to
+  `~/Calibre Library`, so that must not exist either.
+- Broken path: add a `libraryPaths` entry pointing at a nonexistent folder and
+  make it active.
+- A valid throwaway library for adopt/recovery tests: unzip
+  `src-tauri/resources/empty_7_2_calibre_lib.zip` into a temp dir.
+
+Vite HMR keeps the first-run flow's in-memory state across frontend edits, so
+a running card can be restyled and re-screenshotted without replaying the
+flow. Settings changes need an app restart to be picked up.
+
 ## macOS permissions (TCC)
 
 Reading `~/Library/Preferences/**` from the app process (e.g. Calibre's

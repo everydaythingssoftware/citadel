@@ -281,6 +281,7 @@ const FoundView = ({
 					<Button
 						variant="subtle"
 						size="sm"
+						className={styles.escapeBtn}
 						disabled={inert}
 						onClick={onPickDifferent}
 					>
@@ -289,6 +290,7 @@ const FoundView = ({
 					<Button
 						variant="subtle"
 						size="sm"
+						className={styles.escapeBtn}
 						disabled={inert}
 						onClick={onStartNew}
 					>
@@ -410,7 +412,12 @@ const InvalidView = ({
 				Choose a Different Folder…
 			</Button>
 			<div className={styles.crossover}>
-				<Button variant="subtle" size="sm" onClick={onCreateHere}>
+				<Button
+					variant="subtle"
+					size="sm"
+					className={styles.escapeBtn}
+					onClick={onCreateHere}
+				>
 					Start a New Library Here
 				</Button>
 			</div>
@@ -484,6 +491,7 @@ const CreateView = ({
 						<Button
 							variant="subtle"
 							size="sm"
+							className={styles.escapeBtn}
 							disabled={openInsteadBusy || frozen}
 							data-autofocus="true"
 							onClick={onOpenInstead}
@@ -720,6 +728,7 @@ const BrokenView = ({
 				<Button
 					variant="subtle"
 					size="sm"
+					className={styles.escapeBtn}
 					disabled={inert}
 					onClick={onPickDifferent}
 				>
@@ -728,6 +737,7 @@ const BrokenView = ({
 				<Button
 					variant="subtle"
 					size="sm"
+					className={styles.escapeBtn}
 					disabled={inert}
 					onClick={onStartNew}
 				>
@@ -1098,6 +1108,19 @@ const MorphCard = ({ viewKey, label, hasBack, children }: MorphCardProps) => {
 		);
 		(target ?? view).focus({ preventScroll: true });
 	}, [prevKey]);
+
+	// If the primary was still disabled when the view mounted (e.g. create's
+	// commit button before the default path resolves), pick it up as soon as
+	// it enables — but only from the container fallback, never from a control
+	// the user has since focused.
+	useEffect(() => {
+		const view = viewRef.current;
+		if (!view || document.activeElement !== view) return;
+		const target = view.querySelector<HTMLElement>(
+			"[data-autofocus]:not(:disabled)",
+		);
+		target?.focus({ preventScroll: true });
+	});
 
 	return (
 		<section className={styles.card} aria-label={label}>

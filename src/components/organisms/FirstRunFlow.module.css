@@ -4,12 +4,13 @@
  * to the app's real tokens (--ctd-nav-hover → --ctd-nav-hover-bg,
  * --ctd-danger* → --ctd-danger-bg). */
 
-/* Full-window setup layer. Sits over the app shell; on handoff it fades out
- * while the card dissolves and the app beneath takes over. */
+/* Full-window setup layer. Sits over the app shell (z 100/105) so the app
+ * can mount and open beneath it, but below toasts (130); on handoff it fades
+ * out while the card dissolves and the app beneath takes over. */
 .layer {
 	position: fixed;
 	inset: 0;
-	z-index: 40;
+	z-index: 120;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -242,6 +243,13 @@
 	justify-content: center;
 	gap: 2px;
 	flex-wrap: wrap;
+}
+
+/* Prototype .btn.sm metrics: the paired escapes must share one quiet row. */
+.escapeBtn {
+	height: 24px;
+	font-size: 12px;
+	padding: 0 9px;
 }
 
 .rowActions {
