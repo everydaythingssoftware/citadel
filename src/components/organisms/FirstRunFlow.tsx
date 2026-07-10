@@ -8,6 +8,7 @@ import {
 	useState,
 } from "react";
 import type { DetectionSource } from "@/bindings";
+import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { Button, Spinner } from "@/components/ui";
 import type {
 	CreateError,
@@ -47,25 +48,7 @@ const plural = (n: number, word: string) => (n === 1 ? word : `${word}s`);
 /* ------------------------------- icons -------------------------------- */
 
 const ShelfMark = () => (
-	<svg
-		width="28"
-		height="28"
-		viewBox="0 0 28 28"
-		fill="currentColor"
-		aria-hidden="true"
-	>
-		<rect x="5" y="6" width="5" height="17" rx="1" opacity=".85" />
-		<rect x="12" y="3.5" width="5" height="19.5" rx="1" opacity=".6" />
-		<rect
-			x="17.2"
-			y="6.8"
-			width="5"
-			height="17"
-			rx="1"
-			opacity=".75"
-			transform="rotate(12 19.7 15.3)"
-		/>
-	</svg>
+	<FluentLibraryFilled fontSize={28} aria-hidden="true" />
 );
 
 const FolderGlyph = () => (
