@@ -289,6 +289,38 @@ async clbCmdInstallUpdateIfAvailable() : Promise<Result<string, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async clbQueryOpdsInterfaces() : Promise<Result<OpdsNetworkInterface[], OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_interfaces") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clbCmdStartOpds(config: OpdsStartConfig) : Promise<Result<OpdsServiceStatus, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_start_opds", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clbCmdStopOpds() : Promise<Result<OpdsServiceStatus, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_stop_opds") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clbQueryOpdsStatus() : Promise<Result<OpdsServiceStatus, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbCmdOpenSettings() : Promise<void> {
     await TAURI_INVOKE("clb_cmd_open_settings");
 }
@@ -490,6 +522,15 @@ export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: s
  */
 export type MetadataProvider = "hardcover" | "loc" | "dnb" | "k10plus" | "openlibrary"
 export type NewAuthor = { name: string; sortable_name: string | null }
+export type OpdsBindTarget = { type: "allLocalNetworks" } | { type: "interface"; id: string }
+export type OpdsErrorCode = "invalidPort" | "libraryNotReady" | "configurationConflict" | "interfaceUnavailable" | "interfaceEnumerationFailed" | "portUnavailable" | "listenerFailed" | "unexpected"
+export type OpdsInterfaceKind = "lan" | "vpn" | "loopback" | "other"
+export type OpdsInterfaceState = "up" | "down"
+export type OpdsLifecycleState = "stopped" | "starting" | "running" | "waitingForInterface" | "error" | "stopping"
+export type OpdsNetworkInterface = { id: string; label: string; kind: OpdsInterfaceKind; state: OpdsInterfaceState; addresses: string[]; shareable: boolean }
+export type OpdsServiceStatus = { state: OpdsLifecycleState; target: OpdsBindTarget | null; port: number | null; activeLibraryId: string | null; urls: string[]; error: OpdsStatusError | null }
+export type OpdsStartConfig = { target: OpdsBindTarget; port: number }
+export type OpdsStatusError = { code: OpdsErrorCode; message: string }
 export type ProviderStatus = { provider: MetadataProvider; is_valid: boolean; message: string }
 export type RemoteFile = { url: string }
 /**

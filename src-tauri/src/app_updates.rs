@@ -1,5 +1,7 @@
 use tauri_plugin_updater::UpdaterExt;
 
+use crate::opds::OpdsService;
+
 #[derive(serde::Serialize, specta::Type)]
 pub struct UpdateCheckResult {
     pub has_update: bool,
@@ -28,7 +30,10 @@ pub async fn clb_cmd_check_for_updates(app: tauri::AppHandle) -> Result<UpdateCh
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clb_cmd_install_update_if_available(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn clb_cmd_install_update_if_available(
+    app: tauri::AppHandle,
+    opds: tauri::State<'_, OpdsService>,
+) -> Result<String, String> {
     let updater = app
         .updater()
         .map_err(|err| format!("Updater initialization failed: {err}"))?;
@@ -42,6 +47,7 @@ pub async fn clb_cmd_install_update_if_available(app: tauri::AppHandle) -> Resul
                 .await
                 .map_err(|err| format!("Failed to download/install update: {err}"))?;
 
+            opds.stop().await;
             app.restart();
         }
         Ok(None) => Ok("no-update".to_string()),
