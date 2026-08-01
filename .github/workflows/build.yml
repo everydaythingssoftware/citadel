@@ -23,12 +23,17 @@ jobs:
         with:
           bun-version: latest
 
-      - run: rustup toolchain install stable --profile minimal
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          RUST_VERSION="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)"
+          test -n "$RUST_VERSION"
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --component rustfmt
+          test "$(rustc --version | awk '{print $2}')" = "$RUST_VERSION"
 
       - uses: Swatinem/rust-cache@v2
         with:
-          # using the default — we can bust the cache by changing this
-          prefix-key: "v0-rust"
+          prefix-key: "v1-rust-${{ hashFiles('rust-toolchain.toml') }}"
           workspaces: "src-tauri"
 
       - name: (Ubuntu only) Install dependencies

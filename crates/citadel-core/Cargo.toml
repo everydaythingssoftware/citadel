@@ -2,6 +2,7 @@
 name = "citadel-core"
 version = "0.1.0"
 edition = "2021"
+rust-version.workspace = true
 
 # Platform-agnostic frontend-facing DTOs (`LibraryBook`, `LibraryAuthor`,
 # cover/file URLs) and the `libcalibre` -> DTO conversion. Depends on neither

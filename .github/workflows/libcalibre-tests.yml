@@ -19,14 +19,19 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup update stable
+        shell: bash
+        run: |
+          RUST_VERSION="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)"
+          test -n "$RUST_VERSION"
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --component rustfmt
+          test "$(rustc --version | awk '{print $2}')" = "$RUST_VERSION"
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v0-rust"
+          prefix-key: "v1-rust-${{ hashFiles('rust-toolchain.toml') }}"
           shared-key: "build"
           workspaces: "."
 
@@ -42,14 +47,19 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup update stable
+        shell: bash
+        run: |
+          RUST_VERSION="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)"
+          test -n "$RUST_VERSION"
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --component rustfmt
+          test "$(rustc --version | awk '{print $2}')" = "$RUST_VERSION"
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v0-rust"
+          prefix-key: "v1-rust-${{ hashFiles('rust-toolchain.toml') }}"
           shared-key: "build"
           workspaces: "."
 
@@ -105,11 +115,16 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup update stable
+        shell: bash
+        run: |
+          RUST_VERSION="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)"
+          test -n "$RUST_VERSION"
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --component rustfmt
+          test "$(rustc --version | awk '{print $2}')" = "$RUST_VERSION"
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v0-rust"
+          prefix-key: "v1-rust-${{ hashFiles('rust-toolchain.toml') }}"
           shared-key: "build"
           workspaces: "."
 

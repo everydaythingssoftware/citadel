@@ -42,7 +42,10 @@ Download the `.dmg` from [Releases](https://github.com/everydaythingssoftware/ci
 
 ## Developing
 
-As a prerequisite, you'll need to install [Bun](https://bun.sh) and [Rust](https://www.rust-lang.org/tools/install).
+As a prerequisite, you'll need to install [Bun](https://bun.sh) and
+[rustup](https://rustup.rs). Rust is pinned to 1.97.1 by
+`rust-toolchain.toml`; rustup installs that toolchain automatically when you
+run a Rust command in this repository.
 
 Then, you can install the packages.
 
@@ -56,6 +59,15 @@ and start up the app like so:
 bun run dev
 # or just bun dev
 ```
+
+### Updating Rust
+
+Rust upgrades are intentional repository changes. Update the channel in
+`rust-toolchain.toml` and the workspace `rust-version` in `Cargo.toml`
+together. CI installs the committed channel and derives its Rust cache key from
+the toolchain file. Then run `bun format:check`, `bun lint`, and
+`cargo test --workspace` before merging. Keep crate editions unchanged unless
+an edition migration is planned separately.
 
 ### Lint &amp; Formatting
 
