@@ -153,7 +153,8 @@ jobs:
         with:
           bun-version: latest
 
-      - run: rustup toolchain install --profile minimal 1.97.1
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
         with:
