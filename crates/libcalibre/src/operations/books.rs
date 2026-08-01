@@ -152,6 +152,7 @@ pub fn update_book(
             }
         }
 
+        books::touch(conn, book_id)?;
         Ok(())
     })
 }
@@ -205,9 +206,10 @@ pub fn get_book(conn: &mut SqliteConnection, book_id: BookId) -> Result<Book, Ca
 
     Ok(Book {
         id: BookId(book.id),
-        uuid: book.uuid.ok_or(CalibreError::DatabaseIntegrity(
-            "Book missing required UUID".to_string(),
-        ))?,
+        // Legacy or externally-edited Calibre libraries can contain NULL here.
+        // Keep the book readable; identity consumers provide deterministic
+        // fallbacks when the UUID is absent or malformed.
+        uuid: book.uuid,
         title: book.title,
         sortable_title: book.sort,
         authors: book_authors,
@@ -332,9 +334,7 @@ fn hydrate(
 
         let book_model = Book {
             id: book_id,
-            uuid: book_row.uuid.ok_or(CalibreError::DatabaseIntegrity(
-                "Book missing required UUID".to_string(),
-            ))?,
+            uuid: book_row.uuid,
             title: book_row.title,
             sortable_title: book_row.sort,
             authors: book_authors,

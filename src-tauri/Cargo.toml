@@ -20,6 +20,7 @@ diesel = { version = "2.1.0", features = ["sqlite", "chrono", "returning_clauses
 epub = "2.1.1"
 mobi = "0.8.0"
 citadel-core = { path = "../crates/citadel-core" }
+citadel-opds = { path = "../crates/citadel-opds" }
 libcalibre = { path = "../crates/libcalibre" }
 log = "0.4"
 quick-xml = "0.38"

@@ -82,7 +82,7 @@ impl LibraryBook {
     ) -> Self {
         Self {
             id: book.id.as_i32().to_string(),
-            uuid: Some(book.uuid.clone()),
+            uuid: book.uuid.clone(),
             title: book.title.clone(),
             author_list: book
                 .authors

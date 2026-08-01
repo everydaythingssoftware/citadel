@@ -14,7 +14,7 @@ pub fn write(path: &Path, data: &[u8]) -> Result<(), CalibreError> {
     std::fs::write(path, data).map_err(|e| CalibreError::FileSystem(e.to_string()))
 }
 
-pub fn asset_path(library_root: &String, book_path: &str, filename: &str) -> PathBuf {
+pub fn asset_path(library_root: &str, book_path: &str, filename: &str) -> PathBuf {
     let library_path = Path::new(library_root);
     library_path.join(book_path).join(filename)
 }
