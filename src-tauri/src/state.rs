@@ -1,6 +1,9 @@
 use std::sync::Mutex;
 
-use libcalibre::Library;
+use chrono::NaiveDateTime;
+use libcalibre::{BookId, BookPage, CalibreError, Library, ResolvedBookAsset};
+
+use crate::opds::CatalogSource;
 
 pub struct CitadelState {
     library: Mutex<Option<Library>>,
@@ -57,5 +60,60 @@ impl CitadelState {
             .lock()
             .expect("Library mutex poisoned")
             .is_some()
+    }
+
+    /// Resolve under the library mutex and return only owned data. Opening and
+    /// streaming the file must happen after this method returns.
+    pub fn resolve_book_asset(
+        &self,
+        book_id: BookId,
+        format: &str,
+    ) -> Result<ResolvedBookAsset, CalibreError> {
+        let mut library = self.library.lock().expect("Library mutex poisoned");
+        library
+            .as_mut()
+            .ok_or(CalibreError::LibraryNotInitialized)?
+            .resolve_book_file(book_id, format)
+    }
+
+    pub fn resolve_book_cover(&self, book_id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
+        let mut library = self.library.lock().expect("Library mutex poisoned");
+        library
+            .as_mut()
+            .ok_or(CalibreError::LibraryNotInitialized)?
+            .resolve_book_cover(book_id)
+    }
+
+    pub fn opds_book_page(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(String, Option<NaiveDateTime>, BookPage), CalibreError> {
+        let mut library = self.library.lock().expect("Library mutex poisoned");
+        let library = library
+            .as_mut()
+            .ok_or(CalibreError::LibraryNotInitialized)?;
+        let library_uuid = library.library_uuid()?;
+        let updated_at = library.catalog_updated_at()?;
+        let page = library.query_acquirable_books(limit, offset)?;
+        Ok((library_uuid, updated_at, page))
+    }
+}
+
+impl CatalogSource for CitadelState {
+    fn book_page(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(String, Option<NaiveDateTime>, BookPage), CalibreError> {
+        self.opds_book_page(limit, offset)
+    }
+
+    fn book_file(&self, book_id: BookId, format: &str) -> Result<ResolvedBookAsset, CalibreError> {
+        self.resolve_book_asset(book_id, format)
+    }
+
+    fn book_cover(&self, book_id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
+        self.resolve_book_cover(book_id)
     }
 }

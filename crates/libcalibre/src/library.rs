@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path, path::PathBuf};
 
 use chrono::{NaiveDate, NaiveDateTime};
-use diesel::{prelude::*, sql_query, RunQueryDsl, SqliteConnection};
+use diesel::{prelude::*, sql_query, OptionalExtension, RunQueryDsl, SqliteConnection};
 use sanitise_file_name::sanitise;
 
 use crate::{
@@ -27,7 +27,7 @@ pub struct Book {
     /// Identifier unique only within this library
     pub id: BookId,
     /// Cross-library identifier
-    pub uuid: String,
+    pub uuid: Option<String>,
     pub title: String,
     pub sortable_title: Option<String>,
     pub authors: Vec<Author>,
@@ -60,6 +60,8 @@ pub struct BookFileInfo {
     pub name: String,
     pub uncompressed_size: i32,
 }
+
+pub use crate::operations::assets::ResolvedBookAsset;
 
 #[derive(Clone, Debug)]
 pub struct BookIdentifier {
@@ -222,6 +224,41 @@ impl Library {
         &self.db_path.database_path
     }
 
+    pub fn library_uuid(&mut self) -> Result<String, CalibreError> {
+        use crate::schema::library_id::dsl::{library_id, uuid};
+
+        library_id
+            .select(uuid)
+            .first::<String>(&mut self.conn)
+            .optional()?
+            .ok_or_else(|| {
+                CalibreError::DatabaseIntegrity("library_id has no identity row".to_string())
+            })
+    }
+
+    pub fn catalog_updated_at(&mut self) -> Result<Option<NaiveDateTime>, CalibreError> {
+        use crate::schema::books::dsl::{books, last_modified};
+        use diesel::dsl::max;
+
+        let books_updated_at = books
+            .select(max(last_modified))
+            .first::<Option<NaiveDateTime>>(&mut self.conn)
+            .map_err(CalibreError::from)?;
+        let database_updated_at = [
+            PathBuf::from(&self.db_path.database_path),
+            PathBuf::from(format!("{}-wal", self.db_path.database_path)),
+        ]
+        .into_iter()
+        .filter_map(|path| std::fs::metadata(path).ok()?.modified().ok())
+        .map(|modified| chrono::DateTime::<chrono::Utc>::from(modified).naive_utc())
+        .max();
+
+        Ok(books_updated_at
+            .into_iter()
+            .chain(database_updated_at)
+            .max())
+    }
+
     // =========================================================================
     // Books
     // =========================================================================
@@ -371,6 +408,7 @@ impl Library {
         }
 
         // 7. Generate metadata.opf from the freshly written DB state.
+        book_queries::touch(&mut self.conn, BookId(book_row.id))?;
         let _ = self.regenerate_metadata_opf(BookId(book_row.id));
 
         self.get_book(BookId(book_row.id))
@@ -523,6 +561,23 @@ impl Library {
         )
     }
 
+    pub fn resolve_book_file(
+        &mut self,
+        id: BookId,
+        format: &str,
+    ) -> Result<ResolvedBookAsset, CalibreError> {
+        operations::assets::resolve_book_file(
+            &self.db_path.library_path,
+            &mut self.conn,
+            id,
+            format,
+        )
+    }
+
+    pub fn resolve_book_cover(&mut self, id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
+        operations::assets::resolve_book_cover(&self.db_path.library_path, &mut self.conn, id)
+    }
+
     pub fn remove_book_file(&mut self, book_id: BookId, format: &str) -> Result<(), CalibreError> {
         operations::assets::remove_book_file(
             &self.db_path.library_path,
@@ -591,7 +646,10 @@ impl Library {
         author_id: AuthorId,
         update: AuthorUpdate,
     ) -> Result<Author, CalibreError> {
-        operations::authors::update(&mut self.conn, author_id, update)
+        let book_ids = author_queries::find_books(&mut self.conn, author_id)?;
+        let author = operations::authors::update(&mut self.conn, author_id, update)?;
+        book_queries::touch_many(&mut self.conn, &book_ids)?;
+        Ok(author)
     }
 
     pub fn remove_author(&mut self, author_id: AuthorId) -> Result<AuthorId, CalibreError> {
@@ -612,27 +670,33 @@ impl Library {
     ) -> Result<i32, CalibreError> {
         use crate::schema::identifiers::dsl;
 
-        match existing_id {
-            Some(identifier_id) => {
-                diesel::update(dsl::identifiers.filter(dsl::id.eq(identifier_id)))
-                    .set((dsl::type_.eq(&label), dsl::val.eq(&value)))
-                    .returning(dsl::id)
-                    .get_result::<i32>(&mut self.conn)
-                    .map_err(CalibreError::from)
-            }
-            None => {
-                let lowercased_label = label.to_lowercase();
-                diesel::insert_into(dsl::identifiers)
-                    .values((
-                        dsl::book.eq(book_id.as_i32()),
-                        dsl::type_.eq(lowercased_label),
-                        dsl::val.eq(&value),
-                    ))
-                    .returning(dsl::id)
-                    .get_result::<i32>(&mut self.conn)
-                    .map_err(CalibreError::from)
-            }
-        }
+        self.conn.transaction(|conn| {
+            let identifier_id = match existing_id {
+                Some(identifier_id) => diesel::update(
+                    dsl::identifiers
+                        .filter(dsl::id.eq(identifier_id))
+                        .filter(dsl::book.eq(book_id.as_i32())),
+                )
+                .set((dsl::type_.eq(&label), dsl::val.eq(&value)))
+                .returning(dsl::id)
+                .get_result::<i32>(conn)
+                .map_err(CalibreError::from),
+                None => {
+                    let lowercased_label = label.to_lowercase();
+                    diesel::insert_into(dsl::identifiers)
+                        .values((
+                            dsl::book.eq(book_id.as_i32()),
+                            dsl::type_.eq(lowercased_label),
+                            dsl::val.eq(&value),
+                        ))
+                        .returning(dsl::id)
+                        .get_result::<i32>(conn)
+                        .map_err(CalibreError::from)
+                }
+            }?;
+            book_queries::touch(conn, book_id)?;
+            Ok(identifier_id)
+        })
     }
 
     pub fn delete_book_identifier(
@@ -648,8 +712,9 @@ impl Library {
                 .filter(dsl::id.eq(identifier_id)),
         )
         .execute(&mut self.conn)
-        .map(|_| ())
-        .map_err(CalibreError::from)
+        .map_err(CalibreError::from)?;
+        book_queries::touch(&mut self.conn, book_id)?;
+        Ok(())
     }
 
     // =========================================================================
@@ -793,8 +858,9 @@ impl Library {
     pub fn randomize_library_uuid(&mut self) -> Result<(), CalibreError> {
         sql_query("UPDATE library_id SET uuid = uuid4()")
             .execute(&mut self.conn)
-            .map(|_| ())
-            .map_err(CalibreError::from)
+            .map_err(CalibreError::from)?;
+        book_queries::touch_catalog(&mut self.conn)?;
+        Ok(())
     }
 
     // =========================================================================
@@ -835,6 +901,58 @@ impl Library {
         )?;
         let items = self.get_books_with_read_states(book_ids)?;
 
+        Ok(BookPage { items, total })
+    }
+
+    /// Query books that have at least one safely resolvable acquisition file.
+    /// Candidate rows are scanned before paging so missing or escaping backing
+    /// files cannot create dead-only entries or pagination holes.
+    pub fn query_acquirable_books(
+        &mut self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<BookPage, CalibreError> {
+        let mut resolvable_ids = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for candidate in book_queries::acquisition_candidates(&mut self.conn)? {
+            let book_id = BookId(candidate.book_id);
+            if seen.contains(&book_id) {
+                continue;
+            }
+            if operations::assets::is_resolvable_book_file(
+                &self.db_path.library_path,
+                &candidate.book_path,
+                &candidate.name,
+                &candidate.format,
+            ) {
+                seen.insert(book_id);
+                resolvable_ids.push(book_id);
+            }
+        }
+        let total = i64::try_from(resolvable_ids.len()).unwrap_or(i64::MAX);
+        let start = usize::try_from(offset.max(0)).unwrap_or(usize::MAX);
+        let page_len = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
+        let book_ids = resolvable_ids
+            .into_iter()
+            .skip(start)
+            .take(page_len)
+            .collect();
+        let mut items = self.get_books_with_read_states(book_ids)?;
+        for book in &mut items {
+            book.files.retain(|file| {
+                operations::assets::is_resolvable_book_file(
+                    &self.db_path.library_path,
+                    &book.book_dir_path,
+                    &file.name,
+                    &file.format,
+                )
+            });
+            book.has_cover = book.has_cover
+                && operations::assets::is_resolvable_book_cover(
+                    &self.db_path.library_path,
+                    &book.book_dir_path,
+                );
+        }
         Ok(BookPage { items, total })
     }
 

@@ -53,7 +53,7 @@ fn test_add_book() {
 
     let book = result.unwrap();
     assert_eq!(book.title, "Test Book");
-    assert!(!book.uuid.is_empty());
+    assert!(book.uuid.as_deref().is_some_and(|uuid| !uuid.is_empty()));
 }
 
 #[test]
