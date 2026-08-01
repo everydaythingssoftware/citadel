@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup toolchain install --profile minimal 1.97.1
+        run: rustup toolchain install
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup toolchain install --profile minimal 1.97.1
+        run: rustup toolchain install
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -105,7 +105,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup toolchain install --profile minimal 1.97.1
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
         with:
