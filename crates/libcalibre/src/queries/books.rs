@@ -120,6 +120,31 @@ struct CountRow {
     total: i64,
 }
 
+#[derive(QueryableByName)]
+pub(crate) struct AcquisitionCandidate {
+    #[diesel(sql_type = Integer)]
+    pub book_id: i32,
+    #[diesel(sql_type = Text)]
+    pub book_path: String,
+    #[diesel(sql_type = Text)]
+    pub format: String,
+    #[diesel(sql_type = Text)]
+    pub name: String,
+}
+
+pub(crate) fn acquisition_candidates(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<AcquisitionCandidate>, CalibreError> {
+    sql_query(
+        "SELECT books.id AS book_id, books.path AS book_path, \
+         data.format AS format, data.name AS name \
+         FROM books JOIN data ON data.book = books.id \
+         ORDER BY books.sort ASC, books.id ASC, data.id ASC",
+    )
+    .load(conn)
+    .map_err(CalibreError::from)
+}
+
 fn like_pattern(text: &str) -> String {
     let escaped = text
         .replace('\\', "\\\\")
@@ -269,6 +294,65 @@ pub(crate) fn update(
         .set(update)
         .execute(conn)
         .map_err(CalibreError::from)
+}
+
+pub(crate) fn touch(conn: &mut SqliteConnection, book_id: BookId) -> Result<usize, CalibreError> {
+    use crate::schema::books::dsl::{books, id, last_modified};
+
+    let previous = books
+        .filter(id.eq(book_id.as_i32()))
+        .select(last_modified)
+        .first::<chrono::NaiveDateTime>(conn)?;
+    let updated_at = std::cmp::max(
+        chrono::Utc::now().naive_utc(),
+        previous + chrono::TimeDelta::microseconds(1),
+    );
+    diesel::update(books.filter(id.eq(book_id.as_i32())))
+        .set(last_modified.eq(updated_at))
+        .execute(conn)
+        .map_err(CalibreError::from)
+}
+
+pub(crate) fn touch_many(
+    conn: &mut SqliteConnection,
+    book_ids: &[BookId],
+) -> Result<usize, CalibreError> {
+    use crate::schema::books::dsl::{books, id, last_modified};
+
+    if book_ids.is_empty() {
+        return Ok(0);
+    }
+    let previous = books
+        .filter(id.eq_any(book_ids.iter().map(|book_id| book_id.as_i32())))
+        .select(diesel::dsl::max(last_modified))
+        .first::<Option<chrono::NaiveDateTime>>(conn)?;
+    let updated_at = previous
+        .map(|previous| {
+            std::cmp::max(
+                chrono::Utc::now().naive_utc(),
+                previous + chrono::TimeDelta::microseconds(1),
+            )
+        })
+        .unwrap_or_else(|| chrono::Utc::now().naive_utc());
+    let ids = book_ids.iter().map(|book_id| book_id.as_i32());
+    diesel::update(books.filter(id.eq_any(ids)))
+        .set(last_modified.eq(updated_at))
+        .execute(conn)
+        .map_err(CalibreError::from)
+}
+
+pub(crate) fn touch_catalog(conn: &mut SqliteConnection) -> Result<usize, CalibreError> {
+    use crate::schema::books::dsl::{books, id};
+
+    match books
+        .select(id)
+        .order(id.asc())
+        .first::<i32>(conn)
+        .optional()?
+    {
+        Some(book_id) => touch(conn, BookId(book_id)),
+        None => Ok(0),
+    }
 }
 
 pub(crate) fn delete(conn: &mut SqliteConnection, book_id: BookId) -> Result<bool, CalibreError> {

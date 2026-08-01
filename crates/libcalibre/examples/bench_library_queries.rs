@@ -317,7 +317,7 @@ fn run() -> Result<(), String> {
             return Err(format!("expected total {expected}, got {total}"));
         }
         let hydrated = &first_page.items[0];
-        if hydrated.uuid.is_empty() || hydrated.authors.is_empty() {
+        if hydrated.uuid.as_deref().is_none_or(str::is_empty) || hydrated.authors.is_empty() {
             return Err("first page items are not fully hydrated".to_string());
         }
         println!("Sanity check passed: total == {expected}, page is hydrated");
