@@ -563,6 +563,13 @@ mod tests {
     }
 
     impl CatalogSource for MemorySource {
+    fn active_library_id(&self) -> Result<String, CalibreError> {
+        self.books
+            .first()
+            .map(|_| "memory-library".to_string())
+            .ok_or(CalibreError::LibraryNotInitialized)
+    }
+
         fn book_page(
             &self,
             limit: i64,
@@ -607,6 +614,10 @@ mod tests {
     struct FailureSource(fn() -> CalibreError);
 
     impl CatalogSource for NoLibrary {
+    fn active_library_id(&self) -> Result<String, CalibreError> {
+        Err(CalibreError::LibraryNotInitialized)
+    }
+
         fn book_page(
             &self,
             _limit: i64,
@@ -629,6 +640,10 @@ mod tests {
     }
 
     impl CatalogSource for FailureSource {
+    fn active_library_id(&self) -> Result<String, CalibreError> {
+        Err((self.0)())
+    }
+
         fn book_page(
             &self,
             _limit: i64,
@@ -651,6 +666,10 @@ mod tests {
     }
 
     impl CatalogSource for LibrarySource {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            self.library.lock().unwrap().library_uuid()
+        }
+
         fn book_page(
             &self,
             limit: i64,
@@ -682,7 +701,7 @@ mod tests {
     fn test_library() -> (TempDir, Library) {
         let directory = tempfile::tempdir().unwrap();
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../crates/libcalibre/tests/fixtures/empty_library/metadata.db");
+            .join("../libcalibre/tests/fixtures/empty_library/metadata.db");
         std::fs::copy(fixture, directory.path().join("metadata.db")).unwrap();
         let db_path = get_db_path(directory.path().to_str().unwrap()).unwrap();
         (directory, Library::new(db_path).unwrap())

@@ -19,6 +19,7 @@ chrono = { version = "0.4.31", features = ["serde"] }
 diesel = { version = "2.1.0", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
 epub = "2.1.1"
 mobi = "0.8.0"
+netdev = { version = "=0.45.0", default-features = false }
 citadel-core = { path = "../crates/citadel-core" }
 citadel-opds = { path = "../crates/citadel-opds" }
 libcalibre = { path = "../crates/libcalibre" }
@@ -46,6 +47,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-webdriver-automation = "0.1.3"
 image = { version = "0.25.6", default-features = false, features = ["jpeg", "png"] }
+tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 
 [dev-dependencies]
 tempfile = "3.8"
