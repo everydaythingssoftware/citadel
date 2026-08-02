@@ -15,6 +15,7 @@ export interface PlatformCapabilities {
 	canCopyToClipboard: boolean;
 	canOpenLocalPaths: boolean;
 	supportsAutoUpdates: boolean;
+	supportsLocalOpdsServer: boolean;
 }
 
 export interface DialogAdapter {
