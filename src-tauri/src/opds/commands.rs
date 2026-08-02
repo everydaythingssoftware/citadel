@@ -1,8 +1,6 @@
-use citadel_opds::{
-    credentials::{GeneratedOpdsCredentials, OpdsCredentialStatus},
-    network::OpdsNetworkInterface,
-    service::{OpdsServiceStatus, OpdsStartConfig, OpdsStatusError},
-    OpdsService,
+use super::{
+    GeneratedOpdsCredentials, OpdsCredentialStatus, OpdsNetworkInterface, OpdsService,
+    OpdsServiceStatus, OpdsStartConfig, OpdsStatusError,
 };
 
 #[tauri::command]

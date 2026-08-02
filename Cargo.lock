@@ -713,6 +713,7 @@ dependencies = [
 name = "citadel-rs"
 version = "0.6.1"
 dependencies = [
+ "axum",
  "chrono",
  "citadel-core",
  "citadel-opds",
@@ -722,7 +723,6 @@ dependencies = [
  "libcalibre",
  "log",
  "mobi",
- "netdev",
  "quick-xml 0.38.4",
  "regex",
  "reqwest 0.12.28",
@@ -746,7 +746,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "urlencoding",
- "uuid",
  "zip 0.6.6",
 ]
 
