@@ -17,7 +17,10 @@ use quick_xml::{
 };
 use serde::Deserialize;
 
-use super::assets::{self, AssetMethod};
+use super::{
+    assets::{self, AssetMethod},
+    auth::{require_basic_auth, OpdsBasicAuth},
+};
 
 const PAGE_SIZE: i64 = 50;
 const ACQUISITION_REL: &str = "http://opds-spec.org/acquisition";
@@ -48,7 +51,7 @@ struct PageQuery {
     page: Option<u64>,
 }
 
-pub fn router(source: Arc<dyn CatalogSource>) -> Router {
+pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
     Router::new()
         .route("/opds", get(root_feed))
         .route("/opds/all", get(all_books_feed))
@@ -61,6 +64,10 @@ pub fn router(source: Arc<dyn CatalogSource>) -> Router {
             get(book_cover).head(book_cover_head),
         )
         .with_state(CatalogState { source })
+        .layer(axum::middleware::from_fn_with_state(
+            auth,
+            require_basic_auth,
+        ))
 }
 
 async fn root_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
@@ -563,12 +570,12 @@ mod tests {
     }
 
     impl CatalogSource for MemorySource {
-    fn active_library_id(&self) -> Result<String, CalibreError> {
-        self.books
-            .first()
-            .map(|_| "memory-library".to_string())
-            .ok_or(CalibreError::LibraryNotInitialized)
-    }
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            self.books
+                .first()
+                .map(|_| "memory-library".to_string())
+                .ok_or(CalibreError::LibraryNotInitialized)
+        }
 
         fn book_page(
             &self,
@@ -614,9 +621,9 @@ mod tests {
     struct FailureSource(fn() -> CalibreError);
 
     impl CatalogSource for NoLibrary {
-    fn active_library_id(&self) -> Result<String, CalibreError> {
-        Err(CalibreError::LibraryNotInitialized)
-    }
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            Err(CalibreError::LibraryNotInitialized)
+        }
 
         fn book_page(
             &self,
@@ -640,9 +647,9 @@ mod tests {
     }
 
     impl CatalogSource for FailureSource {
-    fn active_library_id(&self) -> Result<String, CalibreError> {
-        Err((self.0)())
-    }
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            Err((self.0)())
+        }
 
         fn book_page(
             &self,
@@ -711,7 +718,9 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let task = tokio::spawn(async move {
-            axum::serve(listener, router(source)).await.unwrap();
+            axum::serve(listener, router(source, OpdsBasicAuth::disabled()))
+                .await
+                .unwrap();
         });
         (format!("http://{address}"), task)
     }
