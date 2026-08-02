@@ -120,15 +120,23 @@ passwordEnvironment = "CITADEL_TEST_OPDS_PASSWORD"
         .build()
         .unwrap();
     assert_eq!(client.get(&catalog_url).send().unwrap().status(), 401);
-    let feed = client
+    let navigation = client
         .get(&catalog_url)
+        .basic_auth("reader", Some("secret"))
+        .send()
+        .unwrap();
+    assert!(navigation.status().is_success());
+    assert!(navigation.text().unwrap().contains("All Books"));
+
+    let origin = catalog_url.strip_suffix("/opds").unwrap();
+    let feed = client
+        .get(format!("{origin}/opds/all"))
         .basic_auth("reader", Some("secret"))
         .send()
         .unwrap();
     assert!(feed.status().is_success());
     assert!(feed.text().unwrap().contains("Headless Citadel"));
 
-    let origin = catalog_url.strip_suffix("/opds").unwrap();
     let acquisition = client
         .get(format!(
             "{origin}/opds/books/{}/files/EPUB/book.epub",

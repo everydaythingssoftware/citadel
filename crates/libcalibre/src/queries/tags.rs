@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use diesel::prelude::*;
 use diesel::sql_query;
-use diesel::sql_types::{Integer, Text};
+use diesel::sql_types::{BigInt, Integer, Text};
 use diesel::{QueryDsl, RunQueryDsl, SqliteConnection};
 
 use crate::entities::tag::NewTag;
@@ -13,20 +13,34 @@ use crate::{CalibreError, Tag};
 /// Every tag in the library, sorted case-insensitively by name (with the
 /// raw name as a stable tiebreak, matching [`find_for_book`]).
 pub(crate) fn list_all(conn: &mut SqliteConnection) -> Result<Vec<TagSummary>, CalibreError> {
-    use crate::schema::tags::dsl::*;
+    #[derive(QueryableByName)]
+    struct TagCountRow {
+        #[diesel(sql_type = Integer)]
+        id: i32,
+        #[diesel(sql_type = Text)]
+        name: String,
+        #[diesel(sql_type = BigInt)]
+        book_count: i64,
+    }
 
-    tags.select(Tag::as_select())
-        .order_by(diesel::dsl::sql::<Text>("LOWER(name), name"))
-        .load(conn)
-        .map(|rows: Vec<Tag>| {
-            rows.into_iter()
-                .map(|tag| TagSummary {
-                    id: tag.id,
-                    name: tag.name,
-                })
-                .collect()
+    let rows: Vec<TagCountRow> = sql_query(
+        "SELECT t.id AS id, t.name AS name, COUNT(btl.book) AS book_count
+         FROM tags t
+         LEFT JOIN books_tags_link btl ON btl.tag = t.id
+         GROUP BY t.id, t.name
+         ORDER BY t.name COLLATE NOCASE, t.name, t.id",
+    )
+    .load(conn)
+    .map_err(CalibreError::from)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| TagSummary {
+            id: row.id,
+            name: row.name,
+            book_count: row.book_count,
         })
-        .map_err(CalibreError::from)
+        .collect())
 }
 
 pub(crate) fn find_by_name_case_insensitive(
