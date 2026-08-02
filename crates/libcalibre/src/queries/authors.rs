@@ -10,12 +10,47 @@
 use std::collections::HashMap;
 
 use diesel::prelude::*;
-use diesel::{QueryDsl, RunQueryDsl, SqliteConnection};
+use diesel::sql_query;
+use diesel::sql_types::{BigInt, Integer, Text};
+use diesel::{QueryDsl, QueryableByName, RunQueryDsl, SqliteConnection};
 
 use crate::entities::author::{NewAuthor, UpdateAuthorData};
 use crate::sorting;
 use crate::types::BookId;
-use crate::{types::AuthorId, Author, CalibreError};
+use crate::{library::AuthorSummary, types::AuthorId, Author, CalibreError};
+
+pub(crate) fn list_with_book_counts(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<AuthorSummary>, CalibreError> {
+    #[derive(QueryableByName)]
+    struct AuthorCountRow {
+        #[diesel(sql_type = Integer)]
+        id: i32,
+        #[diesel(sql_type = Text)]
+        name: String,
+        #[diesel(sql_type = BigInt)]
+        book_count: i64,
+    }
+
+    let rows: Vec<AuthorCountRow> = sql_query(
+        "SELECT a.id AS id, a.name AS name, COUNT(bal.book) AS book_count
+         FROM authors a
+         LEFT JOIN books_authors_link bal ON bal.author = a.id
+         GROUP BY a.id, a.name
+         ORDER BY a.name COLLATE NOCASE, a.name, a.id",
+    )
+    .load(conn)
+    .map_err(CalibreError::from)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| AuthorSummary {
+            id: AuthorId(row.id),
+            name: row.name,
+            book_count: row.book_count,
+        })
+        .collect())
+}
 
 pub(crate) fn get(
     conn: &mut SqliteConnection,

@@ -151,6 +151,10 @@ pub enum BookSortOrder {
     TitleDesc,
     AuthorAsc,
     AuthorDesc,
+    /// Most recently modified first, with book id as a stable tiebreaker.
+    UpdatedDesc,
+    /// Calibre series position first, then title and id for deterministic ties.
+    SeriesIndexAsc,
 }
 
 /// A paged, sorted, filtered book query. All filters compose (AND).
@@ -166,9 +170,13 @@ pub struct BookQuery {
     pub author_id: Option<AuthorId>,
     /// Only books linked to this series.
     pub series_id: Option<i32>,
+    /// Only books linked to this tag.
+    pub tag_id: Option<i32>,
     /// Exclude books marked read (filtered in SQL, so paging and totals stay
     /// correct).
     pub hide_read: bool,
+    /// Only books with at least one Calibre `data` row.
+    pub require_file: bool,
     pub sort: BookSortOrder,
     /// Maximum number of books to return. `None` returns all matches.
     pub limit: Option<i64>,
@@ -196,12 +204,21 @@ pub struct SeriesSummary {
     pub book_count: i64,
 }
 
+/// One author in the library with its linked-book count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthorSummary {
+    pub id: AuthorId,
+    pub name: String,
+    pub book_count: i64,
+}
+
 /// One tag in the library. Returned by [`Library::list_tags`]; the full
 /// vocabulary feeds tag autocomplete in clients.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TagSummary {
     pub id: i32,
     pub name: String,
+    pub book_count: i64,
 }
 
 impl Library {
@@ -815,7 +832,14 @@ impl Library {
     }
 
     pub fn get_book_read_state(&mut self, book_id: BookId) -> Result<bool, CalibreError> {
-        let column = self.get_or_create_read_state_column()?;
+        let Some(column) = custom_columns::find_by_label_and_kind(
+            &mut self.conn,
+            "read",
+            &CustomColumnKind::Bool,
+        )?
+        else {
+            return Ok(false);
+        };
         let value = custom_columns::get_value(&mut self.conn, &column, book_id)?;
         Ok(matches!(value, Some(CustomValue::Bool(true))))
     }
@@ -842,7 +866,14 @@ impl Library {
             return Ok(HashMap::new());
         }
 
-        let column = self.get_or_create_read_state_column()?;
+        let Some(column) = custom_columns::find_by_label_and_kind(
+            &mut self.conn,
+            "read",
+            &CustomColumnKind::Bool,
+        )?
+        else {
+            return Ok(HashMap::new());
+        };
         let values = custom_columns::batch_get_values(&mut self.conn, &column, book_ids)?;
 
         Ok(values
@@ -888,7 +919,9 @@ impl Library {
                 .filter(|text| !text.is_empty()),
             author_id: query.author_id,
             series_id: query.series_id,
+            tag_id: query.tag_id,
             hide_read_column,
+            require_file: query.require_file,
         };
 
         let total = book_queries::query_count(&mut self.conn, &filters)?;
@@ -912,9 +945,43 @@ impl Library {
         limit: i64,
         offset: i64,
     ) -> Result<BookPage, CalibreError> {
+        self.query_acquirable_books_with(BookQuery {
+            limit: Some(limit),
+            offset,
+            ..BookQuery::default()
+        })
+    }
+
+    /// Run a filtered, sorted catalog query while excluding books whose file
+    /// records cannot be resolved safely beneath the library root. Candidate
+    /// rows are scanned without hydrating books; only the selected page is
+    /// hydrated.
+    pub fn query_acquirable_books_with(
+        &mut self,
+        query: BookQuery,
+    ) -> Result<BookPage, CalibreError> {
+        let hide_read_column = if query.hide_read {
+            custom_columns::find_by_label_and_kind(&mut self.conn, "read", &CustomColumnKind::Bool)?
+                .map(|column| column.id)
+        } else {
+            None
+        };
+        let filters = book_queries::BookPageFilters {
+            text: query
+                .text
+                .as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty()),
+            author_id: query.author_id,
+            series_id: query.series_id,
+            tag_id: query.tag_id,
+            hide_read_column,
+            require_file: true,
+        };
         let mut resolvable_ids = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        for candidate in book_queries::acquisition_candidates(&mut self.conn)? {
+        for candidate in book_queries::acquisition_candidates(&mut self.conn, &filters, query.sort)?
+        {
             let book_id = BookId(candidate.book_id);
             if seen.contains(&book_id) {
                 continue;
@@ -930,8 +997,11 @@ impl Library {
             }
         }
         let total = i64::try_from(resolvable_ids.len()).unwrap_or(i64::MAX);
-        let start = usize::try_from(offset.max(0)).unwrap_or(usize::MAX);
-        let page_len = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
+        let start = usize::try_from(query.offset.max(0)).unwrap_or(usize::MAX);
+        let page_len = query
+            .limit
+            .map(|limit| usize::try_from(limit.max(0)).unwrap_or(usize::MAX))
+            .unwrap_or(usize::MAX);
         let book_ids = resolvable_ids
             .into_iter()
             .skip(start)
@@ -960,6 +1030,11 @@ impl Library {
     /// by name. The returned ids feed [`BookQuery::series_id`].
     pub fn list_series(&mut self) -> Result<Vec<SeriesSummary>, CalibreError> {
         crate::queries::series::list_with_book_counts(&mut self.conn)
+    }
+
+    /// List authors with linked-book counts, sorted case-insensitively.
+    pub fn list_authors(&mut self) -> Result<Vec<AuthorSummary>, CalibreError> {
+        author_queries::list_with_book_counts(&mut self.conn)
     }
 
     /// List every tag in the library (the whole vocabulary, including tags

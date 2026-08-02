@@ -8,7 +8,9 @@ mod network;
 mod service;
 
 pub use auth::OpdsBasicAuth;
-pub use catalog::{router, CatalogSource};
+pub use catalog::{
+    router, CatalogBookQuery, CatalogFacet, CatalogFilter, CatalogSort, CatalogSource,
+};
 pub use credentials::{GeneratedOpdsCredentials, OpdsCredentialStatus};
 pub use network::{OpdsInterfaceKind, OpdsInterfaceState, OpdsNetworkInterface};
 pub use service::{
