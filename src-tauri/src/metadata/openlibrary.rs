@@ -146,6 +146,7 @@ fn map_data_book(book: OlDataBook, queried_isbn: &str) -> BookMetadata {
         image_url,
         publisher: book.publishers.into_iter().next().map(|p| p.name),
         subjects: dedupe_subjects(book.subjects.into_iter().map(|s| s.name)),
+        genre_candidates: Vec::new(),
         language_code: None,
         slug: None,
     }
@@ -176,6 +177,7 @@ fn map_search_doc(doc: OlSearchDoc) -> BookMetadata {
         image_url,
         publisher: doc.publisher.into_iter().next(),
         subjects: dedupe_subjects(doc.subject.into_iter()),
+        genre_candidates: Vec::new(),
         language_code: None,
         slug: None,
     }

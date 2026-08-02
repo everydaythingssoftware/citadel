@@ -208,6 +208,14 @@ async clbCmdSetCustomValue(bookId: string, columnId: number, value: CustomValueD
     else return { status: "error", error: e  as any };
 }
 },
+async clbCmdAddBookGenres(bookId: string, genres: string[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_add_book_genres", { bookId, genres }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbQueryListAllAuthors() : Promise<Result<LibraryAuthor[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_list_all_authors") };
@@ -398,6 +406,11 @@ provider_id: string; identifier_label: string; title: string; subtitle: string |
  */
 subjects: string[]; 
 /**
+ * Explicit provider genre/form terms. Subject headings are never placed
+ * here merely because they look genre-like.
+ */
+genre_candidates: GenreCandidate[]; 
+/**
  * MARC 3-letter language code. Parsed now; applied once CDL-2 lands.
  */
 language_code: string | null; 
@@ -479,6 +492,16 @@ export type DetectionSource =
  * reversibly (ADR 0005) so the UI can reveal it again later.
  */
 export type GeneratedOpdsCredentials = { username: string; password: string }
+export type GenreCandidate = { name: string; 
+/**
+ * Stable provider field identity, such as `hardcover:genre` or
+ * `marc:655`.
+ */
+source: string; 
+/**
+ * Provider vocabulary or thesaurus when one is declared.
+ */
+vocabulary: string | null }
 /**
  * Book identifiers, such as ISBN, DOI, Google Books ID, etc.
  */
