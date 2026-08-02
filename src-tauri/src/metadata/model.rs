@@ -75,10 +75,45 @@ pub struct BookMetadata {
     pub publisher: Option<String>,
     /// Subject headings, mapped to tag suggestions on the frontend.
     pub subjects: Vec<String>,
+    /// Explicit provider genre/form terms. Subject headings are never placed
+    /// here merely because they look genre-like.
+    pub genre_candidates: Vec<GenreCandidate>,
     /// MARC 3-letter language code. Parsed now; applied once CDL-2 lands.
     pub language_code: Option<String>,
     /// Hardcover deep-link slug; `None` for other providers.
     pub slug: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GenreCandidate {
+    pub name: String,
+    /// Stable provider field identity, such as `hardcover:genre` or
+    /// `marc:655`.
+    pub source: String,
+    /// Provider vocabulary or thesaurus when one is declared.
+    pub vocabulary: Option<String>,
+}
+
+pub fn normalize_genre_candidates(
+    candidates: impl IntoIterator<Item = GenreCandidate>,
+) -> Vec<GenreCandidate> {
+    let mut normalized = Vec::<GenreCandidate>::new();
+    for mut candidate in candidates {
+        candidate.name = candidate
+            .name
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if candidate.name.is_empty()
+            || normalized
+                .iter()
+                .any(|existing| existing.name.eq_ignore_ascii_case(&candidate.name))
+        {
+            continue;
+        }
+        normalized.push(candidate);
+    }
+    normalized
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -206,5 +241,29 @@ mod tests {
     fn equivalence_is_false_for_garbage() {
         assert!(!isbn_equivalent("", "9780553103540"));
         assert!(!isbn_equivalent("xyz", "9780553103540"));
+    }
+
+    #[test]
+    fn genres_are_trimmed_deduplicated_and_keep_first_provenance() {
+        let genres = normalize_genre_candidates([
+            GenreCandidate {
+                name: "  Science   Fiction ".to_string(),
+                source: "hardcover:genre".to_string(),
+                vocabulary: Some("hardcover".to_string()),
+            },
+            GenreCandidate {
+                name: "science fiction".to_string(),
+                source: "marc:655".to_string(),
+                vocabulary: Some("lcgft".to_string()),
+            },
+            GenreCandidate {
+                name: "  ".to_string(),
+                source: "marc:655".to_string(),
+                vocabulary: None,
+            },
+        ]);
+        assert_eq!(genres.len(), 1);
+        assert_eq!(genres[0].name, "Science Fiction");
+        assert_eq!(genres[0].source, "hardcover:genre");
     }
 }

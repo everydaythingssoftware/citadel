@@ -2,7 +2,9 @@ use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::reader::NsReader;
 
-use crate::metadata::model::{pick_preferred_isbn, BookMetadata, MetadataProvider};
+use crate::metadata::model::{
+    normalize_genre_candidates, pick_preferred_isbn, BookMetadata, GenreCandidate, MetadataProvider,
+};
 
 /// The MARC21/slim record namespace, shared by LoC and DNB. Matching on it lets
 /// us tell the MARC `<record>` apart from the SRU envelope's `<zs:record>`.
@@ -229,6 +231,7 @@ fn map_record(rec: &RawRecord, provider: MetadataProvider) -> BookMetadata {
         image_url: None,
         publisher: publisher(rec),
         subjects: subjects(rec),
+        genre_candidates: genres(rec),
         language_code: language_code(rec),
         slug: None,
     }
@@ -337,7 +340,7 @@ fn subjects(rec: &RawRecord) -> Vec<String> {
     for field in &rec.datafields {
         if matches!(
             field.tag.as_str(),
-            "600" | "610" | "611" | "630" | "648" | "650" | "651" | "655"
+            "600" | "610" | "611" | "630" | "648" | "650" | "651"
         ) {
             if let Some(value) = field.first(b'a') {
                 let cleaned = strip_trailing_punct(value);
@@ -348,6 +351,17 @@ fn subjects(rec: &RawRecord) -> Vec<String> {
         }
     }
     out
+}
+
+fn genres(rec: &RawRecord) -> Vec<GenreCandidate> {
+    normalize_genre_candidates(rec.datafields("655").filter_map(|field| {
+        let name = field.first(b'a').map(strip_trailing_punct)?;
+        (!name.is_empty()).then(|| GenreCandidate {
+            name,
+            source: "marc:655".to_string(),
+            vocabulary: field.first(b'2').map(strip_trailing_punct),
+        })
+    }))
 }
 
 /// MARC language from the 008 fixed field (chars 35-37), falling back to 041$a.
@@ -396,7 +410,10 @@ mod tests {
         assert_eq!(b.release_year, Some(1996));
         assert_eq!(b.publisher.as_deref(), Some("Bantam Books"));
         assert_eq!(b.language_code.as_deref(), Some("eng"));
-        assert!(b.subjects.iter().any(|s| s == "Fantasy fiction"));
+        assert!(!b.subjects.iter().any(|s| s == "Fantasy fiction"));
+        assert_eq!(b.genre_candidates.len(), 1);
+        assert_eq!(b.genre_candidates[0].name, "Fantasy fiction");
+        assert_eq!(b.genre_candidates[0].source, "marc:655");
         assert_eq!(b.identifier_label, "lccn");
         assert!(b.image_url.is_none());
     }

@@ -117,6 +117,7 @@ pub fn clb_query_books(
         author_id,
         series_id: query.series_id,
         tag_id: None,
+        genre_id: None,
         hide_read: query.hide_read,
         require_file: false,
         sort: query.sort.into(),

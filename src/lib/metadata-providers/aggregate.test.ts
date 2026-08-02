@@ -18,6 +18,7 @@ const book = (
 	image_url: null,
 	publisher: null,
 	subjects: [],
+	genre_candidates: [],
 	language_code: null,
 	slug: null,
 	...overrides,
@@ -84,6 +85,44 @@ describe("mergeResults", () => {
 		);
 		expect(results[0]?.book.subjects).toEqual(["Fantasy"]);
 		expect(results[0]?.book.publisher).toBeNull();
+	});
+
+	it("combines only provenanced genre candidates across matching records", () => {
+		const results = mergeResults(
+			[
+				book("loc", {
+					isbn: "9780553103540",
+					genre_candidates: [
+						{ name: "Fantasy", source: "marc:655", vocabulary: "lcgft" },
+					],
+				}),
+				book("hardcover", {
+					isbn: "9780553103540",
+					genre_candidates: [
+						{
+							name: "fantasy",
+							source: "hardcover:genre",
+							vocabulary: "hardcover",
+						},
+						{
+							name: "Epic Fantasy",
+							source: "hardcover:genre",
+							vocabulary: "hardcover",
+						},
+					],
+				}),
+			],
+			ORDER,
+			null,
+		);
+		expect(results[0]?.book.genre_candidates).toEqual([
+			{ name: "Fantasy", source: "marc:655", vocabulary: "lcgft" },
+			{
+				name: "Epic Fantasy",
+				source: "hardcover:genre",
+				vocabulary: "hardcover",
+			},
+		]);
 	});
 
 	it("keeps ISBN-less records as distinct rows", () => {
