@@ -321,6 +321,38 @@ async clbQueryOpdsStatus() : Promise<Result<OpdsServiceStatus, OpdsStatusError>>
     else return { status: "error", error: e  as any };
 }
 },
+async clbQueryOpdsCredentialStatus() : Promise<Result<OpdsCredentialStatus, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_credential_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clbCmdConfigureOpdsCredentials(username: string, password: string) : Promise<Result<OpdsCredentialStatus, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_configure_opds_credentials", { username, password }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clbCmdGenerateOpdsCredentials(username: string) : Promise<Result<GeneratedOpdsCredentials, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_generate_opds_credentials", { username }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clbCmdClearOpdsCredentials() : Promise<Result<OpdsCredentialStatus, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_clear_opds_credentials") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbCmdOpenSettings() : Promise<void> {
     await TAURI_INVOKE("clb_cmd_open_settings");
 }
@@ -434,6 +466,7 @@ export type DetectionSource =
  * Calibre's default `~/Calibre Library` folder.
  */
 "default-folder"
+export type GeneratedOpdsCredentials = { username: string; password: string }
 /**
  * Book identifiers, such as ISBN, DOI, Google Books ID, etc.
  */
@@ -523,13 +556,14 @@ export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: s
 export type MetadataProvider = "hardcover" | "loc" | "dnb" | "k10plus" | "openlibrary"
 export type NewAuthor = { name: string; sortable_name: string | null }
 export type OpdsBindTarget = { type: "allLocalNetworks" } | { type: "interface"; id: string }
-export type OpdsErrorCode = "invalidPort" | "libraryNotReady" | "configurationConflict" | "interfaceUnavailable" | "interfaceEnumerationFailed" | "portUnavailable" | "listenerFailed" | "unexpected"
+export type OpdsCredentialStatus = { configured: boolean; username: string | null }
+export type OpdsErrorCode = "invalidPort" | "libraryNotReady" | "configurationConflict" | "interfaceUnavailable" | "interfaceEnumerationFailed" | "portUnavailable" | "listenerFailed" | "invalidCredentials" | "credentialsRequired" | "credentialStorageFailed" | "unexpected"
 export type OpdsInterfaceKind = "lan" | "vpn" | "loopback" | "other"
 export type OpdsInterfaceState = "up" | "down"
 export type OpdsLifecycleState = "stopped" | "starting" | "running" | "waitingForInterface" | "error" | "stopping"
 export type OpdsNetworkInterface = { id: string; label: string; kind: OpdsInterfaceKind; state: OpdsInterfaceState; addresses: string[]; shareable: boolean }
 export type OpdsServiceStatus = { state: OpdsLifecycleState; target: OpdsBindTarget | null; port: number | null; activeLibraryId: string | null; urls: string[]; error: OpdsStatusError | null }
-export type OpdsStartConfig = { target: OpdsBindTarget; port: number }
+export type OpdsStartConfig = { target: OpdsBindTarget; port: number; authenticationEnabled: boolean }
 export type OpdsStatusError = { code: OpdsErrorCode; message: string }
 export type ProviderStatus = { provider: MetadataProvider; is_valid: boolean; message: string }
 export type RemoteFile = { url: string }

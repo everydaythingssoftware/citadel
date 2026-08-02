@@ -11,6 +11,7 @@ import {
 	type SettingsManager,
 	type SettingsSchema,
 	type SettingsValue,
+	type SharingSettings,
 	type SmartShelf,
 	type SmartShelfFilter,
 } from "@/lib/platform/settings/types";
@@ -37,6 +38,7 @@ interface SettingsStore extends SettingsSchema {
 	setProviderEnabled: (id: MetadataProvider, enabled: boolean) => Promise<void>;
 	setAutoLookupOnImport: (enabled: boolean) => Promise<void>;
 	setLastNotifiedUpdateVersion: (version: string | null) => Promise<void>;
+	setSharing: (sharing: SharingSettings) => Promise<void>;
 	createSmartShelf: (
 		name: string,
 		filter: SmartShelfFilter,
@@ -209,6 +211,10 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 
 	setLastNotifiedUpdateVersion: async (version) => {
 		await persistSetting(set, get, "lastNotifiedUpdateVersion", version);
+	},
+
+	setSharing: async (sharing) => {
+		await persistSetting(set, get, "sharing", sharing);
 	},
 
 	createSmartShelf: async (name, filter) => {
