@@ -245,9 +245,15 @@ mod tests {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let server_state = state.clone();
         let server = tokio::spawn(async move {
-            axum::serve(listener, crate::opds::router(Arc::new(server_state)))
-                .await
-                .unwrap();
+            axum::serve(
+                listener,
+                crate::opds::router(
+                    Arc::new(server_state),
+                    crate::opds::auth::OpdsBasicAuth::disabled(),
+                ),
+            )
+            .await
+            .unwrap();
         });
         let client = reqwest::Client::new();
 

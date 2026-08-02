@@ -75,6 +75,10 @@ fn run_tauri_backend() -> std::io::Result<()> {
         opds::commands::clb_cmd_start_opds,
         opds::commands::clb_cmd_stop_opds,
         opds::commands::clb_query_opds_status,
+        opds::commands::clb_query_opds_credential_status,
+        opds::commands::clb_cmd_configure_opds_credentials,
+        opds::commands::clb_cmd_generate_opds_credentials,
+        opds::commands::clb_cmd_clear_opds_credentials,
         // Window commands
         menu::clb_cmd_open_settings,
     ]);
@@ -98,16 +102,17 @@ fn run_tauri_backend() -> std::io::Result<()> {
     }
 
     let state = state::CitadelState::new();
-    let opds_service = opds::OpdsService::new(state.clone());
+    let opds_state = state.clone();
     let app = tauri_builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
-        .manage(opds_service)
         .invoke_handler(builder.invoke_handler())
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {
             builder.mount_events(app);
+            let credential_path = app.path().app_data_dir()?.join("opds-credentials.json");
+            app.manage(opds::OpdsService::new(opds_state.clone(), credential_path)?);
 
             // Native macOS menu bar: app menu with Settings…, File > Add
             // Book…, and the standard Edit/View/Window items.

@@ -16,23 +16,29 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 axum = "0.8.9"
+argon2 = "0.5"
+base64 = "0.22"
 bytes = "1"
 chrono = { version = "0.4.31", features = ["serde"] }
 diesel = { version = "2.1.0", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
 epub = "2.1.1"
 futures-util = "0.3"
+hmac = "0.12"
 mobi = "0.8.0"
 netdev = { version = "=0.45.0", default-features = false }
 citadel-core = { path = "../crates/citadel-core" }
 libcalibre = { path = "../crates/libcalibre" }
 log = "0.4"
 quick-xml = "0.38"
+rand_core = { version = "0.6", features = ["getrandom"] }
 regex = "1.10.2"
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 specta = { version = "=2.0.0-rc.22", features = ["chrono"] }
 specta-typescript = "0.0.9"
+subtle = "2.6"
 tauri = { version = "2.0", features = ["macos-private-api"] }
 tauri-plugin-drag = "2.1.0"
 tauri-plugin-persisted-scope = { features = ["protocol-asset"] , version = "2" }
@@ -53,6 +59,7 @@ tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "s
 
 [dev-dependencies]
 tempfile = "3.8"
+tower = "0.5"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
