@@ -64,8 +64,7 @@ pub struct CatalogBookQuery {
 
 impl CatalogBookQuery {
     /// Translate the protocol query into libcalibre's bounded query contract.
-    /// Genre becomes available when CDL-30 adds its canonical library filter.
-    pub fn into_calibre(self) -> Option<BookQuery> {
+    pub fn into_calibre(self) -> BookQuery {
         let mut query = BookQuery {
             limit: Some(self.limit),
             offset: self.offset,
@@ -82,10 +81,10 @@ impl CatalogBookQuery {
             CatalogFilter::Author(id) => query.author_id = Some(AuthorId(id)),
             CatalogFilter::Series(id) => query.series_id = Some(id),
             CatalogFilter::Tag(id) => query.tag_id = Some(id),
-            CatalogFilter::Genre(_) => return None,
+            CatalogFilter::Genre(id) => query.genre_id = Some(id),
             CatalogFilter::Search(text) => query.text = Some(text),
         }
-        Some(query)
+        query
     }
 }
 
@@ -1133,13 +1132,7 @@ mod tests {
             let mut library = self.library.lock().unwrap();
             let uuid = library.library_uuid()?;
             let updated = library.catalog_updated_at()?;
-            let page = match query.into_calibre() {
-                Some(query) => library.query_acquirable_books_with(query)?,
-                None => BookPage {
-                    items: Vec::new(),
-                    total: 0,
-                },
-            };
+            let page = library.query_acquirable_books_with(query.into_calibre())?;
             Ok((uuid, updated, page))
         }
 
@@ -1171,6 +1164,19 @@ mod tests {
 
         fn tags(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
             self.library.lock().unwrap().list_tags().map(|items| {
+                items
+                    .into_iter()
+                    .map(|item| CatalogFacet {
+                        id: item.id,
+                        title: item.name,
+                        book_count: Some(item.book_count),
+                    })
+                    .collect()
+            })
+        }
+
+        fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            self.library.lock().unwrap().list_genres().map(|items| {
                 items
                     .into_iter()
                     .map(|item| CatalogFacet {
@@ -1412,21 +1418,20 @@ mod tests {
             limit: 50,
             offset: 100,
         }
-        .into_calibre()
-        .unwrap();
+        .into_calibre();
         assert!(query.hide_read);
         assert_eq!(query.sort, BookSortOrder::UpdatedDesc);
         assert_eq!(query.limit, Some(50));
         assert_eq!(query.offset, 100);
 
-        assert!(CatalogBookQuery {
+        let genre = CatalogBookQuery {
             filter: CatalogFilter::Genre(1),
             sort: CatalogSort::Title,
             limit: 50,
             offset: 0,
         }
-        .into_calibre()
-        .is_none());
+        .into_calibre();
+        assert_eq!(genre.genre_id, Some(1));
     }
 
     #[tokio::test]
@@ -1786,6 +1791,66 @@ mod tests {
         ids.sort();
         ids.dedup();
         assert_eq!(ids.len(), 51);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn real_library_genre_navigation_is_distinct_from_tags() {
+        let (directory, mut library) = test_library();
+        let source_path = directory.path().join("shared.epub");
+        std::fs::write(&source_path, b"book").unwrap();
+        let fantasy = library
+            .add_book(BookAdd {
+                title: "Genre Match".to_string(),
+                author_names: vec!["Author".to_string()],
+                tags: Some(vec!["Unrelated Tag".to_string()]),
+                series: None,
+                series_index: None,
+                publisher: None,
+                publication_date: None,
+                rating: None,
+                comments: None,
+                identifiers: HashMap::new(),
+                language: None,
+                file_paths: vec![source_path.clone()],
+            })
+            .unwrap();
+        library
+            .add_book(BookAdd {
+                title: "Other Book".to_string(),
+                author_names: vec!["Author".to_string()],
+                tags: Some(vec!["Fantasy".to_string()]),
+                series: None,
+                series_index: None,
+                publisher: None,
+                publication_date: None,
+                rating: None,
+                comments: None,
+                identifiers: HashMap::new(),
+                language: None,
+                file_paths: vec![source_path],
+            })
+            .unwrap();
+        library
+            .set_book_genres(fantasy.id, vec!["Fantasy".to_string()])
+            .unwrap();
+
+        let (base, server) = loopback(Arc::new(LibrarySource {
+            library: Mutex::new(library),
+        }))
+        .await;
+        let navigation = reqwest::get(format!("{base}/opds/genres")).await.unwrap();
+        assert_eq!(navigation.status(), StatusCode::OK);
+        let navigation = parsed_feed(&navigation.bytes().await.unwrap());
+        assert_eq!(navigation.titles, ["Fantasy"]);
+        assert_eq!(navigation.subsection_hrefs.len(), 1);
+
+        let books = reqwest::get(format!("{base}{}", navigation.subsection_hrefs[0]))
+            .await
+            .unwrap();
+        assert_eq!(books.status(), StatusCode::OK);
+        let books = parsed_feed(&books.bytes().await.unwrap());
+        assert_eq!(books.titles, ["Genre Match"]);
         server.abort();
     }
 
