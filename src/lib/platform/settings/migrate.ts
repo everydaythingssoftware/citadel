@@ -1,7 +1,7 @@
 import type { MetadataProvidersSettings, SettingsSchema } from "./types";
 
 /** The current settings schema version. Bump when the shape changes. */
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 /**
  * v0 -> v1: fold the flat `hardcoverApiKey` / `hardcoverAutoLookup` keys into
@@ -53,6 +53,14 @@ const migrateV1toV2 = (raw: SettingsSchema): SettingsSchema => {
 	return { ...raw, settingsSchemaVersion: 2, metadataProviders };
 };
 
+/** v2 -> v3: sharing preferences are seeded by the settings manager from the
+ * current defaults. Advancing the version records that the safe, password-free
+ * sharing shape is present. */
+const migrateV2toV3 = (raw: SettingsSchema): SettingsSchema => ({
+	...raw,
+	settingsSchemaVersion: 3,
+});
+
 /**
  * Bring a loaded settings object up to the current schema version by applying
  * each step in order. Gated on an explicit version, not value-equality with
@@ -66,6 +74,9 @@ export const migrateSettings = (raw: SettingsSchema): SettingsSchema => {
 	}
 	if (settings.settingsSchemaVersion < 2) {
 		settings = migrateV1toV2(settings);
+	}
+	if (settings.settingsSchemaVersion < 3) {
+		settings = migrateV2toV3(settings);
 	}
 	return settings;
 };

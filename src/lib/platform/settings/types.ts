@@ -40,6 +40,22 @@ export interface MetadataProvidersSettings {
 	autoLookupOnImport: boolean;
 }
 
+export type SharingTarget =
+	| { type: "allLocalNetworks" }
+	| { type: "interface"; id: string };
+
+/**
+ * Safe-to-persist OPDS preferences. The password and backend verifier are
+ * deliberately absent: a password only lives in the Sharing form long enough
+ * to configure the running desktop service.
+ */
+export interface SharingSettings {
+	target: SharingTarget;
+	port: number;
+	authenticationEnabled: boolean;
+	username: string;
+}
+
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
 export interface SettingsSchema {
 	theme: "dark" | "light" | "auto";
@@ -57,6 +73,7 @@ export interface SettingsSchema {
 	/** Bumped when the settings shape changes; gates one-time migrations. */
 	settingsSchemaVersion: number;
 	metadataProviders: MetadataProvidersSettings;
+	sharing: SharingSettings;
 }
 
 export const defaultSettings: SettingsSchema = {
@@ -89,6 +106,12 @@ export const defaultSettings: SettingsSchema = {
 			hardcover: { enabled: false, apiKey: "" },
 		},
 		autoLookupOnImport: false,
+	},
+	sharing: {
+		target: { type: "allLocalNetworks" },
+		port: 8080,
+		authenticationEnabled: false,
+		username: "",
 	},
 };
 
