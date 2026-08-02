@@ -7,7 +7,10 @@ use common::setup_with_library;
 use diesel::prelude::*;
 use diesel::sql_query;
 use diesel::sql_types::{Integer, Text};
-use libcalibre::{BookAdd, BookId, BookPage, BookQuery, BookSortOrder, Library};
+use libcalibre::{
+    BookAdd, BookId, BookPage, BookQuery, BookSortOrder, CustomColumnKind, CustomColumnSpec,
+    Library,
+};
 use std::collections::HashMap;
 
 fn book(title: &str, author_names: &[&str]) -> BookAdd {
@@ -729,6 +732,82 @@ fn test_list_tags_empty_library() {
     lib.add_book(book("No Tags Here", &[])).unwrap();
 
     assert!(lib.list_tags().unwrap().is_empty());
+}
+
+#[test]
+fn test_genres_are_distinct_persistent_and_queryable() {
+    let (_temp, mut lib) = setup_with_library();
+    let first = lib
+        .add_book(BookAdd {
+            tags: Some(vec!["Not a Genre".to_string()]),
+            ..book("First", &[])
+        })
+        .unwrap();
+    let second = lib.add_book(book("Second", &[])).unwrap();
+
+    assert!(lib.list_genres().unwrap().is_empty());
+    assert!(lib
+        .custom_columns()
+        .unwrap()
+        .iter()
+        .all(|column| column.label != "citadel_genres"));
+
+    lib.set_book_genres(
+        first.id,
+        vec![" Science   Fiction ".to_string(), "Mystery".to_string()],
+    )
+    .unwrap();
+    lib.set_book_genres(second.id, vec!["science fiction".to_string()])
+        .unwrap();
+    lib.add_book_genres(first.id, vec!["Fantasy".to_string(), "mystery".to_string()])
+        .unwrap();
+
+    let genres = lib.list_genres().unwrap();
+    let summary: Vec<_> = genres
+        .iter()
+        .map(|genre| (genre.name.as_str(), genre.book_count))
+        .collect();
+    assert_eq!(
+        summary,
+        [("Fantasy", 1), ("Mystery", 1), ("Science Fiction", 2)]
+    );
+    assert!(!genres.iter().any(|genre| genre.name == "Not a Genre"));
+
+    let science_fiction = genres
+        .iter()
+        .find(|genre| genre.name == "Science Fiction")
+        .unwrap();
+    let page = query(
+        &mut lib,
+        BookQuery {
+            genre_id: Some(science_fiction.id),
+            limit: Some(1),
+            offset: 1,
+            ..BookQuery::default()
+        },
+    );
+    assert_eq!(titles(&page), ["Second"]);
+    assert_eq!(page.total, 2);
+}
+
+#[test]
+fn test_incompatible_citadel_genres_column_fails_actionably() {
+    let (_temp, mut lib) = setup_with_library();
+    let book_id = lib.add_book(book("Book", &[])).unwrap().id;
+    lib.create_custom_column(CustomColumnSpec {
+        label: "citadel_genres".to_string(),
+        name: "Genres".to_string(),
+        kind: CustomColumnKind::Bool,
+        is_multiple: false,
+        enum_values: Vec::new(),
+        display: None,
+    })
+    .unwrap();
+
+    let error = lib
+        .set_book_genres(book_id, vec!["Fantasy".to_string()])
+        .unwrap_err();
+    assert!(error.to_string().contains("multiple-value text column"));
 }
 
 // =============================================================================

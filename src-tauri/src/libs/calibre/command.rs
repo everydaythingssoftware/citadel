@@ -53,6 +53,20 @@ pub fn clb_cmd_set_custom_value(
 
 #[tauri::command]
 #[specta::specta]
+pub fn clb_cmd_add_book_genres(
+    state: tauri::State<CitadelState>,
+    book_id: String,
+    genres: Vec<String>,
+) -> Result<(), String> {
+    state.with_library(|lib| {
+        let book_id = book_id.parse::<i32>().map_err(|error| error.to_string())?;
+        lib.add_book_genres(libcalibre::BookId::from(book_id), genres)
+            .map_err(|error| error.to_string())
+    })?
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn clb_cmd_create_library(
     handle: tauri::AppHandle,
     library_root: String,

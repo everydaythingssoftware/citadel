@@ -82,11 +82,13 @@ const FormRow = ({
 const SubjectSuggestions = ({
 	subjects,
 	source,
+	fallbackLabel = "Suggested subjects:",
 	onAdd,
 	onAddAll,
 }: {
 	subjects: string[];
 	source: string | null;
+	fallbackLabel?: string;
 	onAdd: (subject: string) => void;
 	onAddAll: () => void;
 }) => {
@@ -94,7 +96,7 @@ const SubjectSuggestions = ({
 	return (
 		<div className={styles.subjectStrip}>
 			<span className={styles.subjectStripLabel}>
-				{source ? `From ${source}:` : "Suggested subjects:"}
+				{source ? `From ${source}:` : fallbackLabel}
 			</span>
 			{subjects.map((subject) => (
 				<Button
@@ -536,6 +538,31 @@ const EditBookForm = ({
 			(subject) => !applied.has(subject.toLowerCase()),
 		);
 	}, [meta.lastResolvedSubjects, values.tagList]);
+	const storedGenres = useMemo(() => {
+		const column = customColumns.find(
+			(customColumn) => customColumn.label === "citadel_genres",
+		);
+		if (!column) return [];
+		const value = customValues[String(column.column_id)];
+		return Array.isArray(value) ? value : [];
+	}, [customColumns, customValues]);
+	const suggestableGenres = useMemo(() => {
+		const applied = new Set(storedGenres.map((genre) => genre.toLowerCase()));
+		return meta.lastResolvedGenres.filter(
+			(genre) => !applied.has(genre.toLowerCase()),
+		);
+	}, [meta.lastResolvedGenres, storedGenres]);
+	const addGenres = useCallback(
+		async (genres: string[]) => {
+			const result = await commands.clbCmdAddBookGenres(book.id, genres);
+			if (result.status === "error") {
+				setCustomColumnError(result.error);
+				return;
+			}
+			await loadCustomColumns();
+		},
+		[book.id, loadCustomColumns],
+	);
 
 	const handleAuthorsChange = (next: string[]) => {
 		// Authors typed in free-form that the library does not know yet get
@@ -729,6 +756,17 @@ const EditBookForm = ({
 								/>
 							</div>
 						</FormRow>
+						{suggestableGenres.length > 0 && (
+							<FormRow label="Genres" alignTop>
+								<SubjectSuggestions
+									subjects={suggestableGenres}
+									source={null}
+									fallbackLabel="Suggested genres:"
+									onAdd={(genre) => void addGenres([genre])}
+									onAddAll={() => void addGenres(suggestableGenres)}
+								/>
+							</FormRow>
+						)}
 						<FormRow label="Languages" alignTop htmlFor="edit-book-languages">
 							<TagsInput
 								id="edit-book-languages"

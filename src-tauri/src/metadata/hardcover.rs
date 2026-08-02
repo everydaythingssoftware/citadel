@@ -1,7 +1,9 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::metadata::model::{pick_preferred_isbn, BookMetadata, MetadataProvider};
+use crate::metadata::model::{
+    normalize_genre_candidates, pick_preferred_isbn, BookMetadata, GenreCandidate, MetadataProvider,
+};
 
 // ---------------------------------------------------------------------------
 // Private GraphQL response types (serde deserialization)
@@ -67,6 +69,8 @@ struct GqlBookDocument {
     slug: Option<String>,
     #[serde(default)]
     contributions: Vec<GqlContribution>,
+    #[serde(default)]
+    genres: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -166,6 +170,13 @@ fn document_to_metadata(doc: GqlBookDocument) -> BookMetadata {
         image_url: doc.image.and_then(|i| i.0),
         publisher: None,
         subjects: Vec::new(),
+        genre_candidates: normalize_genre_candidates(doc.genres.into_iter().map(|name| {
+            GenreCandidate {
+                name,
+                source: "hardcover:genre".to_string(),
+                vocabulary: Some("hardcover".to_string()),
+            }
+        })),
         language_code: None,
         slug: doc.slug,
     }
@@ -222,5 +233,31 @@ pub async fn test(api_key: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err("Invalid API response format".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_document_genres_are_normalized_with_provenance() {
+        let document: GqlBookDocument = serde_json::from_value(serde_json::json!({
+            "id": 42,
+            "title": "Book",
+            "genres": [" Science   Fiction ", "science fiction", "Fantasy"]
+        }))
+        .unwrap();
+        let metadata = document_to_metadata(document);
+        let names: Vec<_> = metadata
+            .genre_candidates
+            .iter()
+            .map(|genre| genre.name.as_str())
+            .collect();
+        assert_eq!(names, ["Science Fiction", "Fantasy"]);
+        assert!(metadata
+            .genre_candidates
+            .iter()
+            .all(|genre| genre.source == "hardcover:genre"));
     }
 }
