@@ -23,6 +23,7 @@ const DEFAULT_CACHE_CAPACITY: usize = 256;
 const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(30);
 const DEFAULT_TARGET_DURATION: Duration = Duration::from_millis(250);
 const BASIC_CHALLENGE: &str = "Basic realm=\"Citadel\"";
+const MAX_AUTHORIZATION_BYTES: usize = 8 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct OpdsAuthCredentials {
@@ -180,6 +181,10 @@ impl OpdsBasicAuth {
 
         let started_at = Instant::now();
         let authorization = authorization.unwrap_or_default();
+        if authorization.len() > MAX_AUTHORIZATION_BYTES {
+            pad_to_target(started_at, current_target_duration(enabled)).await;
+            return false;
+        }
         let tag = opaque_tag(&enabled.cache_key, authorization);
         if let Some((outcome, cached_duration)) = enabled
             .cache
@@ -422,6 +427,26 @@ mod tests {
             );
         }
         assert_eq!(correct.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn oversized_authorization_is_rejected_without_hashing_or_caching_it() {
+        let auth = enabled_auth("reader", b"correct horse", Duration::ZERO);
+        let oversized = vec![b'x'; MAX_AUTHORIZATION_BYTES + 1];
+
+        let response = response(auth.clone(), Some(oversized.clone())).await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(!auth.authorize(Some(&oversized)).await);
+        assert!(auth
+            .enabled
+            .as_ref()
+            .unwrap()
+            .cache
+            .lock()
+            .unwrap()
+            .entries
+            .is_empty());
     }
 
     #[tokio::test]

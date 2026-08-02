@@ -70,6 +70,7 @@ pub enum OpdsErrorCode {
     InterfaceUnavailable,
     InterfaceEnumerationFailed,
     PortUnavailable,
+    PermissionDenied,
     ListenerFailed,
     InvalidCredentials,
     CredentialsRequired,
@@ -905,16 +906,19 @@ fn interface_enumeration_error(retrying: bool) -> OpdsStatusError {
 }
 
 fn bind_error(error: io::Error) -> OpdsStatusError {
-    if error.kind() == io::ErrorKind::AddrInUse {
-        OpdsStatusError {
+    match error.kind() {
+        io::ErrorKind::AddrInUse => OpdsStatusError {
             code: OpdsErrorCode::PortUnavailable,
             message: "That port is already in use on the selected network interface.".to_string(),
-        }
-    } else {
-        OpdsStatusError {
+        },
+        io::ErrorKind::PermissionDenied => OpdsStatusError {
+            code: OpdsErrorCode::PermissionDenied,
+            message: "The operating system denied access to the requested network listener. Check firewall and local-network permissions.".to_string(),
+        },
+        _ => OpdsStatusError {
             code: OpdsErrorCode::Unexpected,
             message: "Citadel could not open the requested OPDS listener.".to_string(),
-        }
+        },
     }
 }
 
@@ -927,6 +931,15 @@ mod tests {
 
     use super::*;
     use crate::network::{AddressScope, InterfaceAddress, OpdsInterfaceKind, OpdsInterfaceState};
+
+    #[test]
+    fn bind_permission_denial_is_actionable() {
+        let error = bind_error(io::Error::from(io::ErrorKind::PermissionDenied));
+
+        assert_eq!(error.code, OpdsErrorCode::PermissionDenied);
+        assert!(error.message.contains("firewall"));
+        assert!(error.message.contains("local-network permissions"));
+    }
 
     struct TestSource {
         library_id: Option<String>,

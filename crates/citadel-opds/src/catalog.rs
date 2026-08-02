@@ -302,20 +302,20 @@ async fn search_feed(state: State<CatalogState>, Query(query): Query<SearchQuery
     .await
 }
 
-async fn authors_feed(state: State<CatalogState>) -> Response {
-    facet_handler(state, CatalogFacetKind::Authors).await
+async fn authors_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
+    facet_handler(state, query, CatalogFacetKind::Authors).await
 }
 
-async fn series_feed(state: State<CatalogState>) -> Response {
-    facet_handler(state, CatalogFacetKind::Series).await
+async fn series_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
+    facet_handler(state, query, CatalogFacetKind::Series).await
 }
 
-async fn tags_feed(state: State<CatalogState>) -> Response {
-    facet_handler(state, CatalogFacetKind::Tags).await
+async fn tags_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
+    facet_handler(state, query, CatalogFacetKind::Tags).await
 }
 
-async fn genres_feed(state: State<CatalogState>) -> Response {
-    facet_handler(state, CatalogFacetKind::Genres).await
+async fn genres_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
+    facet_handler(state, query, CatalogFacetKind::Genres).await
 }
 
 async fn opensearch_description() -> Response {
@@ -413,7 +413,15 @@ impl CatalogFacetKind {
     }
 }
 
-async fn facet_handler(State(state): State<CatalogState>, kind: CatalogFacetKind) -> Response {
+async fn facet_handler(
+    State(state): State<CatalogState>,
+    Query(query): Query<PageQuery>,
+    kind: CatalogFacetKind,
+) -> Response {
+    let page_number = query.page.unwrap_or(1);
+    if page_number == 0 {
+        return public_error(StatusCode::BAD_REQUEST, "Invalid page");
+    }
     let source = state.source.clone();
     let result = tokio::task::spawn_blocking(move || {
         let library_uuid = source.active_library_id()?;
@@ -431,7 +439,26 @@ async fn facet_handler(State(state): State<CatalogState>, kind: CatalogFacetKind
         Ok(Err(error)) => return calibre_error(error),
         Err(_) => return public_error(StatusCode::INTERNAL_SERVER_ERROR, "Catalog unavailable"),
     };
-    match facet_navigation_feed(&library_uuid, kind, &facets) {
+    let last_page = page_count(facets.len() as i64);
+    if page_number > last_page {
+        return public_error(StatusCode::NOT_FOUND, "Page not found");
+    }
+    let offset = match page_number
+        .checked_sub(1)
+        .and_then(|page| page.checked_mul(PAGE_SIZE as u64))
+        .and_then(|offset| usize::try_from(offset).ok())
+    {
+        Some(offset) => offset,
+        None => return public_error(StatusCode::BAD_REQUEST, "Invalid page"),
+    };
+    let facets = facets
+        .get(offset..)
+        .unwrap_or_default()
+        .iter()
+        .take(PAGE_SIZE as usize)
+        .cloned()
+        .collect::<Vec<_>>();
+    match facet_navigation_feed(&library_uuid, kind, &facets, page_number, last_page) {
         Ok(xml) => xml_response(NAVIGATION_CONTENT_TYPE, xml),
         Err(_) => public_error(StatusCode::INTERNAL_SERVER_ERROR, "Catalog unavailable"),
     }
@@ -737,9 +764,31 @@ fn facet_navigation_feed(
     library_uuid: &str,
     kind: CatalogFacetKind,
     facets: &[CatalogFacet],
+    page_number: u64,
+    last_page: u64,
 ) -> Result<Vec<u8>, quick_xml::Error> {
-    let mut writer = navigation_writer(library_uuid, kind.title(), kind.route())?;
+    let mut writer = navigation_writer(
+        library_uuid,
+        kind.title(),
+        &page_href(kind.route(), page_number),
+    )?;
     link(&mut writer, "up", "/opds", NAVIGATION_TYPE)?;
+    if page_number > 1 {
+        link(
+            &mut writer,
+            "previous",
+            &page_href(kind.route(), page_number - 1),
+            NAVIGATION_TYPE,
+        )?;
+    }
+    if page_number < last_page {
+        link(
+            &mut writer,
+            "next",
+            &page_href(kind.route(), page_number + 1),
+            NAVIGATION_TYPE,
+        )?;
+    }
     for facet in facets {
         navigation_entry(
             &mut writer,
@@ -1020,6 +1069,10 @@ mod tests {
         books: Vec<Book>,
     }
 
+    struct FacetSource {
+        facets: Vec<CatalogFacet>,
+    }
+
     impl CatalogSource for MemorySource {
         fn active_library_id(&self) -> Result<String, CalibreError> {
             Ok("550e8400-e29b-41d4-a716-446655440000".to_string())
@@ -1044,6 +1097,54 @@ mod tests {
                     total: self.books.len() as i64,
                 },
             ))
+        }
+
+        fn book_file(
+            &self,
+            book_id: BookId,
+            format: &str,
+        ) -> Result<ResolvedBookAsset, CalibreError> {
+            Err(CalibreError::BookFileNotFound(book_id, format.to_string()))
+        }
+
+        fn book_cover(&self, book_id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
+            Err(CalibreError::BookCoverNotFound(book_id))
+        }
+    }
+
+    impl CatalogSource for FacetSource {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            Ok("550e8400-e29b-41d4-a716-446655440000".to_string())
+        }
+
+        fn book_page(
+            &self,
+            _query: CatalogBookQuery,
+        ) -> Result<(String, Option<NaiveDateTime>, BookPage), CalibreError> {
+            Ok((
+                "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                None,
+                BookPage {
+                    items: Vec::new(),
+                    total: 0,
+                },
+            ))
+        }
+
+        fn authors(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            Ok(self.facets.clone())
+        }
+
+        fn series(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            Ok(self.facets.clone())
+        }
+
+        fn tags(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            Ok(self.facets.clone())
+        }
+
+        fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            Ok(self.facets.clone())
         }
 
         fn book_file(
@@ -1478,6 +1579,66 @@ mod tests {
         let search = search.text().await.unwrap();
         assert!(search.contains("{searchTerms}"));
         assert!(search.contains("/opds/search?q="));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn facet_navigation_routes_are_bounded_and_paginated() {
+        let facets = (1..=101)
+            .map(|id| CatalogFacet {
+                id,
+                title: format!("Facet {id:03}"),
+                book_count: Some(i64::from(id)),
+            })
+            .collect();
+        let (base, server) = loopback(Arc::new(FacetSource { facets })).await;
+        let client = reqwest::Client::new();
+
+        for route in [
+            "/opds/authors",
+            "/opds/series",
+            "/opds/tags",
+            "/opds/genres",
+        ] {
+            let second_page = format!("{route}?page=2");
+            let third_page = format!("{route}?page=3");
+            let first = client.get(format!("{base}{route}")).send().await.unwrap();
+            assert_eq!(first.status(), StatusCode::OK, "{route} page 1");
+            let first = parsed_feed(&first.bytes().await.unwrap());
+            assert_eq!(first.titles.len(), 50, "{route} page 1");
+            assert!(first.previous.is_none(), "{route} page 1");
+            assert_eq!(first.next.as_deref(), Some(second_page.as_str()));
+
+            let second = client
+                .get(format!("{base}{route}?page=2"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(second.status(), StatusCode::OK, "{route} page 2");
+            let second = parsed_feed(&second.bytes().await.unwrap());
+            assert_eq!(second.titles.len(), 50, "{route} page 2");
+            assert_eq!(second.previous.as_deref(), Some(route));
+            assert_eq!(second.next.as_deref(), Some(third_page.as_str()));
+
+            let third = client
+                .get(format!("{base}{route}?page=3"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(third.status(), StatusCode::OK, "{route} page 3");
+            let third = parsed_feed(&third.bytes().await.unwrap());
+            assert_eq!(third.titles, ["Facet 101"], "{route} page 3");
+            assert_eq!(third.previous.as_deref(), Some(second_page.as_str()));
+            assert!(third.next.is_none(), "{route} page 3");
+
+            let missing = client
+                .get(format!("{base}{route}?page=4"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(missing.status(), StatusCode::NOT_FOUND, "{route} page 4");
+        }
+
         server.abort();
     }
 
