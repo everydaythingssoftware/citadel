@@ -268,6 +268,8 @@ pub(crate) enum WaitingReason {
     SelectedInterfaceDown(String),
     SelectedInterfaceHasNoUsableAddress(String),
     LoopbackCannotBeShared(String),
+    NoConfiguredAddress,
+    InvalidConfiguredAddress(String),
 }
 
 impl WaitingReason {
@@ -288,6 +290,10 @@ impl WaitingReason {
             Self::LoopbackCannotBeShared(id) => {
                 format!("The selected interface ({id}) is loopback-only and cannot be shared.")
             }
+            Self::NoConfiguredAddress => "No explicit listener address was configured.".to_string(),
+            Self::InvalidConfiguredAddress(address) => {
+                format!("The configured listener address ({address}) is invalid.")
+            }
         }
     }
 }
@@ -303,6 +309,20 @@ pub(crate) fn plan_bindings(
     target: &super::service::OpdsBindTarget,
     port: u16,
 ) -> BindPlan {
+    if let super::service::OpdsBindTarget::Addresses { addresses } = target {
+        if addresses.is_empty() {
+            return BindPlan::Wait(WaitingReason::NoConfiguredAddress);
+        }
+        let mut sockets = BTreeSet::new();
+        for address in addresses {
+            let Ok(address) = address.parse::<IpAddr>() else {
+                return BindPlan::Wait(WaitingReason::InvalidConfiguredAddress(address.clone()));
+            };
+            sockets.insert(SocketAddr::new(address, port));
+        }
+        return BindPlan::Listen(sockets);
+    }
+
     let selected = match target {
         super::service::OpdsBindTarget::AllLocalNetworks => interfaces
             .iter()
@@ -323,6 +343,7 @@ pub(crate) fn plan_bindings(
             }
             vec![interface]
         }
+        super::service::OpdsBindTarget::Addresses { .. } => unreachable!(),
     };
 
     let addresses = selected
@@ -335,6 +356,7 @@ pub(crate) fn plan_bindings(
             super::service::OpdsBindTarget::Interface { id } => {
                 WaitingReason::SelectedInterfaceHasNoUsableAddress(id.clone())
             }
+            super::service::OpdsBindTarget::Addresses { .. } => unreachable!(),
         })
     } else {
         BindPlan::Listen(addresses)
@@ -579,6 +601,37 @@ mod tests {
         assert_eq!(
             advertised_url("[2001:db8::42]:8080".parse().unwrap()),
             "http://[2001:db8::42]:8080/opds"
+        );
+    }
+
+    #[test]
+    fn explicit_addresses_do_not_depend_on_interface_enumeration() {
+        let plan = plan_bindings(
+            &[],
+            &OpdsBindTarget::Addresses {
+                addresses: vec!["127.0.0.1".to_string(), "::1".to_string()],
+            },
+            8080,
+        );
+        assert_eq!(
+            plan,
+            BindPlan::Listen(BTreeSet::from([
+                "127.0.0.1:8080".parse().unwrap(),
+                "[::1]:8080".parse().unwrap(),
+            ]))
+        );
+
+        assert_eq!(
+            plan_bindings(
+                &[],
+                &OpdsBindTarget::Addresses {
+                    addresses: vec!["not-an-address".to_string()],
+                },
+                8080,
+            ),
+            BindPlan::Wait(WaitingReason::InvalidConfiguredAddress(
+                "not-an-address".to_string()
+            ))
         );
     }
 
