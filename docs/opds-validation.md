@@ -24,7 +24,11 @@ path, and fixture details when running the manual matrix.
 
 The release workflow supplies Apple signing and notarization credentials and is
 the correct source for the signed/notarized artifact. A successful local bundle
-does not substitute for testing that release artifact.
+does not substitute for testing that release artifact. The repository has all
+Apple certificate and App Store Connect API secret names configured, and the
+most recent manual Release run completed both its macOS and Ubuntu jobs on
+2026-07-10/11. That proves the publishing pipeline and credentials worked for
+main commit `f0ec58ee`; it does not prove or publish the current OPDS commits.
 
 ### Isolated packaged-app smoke test — 2026-08-02
 
@@ -103,16 +107,55 @@ Passed:
   libraries were moved to Trash after the run.
 
 This remains a same-host protocol crawl, not a separate-device KOReader result.
-It does not cover a signed/notarized current artifact, OS firewall denial,
-Linux packages, or physical interface loss/recovery.
+It does not cover a signed/notarized current artifact, OS firewall denial, a
+Linux OPDS client path, or physical interface loss/recovery.
+
+### Linux package smoke test — 2026-08-02
+
+Commit `2b864c0b` was exported without the developer worktree's unrelated
+uncommitted files and built in an Ubuntu 24.04.1 LTS ARM64 guest with the pinned
+Rust 1.97.1 toolchain and Bun 1.3.14.
+
+Passed:
+
+- The production frontend and Tauri release binary built successfully.
+- `Citadel_0.6.1_arm64.deb` was produced, reported package/version/architecture
+  `citadel`/`0.6.1`/`arm64`, declared its WebKitGTK and GTK runtime
+  dependencies, installed through `apt`, and installed the application binary,
+  desktop entry, icons, and empty-library resource.
+- The installed `.deb` application stayed running for the ten-second headless
+  smoke window under Xvfb, created isolated settings, and had no immediate
+  loader, dependency, or startup failure.
+- `Citadel_0.6.1_aarch64.AppImage` was produced as an ARM64 ELF AppImage. Its
+  extracted launcher started the bundled Citadel executable, which stayed
+  running for the headless smoke window with no immediate loader or startup
+  failure.
+- SHA-256 was
+  `59a02cdc58b70a68205f0cb7e588c75fa28e4952fc2f9e4ba1fd47c2030d21d3`
+  for the 13 MiB `.deb` and
+  `45e3ba608baaf5f47829279fe1c0ce03ca0917949fb72505cfa46cd20c0b6b88`
+  for the 83 MiB AppImage.
+
+The first AppImage bundle attempt on the minimal guest exposed that Tauri's
+bundler requires `/usr/bin/xdg-open`. Installing `xdg-utils` fixed the bundle;
+the build and release workflows now declare that prerequisite instead of
+relying on the hosted runner image.
+
+This proves clean ARM64 package construction, installation, contents, dynamic
+loading, and startup. It does not claim an interactive Linux OPDS or KOReader
+result: sharing deliberately starts off, and the headless guest did not provide
+a safe physical LAN/client path for enabling and exercising it. Linux host
+firewall behavior was not changed or tested.
 
 ### Existing real-reader evidence — 2026-08-02
 
-The current branch was successfully opened from KOReader over the developer
-machine's `en0` interface using HTTP Basic credentials. The KOReader version,
-device/OS, Citadel package identity, authentication-disabled case, and full
-navigation/download matrix were not recorded, so this is a useful v1 proof but
-not a completed CDL-27 package result.
+An early development build (`bun run dev`) was successfully opened from
+KOReader on a Kobo Libra Colour over the developer machine's `en0` interface
+using HTTP Basic credentials. That build exposed only the flat book list,
+before the current category navigation was implemented. The KOReader version,
+authentication-disabled case, acquisition/download behavior, and the current
+navigation matrix were not recorded, so this is a useful real-device v1 proof
+but not a completed packaged-client result.
 
 ## Automated coverage
 
@@ -144,8 +187,9 @@ book. Record the fixture identity and whether it is disposable.
 | Signed/notarized macOS release | — | Specific Wi-Fi/Ethernet | Basic | Not run |
 | Signed/notarized macOS release | — | All local networks | Off + Basic | Not run |
 | Ad-hoc macOS QA package | Same-host HTTP client | All local networks + `en0` | Off + Basic | Passed empty-library auth/lifecycle/port-conflict smoke plus representative pagination/facet/search/metadata/cover/download/range/concurrency crawl over IPv4 and IPv6 on macOS 26.5.1; not a KOReader result |
-| Ubuntu `.deb` | — | Specific Wi-Fi/Ethernet | Off + Basic | Not run |
-| Ubuntu AppImage | — | All local networks | Off + Basic | Not run |
+| Dev build | Kobo Libra Colour / KOReader version unknown | `en0` | Basic | Passed manual connection to the early flat catalog; current navigation, package behavior, auth-off, and downloads were not recorded |
+| Ubuntu 24.04.1 ARM64 `.deb` | Headless package smoke only | — | — | Built, installed, and stayed running under Xvfb; no interactive OPDS/client path exercised |
+| Ubuntu 24.04.1 ARM64 AppImage | Headless package smoke only | — | — | Built and launched its bundled Citadel executable under Xvfb; no interactive OPDS/client path exercised |
 
 For every applicable row, verify and record:
 
