@@ -26,6 +26,42 @@ The release workflow supplies Apple signing and notarization credentials and is
 the correct source for the signed/notarized artifact. A successful local bundle
 does not substitute for testing that release artifact.
 
+### Isolated packaged-app smoke test — 2026-08-02
+
+The release app was rebuilt with the compile-time QA identifier
+`software.everydaythings.citadel.opdsqa` and run on macOS 26.5.1 (25F80,
+arm64). It used a separate settings directory, a disposable empty Calibre
+library, port 18080, and QA-only credentials. The installed Citadel process,
+production settings, and production library were not changed.
+
+Passed:
+
+- The packaged Sharing pane started and stopped **All local networks** and the
+  specific Wi-Fi interface `en0`.
+- The UI displayed one concrete IPv4 URL and three bracketed global IPv6 URLs;
+  it displayed no wildcard, loopback, link-local, or credential-bearing URL.
+- IPv4 and global IPv6 returned parseable XML with HTTP 200 for the root, All
+  Books, Recently Modified, Unread, Authors, Series, Tags, Genres, search, and
+  OpenSearch routes while authentication was disabled.
+- With Basic authentication enabled, missing and incorrect credentials returned
+  401 with `WWW-Authenticate: Basic realm="Citadel"`; correct credentials
+  returned 200. An authorization value over the explicit limit returned 401.
+- The credential file was mode 0600, contained the username and an Argon2id
+  verifier, and neither it nor the QA settings contained the plaintext password.
+- Stop Sharing closed every listener and released the port. Quitting while
+  sharing also closed the listener. On relaunch, sharing was off while the
+  selected target, port, username, authentication mode, and verifier remained
+  available; restarting with the stored verifier authenticated successfully.
+- Occupying the selected address/port produced the packaged UI state **Needs
+  attention** with “That port is already in use on the selected network
+  interface.” Stopping recovered to editable configuration.
+
+This was a same-host network smoke test against an empty library. It does not
+cover a signed/notarized current artifact, OS firewall denial, a separate
+KOReader device, representative books/covers/acquisitions, active-library
+switching, or interface loss/recovery. The QA app, isolated settings/verifier,
+and disposable library were moved to Trash after the run.
+
 ### Existing real-reader evidence — 2026-08-02
 
 The current branch was successfully opened from KOReader over the developer
@@ -62,7 +98,7 @@ book. Record the fixture identity and whether it is disposable.
 | Signed/notarized macOS release | — | Specific Wi-Fi/Ethernet | Off | Not run |
 | Signed/notarized macOS release | — | Specific Wi-Fi/Ethernet | Basic | Not run |
 | Signed/notarized macOS release | — | All local networks | Off + Basic | Not run |
-| Unsigned macOS development package | — | Specific Wi-Fi/Ethernet | Off + Basic | Authenticated `en0` smoke test only; exact versions missing |
+| Ad-hoc macOS QA package | Same-host HTTP client | All local networks + `en0` | Off + Basic | Passed empty-library route/auth/lifecycle/IPv4/IPv6/port-conflict smoke test on macOS 26.5.1; not a KOReader result |
 | Ubuntu `.deb` | — | Specific Wi-Fi/Ethernet | Off + Basic | Not run |
 | Ubuntu AppImage | — | All local networks | Off + Basic | Not run |
 
