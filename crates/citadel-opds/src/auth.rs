@@ -131,7 +131,7 @@ impl AuthCache {
 }
 
 impl OpdsBasicAuth {
-    pub(crate) fn disabled() -> Self {
+    pub fn disabled() -> Self {
         Self { enabled: None }
     }
 

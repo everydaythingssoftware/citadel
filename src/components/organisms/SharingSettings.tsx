@@ -29,9 +29,9 @@ const STATUS_LABELS: Record<OpdsLifecycleState, string> = {
 
 const targetLabel = (status: OpdsServiceStatus): string => {
 	if (!status.target) return "Not selected";
-	return status.target.type === "allLocalNetworks"
-		? "All local networks"
-		: status.target.id;
+	if (status.target.type === "allLocalNetworks") return "All local networks";
+	if (status.target.type === "interface") return status.target.id;
+	return status.target.addresses.join(", ");
 };
 
 export const SharingSettings = () => {
