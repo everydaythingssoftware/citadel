@@ -103,9 +103,11 @@ pub(crate) struct BookPageFilters<'a> {
     pub text: Option<&'a str>,
     pub author_id: Option<AuthorId>,
     pub series_id: Option<i32>,
+    pub tag_id: Option<i32>,
     /// Id of the `read` bool custom column. When set, books marked read are
     /// excluded.
     pub hide_read_column: Option<i32>,
+    pub require_file: bool,
 }
 
 #[derive(QueryableByName)]
@@ -130,19 +132,6 @@ pub(crate) struct AcquisitionCandidate {
     pub format: String,
     #[diesel(sql_type = Text)]
     pub name: String,
-}
-
-pub(crate) fn acquisition_candidates(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<AcquisitionCandidate>, CalibreError> {
-    sql_query(
-        "SELECT books.id AS book_id, books.path AS book_path, \
-         data.format AS format, data.name AS name \
-         FROM books JOIN data ON data.book = books.id \
-         ORDER BY books.sort ASC, books.id ASC, data.id ASC",
-    )
-    .load(conn)
-    .map_err(CalibreError::from)
 }
 
 fn like_pattern(text: &str) -> String {
@@ -187,11 +176,22 @@ fn filter_where_sql(filters: &BookPageFilters) -> String {
         ));
     }
 
+    if let Some(tag_id) = filters.tag_id {
+        clauses.push(format!(
+            "EXISTS (SELECT 1 FROM books_tags_link btl2 \
+             WHERE btl2.book = books.id AND btl2.tag = {tag_id})"
+        ));
+    }
+
     if let Some(n) = filters.hide_read_column {
         clauses.push(format!(
             "NOT EXISTS (SELECT 1 FROM custom_column_{n} cc \
              WHERE cc.book = books.id AND cc.value != 0)"
         ));
+    }
+
+    if filters.require_file {
+        clauses.push("EXISTS (SELECT 1 FROM data d WHERE d.book = books.id)".to_string());
     }
 
     clauses.join(" AND ")
@@ -210,6 +210,39 @@ fn order_by_sql(sort: BookSortOrder) -> String {
         BookSortOrder::TitleDesc => "books.sort DESC, books.id DESC".to_string(),
         BookSortOrder::AuthorAsc => format!("{AUTHOR_SORT} ASC, books.id ASC"),
         BookSortOrder::AuthorDesc => format!("{AUTHOR_SORT} DESC, books.id DESC"),
+        BookSortOrder::UpdatedDesc => "books.last_modified DESC, books.id DESC".to_string(),
+        BookSortOrder::SeriesIndexAsc => {
+            "books.series_index IS NULL ASC, books.series_index ASC, books.sort ASC, books.id ASC"
+                .to_string()
+        }
+    }
+}
+
+pub(crate) fn acquisition_candidates(
+    conn: &mut SqliteConnection,
+    filters: &BookPageFilters,
+    sort: BookSortOrder,
+) -> Result<Vec<AcquisitionCandidate>, CalibreError> {
+    let where_sql = filter_where_sql(filters);
+    let order_sql = order_by_sql(sort);
+    let sql = format!(
+        "SELECT books.id AS book_id, books.path AS book_path, \
+         data.format AS format, data.name AS name \
+         FROM books JOIN data ON data.book = books.id \
+         WHERE {where_sql} ORDER BY {order_sql}, data.id ASC"
+    );
+
+    match filters.text {
+        Some(text) => {
+            let pattern = like_pattern(text);
+            sql_query(sql)
+                .bind::<Text, _>(&pattern)
+                .bind::<Text, _>(&pattern)
+                .bind::<Text, _>(&pattern)
+                .load(conn)
+                .map_err(CalibreError::from)
+        }
+        None => sql_query(sql).load(conn).map_err(CalibreError::from),
     }
 }
 

@@ -18,6 +18,14 @@ pub(crate) fn book_identity(library_uuid: &str, raw_uuid: Option<&str>, book_id:
     }
 }
 
+pub(crate) fn navigation_identity(library_uuid: &str, key: &str) -> String {
+    format!(
+        "{}:navigation:{}",
+        library_identity(library_uuid),
+        hex(key.as_bytes())
+    )
+}
+
 fn hex(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut result = String::with_capacity(bytes.len() * 2);

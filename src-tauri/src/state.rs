@@ -6,7 +6,7 @@ use std::sync::{
 use chrono::NaiveDateTime;
 use libcalibre::{BookId, BookPage, CalibreError, Library, ResolvedBookAsset};
 
-use citadel_opds::CatalogSource;
+use citadel_opds::{CatalogBookQuery, CatalogFacet, CatalogSource};
 
 #[derive(Clone)]
 pub struct CitadelState {
@@ -140,8 +140,7 @@ impl CitadelState {
 
     pub fn opds_book_page(
         &self,
-        limit: i64,
-        offset: i64,
+        query: CatalogBookQuery,
     ) -> Result<(String, Option<NaiveDateTime>, BookPage), CalibreError> {
         let mut library = self.inner.library.lock().expect("Library mutex poisoned");
         if self.is_library_transitioning() {
@@ -152,8 +151,29 @@ impl CitadelState {
             .ok_or(CalibreError::LibraryNotInitialized)?;
         let library_uuid = library.library_uuid()?;
         let updated_at = library.catalog_updated_at()?;
-        let page = library.query_acquirable_books(limit, offset)?;
+        let page = match query.into_calibre() {
+            Some(query) => library.query_acquirable_books_with(query)?,
+            None => BookPage {
+                items: Vec::new(),
+                total: 0,
+            },
+        };
         Ok((library_uuid, updated_at, page))
+    }
+
+    fn with_opds_library<T>(
+        &self,
+        operation: impl FnOnce(&mut Library) -> Result<T, CalibreError>,
+    ) -> Result<T, CalibreError> {
+        let mut library = self.inner.library.lock().expect("Library mutex poisoned");
+        if self.is_library_transitioning() {
+            return Err(CalibreError::LibraryNotInitialized);
+        }
+        operation(
+            library
+                .as_mut()
+                .ok_or(CalibreError::LibraryNotInitialized)?,
+        )
     }
 }
 
@@ -164,10 +184,53 @@ impl CatalogSource for CitadelState {
 
     fn book_page(
         &self,
-        limit: i64,
-        offset: i64,
+        query: CatalogBookQuery,
     ) -> Result<(String, Option<NaiveDateTime>, BookPage), CalibreError> {
-        self.opds_book_page(limit, offset)
+        self.opds_book_page(query)
+    }
+
+    fn authors(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+        self.with_opds_library(|library| {
+            library.list_authors().map(|authors| {
+                authors
+                    .into_iter()
+                    .map(|author| CatalogFacet {
+                        id: author.id.as_i32(),
+                        title: author.name,
+                        book_count: Some(author.book_count),
+                    })
+                    .collect()
+            })
+        })
+    }
+
+    fn series(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+        self.with_opds_library(|library| {
+            library.list_series().map(|series| {
+                series
+                    .into_iter()
+                    .map(|series| CatalogFacet {
+                        id: series.id,
+                        title: series.name,
+                        book_count: Some(series.book_count),
+                    })
+                    .collect()
+            })
+        })
+    }
+
+    fn tags(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+        self.with_opds_library(|library| {
+            library.list_tags().map(|tags| {
+                tags.into_iter()
+                    .map(|tag| CatalogFacet {
+                        id: tag.id,
+                        title: tag.name,
+                        book_count: Some(tag.book_count),
+                    })
+                    .collect()
+            })
+        })
     }
 
     fn book_file(&self, book_id: BookId, format: &str) -> Result<ResolvedBookAsset, CalibreError> {

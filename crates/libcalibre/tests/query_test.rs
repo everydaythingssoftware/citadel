@@ -51,6 +51,15 @@ fn series_id_by_name(lib: &mut Library, name: &str) -> i32 {
     row.id
 }
 
+fn tag_id_by_name(lib: &mut Library, name: &str) -> i32 {
+    lib.list_tags()
+        .unwrap()
+        .into_iter()
+        .find(|tag| tag.name == name)
+        .expect("tag not found")
+        .id
+}
+
 // =============================================================================
 // Paging
 // =============================================================================
@@ -192,6 +201,63 @@ fn test_sort_author_asc() {
         titles(&page),
         ["The Zebra Guide", "Mangoes", "Apple Picking"]
     );
+}
+
+#[test]
+fn test_sort_updated_desc_uses_id_as_stable_tiebreaker() {
+    let (_temp, mut lib) = setup_with_library();
+    let older = lib.add_book(book("Older", &[])).unwrap();
+    let newer_first = lib.add_book(book("Newer First", &[])).unwrap();
+    let newer_second = lib.add_book(book("Newer Second", &[])).unwrap();
+
+    let mut conn = libcalibre::persistence::establish_connection(lib.database_path()).unwrap();
+    sql_query("UPDATE books SET last_modified = '2024-01-01 00:00:00' WHERE id = ?")
+        .bind::<Integer, _>(older.id.as_i32())
+        .execute(&mut conn)
+        .unwrap();
+    sql_query("UPDATE books SET last_modified = '2024-02-01 00:00:00' WHERE id IN (?, ?)")
+        .bind::<Integer, _>(newer_first.id.as_i32())
+        .bind::<Integer, _>(newer_second.id.as_i32())
+        .execute(&mut conn)
+        .unwrap();
+
+    let page = query(
+        &mut lib,
+        BookQuery {
+            sort: BookSortOrder::UpdatedDesc,
+            ..BookQuery::default()
+        },
+    );
+    assert_eq!(titles(&page), ["Newer Second", "Newer First", "Older"]);
+}
+
+#[test]
+fn test_sort_series_index_handles_fractions_and_stable_ties() {
+    let (_temp, mut lib) = setup_with_library();
+    for (title, index) in [
+        ("Second B", 2.0),
+        ("First", 1.0),
+        ("Second A", 2.0),
+        ("Bridge", 1.5),
+    ] {
+        lib.add_book(BookAdd {
+            series: Some("Saga".to_string()),
+            series_index: Some(index),
+            ..book(title, &[])
+        })
+        .unwrap();
+    }
+    let saga = series_id_by_name(&mut lib, "Saga");
+
+    let page = query(
+        &mut lib,
+        BookQuery {
+            series_id: Some(saga),
+            sort: BookSortOrder::SeriesIndexAsc,
+            ..BookQuery::default()
+        },
+    );
+    assert_eq!(titles(&page), ["First", "Bridge", "Second A", "Second B"]);
 }
 
 #[test]
@@ -460,6 +526,11 @@ fn test_hide_read_with_no_read_column_matches_all() {
     );
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.total, 1);
+    assert!(lib
+        .custom_columns()
+        .unwrap()
+        .iter()
+        .all(|column| column.label != "read"));
 }
 
 #[test]
@@ -535,6 +606,92 @@ fn test_page_items_are_hydrated() {
 // =============================================================================
 // Tag listing
 // =============================================================================
+
+#[test]
+fn test_list_authors_returns_counts_sorted_case_insensitively() {
+    let (_temp, mut lib) = setup_with_library();
+    lib.add_book(book("First", &["zebra", "Alpha"])).unwrap();
+    lib.add_book(book("Second", &["zebra"])).unwrap();
+
+    let authors = lib.list_authors().unwrap();
+    let summary: Vec<_> = authors
+        .iter()
+        .map(|author| (author.name.as_str(), author.book_count))
+        .collect();
+    assert_eq!(summary, [("Alpha", 1), ("zebra", 2)]);
+}
+
+#[test]
+fn test_tag_filter_composes_with_paging_and_totals() {
+    let (_temp, mut lib) = setup_with_library();
+
+    for title in ["Alpha", "Beta", "Gamma"] {
+        lib.add_book(BookAdd {
+            tags: Some(vec!["Selected".to_string()]),
+            ..book(title, &[])
+        })
+        .unwrap();
+    }
+    lib.add_book(BookAdd {
+        tags: Some(vec!["Other".to_string()]),
+        ..book("Excluded", &[])
+    })
+    .unwrap();
+
+    let selected_tag = tag_id_by_name(&mut lib, "Selected");
+    let page = query(
+        &mut lib,
+        BookQuery {
+            tag_id: Some(selected_tag),
+            limit: Some(2),
+            offset: 1,
+            ..BookQuery::default()
+        },
+    );
+    assert_eq!(titles(&page), ["Beta", "Gamma"]);
+    assert_eq!(page.total, 3);
+}
+
+#[test]
+fn test_acquirable_query_composes_filters_and_excludes_fileless_books() {
+    let (temp, mut lib) = setup_with_library();
+    let source = temp.path().join("source.epub");
+    std::fs::write(&source, b"epub").unwrap();
+
+    for title in ["Alpha Match", "Beta Match"] {
+        lib.add_book(BookAdd {
+            tags: Some(vec!["Selected".to_string()]),
+            file_paths: vec![source.clone()],
+            ..book(title, &["Writer"])
+        })
+        .unwrap();
+    }
+    lib.add_book(BookAdd {
+        tags: Some(vec!["Selected".to_string()]),
+        ..book("Fileless Match", &["Writer"])
+    })
+    .unwrap();
+    lib.add_book(BookAdd {
+        tags: Some(vec!["Other".to_string()]),
+        file_paths: vec![source],
+        ..book("Other Match", &["Writer"])
+    })
+    .unwrap();
+
+    let selected_tag = tag_id_by_name(&mut lib, "Selected");
+    let page = lib
+        .query_acquirable_books_with(BookQuery {
+            text: Some("match".to_string()),
+            tag_id: Some(selected_tag),
+            limit: Some(1),
+            offset: 1,
+            ..BookQuery::default()
+        })
+        .unwrap();
+    assert_eq!(titles(&page), ["Beta Match"]);
+    assert_eq!(page.total, 2);
+    assert_eq!(page.items[0].files.len(), 1);
+}
 
 #[test]
 fn test_list_tags_returns_deduped_vocabulary_sorted_by_name() {

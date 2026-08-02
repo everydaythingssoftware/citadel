@@ -357,20 +357,6 @@ schema:
         type_name: BLOB
         nullable: false
         primary_key: false
-  - name: custom_column_1
-    columns:
-      - name: id
-        type_name: INTEGER
-        nullable: true
-        primary_key: true
-      - name: book
-        type_name: INTEGER
-        nullable: true
-        primary_key: false
-      - name: value
-        type_name: BOOL
-        nullable: false
-        primary_key: false
   - name: custom_columns
     columns:
       - name: id
@@ -677,17 +663,7 @@ data:
   books_tags_link: []
   comments: []
   conversion_options: []
-  custom_column_1: []
-  custom_columns:
-    - datatype: bool
-      display: "{}"
-      editable: 1
-      id: 1
-      is_multiple: 0
-      label: read
-      mark_for_delete: 0
-      name: Read
-      normalized: 0
+  custom_columns: []
   data: []
   feeds: []
   identifiers: []
