@@ -172,6 +172,8 @@ pub struct BookQuery {
     pub series_id: Option<i32>,
     /// Only books linked to this tag.
     pub tag_id: Option<i32>,
+    /// Only books linked to this resolved Citadel genre value.
+    pub genre_id: Option<i32>,
     /// Exclude books marked read (filtered in SQL, so paging and totals stay
     /// correct).
     pub hide_read: bool,
@@ -216,6 +218,13 @@ pub struct AuthorSummary {
 /// vocabulary feeds tag autocomplete in clients.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TagSummary {
+    pub id: i32,
+    pub name: String,
+    pub book_count: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GenreSummary {
     pub id: i32,
     pub name: String,
     pub book_count: i64,
@@ -910,6 +919,18 @@ impl Library {
         } else {
             None
         };
+        let genre_column = match query.genre_id {
+            Some(genre_id) => match self.genres_column(false)? {
+                Some(column) => Some((column.id, genre_id)),
+                None => {
+                    return Ok(BookPage {
+                        items: Vec::new(),
+                        total: 0,
+                    })
+                }
+            },
+            None => None,
+        };
 
         let filters = book_queries::BookPageFilters {
             text: query
@@ -920,6 +941,7 @@ impl Library {
             author_id: query.author_id,
             series_id: query.series_id,
             tag_id: query.tag_id,
+            genre_column,
             hide_read_column,
             require_file: query.require_file,
         };
@@ -966,6 +988,18 @@ impl Library {
         } else {
             None
         };
+        let genre_column = match query.genre_id {
+            Some(genre_id) => match self.genres_column(false)? {
+                Some(column) => Some((column.id, genre_id)),
+                None => {
+                    return Ok(BookPage {
+                        items: Vec::new(),
+                        total: 0,
+                    })
+                }
+            },
+            None => None,
+        };
         let filters = book_queries::BookPageFilters {
             text: query
                 .text
@@ -975,6 +1009,7 @@ impl Library {
             author_id: query.author_id,
             series_id: query.series_id,
             tag_id: query.tag_id,
+            genre_column,
             hide_read_column,
             require_file: true,
         };
@@ -1043,6 +1078,89 @@ impl Library {
         crate::queries::tags::list_all(&mut self.conn)
     }
 
+    pub fn list_genres(&mut self) -> Result<Vec<GenreSummary>, CalibreError> {
+        let Some(column) = self.genres_column(false)? else {
+            return Ok(Vec::new());
+        };
+        crate::queries::genres::list_with_book_counts(&mut self.conn, column.id)
+    }
+
+    pub fn set_book_genres(
+        &mut self,
+        book_id: BookId,
+        genres: Vec<String>,
+    ) -> Result<(), CalibreError> {
+        let genres = normalize_genre_names(genres);
+        if genres.is_empty() && self.genres_column(false)?.is_none() {
+            return Ok(());
+        }
+        let column = self
+            .genres_column(true)?
+            .expect("genre column is created when requested");
+        custom_columns::set_value(
+            &mut self.conn,
+            &column,
+            book_id,
+            Some(CustomValue::TextMultiple(genres)),
+        )?;
+        book_queries::touch(&mut self.conn, book_id).map(|_| ())
+    }
+
+    pub fn add_book_genres(
+        &mut self,
+        book_id: BookId,
+        genres: Vec<String>,
+    ) -> Result<(), CalibreError> {
+        let additions = normalize_genre_names(genres);
+        if additions.is_empty() {
+            return Ok(());
+        }
+        let mut merged = match self.genres_column(false)? {
+            Some(column) => match custom_columns::get_value(&mut self.conn, &column, book_id)? {
+                Some(CustomValue::TextMultiple(values)) => values,
+                None => Vec::new(),
+                Some(_) => unreachable!("genre column compatibility is checked"),
+            },
+            None => Vec::new(),
+        };
+        for addition in additions {
+            if !merged
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(&addition))
+            {
+                merged.push(addition);
+            }
+        }
+        self.set_book_genres(book_id, merged)
+    }
+
+    fn genres_column(&mut self, create: bool) -> Result<Option<CustomColumn>, CalibreError> {
+        const LABEL: &str = "citadel_genres";
+        if let Some(column) = custom_columns::find_by_label(&mut self.conn, LABEL)? {
+            if column.kind != CustomColumnKind::Text || !column.is_multiple {
+                return Err(CalibreError::InvalidCustomColumn(format!(
+                    "#{LABEL} must be a multiple-value text column"
+                )));
+            }
+            return Ok(Some(column));
+        }
+        if !create {
+            return Ok(None);
+        }
+        custom_columns::create(
+            &mut self.conn,
+            &CustomColumnSpec {
+                label: LABEL.to_string(),
+                name: "Genres".to_string(),
+                kind: CustomColumnKind::Text,
+                is_multiple: true,
+                enum_values: Vec::new(),
+                display: None,
+            },
+        )
+        .map(Some)
+    }
+
     pub fn search_books(&mut self, query: &str) -> Result<Vec<Book>, CalibreError> {
         let query = query.trim();
         if query.is_empty() {
@@ -1078,6 +1196,21 @@ impl Library {
 
         Ok(books)
     }
+}
+
+fn normalize_genre_names(genres: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::<String>::new();
+    for genre in genres {
+        let genre = genre.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !genre.is_empty()
+            && !normalized
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(&genre))
+        {
+            normalized.push(genre);
+        }
+    }
+    normalized
 }
 
 // =============================================================================

@@ -151,13 +151,7 @@ impl CitadelState {
             .ok_or(CalibreError::LibraryNotInitialized)?;
         let library_uuid = library.library_uuid()?;
         let updated_at = library.catalog_updated_at()?;
-        let page = match query.into_calibre() {
-            Some(query) => library.query_acquirable_books_with(query)?,
-            None => BookPage {
-                items: Vec::new(),
-                total: 0,
-            },
-        };
+        let page = library.query_acquirable_books_with(query.into_calibre())?;
         Ok((library_uuid, updated_at, page))
     }
 
@@ -227,6 +221,21 @@ impl CatalogSource for CitadelState {
                         id: tag.id,
                         title: tag.name,
                         book_count: Some(tag.book_count),
+                    })
+                    .collect()
+            })
+        })
+    }
+
+    fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+        self.with_opds_library(|library| {
+            library.list_genres().map(|genres| {
+                genres
+                    .into_iter()
+                    .map(|genre| CatalogFacet {
+                        id: genre.id,
+                        title: genre.name,
+                        book_count: Some(genre.book_count),
                     })
                     .collect()
             })
