@@ -645,6 +645,37 @@ mod tests {
     }
 
     #[test]
+    fn advertised_urls_list_ipv4_first_and_never_link_local() {
+        let interfaces = [interface(
+            "en0",
+            OpdsInterfaceKind::Lan,
+            OpdsInterfaceState::Up,
+            vec![
+                ipv6("2001:db8::42"),
+                ipv6("fe80::42"),
+                ipv4([192, 168, 1, 42]),
+            ],
+        )];
+
+        let urls = match plan_bindings(&interfaces, &OpdsBindTarget::AllLocalNetworks, 8080) {
+            BindPlan::Listen(addresses) => addresses
+                .iter()
+                .copied()
+                .map(advertised_url)
+                .collect::<Vec<_>>(),
+            BindPlan::Wait(reason) => panic!("expected listening plan, got {reason:?}"),
+        };
+
+        assert_eq!(
+            urls,
+            vec![
+                "http://192.168.1.42:8080/opds".to_string(),
+                "http://[2001:db8::42]:8080/opds".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn explicit_addresses_do_not_depend_on_interface_enumeration() {
         let plan = plan_bindings(
             &[],

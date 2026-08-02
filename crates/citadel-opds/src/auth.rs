@@ -9,7 +9,10 @@ use argon2::{
 };
 use axum::{
     extract::{Request, State},
-    http::{header::AUTHORIZATION, header::WWW_AUTHENTICATE, HeaderValue, StatusCode},
+    http::{
+        header::{AUTHORIZATION, RETRY_AFTER, WWW_AUTHENTICATE},
+        HeaderValue, StatusCode,
+    },
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -18,11 +21,25 @@ use hmac::{Hmac, Mac};
 use rand_core::{OsRng, RngCore};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
+use tokio::sync::Semaphore;
 
 const DEFAULT_CACHE_CAPACITY: usize = 256;
 const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(30);
 const DEFAULT_TARGET_DURATION: Duration = Duration::from_millis(250);
+const MAX_CONCURRENT_VERIFICATIONS: usize = 3;
 const BASIC_CHALLENGE: &str = "Basic realm=\"Citadel\"";
+const MAX_AUTHORIZATION_BYTES: usize = 8 * 1024;
+const RETRY_AFTER_SECONDS: &str = "1";
+
+/// Result of authorizing complete Authorization header bytes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AuthOutcome {
+    Authorized,
+    Rejected,
+    /// Every password-verification permit is in use; the request was not
+    /// verified and must not count as a failed attempt.
+    Busy,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct OpdsAuthCredentials {
@@ -75,6 +92,7 @@ struct EnabledAuth {
     cache_key: [u8; 32],
     cache: Mutex<AuthCache>,
     target_duration: Mutex<Duration>,
+    verifier_permits: Arc<Semaphore>,
 }
 
 #[derive(Clone, Copy)]
@@ -141,6 +159,7 @@ impl OpdsBasicAuth {
             DEFAULT_CACHE_CAPACITY,
             DEFAULT_CACHE_TTL,
             DEFAULT_TARGET_DURATION,
+            MAX_CONCURRENT_VERIFICATIONS,
         )
     }
 
@@ -149,6 +168,7 @@ impl OpdsBasicAuth {
         cache_capacity: usize,
         cache_ttl: Duration,
         target_duration: Duration,
+        verifier_permits: usize,
     ) -> Result<Self, OpdsAuthError> {
         let password_hash =
             PasswordHash::new(&credentials.verifier).map_err(|_| OpdsAuthError::InvalidVerifier)?;
@@ -164,6 +184,7 @@ impl OpdsBasicAuth {
                 cache_key,
                 cache: Mutex::new(AuthCache::new(cache_capacity, cache_ttl)),
                 target_duration: Mutex::new(target_duration),
+                verifier_permits: Arc::new(Semaphore::new(verifier_permits)),
             })),
         })
     }
@@ -173,13 +194,17 @@ impl OpdsBasicAuth {
     }
 
     /// Authorizes complete Authorization header bytes. Disabled authentication does not parse them.
-    async fn authorize(&self, authorization: Option<&[u8]>) -> bool {
+    async fn authorize(&self, authorization: Option<&[u8]>) -> AuthOutcome {
         let Some(enabled) = &self.enabled else {
-            return true;
+            return AuthOutcome::Authorized;
         };
 
         let started_at = Instant::now();
         let authorization = authorization.unwrap_or_default();
+        if authorization.len() > MAX_AUTHORIZATION_BYTES {
+            pad_to_target(started_at, current_target_duration(enabled)).await;
+            return AuthOutcome::Rejected;
+        }
         let tag = opaque_tag(&enabled.cache_key, authorization);
         if let Some((outcome, cached_duration)) = enabled
             .cache
@@ -189,32 +214,57 @@ impl OpdsBasicAuth {
         {
             let target_duration = current_target_duration(enabled).max(cached_duration);
             pad_to_target(started_at, target_duration).await;
-            return matches!(outcome, CachedOutcome::Authorized);
+            return match outcome {
+                CachedOutcome::Authorized => AuthOutcome::Authorized,
+                CachedOutcome::Rejected => AuthOutcome::Rejected,
+            };
         }
 
         let parsed = parse_basic_credentials(authorization);
-        let authorized = match parsed {
+        let verification = match parsed {
             Some(credentials) if credentials.username == enabled.credentials.username => {
+                match enabled.verifier_permits.clone().try_acquire_owned() {
+                    Ok(permit) => Some((credentials, permit)),
+                    Err(_) => {
+                        pad_to_target(started_at, current_target_duration(enabled)).await;
+                        return AuthOutcome::Busy;
+                    }
+                }
+            }
+            _ => None,
+        };
+        let authorized = match verification {
+            Some((credentials, permit)) => {
                 let verifier = enabled.credentials.verifier.clone();
-                tokio::task::spawn_blocking(move || {
+                let verified = tokio::task::spawn_blocking(move || {
                     verify_password(&verifier, &credentials.password)
                 })
                 .await
-                .unwrap_or(false)
+                .unwrap_or(false);
+                drop(permit);
+                verified
             }
-            _ => false,
+            None => false,
         };
         let target_duration = target_duration(enabled, started_at.elapsed());
         let outcome = if authorized {
-            CachedOutcome::Authorized
+            AuthOutcome::Authorized
         } else {
-            CachedOutcome::Rejected
+            AuthOutcome::Rejected
         };
         if let Ok(mut cache) = enabled.cache.lock() {
-            cache.insert(tag, outcome, target_duration);
+            cache.insert(
+                tag,
+                if authorized {
+                    CachedOutcome::Authorized
+                } else {
+                    CachedOutcome::Rejected
+                },
+                target_duration,
+            );
         }
         pad_to_target(started_at, target_duration).await;
-        authorized
+        outcome
     }
 }
 
@@ -232,10 +282,10 @@ pub(crate) async fn require_basic_auth(
         .headers()
         .get(AUTHORIZATION)
         .map(|value| value.as_bytes().to_vec());
-    if auth.authorize(authorization.as_deref()).await {
-        next.run(request).await
-    } else {
-        unauthorized_response()
+    match auth.authorize(authorization.as_deref()).await {
+        AuthOutcome::Authorized => next.run(request).await,
+        AuthOutcome::Busy => busy_response(),
+        AuthOutcome::Rejected => unauthorized_response(),
     }
 }
 
@@ -307,6 +357,14 @@ fn unauthorized_response() -> Response {
         .into_response()
 }
 
+fn busy_response() -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [(RETRY_AFTER, HeaderValue::from_static(RETRY_AFTER_SECONDS))],
+    )
+        .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -333,8 +391,17 @@ mod tests {
             2,
             Duration::from_secs(1),
             target_duration,
+            MAX_CONCURRENT_VERIFICATIONS,
         )
         .unwrap()
+    }
+
+    async fn assert_outcome(
+        auth: &OpdsBasicAuth,
+        authorization: Option<&[u8]>,
+        expected: AuthOutcome,
+    ) {
+        assert_eq!(auth.authorize(authorization).await, expected);
     }
 
     fn app(auth: OpdsBasicAuth) -> Router {
@@ -372,7 +439,12 @@ mod tests {
     async fn disabled_auth_bypasses_even_malformed_authorization() {
         let auth = OpdsBasicAuth::disabled();
 
-        assert!(auth.authorize(Some(b"not even close to Basic")).await);
+        assert_outcome(
+            &auth,
+            Some(b"not even close to Basic"),
+            AuthOutcome::Authorized,
+        )
+        .await;
         assert_eq!(
             response(auth, Some(b"not even close to Basic".to_vec()))
                 .await
@@ -385,21 +457,25 @@ mod tests {
     async fn enabled_auth_accepts_only_the_configured_basic_credentials() {
         let auth = enabled_auth("reader", b"correct horse", Duration::ZERO);
 
-        assert!(
-            auth.authorize(Some(&basic_header("reader", b"correct horse")))
-                .await
-        );
-        assert!(
-            !auth
-                .authorize(Some(&basic_header("reader", b"wrong password")))
-                .await
-        );
-        assert!(
-            !auth
-                .authorize(Some(&basic_header("someone-else", b"correct horse")))
-                .await
-        );
-        assert!(!auth.authorize(None).await);
+        assert_outcome(
+            &auth,
+            Some(&basic_header("reader", b"correct horse")),
+            AuthOutcome::Authorized,
+        )
+        .await;
+        assert_outcome(
+            &auth,
+            Some(&basic_header("reader", b"wrong password")),
+            AuthOutcome::Rejected,
+        )
+        .await;
+        assert_outcome(
+            &auth,
+            Some(&basic_header("someone-else", b"correct horse")),
+            AuthOutcome::Rejected,
+        )
+        .await;
+        assert_outcome(&auth, None, AuthOutcome::Rejected).await;
     }
 
     #[tokio::test]
@@ -425,25 +501,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn oversized_authorization_is_rejected_without_hashing_or_caching_it() {
+        let auth = enabled_auth("reader", b"correct horse", Duration::ZERO);
+        let oversized = vec![b'x'; MAX_AUTHORIZATION_BYTES + 1];
+
+        let response = response(auth.clone(), Some(oversized.clone())).await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_outcome(&auth, Some(&oversized), AuthOutcome::Rejected).await;
+        assert!(auth
+            .enabled
+            .as_ref()
+            .unwrap()
+            .cache
+            .lock()
+            .unwrap()
+            .entries
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn busy_verifier_permits_reject_without_hashing_or_caching_the_header() {
+        let auth = enabled_auth("reader", b"correct horse", Duration::ZERO);
+        let enabled = auth.enabled.as_ref().unwrap();
+        let permits = (0..MAX_CONCURRENT_VERIFICATIONS)
+            .map(|_| {
+                enabled
+                    .verifier_permits
+                    .clone()
+                    .try_acquire_owned()
+                    .expect("fresh auth should expose exactly its configured permits")
+            })
+            .collect::<Vec<_>>();
+        let header = basic_header("reader", b"wrong password");
+
+        assert_eq!(
+            auth.authorize(Some(&header)).await,
+            AuthOutcome::Busy,
+            "requests with no free verification permit must be rejected without hashing"
+        );
+        assert_eq!(
+            response(auth.clone(), Some(header)).await.status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert!(enabled.cache.lock().unwrap().entries.is_empty());
+
+        drop(permits);
+        assert_outcome(
+            &auth,
+            Some(&basic_header("reader", b"wrong password")),
+            AuthOutcome::Rejected,
+        )
+        .await;
+        assert_eq!(enabled.cache.lock().unwrap().entries.len(), 1);
+    }
+
+    #[tokio::test]
     async fn cache_records_and_reuses_the_authorization_outcome_without_raw_header_bytes() {
         let auth = enabled_auth("reader", b"correct horse", Duration::ZERO);
         let header = basic_header("reader", b"correct horse");
 
-        assert!(auth.authorize(Some(&header)).await);
+        assert_outcome(&auth, Some(&header), AuthOutcome::Authorized).await;
         let enabled = auth.enabled.as_ref().unwrap();
-        let cache = enabled.cache.lock().unwrap();
-        assert_eq!(cache.entries.len(), 1);
-        assert_eq!(
-            cache.entries[0].tag,
-            opaque_tag(&enabled.cache_key, &header)
-        );
-        assert!(matches!(
-            cache.entries[0].outcome,
-            CachedOutcome::Authorized
-        ));
-        drop(cache);
+        {
+            let cache = enabled.cache.lock().unwrap();
+            assert_eq!(cache.entries.len(), 1);
+            assert_eq!(
+                cache.entries[0].tag,
+                opaque_tag(&enabled.cache_key, &header)
+            );
+            assert!(matches!(
+                cache.entries[0].outcome,
+                CachedOutcome::Authorized
+            ));
+        }
 
-        assert!(auth.authorize(Some(&header)).await);
+        assert_outcome(&auth, Some(&header), AuthOutcome::Authorized).await;
         assert_eq!(enabled.cache.lock().unwrap().entries.len(), 1);
     }
 
@@ -454,11 +587,11 @@ mod tests {
         let unknown_header = basic_header("unknown", b"correct horse");
 
         let first_started_at = Instant::now();
-        assert!(!auth.authorize(Some(&unknown_header)).await);
+        assert_outcome(&auth, Some(&unknown_header), AuthOutcome::Rejected).await;
         let first_elapsed = first_started_at.elapsed();
 
         let cached_started_at = Instant::now();
-        assert!(!auth.authorize(Some(&unknown_header)).await);
+        assert_outcome(&auth, Some(&unknown_header), AuthOutcome::Rejected).await;
         let cached_elapsed = cached_started_at.elapsed();
 
         let minimum_padded_duration = target_duration - Duration::from_millis(2);

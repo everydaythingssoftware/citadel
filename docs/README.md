@@ -18,6 +18,12 @@ browser engine installed on the user's system.
 
 - **[Updater and release operations](./updater-and-releases.md)** - Tauri updater setup, GitHub release flow, and verification checklist
 
+## OPDS
+
+- **[Share a library with KOReader](./opds-sharing.md)** - Desktop setup, optional Basic authentication, network limits, and troubleshooting
+- **[OPDS v1 validation record](./opds-validation.md)** - Automated evidence and the physical package/KOReader acceptance matrix
+- **[Headless OPDS server](./headless-server.md)** - Run the Tauri-independent server process from an explicit configuration file
+
 **Start here if you're:**
 - 🚀 **New to the project**: Read the Overview below, then [Architecture Recommendations](../ai-docs/ARCHITECTURE_RECOMMENDATIONS.md)
 - 🔧 **Adding a feature**: Check [Patterns Quick Reference](../ai-docs/PATTERNS_QUICK_REFERENCE.md)
@@ -25,7 +31,9 @@ browser engine installed on the user's system.
 
 ## Overview
 
-Citadel ships as a single bundled desktop app; a headless server & web app is exploratory only.
+Citadel ships as a bundled desktop app. A separate headless OPDS server uses
+the same core runtime without a WebView; a remotely managed web app remains
+exploratory.
 
 <figure>
   <img src="./assets/images/arch-overview.png" alt="Diagram showing that the UI has a Calibre client that uses IPC to talk to the backend's calibre adapter, which calls out to libcalibre. Space is left open to demonstrate that other clients and adapters are possible." />

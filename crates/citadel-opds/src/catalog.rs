@@ -1,9 +1,10 @@
-use std::{io::Read, sync::Arc};
+use std::{io::Read, sync::Arc, time::Duration};
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Path, Query, Request, State},
     http::{header, HeaderValue, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -14,6 +15,8 @@ use libcalibre::{
     AuthorId, BookId, BookPage, BookQuery, BookSortOrder, CalibreError, ResolvedBookAsset,
 };
 use serde::Deserialize;
+use tokio::sync::Semaphore;
+use tower_http::{limit::RequestBodyLimitLayer, timeout::TimeoutLayer};
 
 use super::{
     assets::{self, AssetMethod, AssetResponseError},
@@ -23,6 +26,9 @@ use crate::identity::{book_identity, library_identity, navigation_identity};
 
 const PAGE_SIZE: u64 = 50;
 const MAX_SEARCH_LENGTH: usize = 200;
+const FEED_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_REQUEST_BODY_BYTES: usize = 16 * 1024;
+const MAX_CONCURRENT_REQUESTS: usize = 64;
 const ACQUISITION_REL: &str = "http://opds-spec.org/acquisition";
 pub(crate) const IMAGE_REL: &str = "http://opds-spec.org/image";
 const ATOM_TYPE: &str = "application/atom+xml;profile=opds-catalog;kind=acquisition";
@@ -154,8 +160,62 @@ pub(crate) struct FeedEntry {
     pub(crate) content: Option<String>,
 }
 
+/// Bounds how many requests the catalog serves at once. Clones of the guard
+/// share one permit pool across every listener and connection.
+#[derive(Clone)]
+pub(crate) struct RequestGuard {
+    permits: Arc<Semaphore>,
+}
+
+impl RequestGuard {
+    pub(crate) fn with_capacity(permits: usize) -> Self {
+        Self {
+            permits: Arc::new(Semaphore::new(permits)),
+        }
+    }
+
+    fn try_acquire(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StatusCode> {
+        self.permits
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)
+    }
+}
+
+async fn enforce_request_guard(
+    State(guard): State<RequestGuard>,
+    request: Request,
+    next: Next,
+) -> Response {
+    match guard.try_acquire() {
+        Ok(permit) => {
+            let _permit = permit;
+            next.run(request).await
+        }
+        Err(status) => (
+            status,
+            [(header::RETRY_AFTER, HeaderValue::from_static("1"))],
+        )
+            .into_response(),
+    }
+}
+
 pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
-    Router::new()
+    build_router(
+        source,
+        auth,
+        RequestGuard::with_capacity(MAX_CONCURRENT_REQUESTS),
+        FEED_TIMEOUT,
+    )
+}
+
+fn build_router(
+    source: Arc<dyn CatalogSource>,
+    auth: OpdsBasicAuth,
+    guard: RequestGuard,
+    feed_timeout: Duration,
+) -> Router {
+    let feeds = Router::new()
         .route("/opds", get(root_feed))
         .route("/opds/all", get(all_books_feed))
         .route("/opds/recent", get(recent_books_feed))
@@ -170,6 +230,18 @@ pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
         .route("/opds/genres/{id}", get(genre_books_feed))
         .route("/opds/search", get(search_feed))
         .route("/opds/opensearch.xml", get(opensearch_description))
+        .with_state(CatalogState {
+            source: source.clone(),
+        })
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            feed_timeout,
+        ))
+        .layer(middleware::from_fn_with_state(
+            auth.clone(),
+            require_basic_auth,
+        ));
+    let assets = Router::new()
         .route(
             "/opds/books/{book_id}/files/{format}/{filename}",
             get(book_file).head(book_file_head),
@@ -179,10 +251,12 @@ pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
             get(book_cover).head(book_cover_head),
         )
         .with_state(CatalogState { source })
-        .layer(axum::middleware::from_fn_with_state(
-            auth,
-            require_basic_auth,
-        ))
+        .layer(middleware::from_fn_with_state(auth, require_basic_auth));
+    Router::new()
+        .merge(feeds)
+        .merge(assets)
+        .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BODY_BYTES))
+        .layer(middleware::from_fn_with_state(guard, enforce_request_guard))
 }
 
 async fn root_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
@@ -328,20 +402,20 @@ async fn search_feed(state: State<CatalogState>, Query(query): Query<SearchQuery
     .await
 }
 
-async fn authors_feed(state: State<CatalogState>) -> Response {
-    facet_handler(state, CatalogFacetKind::Authors).await
+async fn authors_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
+    facet_handler(state, query, CatalogFacetKind::Authors).await
 }
 
-async fn series_feed(state: State<CatalogState>) -> Response {
-    facet_handler(state, CatalogFacetKind::Series).await
+async fn series_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
+    facet_handler(state, query, CatalogFacetKind::Series).await
 }
 
-async fn tags_feed(state: State<CatalogState>) -> Response {
-    facet_handler(state, CatalogFacetKind::Tags).await
+async fn tags_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
+    facet_handler(state, query, CatalogFacetKind::Tags).await
 }
 
-async fn genres_feed(state: State<CatalogState>) -> Response {
-    facet_handler(state, CatalogFacetKind::Genres).await
+async fn genres_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
+    facet_handler(state, query, CatalogFacetKind::Genres).await
 }
 
 async fn opensearch_description() -> Response {
@@ -431,7 +505,15 @@ impl CatalogFacetKind {
     }
 }
 
-async fn facet_handler(State(state): State<CatalogState>, kind: CatalogFacetKind) -> Response {
+async fn facet_handler(
+    State(state): State<CatalogState>,
+    Query(query): Query<PageQuery>,
+    kind: CatalogFacetKind,
+) -> Response {
+    let page_number = query.page.unwrap_or(1);
+    if page_number == 0 {
+        return public_error(StatusCode::BAD_REQUEST, "Invalid page");
+    }
     let source = state.source.clone();
     let result = tokio::task::spawn_blocking(move || {
         let library_uuid = source.active_library_id()?;
@@ -449,7 +531,26 @@ async fn facet_handler(State(state): State<CatalogState>, kind: CatalogFacetKind
         Ok(Err(error)) => return calibre_error(error),
         Err(_) => return public_error(StatusCode::INTERNAL_SERVER_ERROR, "Catalog unavailable"),
     };
-    match facet_navigation_feed(&library_uuid, kind, &facets) {
+    let last_page = page_count(u64::try_from(facets.len()).unwrap_or(0));
+    if page_number > last_page {
+        return public_error(StatusCode::NOT_FOUND, "Page not found");
+    }
+    let offset = match page_number
+        .checked_sub(1)
+        .and_then(|page| page.checked_mul(PAGE_SIZE as u64))
+        .and_then(|offset| usize::try_from(offset).ok())
+    {
+        Some(offset) => offset,
+        None => return public_error(StatusCode::BAD_REQUEST, "Invalid page"),
+    };
+    let facets = facets
+        .get(offset..)
+        .unwrap_or_default()
+        .iter()
+        .take(PAGE_SIZE as usize)
+        .cloned()
+        .collect::<Vec<_>>();
+    match facet_navigation_feed(&library_uuid, kind, &facets, page_number, last_page) {
         Ok(xml) => xml_response(NAVIGATION_CONTENT_TYPE, xml),
         Err(_) => public_error(StatusCode::INTERNAL_SERVER_ERROR, "Catalog unavailable"),
     }
@@ -782,28 +883,45 @@ fn facet_navigation_feed(
     library_uuid: &str,
     kind: CatalogFacetKind,
     facets: &[CatalogFacet],
+    page_number: u64,
+    last_page: u64,
 ) -> Result<Vec<u8>, quick_xml::Error> {
+    let mut links = vec![
+        FeedLink {
+            rel: "self",
+            href: page_href(kind.route(), page_number),
+            media_type: NAVIGATION_TYPE,
+        },
+        FeedLink {
+            rel: "start",
+            href: "/opds".to_string(),
+            media_type: NAVIGATION_TYPE,
+        },
+        FeedLink {
+            rel: "up",
+            href: "/opds".to_string(),
+            media_type: NAVIGATION_TYPE,
+        },
+    ];
+    if page_number > 1 {
+        links.push(FeedLink {
+            rel: "previous",
+            href: page_href(kind.route(), page_number - 1),
+            media_type: NAVIGATION_TYPE,
+        });
+    }
+    if page_number < last_page {
+        links.push(FeedLink {
+            rel: "next",
+            href: page_href(kind.route(), page_number + 1),
+            media_type: NAVIGATION_TYPE,
+        });
+    }
     let feed = Feed {
-        id: navigation_identity(library_uuid, kind.route()),
+        id: navigation_identity(library_uuid, &page_href(kind.route(), page_number)),
         title: format!("Citadel — {}", kind.title()),
         updated: feed_updated(None),
-        links: vec![
-            FeedLink {
-                rel: "self",
-                href: kind.route().to_string(),
-                media_type: NAVIGATION_TYPE,
-            },
-            FeedLink {
-                rel: "start",
-                href: "/opds".to_string(),
-                media_type: NAVIGATION_TYPE,
-            },
-            FeedLink {
-                rel: "up",
-                href: "/opds".to_string(),
-                media_type: NAVIGATION_TYPE,
-            },
-        ],
+        links,
         entries: facets
             .iter()
             .map(|facet| {
@@ -976,6 +1094,10 @@ mod tests {
         books: Vec<Book>,
     }
 
+    struct FacetSource {
+        facets: Vec<CatalogFacet>,
+    }
+
     impl CatalogSource for MemorySource {
         fn active_library_id(&self) -> Result<String, CalibreError> {
             Ok("550e8400-e29b-41d4-a716-446655440000".to_string())
@@ -1000,6 +1122,54 @@ mod tests {
                     total: self.books.len() as u64,
                 },
             ))
+        }
+
+        fn book_file(
+            &self,
+            book_id: BookId,
+            format: &str,
+        ) -> Result<ResolvedBookAsset, CalibreError> {
+            Err(CalibreError::BookFileNotFound(book_id, format.to_string()))
+        }
+
+        fn book_cover(&self, book_id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
+            Err(CalibreError::BookCoverNotFound(book_id))
+        }
+    }
+
+    impl CatalogSource for FacetSource {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            Ok("550e8400-e29b-41d4-a716-446655440000".to_string())
+        }
+
+        fn book_page(
+            &self,
+            _query: CatalogBookQuery,
+        ) -> Result<(String, Option<NaiveDateTime>, BookPage), CalibreError> {
+            Ok((
+                "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                None,
+                BookPage {
+                    items: Vec::new(),
+                    total: 0,
+                },
+            ))
+        }
+
+        fn authors(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            Ok(self.facets.clone())
+        }
+
+        fn series(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            Ok(self.facets.clone())
+        }
+
+        fn tags(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            Ok(self.facets.clone())
+        }
+
+        fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+            Ok(self.facets.clone())
         }
 
         fn book_file(
@@ -1428,6 +1598,66 @@ mod tests {
         let search = search.text().await.unwrap();
         assert!(search.contains("{searchTerms}"));
         assert!(search.contains("/opds/search?q="));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn facet_navigation_routes_are_bounded_and_paginated() {
+        let facets = (1..=101)
+            .map(|id| CatalogFacet {
+                id,
+                title: format!("Facet {id:03}"),
+                book_count: Some(i64::from(id)),
+            })
+            .collect();
+        let (base, server) = loopback(Arc::new(FacetSource { facets })).await;
+        let client = reqwest::Client::new();
+
+        for route in [
+            "/opds/authors",
+            "/opds/series",
+            "/opds/tags",
+            "/opds/genres",
+        ] {
+            let second_page = format!("{route}?page=2");
+            let third_page = format!("{route}?page=3");
+            let first = client.get(format!("{base}{route}")).send().await.unwrap();
+            assert_eq!(first.status(), StatusCode::OK, "{route} page 1");
+            let first = parsed_feed(&first.bytes().await.unwrap());
+            assert_eq!(first.titles.len(), 50, "{route} page 1");
+            assert!(first.previous.is_none(), "{route} page 1");
+            assert_eq!(first.next.as_deref(), Some(second_page.as_str()));
+
+            let second = client
+                .get(format!("{base}{route}?page=2"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(second.status(), StatusCode::OK, "{route} page 2");
+            let second = parsed_feed(&second.bytes().await.unwrap());
+            assert_eq!(second.titles.len(), 50, "{route} page 2");
+            assert_eq!(second.previous.as_deref(), Some(route));
+            assert_eq!(second.next.as_deref(), Some(third_page.as_str()));
+
+            let third = client
+                .get(format!("{base}{route}?page=3"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(third.status(), StatusCode::OK, "{route} page 3");
+            let third = parsed_feed(&third.bytes().await.unwrap());
+            assert_eq!(third.titles, ["Facet 101"], "{route} page 3");
+            assert_eq!(third.previous.as_deref(), Some(second_page.as_str()));
+            assert!(third.next.is_none(), "{route} page 3");
+
+            let missing = client
+                .get(format!("{base}{route}?page=4"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(missing.status(), StatusCode::NOT_FOUND, "{route} page 4");
+        }
+
         server.abort();
     }
 
@@ -1870,5 +2100,146 @@ mod tests {
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(response.text().await.unwrap(), "Catalog unavailable");
         server.abort();
+    }
+
+    async fn loopback_router(router: Router) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        (format!("http://{address}"), task)
+    }
+
+    struct DelayedSource {
+        inner: Arc<dyn CatalogSource>,
+        feed_delay: Duration,
+        asset_delay: Duration,
+    }
+
+    impl CatalogSource for DelayedSource {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            std::thread::sleep(self.feed_delay);
+            self.inner.active_library_id()
+        }
+
+        fn book_page(
+            &self,
+            query: CatalogBookQuery,
+        ) -> Result<(String, Option<NaiveDateTime>, BookPage), CalibreError> {
+            self.inner.book_page(query)
+        }
+
+        fn book_file(
+            &self,
+            book_id: BookId,
+            format: &str,
+        ) -> Result<ResolvedBookAsset, CalibreError> {
+            std::thread::sleep(self.asset_delay);
+            self.inner.book_file(book_id, format)
+        }
+
+        fn book_cover(&self, book_id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
+            std::thread::sleep(self.asset_delay);
+            self.inner.book_cover(book_id)
+        }
+    }
+
+    #[tokio::test]
+    async fn exhausted_request_guard_answers_service_unavailable() {
+        let guard = RequestGuard::with_capacity(1);
+        let held_permit = guard.try_acquire().unwrap();
+        let (base, server) = loopback_router(build_router(
+            Arc::new(NoLibrary),
+            OpdsBasicAuth::disabled(),
+            guard,
+            Duration::from_secs(30),
+        ))
+        .await;
+
+        let response = reqwest::get(format!("{base}/opds")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.headers().get(header::RETRY_AFTER).unwrap(), "1");
+        drop(held_permit);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn slow_feeds_time_out_while_slow_asset_routes_do_not() {
+        let source = Arc::new(DelayedSource {
+            inner: Arc::new(NoLibrary),
+            feed_delay: Duration::from_millis(200),
+            asset_delay: Duration::from_millis(100),
+        });
+        let (base, server) = loopback_router(build_router(
+            source,
+            OpdsBasicAuth::disabled(),
+            RequestGuard::with_capacity(MAX_CONCURRENT_REQUESTS),
+            Duration::from_millis(10),
+        ))
+        .await;
+        let client = reqwest::Client::new();
+
+        let feed = client.get(format!("{base}/opds")).send().await.unwrap();
+        assert_eq!(feed.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let asset = client
+            .get(format!("{base}/opds/books/1/cover"))
+            .send()
+            .await
+            .unwrap();
+        assert_ne!(
+            asset.status(),
+            StatusCode::REQUEST_TIMEOUT,
+            "asset downloads must not be bound by the feed timeout"
+        );
+        assert_eq!(asset.status(), StatusCode::SERVICE_UNAVAILABLE);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn book_file_formats_can_never_traverse_paths() {
+        let (directory, mut library) = test_library();
+        let source_path = directory.path().join("book.epub");
+        std::fs::write(&source_path, b"book").unwrap();
+        let added = library
+            .add_book(BookAdd {
+                title: "Traversal Target".to_string(),
+                author_names: vec!["Author".to_string()],
+                tags: None,
+                series: None,
+                series_index: None,
+                publisher: None,
+                publication_date: None,
+                rating: None,
+                comments: None,
+                identifiers: HashMap::new(),
+                language: None,
+                file_paths: vec![source_path],
+            })
+            .unwrap();
+        let (base, server) = loopback(Arc::new(LibrarySource {
+            library: Mutex::new(library),
+        }))
+        .await;
+        let client = reqwest::Client::new();
+        for format in ["..%2f", "%2e%2e%2f%2e%2e%2fmetadata.db"] {
+            let response = client
+                .get(format!(
+                    "{base}/opds/books/{}/files/{format}/book.epub",
+                    added.id.as_i32()
+                ))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "format {format} must be rejected"
+            );
+            assert_eq!(response.text().await.unwrap(), "Invalid asset request");
+        }
+        server.abort();
+        drop(directory);
     }
 }
