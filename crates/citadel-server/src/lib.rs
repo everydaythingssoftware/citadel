@@ -66,13 +66,7 @@ impl CatalogSource for CalibreCatalogSource {
         let mut library = self.library.lock().expect("server library mutex poisoned");
         let library_id = library.library_uuid()?;
         let updated_at = library.catalog_updated_at()?;
-        let page = match query.into_calibre() {
-            Some(query) => library.query_acquirable_books_with(query)?,
-            None => BookPage {
-                items: Vec::new(),
-                total: 0,
-            },
-        };
+        let page = library.query_acquirable_books_with(query.into_calibre())?;
         Ok((library_id, updated_at, page))
     }
 
@@ -121,6 +115,23 @@ impl CatalogSource for CalibreCatalogSource {
                         id: tag.id,
                         title: tag.name,
                         book_count: Some(tag.book_count),
+                    })
+                    .collect()
+            })
+    }
+
+    fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
+        self.library
+            .lock()
+            .expect("server library mutex poisoned")
+            .list_genres()
+            .map(|genres| {
+                genres
+                    .into_iter()
+                    .map(|genre| CatalogFacet {
+                        id: genre.id,
+                        title: genre.name,
+                        book_count: Some(genre.book_count),
                     })
                     .collect()
             })
