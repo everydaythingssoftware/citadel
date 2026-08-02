@@ -873,7 +873,9 @@ fn root_navigation_feed(library_uuid: &str) -> Result<Vec<u8>, quick_xml::Error>
         ],
         entries: entries
             .into_iter()
-            .map(|(id, title, href, media_type)| navigation_entry(library_uuid, id, title, href, media_type, None))
+            .map(|(id, title, href, media_type)| {
+                navigation_entry(library_uuid, id, title, href, media_type, None)
+            })
             .collect::<Result<Vec<_>, _>>()?,
     };
     crate::xml::write_feed(&feed)

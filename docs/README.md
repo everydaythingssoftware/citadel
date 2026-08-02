@@ -20,8 +20,7 @@ browser engine installed on the user's system.
 
 ## OPDS
 
-- **[Share a library with KOReader](./opds-sharing.md)** - Desktop setup, optional Basic authentication, network limits, and troubleshooting
-- **[OPDS v1 validation record](./opds-validation.md)** - Automated evidence and the physical package/KOReader acceptance matrix
+- **[Share a library over OPDS](./opds-sharing.md)** - Turn on sharing and add the catalog from any OPDS 1.x reader
 - **[Headless OPDS server](./headless-server.md)** - Run the Tauri-independent server process from an explicit configuration file
 
 **Start here if you're:**

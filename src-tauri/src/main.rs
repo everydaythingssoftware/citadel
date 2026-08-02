@@ -181,7 +181,10 @@ fn run_tauri_backend() -> std::io::Result<()> {
                 Ok(_) => {
                     api.prevent_exit();
                     let app_handle = app_handle.clone();
-                    let opds_service = app_handle.state::<citadel_opds::OpdsService>().inner().clone();
+                    let opds_service = app_handle
+                        .state::<citadel_opds::OpdsService>()
+                        .inner()
+                        .clone();
                     let exit_phase = exit_phase.clone();
                     let exit_code = code.unwrap_or(0);
                     tauri::async_runtime::spawn(async move {

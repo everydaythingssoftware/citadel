@@ -1115,6 +1115,7 @@ mod tests {
         InterfaceSnapshot {
             id: "en0".to_string(),
             label: "Ethernet".to_string(),
+            description: None,
             state,
             kind: OpdsInterfaceKind::Lan,
             addresses: vec![InterfaceAddress {
