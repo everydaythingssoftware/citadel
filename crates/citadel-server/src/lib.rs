@@ -291,6 +291,7 @@ fn is_fatal_startup(status: &OpdsServiceStatus) -> bool {
                 | OpdsErrorCode::CredentialsRequired
                 | OpdsErrorCode::CredentialStorageFailed
                 | OpdsErrorCode::ConfigurationConflict
+                | OpdsErrorCode::PermissionDenied
                 | OpdsErrorCode::Unexpected
         )
     ) || status.state == OpdsLifecycleState::Stopped
