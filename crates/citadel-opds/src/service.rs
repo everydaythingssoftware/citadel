@@ -18,8 +18,6 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::state::CitadelState;
-
 use super::{
     auth::{create_credentials, OpdsAuthCredentials, OpdsBasicAuth},
     credentials::{
@@ -29,7 +27,7 @@ use super::{
         advertised_url, plan_bindings, InterfaceProvider, InterfaceSnapshot,
         NetdevInterfaceProvider, OpdsNetworkInterface, WaitingReason,
     },
-    router,
+    router, CatalogSource,
 };
 
 const MONITOR_INTERVAL: Duration = Duration::from_secs(2);
@@ -126,7 +124,7 @@ trait ListenerFactory: Send + Sync {
     fn start(
         &self,
         address: SocketAddr,
-        source: CitadelState,
+        source: Arc<dyn CatalogSource>,
         auth: OpdsBasicAuth,
         tracker: Arc<ListenerTracker>,
     ) -> io::Result<ServerTask>;
@@ -138,7 +136,7 @@ impl ListenerFactory for TcpListenerFactory {
     fn start(
         &self,
         address: SocketAddr,
-        source: CitadelState,
+        source: Arc<dyn CatalogSource>,
         auth: OpdsBasicAuth,
         tracker: Arc<ListenerTracker>,
     ) -> io::Result<ServerTask> {
@@ -146,7 +144,7 @@ impl ListenerFactory for TcpListenerFactory {
         listener.set_nonblocking(true)?;
         let listener = tokio::net::TcpListener::from_std(listener)?;
         let (shutdown, shutdown_receiver) = oneshot::channel();
-        let app = router(Arc::new(source), auth);
+        let app = router(source, auth);
         let completion = tracker.register();
         let task = tokio::spawn(async move {
             let _completion = completion;
@@ -190,7 +188,7 @@ struct RunningController {
 struct ServiceInner {
     status: Arc<Mutex<OpdsServiceStatus>>,
     controller: tokio::sync::Mutex<Option<RunningController>>,
-    source: CitadelState,
+    source: Arc<dyn CatalogSource>,
     dependencies: ServiceDependencies,
     listener_tracker: Arc<ListenerTracker>,
     credentials: OpdsCredentialStore,
@@ -202,7 +200,10 @@ pub struct OpdsService {
 }
 
 impl OpdsService {
-    pub fn new(source: CitadelState, credential_path: std::path::PathBuf) -> io::Result<Self> {
+    pub fn new(
+        source: Arc<dyn CatalogSource>,
+        credential_path: std::path::PathBuf,
+    ) -> io::Result<Self> {
         Ok(Self::with_dependencies_and_credentials(
             source,
             ServiceDependencies::default(),
@@ -211,7 +212,10 @@ impl OpdsService {
     }
 
     #[cfg(test)]
-    fn with_dependencies(source: CitadelState, dependencies: ServiceDependencies) -> Self {
+    fn with_dependencies(
+        source: Arc<dyn CatalogSource>,
+        dependencies: ServiceDependencies,
+    ) -> Self {
         Self::with_dependencies_and_credentials(
             source,
             dependencies,
@@ -220,7 +224,7 @@ impl OpdsService {
     }
 
     fn with_dependencies_and_credentials(
-        source: CitadelState,
+        source: Arc<dyn CatalogSource>,
         dependencies: ServiceDependencies,
         credentials: OpdsCredentialStore,
     ) -> Self {
@@ -588,7 +592,7 @@ async fn snapshot_interfaces(
         .map_err(|_| io::Error::other("interface snapshot task failed"))?
 }
 
-async fn active_library_id(source: CitadelState) -> Option<String> {
+async fn active_library_id(source: Arc<dyn CatalogSource>) -> Option<String> {
     tokio::task::spawn_blocking(move || source.active_library_id().ok())
         .await
         .ok()
@@ -602,7 +606,7 @@ async fn apply_plan(
     servers: &mut BTreeMap<SocketAddr, ServerTask>,
     listeners: &dyn ListenerFactory,
     tracker: Arc<ListenerTracker>,
-    source: CitadelState,
+    source: Arc<dyn CatalogSource>,
     auth: OpdsBasicAuth,
     status: &Mutex<OpdsServiceStatus>,
     library_id: Option<String>,
@@ -664,7 +668,7 @@ fn start_missing_servers(
     desired: &BTreeSet<SocketAddr>,
     listeners: &dyn ListenerFactory,
     tracker: Arc<ListenerTracker>,
-    source: CitadelState,
+    source: Arc<dyn CatalogSource>,
     auth: OpdsBasicAuth,
 ) -> io::Result<()> {
     for address in desired {
@@ -688,7 +692,7 @@ async fn monitor_service(
     interfaces: Arc<dyn InterfaceSnapshots>,
     listeners: Arc<dyn ListenerFactory>,
     tracker: Arc<ListenerTracker>,
-    source: CitadelState,
+    source: Arc<dyn CatalogSource>,
     auth: OpdsBasicAuth,
     status: Arc<Mutex<OpdsServiceStatus>>,
     config: OpdsStartConfig,
@@ -904,14 +908,69 @@ fn bind_error(error: io::Error) -> OpdsStatusError {
 mod tests {
     use std::{
         net::{IpAddr, Ipv4Addr},
-        path::Path,
         sync::atomic::{AtomicBool, Ordering},
     };
 
     use super::*;
-    use crate::opds::network::{
-        AddressScope, InterfaceAddress, OpdsInterfaceKind, OpdsInterfaceState,
-    };
+    use crate::network::{AddressScope, InterfaceAddress, OpdsInterfaceKind, OpdsInterfaceState};
+
+    struct TestSource {
+        library_id: Option<String>,
+    }
+
+    impl CatalogSource for TestSource {
+        fn active_library_id(&self) -> Result<String, libcalibre::CalibreError> {
+            self.library_id
+                .clone()
+                .ok_or(libcalibre::CalibreError::LibraryNotInitialized)
+        }
+
+        fn book_page(
+            &self,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<
+            (String, Option<chrono::NaiveDateTime>, libcalibre::BookPage),
+            libcalibre::CalibreError,
+        > {
+            Ok((
+                self.active_library_id()?,
+                None,
+                libcalibre::BookPage {
+                    items: Vec::new(),
+                    total: 0,
+                },
+            ))
+        }
+
+        fn book_file(
+            &self,
+            book_id: libcalibre::BookId,
+            format: &str,
+        ) -> Result<libcalibre::ResolvedBookAsset, libcalibre::CalibreError> {
+            Err(libcalibre::CalibreError::BookFileNotFound(
+                book_id,
+                format.to_string(),
+            ))
+        }
+
+        fn book_cover(
+            &self,
+            book_id: libcalibre::BookId,
+        ) -> Result<libcalibre::ResolvedBookAsset, libcalibre::CalibreError> {
+            Err(libcalibre::CalibreError::BookCoverNotFound(book_id))
+        }
+    }
+
+    fn test_source() -> Arc<dyn CatalogSource> {
+        Arc::new(TestSource {
+            library_id: Some("test-library".to_string()),
+        })
+    }
+
+    fn missing_source() -> Arc<dyn CatalogSource> {
+        Arc::new(TestSource { library_id: None })
+    }
 
     struct FakeInterfaces {
         current: Mutex<Result<Vec<InterfaceSnapshot>, io::ErrorKind>>,
@@ -987,7 +1046,7 @@ mod tests {
         fn start(
             &self,
             address: SocketAddr,
-            _source: CitadelState,
+            _source: Arc<dyn CatalogSource>,
             _auth: OpdsBasicAuth,
             tracker: Arc<ListenerTracker>,
         ) -> io::Result<ServerTask> {
@@ -1032,22 +1091,6 @@ mod tests {
         }
     }
 
-    fn test_source() -> (CitadelState, tempfile::TempDir) {
-        let directory = tempfile::tempdir().unwrap();
-        let zip_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/empty_7_2_calibre_lib.zip");
-        let file = std::fs::File::open(zip_path).unwrap();
-        zip::ZipArchive::new(file)
-            .unwrap()
-            .extract(directory.path())
-            .unwrap();
-        let state = CitadelState::new();
-        state
-            .init_library(directory.path().to_string_lossy().into_owned())
-            .unwrap();
-        (state, directory)
-    }
-
     fn lan(state: OpdsInterfaceState, address: [u8; 4]) -> InterfaceSnapshot {
         InterfaceSnapshot {
             id: "en0".to_string(),
@@ -1075,7 +1118,7 @@ mod tests {
     }
 
     fn service_with(
-        source: CitadelState,
+        source: Arc<dyn CatalogSource>,
         interfaces: Arc<dyn InterfaceSnapshots>,
         listeners: Arc<dyn ListenerFactory>,
         interval: Duration,
@@ -1110,7 +1153,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn selected_interface_loss_waits_without_broadening_and_recovers() {
-        let (source, _directory) = test_source();
+        let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
             OpdsInterfaceState::Up,
             [192, 168, 1, 5],
@@ -1152,7 +1195,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn concurrent_same_config_starts_are_idempotent_and_conflicts_are_typed() {
-        let (source, _directory) = test_source();
+        let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
             OpdsInterfaceState::Up,
             [192, 168, 1, 5],
@@ -1183,7 +1226,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn credentials_are_backend_owned_and_cannot_change_while_running() {
-        let (source, _directory) = test_source();
+        let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
             OpdsInterfaceState::Up,
             [192, 168, 1, 5],
@@ -1225,7 +1268,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn authentication_requires_configured_credentials() {
-        let (source, _directory) = test_source();
+        let source = test_source();
         let service = service_with(
             source,
             Arc::new(FakeInterfaces::new(vec![lan(
@@ -1248,7 +1291,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn credential_validation_and_generation_have_defined_whitespace_behavior() {
         let service = service_with(
-            CitadelState::new(),
+            missing_source(),
             Arc::new(FakeInterfaces::new(Vec::new())),
             Arc::new(FakeListeners::default()),
             Duration::from_secs(1),
@@ -1304,7 +1347,7 @@ mod tests {
         )]));
         let listeners = Arc::new(FakeListeners::default());
         let missing = service_with(
-            CitadelState::new(),
+            missing_source(),
             interfaces.clone(),
             listeners.clone(),
             Duration::from_secs(1),
@@ -1312,7 +1355,7 @@ mod tests {
         let status = missing.start(config(8080)).await.unwrap();
         assert_eq!(status.error.unwrap().code, OpdsErrorCode::LibraryNotReady);
 
-        let (source, _directory) = test_source();
+        let source = test_source();
         let service = service_with(
             source,
             interfaces,
@@ -1330,7 +1373,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn listener_task_failure_is_observable_and_then_retried() {
-        let (source, _directory) = test_source();
+        let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
             OpdsInterfaceState::Up,
             [192, 168, 1, 5],
@@ -1355,7 +1398,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn interface_enumeration_failure_is_actionable_and_retried() {
-        let (source, _directory) = test_source();
+        let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(Vec::new()));
         interfaces.set_error(io::ErrorKind::Other);
         let listeners = Arc::new(FakeListeners::default());
@@ -1378,7 +1421,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn starting_and_stopping_are_observable_during_blocked_dependencies() {
-        let (source, _directory) = test_source();
+        let source = test_source();
         let interfaces = Arc::new(BlockingInterfaces {
             snapshot: vec![lan(OpdsInterfaceState::Up, [192, 168, 1, 5])],
             entered: AtomicBool::new(false),
@@ -1420,7 +1463,7 @@ mod tests {
         let tracker = Arc::new(ListenerTracker::default());
         let error = match factory.start(
             address,
-            CitadelState::new(),
+            missing_source(),
             OpdsBasicAuth::disabled(),
             tracker.clone(),
         ) {
@@ -1435,7 +1478,7 @@ mod tests {
             factory
                 .start(
                     address,
-                    CitadelState::new(),
+                    missing_source(),
                     OpdsBasicAuth::disabled(),
                     tracker.clone(),
                 )
@@ -1456,7 +1499,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             release: AtomicBool::new(false),
         });
-        let (source, _directory) = test_source();
+        let source = test_source();
         let service = service_with(
             source,
             interfaces.clone(),

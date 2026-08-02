@@ -1,8 +1,6 @@
 use super::{
-    credentials::{GeneratedOpdsCredentials, OpdsCredentialStatus},
-    network::OpdsNetworkInterface,
-    service::{OpdsServiceStatus, OpdsStartConfig, OpdsStatusError},
-    OpdsService,
+    GeneratedOpdsCredentials, OpdsCredentialStatus, OpdsNetworkInterface, OpdsService,
+    OpdsServiceStatus, OpdsStartConfig, OpdsStatusError,
 };
 
 #[tauri::command]

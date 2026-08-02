@@ -66,7 +66,7 @@ pub(crate) fn create_credentials(
 }
 
 #[derive(Clone)]
-pub(crate) struct OpdsBasicAuth {
+pub struct OpdsBasicAuth {
     enabled: Option<Arc<EnabledAuth>>,
 }
 
@@ -131,7 +131,7 @@ impl AuthCache {
 }
 
 impl OpdsBasicAuth {
-    pub(crate) fn disabled() -> Self {
+    pub fn disabled() -> Self {
         Self { enabled: None }
     }
 

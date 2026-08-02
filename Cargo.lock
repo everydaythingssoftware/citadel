@@ -675,34 +675,55 @@ dependencies = [
 ]
 
 [[package]]
-name = "citadel-rs"
-version = "0.6.1"
+name = "citadel-opds"
+version = "0.1.0"
 dependencies = [
  "argon2",
  "axum",
  "base64 0.22.1",
  "bytes",
  "chrono",
- "citadel-core",
  "diesel",
- "epub",
  "futures-util",
  "hmac",
- "image",
  "libcalibre",
- "log",
- "mobi",
  "netdev",
  "quick-xml 0.38.4",
  "rand_core 0.6.4",
- "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sha2",
  "specta",
- "specta-typescript",
  "subtle",
+ "tempfile",
+ "tokio",
+ "tower",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "citadel-rs"
+version = "0.6.1"
+dependencies = [
+ "axum",
+ "chrono",
+ "citadel-core",
+ "citadel-opds",
+ "diesel",
+ "epub",
+ "image",
+ "libcalibre",
+ "log",
+ "mobi",
+ "quick-xml 0.38.4",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "specta",
+ "specta-typescript",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -720,7 +741,6 @@ dependencies = [
  "tokio",
  "tower",
  "urlencoding",
- "uuid",
  "zip 0.6.6",
 ]
 

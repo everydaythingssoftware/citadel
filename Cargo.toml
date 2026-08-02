@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/citadel-core", "crates/libcalibre", "src-tauri"]
+members = ["crates/citadel-core", "crates/citadel-opds", "crates/libcalibre", "src-tauri"]
 
 [workspace.package]
 rust-version = "1.97.1"

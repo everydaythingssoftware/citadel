@@ -353,7 +353,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::opds::service::OpdsBindTarget;
+    use crate::service::OpdsBindTarget;
 
     fn interface(
         id: &str,

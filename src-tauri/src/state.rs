@@ -158,6 +158,10 @@ impl CitadelState {
 }
 
 impl CatalogSource for CitadelState {
+    fn active_library_id(&self) -> Result<String, CalibreError> {
+        CitadelState::active_library_id(self)
+    }
+
     fn book_page(
         &self,
         limit: i64,
@@ -249,7 +253,7 @@ mod tests {
                 listener,
                 crate::opds::router(
                     Arc::new(server_state),
-                    crate::opds::auth::OpdsBasicAuth::disabled(),
+                    crate::opds::OpdsBasicAuth::disabled(),
                 ),
             )
             .await

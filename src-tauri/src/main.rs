@@ -112,7 +112,10 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .setup(move |app| {
             builder.mount_events(app);
             let credential_path = app.path().app_data_dir()?.join("opds-credentials.json");
-            app.manage(opds::OpdsService::new(opds_state.clone(), credential_path)?);
+            app.manage(opds::OpdsService::new(
+                Arc::new(opds_state.clone()),
+                credential_path,
+            )?);
 
             // Native macOS menu bar: app menu with Settings…, File > Add
             // Book…, and the standard Edit/View/Window items.
