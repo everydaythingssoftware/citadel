@@ -1,0 +1,13 @@
+libraryPath = "/srv/calibre-library"
+stateDirectory = "/var/lib/citadel"
+
+[sharing]
+port = 8080
+authenticationEnabled = true
+
+[sharing.target]
+type = "allLocalNetworks"
+
+[credentials]
+username = "reader"
+passwordEnvironment = "CITADEL_OPDS_PASSWORD"

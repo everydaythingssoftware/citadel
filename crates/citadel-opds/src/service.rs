@@ -39,6 +39,7 @@ const WORKER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(6);
 pub enum OpdsBindTarget {
     AllLocalNetworks,
     Interface { id: String },
+    Addresses { addresses: Vec<String> },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
@@ -406,7 +407,9 @@ impl OpdsService {
         };
 
         let mut servers = BTreeMap::new();
-        match snapshot_interfaces(self.inner.dependencies.interfaces.clone()).await {
+        match snapshot_target_interfaces(self.inner.dependencies.interfaces.clone(), &config.target)
+            .await
+        {
             Ok(interfaces) => {
                 apply_plan(
                     &interfaces,
@@ -592,6 +595,17 @@ async fn snapshot_interfaces(
         .map_err(|_| io::Error::other("interface snapshot task failed"))?
 }
 
+async fn snapshot_target_interfaces(
+    interfaces: Arc<dyn InterfaceSnapshots>,
+    target: &OpdsBindTarget,
+) -> io::Result<Vec<InterfaceSnapshot>> {
+    if matches!(target, OpdsBindTarget::Addresses { .. }) {
+        Ok(Vec::new())
+    } else {
+        snapshot_interfaces(interfaces).await
+    }
+}
+
 async fn active_library_id(source: Arc<dyn CatalogSource>) -> Option<String> {
     tokio::task::spawn_blocking(move || source.active_library_id().ok())
         .await
@@ -730,7 +744,7 @@ async fn monitor_service(
             continue;
         }
 
-        let snapshot = match snapshot_interfaces(interfaces.clone()).await {
+        let snapshot = match snapshot_target_interfaces(interfaces.clone(), &config.target).await {
             Ok(snapshot) => snapshot,
             Err(_) => {
                 shutdown_servers(&mut servers).await;
