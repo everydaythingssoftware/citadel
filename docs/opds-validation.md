@@ -30,6 +30,32 @@ most recent manual Release run completed both its macOS and Ubuntu jobs on
 2026-07-10/11. That proves the publishing pipeline and credentials worked for
 main commit `f0ec58ee`; it does not prove or publish the current OPDS commits.
 
+### Signed macOS prerelease verification — 2026-08-02
+
+The `Release` workflow was dispatched as a nightly prerelease from exact OPDS
+head `1e19a6c3438c20d8d6193b4c29ca6b82d5b3b740`. Its macOS 15 job completed
+successfully and published
+[`v0.6.1-nightly.20260803.163`](https://github.com/everydaythingssoftware/citadel/releases/tag/v0.6.1-nightly.20260803.163).
+
+The published `Citadel_0.6.1-nightly.20260803.163_aarch64.dmg` was downloaded
+again rather than inspected only inside CI. Its SHA-256 was
+`639c4d506ad4bc45260dd2e8a7201228e67ed53f24c03abe11d60c18619ec92a`,
+matching GitHub's asset digest, and the disk image verified successfully while
+mounting read-only. The contained `Citadel.app` passed:
+
+- `codesign --verify --deep --strict`, with Developer ID Application identity
+  `PHILIP GEORGE DENHOFF (J287EZX7X6)`, Team ID `J287EZX7X6`, hardened runtime,
+  and a trusted Apple certificate chain;
+- `spctl --assess --type execute`, reported as accepted from **Notarized
+  Developer ID**; and
+- `xcrun stapler validate`, confirming the stapled notarization ticket.
+
+This proves that the current OPDS v1 head can be released as a signed,
+notarized, stapled Apple Silicon package. It does not substitute for running
+the physical-network and current KOReader scenarios in the matrix below.
+The same workflow's Ubuntu 22.04 job also completed successfully and published
+x86-64 AppImage, Debian, and RPM packages plus their updater signatures.
+
 ### Isolated packaged-app smoke test — 2026-08-02
 
 The release app was rebuilt with the compile-time QA identifier
@@ -61,7 +87,7 @@ Passed:
   interface.” Stopping recovered to editable configuration.
 
 This was a same-host network smoke test against an empty library. It does not
-cover a signed/notarized current artifact, OS firewall denial, a separate
+run the signed/notarized current artifact, cover OS firewall denial, a separate
 KOReader device, representative books/covers/acquisitions, active-library
 switching, or interface loss/recovery. The QA app, isolated settings/verifier,
 and disposable library were moved to Trash after the run.
@@ -107,7 +133,7 @@ Passed:
   libraries were moved to Trash after the run.
 
 This remains a same-host protocol crawl, not a separate-device KOReader result.
-It does not cover a signed/notarized current artifact, OS firewall denial, a
+It does not run the signed/notarized current artifact, cover OS firewall denial, a
 Linux OPDS client path, or physical interface loss/recovery.
 
 ### Linux package smoke test — 2026-08-02
