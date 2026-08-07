@@ -19,14 +19,14 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup update stable
+        run: rustup toolchain install --profile minimal 1.97.1
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v0-rust"
+          prefix-key: "v1-rust"
           shared-key: "build"
           workspaces: "."
 
@@ -42,14 +42,14 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup update stable
+        run: rustup toolchain install --profile minimal 1.97.1
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v0-rust"
+          prefix-key: "v1-rust"
           shared-key: "build"
           workspaces: "."
 
@@ -105,11 +105,11 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust
-        run: rustup update stable
+        run: rustup toolchain install --profile minimal 1.97.1
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v0-rust"
+          prefix-key: "v1-rust"
           shared-key: "build"
           workspaces: "."
 

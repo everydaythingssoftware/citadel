@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["crates/citadel-core", "crates/libcalibre", "src-tauri"]
 
+[workspace.package]
+rust-version = "1.97.1"
+
 # Cover thumbnail generation decodes/resizes JPEGs through these crates;
 # unoptimized they run 20-50x slower, turning the background thumbnail warm
 # from seconds into minutes in dev builds. Optimizing just these packages

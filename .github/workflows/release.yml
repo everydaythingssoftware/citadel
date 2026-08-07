@@ -153,11 +153,11 @@ jobs:
         with:
           bun-version: latest
 
-      - run: rustup toolchain install stable --profile minimal
+      - run: rustup toolchain install --profile minimal 1.97.1
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v1-release-rust"
+          prefix-key: "v2-release-rust"
           workspaces: "src-tauri"
 
       - name: (Ubuntu only) Install dependencies
