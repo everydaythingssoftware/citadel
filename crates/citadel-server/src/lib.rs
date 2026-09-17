@@ -200,6 +200,15 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
             if address.is_unspecified() {
                 return Err("wildcard sharing target addresses are not allowed".to_string());
             }
+            let link_local = match address {
+                IpAddr::V4(address) => address.is_link_local(),
+                IpAddr::V6(address) => (address.segments()[0] & 0xffc0) == 0xfe80,
+            };
+            if link_local {
+                return Err(format!(
+                    "link-local sharing target address is not allowed: {address}"
+                ));
+            }
         }
     }
     if let Some(credentials) = &config.credentials {
@@ -396,5 +405,21 @@ type = "allLocalNetworks"
             };
             assert!(rejected);
         }
+    }
+
+    #[test]
+    fn config_rejects_link_local_explicit_addresses() {
+        let rejected = r#"libraryPath = "/tmp/library"
+stateDirectory = "/tmp/state"
+[sharing]
+port = 8080
+authenticationEnabled = false
+[sharing.target]
+type = "addresses"
+addresses = ["fe80::1"]
+"#;
+        let config = toml::from_str::<ServerConfig>(rejected).unwrap();
+        let error = validate_config(&config).unwrap_err();
+        assert!(error.contains("link-local"), "unexpected error: {error}");
     }
 }

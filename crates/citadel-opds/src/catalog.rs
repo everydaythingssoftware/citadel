@@ -1,9 +1,10 @@
-use std::{borrow::Cow, io::Read, sync::Arc};
+use std::{borrow::Cow, io::Read, sync::Arc, time::Duration};
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Path, Query, Request, State},
     http::{header, HeaderValue, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -18,6 +19,8 @@ use quick_xml::{
     Writer,
 };
 use serde::Deserialize;
+use tokio::sync::Semaphore;
+use tower_http::{limit::RequestBodyLimitLayer, timeout::TimeoutLayer};
 
 use super::{
     assets::{self, AssetMethod},
@@ -26,6 +29,9 @@ use super::{
 
 const PAGE_SIZE: i64 = 50;
 const MAX_SEARCH_LENGTH: usize = 200;
+const FEED_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_REQUEST_BODY_BYTES: usize = 16 * 1024;
+const MAX_CONCURRENT_REQUESTS: usize = 64;
 const ACQUISITION_REL: &str = "http://opds-spec.org/acquisition";
 const IMAGE_REL: &str = "http://opds-spec.org/image";
 const ATOM_TYPE: &str = "application/atom+xml;profile=opds-catalog;kind=acquisition";
@@ -128,8 +134,62 @@ struct PageQuery {
     page: Option<u64>,
 }
 
+/// Bounds how many requests the catalog serves at once. Clones of the guard
+/// share one permit pool across every listener and connection.
+#[derive(Clone)]
+pub(crate) struct RequestGuard {
+    permits: Arc<Semaphore>,
+}
+
+impl RequestGuard {
+    pub(crate) fn with_capacity(permits: usize) -> Self {
+        Self {
+            permits: Arc::new(Semaphore::new(permits)),
+        }
+    }
+
+    fn try_acquire(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StatusCode> {
+        self.permits
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)
+    }
+}
+
+async fn enforce_request_guard(
+    State(guard): State<RequestGuard>,
+    request: Request,
+    next: Next,
+) -> Response {
+    match guard.try_acquire() {
+        Ok(permit) => {
+            let _permit = permit;
+            next.run(request).await
+        }
+        Err(status) => (
+            status,
+            [(header::RETRY_AFTER, HeaderValue::from_static("1"))],
+        )
+            .into_response(),
+    }
+}
+
 pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
-    Router::new()
+    build_router(
+        source,
+        auth,
+        RequestGuard::with_capacity(MAX_CONCURRENT_REQUESTS),
+        FEED_TIMEOUT,
+    )
+}
+
+fn build_router(
+    source: Arc<dyn CatalogSource>,
+    auth: OpdsBasicAuth,
+    guard: RequestGuard,
+    feed_timeout: Duration,
+) -> Router {
+    let feeds = Router::new()
         .route("/opds", get(root_feed))
         .route("/opds/all", get(all_books_feed))
         .route("/opds/recent", get(recent_books_feed))
@@ -144,6 +204,18 @@ pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
         .route("/opds/genres/{id}", get(genre_books_feed))
         .route("/opds/search", get(search_feed))
         .route("/opds/opensearch.xml", get(opensearch_description))
+        .with_state(CatalogState {
+            source: source.clone(),
+        })
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            feed_timeout,
+        ))
+        .layer(middleware::from_fn_with_state(
+            auth.clone(),
+            require_basic_auth,
+        ));
+    let assets = Router::new()
         .route(
             "/opds/books/{book_id}/files/{format}/{filename}",
             get(book_file).head(book_file_head),
@@ -153,10 +225,12 @@ pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
             get(book_cover).head(book_cover_head),
         )
         .with_state(CatalogState { source })
-        .layer(axum::middleware::from_fn_with_state(
-            auth,
-            require_basic_auth,
-        ))
+        .layer(middleware::from_fn_with_state(auth, require_basic_auth));
+    Router::new()
+        .merge(feeds)
+        .merge(assets)
+        .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BODY_BYTES))
+        .layer(middleware::from_fn_with_state(guard, enforce_request_guard))
 }
 
 async fn root_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
@@ -2075,5 +2149,146 @@ mod tests {
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(response.text().await.unwrap(), "Catalog unavailable");
         server.abort();
+    }
+
+    async fn loopback_router(router: Router) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        (format!("http://{address}"), task)
+    }
+
+    struct DelayedSource {
+        inner: Arc<dyn CatalogSource>,
+        feed_delay: Duration,
+        asset_delay: Duration,
+    }
+
+    impl CatalogSource for DelayedSource {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            std::thread::sleep(self.feed_delay);
+            self.inner.active_library_id()
+        }
+
+        fn book_page(
+            &self,
+            query: CatalogBookQuery,
+        ) -> Result<(String, Option<NaiveDateTime>, BookPage), CalibreError> {
+            self.inner.book_page(query)
+        }
+
+        fn book_file(
+            &self,
+            book_id: BookId,
+            format: &str,
+        ) -> Result<ResolvedBookAsset, CalibreError> {
+            std::thread::sleep(self.asset_delay);
+            self.inner.book_file(book_id, format)
+        }
+
+        fn book_cover(&self, book_id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
+            std::thread::sleep(self.asset_delay);
+            self.inner.book_cover(book_id)
+        }
+    }
+
+    #[tokio::test]
+    async fn exhausted_request_guard_answers_service_unavailable() {
+        let guard = RequestGuard::with_capacity(1);
+        let held_permit = guard.try_acquire().unwrap();
+        let (base, server) = loopback_router(build_router(
+            Arc::new(NoLibrary),
+            OpdsBasicAuth::disabled(),
+            guard,
+            Duration::from_secs(30),
+        ))
+        .await;
+
+        let response = reqwest::get(format!("{base}/opds")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.headers().get(header::RETRY_AFTER).unwrap(), "1");
+        drop(held_permit);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn slow_feeds_time_out_while_slow_asset_routes_do_not() {
+        let source = Arc::new(DelayedSource {
+            inner: Arc::new(NoLibrary),
+            feed_delay: Duration::from_millis(200),
+            asset_delay: Duration::from_millis(100),
+        });
+        let (base, server) = loopback_router(build_router(
+            source,
+            OpdsBasicAuth::disabled(),
+            RequestGuard::with_capacity(MAX_CONCURRENT_REQUESTS),
+            Duration::from_millis(10),
+        ))
+        .await;
+        let client = reqwest::Client::new();
+
+        let feed = client.get(format!("{base}/opds")).send().await.unwrap();
+        assert_eq!(feed.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let asset = client
+            .get(format!("{base}/opds/books/1/cover"))
+            .send()
+            .await
+            .unwrap();
+        assert_ne!(
+            asset.status(),
+            StatusCode::REQUEST_TIMEOUT,
+            "asset downloads must not be bound by the feed timeout"
+        );
+        assert_eq!(asset.status(), StatusCode::SERVICE_UNAVAILABLE);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn book_file_formats_can_never_traverse_paths() {
+        let (directory, mut library) = test_library();
+        let source_path = directory.path().join("book.epub");
+        std::fs::write(&source_path, b"book").unwrap();
+        let added = library
+            .add_book(BookAdd {
+                title: "Traversal Target".to_string(),
+                author_names: vec!["Author".to_string()],
+                tags: None,
+                series: None,
+                series_index: None,
+                publisher: None,
+                publication_date: None,
+                rating: None,
+                comments: None,
+                identifiers: HashMap::new(),
+                language: None,
+                file_paths: vec![source_path],
+            })
+            .unwrap();
+        let (base, server) = loopback(Arc::new(LibrarySource {
+            library: Mutex::new(library),
+        }))
+        .await;
+        let client = reqwest::Client::new();
+        for format in ["..%2f", "%2e%2e%2f%2e%2e%2fmetadata.db"] {
+            let response = client
+                .get(format!(
+                    "{base}/opds/books/{}/files/{format}/book.epub",
+                    added.id.as_i32()
+                ))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "format {format} must be rejected"
+            );
+            assert_eq!(response.text().await.unwrap(), "Invalid asset request");
+        }
+        server.abort();
+        drop(directory);
     }
 }
