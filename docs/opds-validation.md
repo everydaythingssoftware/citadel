@@ -28,13 +28,13 @@ does not substitute for testing that release artifact. The repository has all
 Apple certificate and App Store Connect API secret names configured, and the
 most recent manual Release run completed both its macOS and Ubuntu jobs on
 2026-07-10/11. That proves the publishing pipeline and credentials worked for
-main commit `f0ec58ee`; it does not prove or publish the current OPDS commits.
+the main branch at the time; it does not prove or publish the current OPDS
+commits.
 
 ### Signed macOS prerelease verification — 2026-08-02
 
-The `Release` workflow was dispatched as a nightly prerelease from exact OPDS
-head `1e19a6c3438c20d8d6193b4c29ca6b82d5b3b740`. Its macOS 15 job completed
-successfully and published
+The `Release` workflow was dispatched as a nightly prerelease from the OPDS
+branch head. Its macOS 15 job completed successfully and published
 [`v0.6.1-nightly.20260803.163`](https://github.com/everydaythingssoftware/citadel/releases/tag/v0.6.1-nightly.20260803.163).
 
 The published `Citadel_0.6.1-nightly.20260803.163_aarch64.dmg` was downloaded
