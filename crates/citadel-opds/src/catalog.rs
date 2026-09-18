@@ -11,22 +11,18 @@ use axum::{
 use bytes::Bytes;
 use chrono::{NaiveDateTime, SecondsFormat};
 use libcalibre::{BookId, BookPage, CalibreError, ResolvedBookAsset};
-use quick_xml::{
-    events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event},
-    Writer,
-};
 use serde::Deserialize;
 
-use super::assets::{self, AssetMethod};
+use super::assets::{self, AssetMethod, AssetResponseError};
 use crate::identity::{book_identity, library_identity};
-use crate::xml::xml_text;
 
 const PAGE_SIZE: i64 = 50;
 const ACQUISITION_REL: &str = "http://opds-spec.org/acquisition";
-const IMAGE_REL: &str = "http://opds-spec.org/image";
+pub(crate) const IMAGE_REL: &str = "http://opds-spec.org/image";
 const ATOM_TYPE: &str = "application/atom+xml;profile=opds-catalog;kind=acquisition";
 const ATOM_CONTENT_TYPE: &str =
     "application/atom+xml;profile=opds-catalog;kind=acquisition; charset=utf-8";
+pub(crate) const IMAGE_TYPE: &str = "image/jpeg";
 
 pub trait CatalogSource: Send + Sync + 'static {
     fn active_library_id(&self) -> Result<String, CalibreError>;
@@ -48,6 +44,34 @@ struct CatalogState {
 #[derive(Deserialize)]
 struct PageQuery {
     page: Option<u64>,
+}
+
+pub(crate) struct Feed {
+    pub(crate) id: String,
+    pub(crate) title: String,
+    pub(crate) updated: String,
+    pub(crate) links: Vec<FeedLink>,
+    pub(crate) entries: Vec<FeedEntry>,
+}
+
+pub(crate) struct FeedLink {
+    pub(crate) rel: &'static str,
+    pub(crate) href: String,
+    pub(crate) media_type: &'static str,
+}
+
+pub(crate) struct FeedEntry {
+    pub(crate) id: String,
+    pub(crate) title: String,
+    pub(crate) updated: String,
+    pub(crate) authors: Vec<String>,
+    pub(crate) published: String,
+    pub(crate) languages: Vec<String>,
+    pub(crate) identifiers: Vec<String>,
+    pub(crate) categories: Vec<String>,
+    pub(crate) acquisition_links: Vec<(String, String, String)>,
+    pub(crate) image_link: Option<String>,
+    pub(crate) content: Option<String>,
 }
 
 pub fn router(source: Arc<dyn CatalogSource>) -> Router {
@@ -78,17 +102,9 @@ async fn feed(
     Query(query): Query<PageQuery>,
     route: &'static str,
 ) -> Response {
-    let page_number = query.page.unwrap_or(1);
-    if page_number == 0 {
-        return public_error(StatusCode::BAD_REQUEST, "Invalid page");
-    }
-    let offset = match page_number
-        .checked_sub(1)
-        .and_then(|page| page.checked_mul(PAGE_SIZE as u64))
-        .and_then(|offset| i64::try_from(offset).ok())
-    {
-        Some(offset) => offset,
-        None => return public_error(StatusCode::BAD_REQUEST, "Invalid page"),
+    let (page_number, offset) = match page_params(&query) {
+        Ok(params) => params,
+        Err(response) => return response,
     };
 
     let source = state.source.clone();
@@ -122,6 +138,22 @@ async fn feed(
             .into_response(),
         Err(_) => public_error(StatusCode::INTERNAL_SERVER_ERROR, "Catalog unavailable"),
     }
+}
+
+fn page_params(query: &PageQuery) -> Result<(u64, i64), Response> {
+    let page_number = query.page.unwrap_or(1);
+    if page_number == 0 {
+        return Err(public_error(StatusCode::BAD_REQUEST, "Invalid page"));
+    }
+    let offset = match page_number
+        .checked_sub(1)
+        .and_then(|page| page.checked_mul(PAGE_SIZE as u64))
+        .and_then(|offset| i64::try_from(offset).ok())
+    {
+        Some(offset) => offset,
+        None => return Err(public_error(StatusCode::BAD_REQUEST, "Invalid page")),
+    };
+    Ok((page_number, offset))
 }
 
 async fn book_file(
@@ -181,13 +213,8 @@ async fn asset_response(
         .get(header::RANGE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
-    let source = state.source.clone();
-    let resolved = tokio::task::spawn_blocking(move || match format {
-        Some(format) => source.book_file(book_id, &format),
-        None => source.book_cover(book_id),
-    })
-    .await;
-    let asset = match resolved {
+
+    let asset = match resolve_asset(state.source.clone(), book_id, format).await {
         Ok(Ok(asset)) => asset,
         Ok(Err(error)) => return calibre_error(error),
         Err(_) => return public_error(StatusCode::INTERNAL_SERVER_ERROR, "Asset unavailable"),
@@ -198,22 +225,7 @@ async fn asset_response(
             .await;
     let prepared = match prepared {
         Ok(Ok(response)) => response,
-        Ok(Err(error)) => {
-            let mut response = public_error(
-                StatusCode::from_u16(error.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                if error.status() == 416 {
-                    "Range not satisfiable"
-                } else {
-                    "Asset unavailable"
-                },
-            );
-            if let Some(content_range) = error.content_range() {
-                if let Ok(value) = HeaderValue::from_str(&content_range) {
-                    response.headers_mut().insert(header::CONTENT_RANGE, value);
-                }
-            }
-            return response;
-        }
+        Ok(Err(error)) => return asset_error_response(error),
         Err(_) => return public_error(StatusCode::INTERNAL_SERVER_ERROR, "Asset unavailable"),
     };
 
@@ -231,37 +243,71 @@ async fn asset_response(
     }
 
     let body = match prepared.body {
-        Some(mut reader) => {
-            let (sender, receiver) = tokio::sync::mpsc::channel(2);
-            tokio::task::spawn_blocking(move || loop {
-                let mut buffer = vec![0_u8; 64 * 1024];
-                match reader.read(&mut buffer) {
-                    Ok(0) => break,
-                    Ok(read) => {
-                        buffer.truncate(read);
-                        if sender
-                            .blocking_send(Ok::<_, std::io::Error>(Bytes::from(buffer)))
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                    Err(error) => {
-                        let _ = sender.blocking_send(Err(error));
-                        break;
-                    }
-                }
-            });
-            Body::from_stream(futures_util::stream::unfold(
-                receiver,
-                |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) },
-            ))
-        }
+        Some(reader) => stream_body(reader),
         None => Body::empty(),
     };
     builder
         .body(body)
         .unwrap_or_else(|_| public_error(StatusCode::INTERNAL_SERVER_ERROR, "Asset unavailable"))
+}
+
+async fn resolve_asset(
+    source: Arc<dyn CatalogSource>,
+    book_id: BookId,
+    format: Option<String>,
+) -> Result<Result<ResolvedBookAsset, CalibreError>, tokio::task::JoinError> {
+    tokio::task::spawn_blocking(move || match format {
+        Some(format) => source.book_file(book_id, &format),
+        None => source.book_cover(book_id),
+    })
+    .await
+}
+
+fn asset_error_response(error: AssetResponseError) -> Response {
+    let mut response = public_error(
+        StatusCode::from_u16(error.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        if error.status() == 416 {
+            "Range not satisfiable"
+        } else {
+            "Asset unavailable"
+        },
+    );
+    if let Some(content_range) = error.content_range() {
+        if let Ok(value) = HeaderValue::from_str(&content_range) {
+            response.headers_mut().insert(header::CONTENT_RANGE, value);
+        }
+    }
+    response
+}
+
+fn stream_body(reader: assets::AssetBody) -> Body {
+    let (sender, receiver) = tokio::sync::mpsc::channel(2);
+    tokio::task::spawn_blocking(move || {
+        let mut reader = reader;
+        loop {
+            let mut buffer = vec![0_u8; 64 * 1024];
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => {
+                    buffer.truncate(read);
+                    if sender
+                        .blocking_send(Ok::<_, std::io::Error>(Bytes::from(buffer)))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    let _ = sender.blocking_send(Err(error));
+                    break;
+                }
+            }
+        }
+    });
+    Body::from_stream(futures_util::stream::unfold(
+        receiver,
+        |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) },
+    ))
 }
 
 fn acquisition_feed(
@@ -272,132 +318,105 @@ fn acquisition_feed(
     last_page: u64,
     route: &str,
 ) -> Result<Vec<u8>, quick_xml::Error> {
-    let mut writer = Writer::new(Vec::new());
-    writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
-    let mut feed = BytesStart::new("feed");
-    feed.push_attribute(("xmlns", "http://www.w3.org/2005/Atom"));
-    feed.push_attribute(("xmlns:dc", "http://purl.org/dc/terms/"));
-    writer.write_event(Event::Start(feed))?;
-    text_element(&mut writer, "id", &library_identity(library_uuid))?;
-    text_element(&mut writer, "title", "Citadel — All Books")?;
-    text_element(&mut writer, "updated", &feed_updated(updated_at))?;
-    writer.write_event(Event::Start(BytesStart::new("author")))?;
-    text_element(&mut writer, "name", "Citadel")?;
-    writer.write_event(Event::End(BytesEnd::new("author")))?;
-
-    let self_href = page_href(route, page_number);
-    link(&mut writer, "self", &self_href, ATOM_TYPE)?;
-    link(&mut writer, "start", "/opds", ATOM_TYPE)?;
+    let mut links = vec![
+        FeedLink {
+            rel: "self",
+            href: page_href(route, page_number),
+            media_type: ATOM_TYPE,
+        },
+        FeedLink {
+            rel: "start",
+            href: "/opds".to_string(),
+            media_type: ATOM_TYPE,
+        },
+    ];
     if route != "/opds" {
-        link(&mut writer, "up", "/opds", ATOM_TYPE)?;
+        links.push(FeedLink {
+            rel: "up",
+            href: "/opds".to_string(),
+            media_type: ATOM_TYPE,
+        });
     }
     if page_number > 1 {
-        link(
-            &mut writer,
-            "previous",
-            &page_href(route, page_number - 1),
-            ATOM_TYPE,
-        )?;
-        link(&mut writer, "first", route, ATOM_TYPE)?;
+        links.push(FeedLink {
+            rel: "previous",
+            href: page_href(route, page_number - 1),
+            media_type: ATOM_TYPE,
+        });
+        links.push(FeedLink {
+            rel: "first",
+            href: route.to_string(),
+            media_type: ATOM_TYPE,
+        });
     }
     if page_number < last_page {
-        link(
-            &mut writer,
-            "next",
-            &page_href(route, page_number + 1),
-            ATOM_TYPE,
-        )?;
-        link(&mut writer, "last", &page_href(route, last_page), ATOM_TYPE)?;
+        links.push(FeedLink {
+            rel: "next",
+            href: page_href(route, page_number + 1),
+            media_type: ATOM_TYPE,
+        });
+        links.push(FeedLink {
+            rel: "last",
+            href: page_href(route, last_page),
+            media_type: ATOM_TYPE,
+        });
     }
 
-    for book in &page.items {
-        writer.write_event(Event::Start(BytesStart::new("entry")))?;
-        text_element(
-            &mut writer,
-            "id",
-            &book_identity(library_uuid, book.uuid.as_deref(), book.id),
-        )?;
-        text_element(&mut writer, "title", &book.title)?;
-        text_element(&mut writer, "updated", &timestamp(book.updated_at))?;
-        for author in &book.authors {
-            writer.write_event(Event::Start(BytesStart::new("author")))?;
-            text_element(&mut writer, "name", &author.name)?;
-            writer.write_event(Event::End(BytesEnd::new("author")))?;
-        }
-        text_element(&mut writer, "published", &timestamp(book.created_at))?;
-        let mut content = BytesStart::new("content");
-        content.push_attribute(("type", "text"));
-        writer.write_event(Event::Start(content))?;
-        writer.write_event(Event::Text(BytesText::new(&xml_text(
-            book.description.as_deref().unwrap_or(""),
-        ))))?;
-        writer.write_event(Event::End(BytesEnd::new("content")))?;
-        for language in &book.language_codes {
-            text_element(&mut writer, "dc:language", language)?;
-        }
-        for identifier in &book.identifiers {
-            text_element(&mut writer, "dc:identifier", &identifier.value)?;
-        }
-        for tag in &book.tags {
-            let mut category = BytesStart::new("category");
-            category.push_attribute(("term", xml_text(tag).as_ref()));
-            writer.write_event(Event::Empty(category))?;
-        }
-        if book.has_cover {
-            link(
-                &mut writer,
-                IMAGE_REL,
-                &format!("/opds/books/{}/cover", book.id.as_i32()),
-                "image/jpeg",
-            )?;
-        }
-        for file in &book.files {
-            link(
-                &mut writer,
-                ACQUISITION_REL,
-                &format!(
-                    "/opds/books/{}/files/{}/{}",
-                    book.id.as_i32(),
-                    urlencoding::encode(&file.format),
-                    urlencoding::encode(&format!(
-                        "{}.{}",
-                        file.name,
-                        file.format.to_ascii_lowercase()
-                    ))
-                ),
-                assets::mime_type(&file.format),
-            )?;
-        }
-        writer.write_event(Event::End(BytesEnd::new("entry")))?;
-    }
+    let entries = page
+        .items
+        .iter()
+        .map(|book| FeedEntry {
+            id: book_identity(library_uuid, book.uuid.as_deref(), book.id),
+            title: book.title.clone(),
+            updated: timestamp(book.updated_at),
+            authors: book
+                .authors
+                .iter()
+                .map(|author| author.name.clone())
+                .collect(),
+            published: timestamp(book.created_at),
+            languages: book.language_codes.clone(),
+            identifiers: book
+                .identifiers
+                .iter()
+                .map(|identifier| identifier.value.clone())
+                .collect(),
+            categories: book.tags.clone(),
+            acquisition_links: book
+                .files
+                .iter()
+                .map(|file| {
+                    (
+                        ACQUISITION_REL.to_string(),
+                        format!(
+                            "/opds/books/{}/files/{}/{}",
+                            book.id.as_i32(),
+                            urlencoding::encode(&file.format),
+                            urlencoding::encode(&format!(
+                                "{}.{}",
+                                file.name,
+                                file.format.to_ascii_lowercase()
+                            ))
+                        ),
+                        assets::mime_type(&file.format).to_string(),
+                    )
+                })
+                .collect(),
+            image_link: book
+                .has_cover
+                .then(|| format!("/opds/books/{}/cover", book.id.as_i32())),
+            content: Some(book.description.clone().unwrap_or_default()),
+        })
+        .collect();
 
-    writer.write_event(Event::End(BytesEnd::new("feed")))?;
-    Ok(writer.into_inner())
-}
-
-fn text_element(
-    writer: &mut Writer<Vec<u8>>,
-    name: &str,
-    value: &str,
-) -> Result<(), quick_xml::Error> {
-    writer.write_event(Event::Start(BytesStart::new(name)))?;
-    writer.write_event(Event::Text(BytesText::new(&xml_text(value))))?;
-    writer.write_event(Event::End(BytesEnd::new(name)))?;
-    Ok(())
-}
-
-fn link(
-    writer: &mut Writer<Vec<u8>>,
-    relation: &str,
-    href: &str,
-    media_type: &str,
-) -> Result<(), quick_xml::Error> {
-    let mut element = BytesStart::new("link");
-    element.push_attribute(("rel", relation));
-    element.push_attribute(("href", href));
-    element.push_attribute(("type", media_type));
-    writer.write_event(Event::Empty(element))?;
-    Ok(())
+    let feed = Feed {
+        id: library_identity(library_uuid),
+        title: "Citadel — All Books".to_string(),
+        updated: feed_updated(updated_at),
+        links,
+        entries,
+    };
+    crate::xml::write_feed(&feed)
 }
 
 fn page_count(total: i64) -> u64 {
@@ -472,7 +491,7 @@ mod tests {
         library::Book, util::get_db_path, BookAdd, BookFileInfo, BookIdentifier, BookUpdate,
         Library, LibraryAuthor,
     };
-    use quick_xml::{name::ResolveResult, NsReader};
+    use quick_xml::{events::Event, name::ResolveResult, NsReader};
     use std::{collections::HashMap, path::PathBuf, sync::Mutex};
     use tempfile::TempDir;
 
