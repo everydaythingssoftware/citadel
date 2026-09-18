@@ -536,9 +536,11 @@ mod tests {
 
     impl CatalogSource for MemorySource {
         fn active_library_id(&self) -> Result<String, CalibreError> {
-            Ok("550e8400-e29b-41d4-a716-446655440000".to_string())
+            self.books
+                .first()
+                .map(|_| "memory-library".to_string())
+                .ok_or(CalibreError::LibraryNotInitialized)
         }
-
         fn book_page(
             &self,
             limit: i64,
@@ -586,7 +588,6 @@ mod tests {
         fn active_library_id(&self) -> Result<String, CalibreError> {
             Err(CalibreError::LibraryNotInitialized)
         }
-
         fn book_page(
             &self,
             _limit: i64,
@@ -612,7 +613,6 @@ mod tests {
         fn active_library_id(&self) -> Result<String, CalibreError> {
             Err((self.0)())
         }
-
         fn book_page(
             &self,
             _limit: i64,
