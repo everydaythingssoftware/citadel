@@ -183,7 +183,7 @@ pub struct BookPage {
     pub items: Vec<Book>,
     /// Total number of books matching the query's filters, ignoring
     /// limit/offset.
-    pub total: i64,
+    pub total: u64,
 }
 
 /// One series in the library, with its linked-book count. Returned by
@@ -929,7 +929,7 @@ impl Library {
                 resolvable_ids.push(book_id);
             }
         }
-        let total = i64::try_from(resolvable_ids.len()).unwrap_or(i64::MAX);
+        let total = u64::try_from(resolvable_ids.len()).unwrap_or(u64::MAX);
         let start = usize::try_from(offset.max(0)).unwrap_or(usize::MAX);
         let page_len = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
         let book_ids = resolvable_ids

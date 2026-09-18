@@ -250,10 +250,12 @@ pub(crate) fn query_page(
 }
 
 /// COUNT over the same WHERE as [`query_page`], ignoring limit/offset.
+/// SQLite COUNT is non-negative, so the boundary conversion to u64 is total
+/// in practice; a nonsensical negative maps to 0.
 pub(crate) fn query_count(
     conn: &mut SqliteConnection,
     filters: &BookPageFilters,
-) -> Result<i64, CalibreError> {
+) -> Result<u64, CalibreError> {
     let where_sql = filter_where_sql(filters);
     let sql = format!("SELECT COUNT(*) AS total FROM books WHERE {where_sql}");
 
@@ -270,7 +272,10 @@ pub(crate) fn query_count(
         None => sql_query(sql).load(conn).map_err(CalibreError::from)?,
     };
 
-    Ok(rows.first().map(|row| row.total).unwrap_or(0))
+    Ok(rows
+        .first()
+        .map(|row| u64::try_from(row.total).unwrap_or(0))
+        .unwrap_or(0))
 }
 
 pub(crate) fn create(conn: &mut SqliteConnection, book: NewBook) -> Result<BookRow, CalibreError> {

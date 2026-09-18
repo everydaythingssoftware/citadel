@@ -420,8 +420,8 @@ fn acquisition_feed(
     crate::xml::write_feed(&feed)
 }
 
-fn page_count(total: i64) -> u64 {
-    u64::try_from(total).unwrap_or(0).div_ceil(PAGE_SIZE)
+fn page_count(total: u64) -> u64 {
+    total.div_ceil(PAGE_SIZE)
 }
 
 fn page_href(route: &str, page: u64) -> String {
@@ -556,7 +556,7 @@ mod tests {
                 self.books.iter().map(|book| book.updated_at).max(),
                 BookPage {
                     items,
-                    total: self.books.len() as i64,
+                    total: self.books.len() as u64,
                 },
             ))
         }
@@ -855,7 +855,6 @@ mod tests {
     fn page_count_is_zero_for_empty_totals_and_one_for_a_single_book() {
         assert_eq!(page_count(0), 0);
         assert_eq!(page_count(1), 1);
-        assert_eq!(page_count(-7), 0);
         assert_eq!(page_count(50), 1);
         assert_eq!(page_count(51), 2);
         assert_eq!(page_count(101), 3);
