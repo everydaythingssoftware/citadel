@@ -117,7 +117,7 @@ async fn feed(
     };
 
     let last_page = page_count(page.total);
-    if page_number > last_page {
+    if page_number > last_page && !(page_number == 1 && page.total == 0) {
         return public_error(StatusCode::NOT_FOUND, "Page not found");
     }
 
@@ -1130,8 +1130,13 @@ mod tests {
     async fn empty_and_unavailable_catalogs_return_valid_non_sensitive_responses() {
         let (base, server) = loopback(Arc::new(MemorySource { books: Vec::new() })).await;
         let response = reqwest::get(format!("{base}/opds")).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        assert_eq!(response.text().await.unwrap(), "Page not found");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], ATOM_CONTENT_TYPE);
+        let feed = parsed_feed(&response.bytes().await.unwrap());
+        assert!(feed.ids.is_empty());
+        assert!(feed.titles.is_empty());
+        assert!(feed.next.is_none());
+        assert!(feed.previous.is_none());
         server.abort();
 
         let (base, server) = loopback(Arc::new(NoLibrary)).await;
