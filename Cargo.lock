@@ -657,10 +657,14 @@ dependencies = [
 name = "citadel-opds"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "bytes",
  "chrono",
+ "diesel",
  "futures-util",
  "libcalibre",
  "quick-xml 0.38.4",
+ "reqwest 0.12.28",
  "serde",
  "tempfile",
  "tokio",

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::Read, sync::Arc};
+use std::{io::Read, sync::Arc};
 
 use axum::{
     body::Body,
@@ -18,6 +18,8 @@ use quick_xml::{
 use serde::Deserialize;
 
 use super::assets::{self, AssetMethod};
+use crate::identity::{book_identity, library_identity};
+use crate::xml::xml_text;
 
 const PAGE_SIZE: i64 = 50;
 const ACQUISITION_REL: &str = "http://opds-spec.org/acquisition";
@@ -414,54 +416,6 @@ fn page_href(route: &str, page: u64) -> String {
     }
 }
 
-fn library_identity(raw_uuid: &str) -> String {
-    match uuid::Uuid::parse_str(raw_uuid) {
-        Ok(uuid) => format!("urn:uuid:{uuid}"),
-        Err(_) => format!("urn:citadel:library:{}", hex(raw_uuid.as_bytes())),
-    }
-}
-
-fn book_identity(library_uuid: &str, raw_uuid: Option<&str>, book_id: BookId) -> String {
-    match raw_uuid.and_then(|value| uuid::Uuid::parse_str(value).ok()) {
-        Some(uuid) => format!("urn:uuid:{uuid}"),
-        None => format!(
-            "urn:citadel:book:{}:{}",
-            hex(library_uuid.as_bytes()),
-            book_id.as_i32()
-        ),
-    }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut result = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        result.push(char::from(HEX[usize::from(byte >> 4)]));
-        result.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    result
-}
-
-fn xml_text(value: &str) -> Cow<'_, str> {
-    if value.chars().all(valid_xml_char) {
-        Cow::Borrowed(value)
-    } else {
-        Cow::Owned(
-            value
-                .chars()
-                .filter(|character| valid_xml_char(*character))
-                .collect(),
-        )
-    }
-}
-
-fn valid_xml_char(character: char) -> bool {
-    matches!(character, '\u{9}' | '\u{a}' | '\u{d}')
-        || ('\u{20}'..='\u{d7ff}').contains(&character)
-        || ('\u{e000}'..='\u{fffd}').contains(&character)
-        || ('\u{10000}'..='\u{10ffff}').contains(&character)
-}
-
 fn feed_updated(updated_at: Option<NaiveDateTime>) -> String {
     updated_at
         .map(timestamp)
@@ -510,6 +464,8 @@ fn public_error(status: StatusCode, message: &'static str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity::{book_identity, library_identity};
+    use crate::xml::valid_xml_char;
     use chrono::NaiveDate;
     use diesel::{Connection, RunQueryDsl};
     use libcalibre::{
@@ -563,6 +519,10 @@ mod tests {
     }
 
     impl CatalogSource for MemorySource {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            Ok("550e8400-e29b-41d4-a716-446655440000".to_string())
+        }
+
         fn book_page(
             &self,
             limit: i64,
@@ -607,6 +567,10 @@ mod tests {
     struct FailureSource(fn() -> CalibreError);
 
     impl CatalogSource for NoLibrary {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            Err(CalibreError::LibraryNotInitialized)
+        }
+
         fn book_page(
             &self,
             _limit: i64,
@@ -629,6 +593,10 @@ mod tests {
     }
 
     impl CatalogSource for FailureSource {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            Err((self.0)())
+        }
+
         fn book_page(
             &self,
             _limit: i64,
@@ -651,6 +619,10 @@ mod tests {
     }
 
     impl CatalogSource for LibrarySource {
+        fn active_library_id(&self) -> Result<String, CalibreError> {
+            self.library.lock().unwrap().library_uuid()
+        }
+
         fn book_page(
             &self,
             limit: i64,
@@ -682,7 +654,7 @@ mod tests {
     fn test_library() -> (TempDir, Library) {
         let directory = tempfile::tempdir().unwrap();
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../crates/libcalibre/tests/fixtures/empty_library/metadata.db");
+            .join("../../crates/libcalibre/tests/fixtures/empty_library/metadata.db");
         std::fs::copy(fixture, directory.path().join("metadata.db")).unwrap();
         let db_path = get_db_path(directory.path().to_str().unwrap()).unwrap();
         (directory, Library::new(db_path).unwrap())
