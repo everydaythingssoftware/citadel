@@ -115,3 +115,40 @@ pub(crate) fn valid_xml_char(character: char) -> bool {
         || ('\u{e000}'..='\u{fffd}').contains(&character)
         || ('\u{10000}'..='\u{10ffff}').contains(&character)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn feed_with_title(title: &str) -> Feed {
+        Feed {
+            id: "urn:test:feed".to_string(),
+            title: title.to_string(),
+            updated: "2024-01-01T00:00:00Z".to_string(),
+            links: Vec::new(),
+            entries: vec![FeedEntry {
+                id: "urn:test:book".to_string(),
+                title: title.to_string(),
+                updated: "2024-01-01T00:00:00Z".to_string(),
+                authors: Vec::new(),
+                published: "2024-01-01T00:00:00Z".to_string(),
+                languages: Vec::new(),
+                identifiers: Vec::new(),
+                categories: Vec::new(),
+                acquisition_links: Vec::new(),
+                image_link: None,
+                content: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn titles_with_invalid_xml_chars_are_stripped_so_the_document_stays_valid() {
+        let xml =
+            String::from_utf8(write_feed(&feed_with_title("Bad \u{0}<Title> & More")).unwrap())
+                .unwrap();
+        assert!(xml.contains("Bad &lt;Title&gt; &amp; More"));
+        assert!(!xml.contains('\u{0}'));
+        assert!(xml.chars().all(valid_xml_char));
+    }
+}

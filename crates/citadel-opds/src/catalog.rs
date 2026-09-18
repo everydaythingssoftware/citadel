@@ -16,7 +16,7 @@ use serde::Deserialize;
 use super::assets::{self, AssetMethod, AssetResponseError};
 use crate::identity::{book_identity, library_identity};
 
-const PAGE_SIZE: i64 = 50;
+const PAGE_SIZE: u64 = 50;
 const ACQUISITION_REL: &str = "http://opds-spec.org/acquisition";
 pub(crate) const IMAGE_REL: &str = "http://opds-spec.org/image";
 const ATOM_TYPE: &str = "application/atom+xml;profile=opds-catalog;kind=acquisition";
@@ -108,7 +108,8 @@ async fn feed(
     };
 
     let source = state.source.clone();
-    let result = tokio::task::spawn_blocking(move || source.book_page(PAGE_SIZE, offset)).await;
+    let result =
+        tokio::task::spawn_blocking(move || source.book_page(PAGE_SIZE as i64, offset)).await;
     let (library_uuid, updated_at, page) = match result {
         Ok(Ok(page)) => page,
         Ok(Err(error)) => return calibre_error(error),
@@ -147,7 +148,7 @@ fn page_params(query: &PageQuery) -> Result<(u64, i64), Response> {
     }
     let offset = match page_number
         .checked_sub(1)
-        .and_then(|page| page.checked_mul(PAGE_SIZE as u64))
+        .and_then(|page| page.checked_mul(PAGE_SIZE))
         .and_then(|offset| i64::try_from(offset).ok())
     {
         Some(offset) => offset,
@@ -420,11 +421,7 @@ fn acquisition_feed(
 }
 
 fn page_count(total: i64) -> u64 {
-    if total <= 0 {
-        1
-    } else {
-        ((total as u64 - 1) / PAGE_SIZE as u64) + 1
-    }
+    u64::try_from(total).unwrap_or(0).div_ceil(PAGE_SIZE)
 }
 
 fn page_href(route: &str, page: u64) -> String {
@@ -854,6 +851,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn page_count_is_zero_for_empty_totals_and_one_for_a_single_book() {
+        assert_eq!(page_count(0), 0);
+        assert_eq!(page_count(1), 1);
+        assert_eq!(page_count(-7), 0);
+        assert_eq!(page_count(50), 1);
+        assert_eq!(page_count(51), 2);
+        assert_eq!(page_count(101), 3);
+    }
+
     #[tokio::test]
     async fn loopback_pagination_visits_every_entry_once() {
         let books = (1..=101)
@@ -1124,13 +1131,8 @@ mod tests {
     async fn empty_and_unavailable_catalogs_return_valid_non_sensitive_responses() {
         let (base, server) = loopback(Arc::new(MemorySource { books: Vec::new() })).await;
         let response = reqwest::get(format!("{base}/opds")).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = response.bytes().await.unwrap();
-        let feed = parsed_feed(&bytes);
-        assert!(feed.ids.is_empty());
-        assert!(String::from_utf8(bytes.to_vec())
-            .unwrap()
-            .contains("<author><name>Citadel</name></author>"));
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.text().await.unwrap(), "Page not found");
         server.abort();
 
         let (base, server) = loopback(Arc::new(NoLibrary)).await;

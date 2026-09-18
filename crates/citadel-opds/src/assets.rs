@@ -21,7 +21,7 @@ pub struct AssetHeaders {
     pub content_type: &'static str,
 }
 
-/// A bounded synchronous file stream. CDL-23 can move reads onto its HTTP
+/// A bounded synchronous file stream. A follow-up can move reads onto the HTTP
 /// runtime's blocking adapter without coupling asset resolution to a framework.
 pub struct AssetBody {
     reader: Take<File>,
@@ -221,23 +221,8 @@ fn content_disposition(filename: &str) -> String {
             }
         })
         .collect();
-    let encoded = percent_encode(filename.as_bytes());
+    let encoded = urlencoding::encode(filename);
     format!("attachment; filename=\"{fallback}\"; filename*=UTF-8''{encoded}")
-}
-
-fn percent_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
-    let mut encoded = String::with_capacity(bytes.len());
-    for &byte in bytes {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
-            encoded.push(char::from(byte));
-        } else {
-            encoded.push('%');
-            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
-            encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
-        }
-    }
-    encoded
 }
 
 #[cfg(test)]

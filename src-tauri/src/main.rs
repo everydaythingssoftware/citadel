@@ -16,7 +16,6 @@ pub mod libs {
 mod book;
 mod menu;
 mod metadata;
-pub mod opds;
 mod state;
 
 fn run_tauri_backend() -> std::io::Result<()> {

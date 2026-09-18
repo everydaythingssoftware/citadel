@@ -3,7 +3,7 @@ name = "citadel-opds"
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
-description = "Tauri-independent OPDS runtime for Citadel"
+description = "OPDS catalog, authentication, and networking runtime for Citadel"
 
 [dependencies]
 axum = "0.8.9"

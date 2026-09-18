@@ -1,4 +1,4 @@
-//! Tauri-independent OPDS catalog and asset streaming.
+//! Framework-free OPDS catalog, authentication, networking, and service lifecycle for Citadel.
 
 pub mod assets;
 pub mod catalog;
