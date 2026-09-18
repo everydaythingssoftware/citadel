@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, path::PathBuf};
 
 use crate::types::{AuthorId, BookId};
 
@@ -25,9 +25,21 @@ pub enum CalibreError {
     #[error("Book file not found for book {0} with format {1}")]
     BookFileNotFound(BookId, String),
 
-    /// Book file with given ID was not found.
-    #[error("Book file not found")]
-    BookCoverNotFound,
+    /// The book exists, but it has no cover entry.
+    #[error("Cover not found for book {0}")]
+    BookCoverNotFound(BookId),
+
+    /// The database points at an asset which is absent from disk.
+    #[error("Asset file is missing: {0}")]
+    AssetFileMissing(PathBuf),
+
+    /// The database-resolved asset escapes the canonical library root.
+    #[error("Asset path is outside the library root")]
+    AssetOutsideLibrary,
+
+    /// A format identifier is empty or contains path syntax.
+    #[error("Invalid book format: {0}")]
+    InvalidBookFormat(String),
 
     #[error("Author cannot be deleted; they have associated books")]
     AuthorHasAssociatedBooks(Vec<BookId>),

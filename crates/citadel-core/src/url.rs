@@ -164,7 +164,7 @@ mod tests {
     ) -> libcalibre::library::Book {
         libcalibre::library::Book {
             id: libcalibre::BookId::from(1),
-            uuid: "test-uuid".to_string(),
+            uuid: Some("test-uuid".to_string()),
             title: "Title".to_string(),
             sortable_title: None,
             authors: vec![],

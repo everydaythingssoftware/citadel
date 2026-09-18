@@ -654,11 +654,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "citadel-opds"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "chrono",
+ "diesel",
+ "futures-util",
+ "libcalibre",
+ "quick-xml 0.38.4",
+ "reqwest 0.12.28",
+ "serde",
+ "tempfile",
+ "tokio",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
 name = "citadel-rs"
 version = "0.6.1"
 dependencies = [
  "chrono",
  "citadel-core",
+ "citadel-opds",
  "diesel",
  "epub",
  "image",

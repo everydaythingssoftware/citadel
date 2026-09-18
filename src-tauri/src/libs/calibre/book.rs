@@ -59,7 +59,7 @@ pub fn query_page(
     library_root: String,
     lib: &mut Library,
     query: libcalibre::BookQuery,
-) -> Result<(Vec<LibraryBook>, i64), libcalibre::CalibreError> {
+) -> Result<(Vec<LibraryBook>, u64), libcalibre::CalibreError> {
     let page = lib.query_books(query)?;
     let author_book_counts = lib.author_book_counts()?;
 

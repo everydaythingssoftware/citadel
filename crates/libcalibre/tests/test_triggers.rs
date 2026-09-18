@@ -33,8 +33,12 @@ fn test_books_insert_trigger_generates_sort_and_uuid() {
     assert_eq!(book.sortable_title, Some("Great Gatsby, The".to_string()));
 
     // Verify UUID was generated (should be a valid UUID format)
-    assert_eq!(book.uuid.len(), 36); // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-    assert!(book.uuid.contains('-'));
+    let uuid = book
+        .uuid
+        .as_deref()
+        .expect("insert trigger should set UUID");
+    assert_eq!(uuid.len(), 36); // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    assert!(uuid.contains('-'));
 }
 
 /// Test that the books_update_trg trigger updates sort when title changes

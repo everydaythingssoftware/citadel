@@ -32,7 +32,7 @@ struct Args {
     library: PathBuf,
     runs: usize,
     warmup: usize,
-    expect_total: Option<i64>,
+    expect_total: Option<u64>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -317,7 +317,7 @@ fn run() -> Result<(), String> {
             return Err(format!("expected total {expected}, got {total}"));
         }
         let hydrated = &first_page.items[0];
-        if hydrated.uuid.is_empty() || hydrated.authors.is_empty() {
+        if hydrated.uuid.as_deref().is_none_or(str::is_empty) || hydrated.authors.is_empty() {
             return Err("first page items are not fully hydrated".to_string());
         }
         println!("Sanity check passed: total == {expected}, page is hydrated");
@@ -333,8 +333,9 @@ fn run() -> Result<(), String> {
         "Filters: author {prolific_author} ({author_books} books), series {busy_series} ({series_books} books)"
     );
 
-    let middle_offset = (total / 2 / PAGE_SIZE) * PAGE_SIZE;
-    let last_offset = ((total - 1).max(0) / PAGE_SIZE) * PAGE_SIZE;
+    let total_i64 = i64::try_from(total).unwrap_or(i64::MAX);
+    let middle_offset = (total_i64 / 2 / PAGE_SIZE) * PAGE_SIZE;
+    let last_offset = ((total_i64 - 1).max(0) / PAGE_SIZE) * PAGE_SIZE;
 
     let page_query = |offset: i64, sort: BookSortOrder| BookQuery {
         sort,

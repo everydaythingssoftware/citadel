@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use diesel::{Connection, SqliteConnection};
 
 use crate::{
@@ -7,53 +9,144 @@ use crate::{
     CalibreError, UpdateBookData,
 };
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedBookAsset {
+    canonical_path: PathBuf,
+    download_name: String,
+    format: String,
+}
+
+impl ResolvedBookAsset {
+    pub fn canonical_path(&self) -> &Path {
+        &self.canonical_path
+    }
+
+    pub fn download_name(&self) -> &str {
+        &self.download_name
+    }
+
+    pub fn format(&self) -> &str {
+        &self.format
+    }
+}
+
+fn canonical_asset(library_root: &str, path: PathBuf) -> Result<PathBuf, CalibreError> {
+    let canonical_root = Path::new(library_root).canonicalize()?;
+    let canonical_path = match path.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(CalibreError::AssetFileMissing(path));
+        }
+        Err(error) => return Err(CalibreError::IoError(error)),
+    };
+
+    if !canonical_path.starts_with(canonical_root) {
+        return Err(CalibreError::AssetOutsideLibrary);
+    }
+
+    Ok(canonical_path)
+}
+
+fn normalized_format(file_format: &str) -> Result<String, CalibreError> {
+    let trimmed = file_format.trim();
+    let normalized = trimmed
+        .strip_prefix('.')
+        .unwrap_or(trimmed)
+        .to_ascii_uppercase();
+    if normalized.is_empty() || !normalized.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+        return Err(CalibreError::InvalidBookFormat(file_format.to_string()));
+    }
+    Ok(normalized)
+}
+
+pub(crate) fn is_resolvable_book_file(
+    library_root: &str,
+    book_path: &str,
+    file_name: &str,
+    file_format: &str,
+) -> bool {
+    let Ok(format) = normalized_format(file_format) else {
+        return false;
+    };
+    let download_name = format!("{}.{}", file_name, format.to_ascii_lowercase());
+    let path = assets::asset_path(library_root, book_path, &download_name);
+    canonical_asset(library_root, path).is_ok()
+}
+
+pub(crate) fn is_resolvable_book_cover(library_root: &str, book_path: &str) -> bool {
+    let path = assets::asset_path(library_root, book_path, COVER_FILENAME);
+    canonical_asset(library_root, path).is_ok()
+}
+
+pub fn resolve_book_cover(
+    library_root: &str,
+    conn: &mut SqliteConnection,
+    book_id: BookId,
+) -> Result<ResolvedBookAsset, CalibreError> {
+    let book = books::get(conn, book_id)?.ok_or(CalibreError::BookNotFound(book_id))?;
+    if book.has_cover != Some(true) {
+        return Err(CalibreError::BookCoverNotFound(book_id));
+    }
+
+    let path = assets::asset_path(library_root, &book.path, COVER_FILENAME);
+    Ok(ResolvedBookAsset {
+        canonical_path: canonical_asset(library_root, path)?,
+        download_name: COVER_FILENAME.to_string(),
+        format: "JPG".to_string(),
+    })
+}
+
+pub fn resolve_book_file(
+    library_root: &str,
+    conn: &mut SqliteConnection,
+    book_id: BookId,
+    file_format: &str,
+) -> Result<ResolvedBookAsset, CalibreError> {
+    let book = books::get(conn, book_id)?.ok_or(CalibreError::BookNotFound(book_id))?;
+    let requested_format = normalized_format(file_format)?;
+    let file = book_files::find_by_book_and_format(conn, book_id, requested_format.clone())?
+        .ok_or_else(|| CalibreError::BookFileNotFound(book_id, requested_format.clone()))?;
+    let stored_format = file.format.to_ascii_uppercase();
+    let download_name = format!("{}.{}", file.name, stored_format.to_ascii_lowercase());
+    let path = assets::asset_path(library_root, &book.path, &download_name);
+
+    Ok(ResolvedBookAsset {
+        canonical_path: canonical_asset(library_root, path)?,
+        download_name,
+        format: stored_format,
+    })
+}
+
 pub fn get_book_cover(
-    library_root: &String,
+    library_root: &str,
     conn: &mut SqliteConnection,
     book_id: BookId,
 ) -> Result<Vec<u8>, CalibreError> {
-    let book = books::get(conn, book_id)?.ok_or(CalibreError::BookNotFound(book_id))?;
-    let file_path = assets::asset_path(library_root, &book.path, COVER_FILENAME);
-
-    assets::read(&file_path)
+    let asset = resolve_book_cover(library_root, conn, book_id)?;
+    assets::read(asset.canonical_path())
 }
 
 pub fn get_book_file_path(
-    library_root: &String,
+    library_root: &str,
     conn: &mut SqliteConnection,
     book_id: BookId,
     file_format: &str,
 ) -> Result<std::path::PathBuf, CalibreError> {
-    let book = books::get(conn, book_id)?.ok_or(CalibreError::BookNotFound(book_id))?;
-    let file = book_files::find_by_book_and_format(conn, book_id, file_format.to_string())?;
-
-    match file {
-        Some(_) => {
-            let book_filename = filename(book.path.clone(), file_format.to_string());
-            let file_path = assets::asset_path(library_root, &book.path, &book_filename);
-            Ok(file_path)
-        }
-        None => {
-            return Err(CalibreError::BookFileNotFound(
-                book_id,
-                file_format.to_string(),
-            ))
-        }
-    }
+    resolve_book_file(library_root, conn, book_id, file_format).map(|asset| asset.canonical_path)
 }
 
 pub fn get_book_file(
-    library_root: &String,
+    library_root: &str,
     conn: &mut SqliteConnection,
     book_id: BookId,
     file_format: &str,
 ) -> Result<Vec<u8>, CalibreError> {
     let file_path = get_book_file_path(library_root, conn, book_id, file_format)?;
-    return assets::read(&file_path);
+    assets::read(&file_path)
 }
 
 pub fn add_book_file_from_bytes(
-    library_root: &String,
+    library_root: &str,
     conn: &mut SqliteConnection,
     book_id: BookId,
     file_format: String,
@@ -73,7 +166,10 @@ pub fn add_book_file_from_bytes(
     };
 
     match book_files::create(conn, new_file) {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            books::touch(conn, book_id)?;
+            Ok(())
+        }
         Err(e) => {
             // If database entry fails, remove the written file
             let _ = std::fs::remove_file(&file_path);
@@ -83,7 +179,7 @@ pub fn add_book_file_from_bytes(
 }
 
 pub fn add_book_file_from_path(
-    library_root: &String,
+    library_root: &str,
     conn: &mut SqliteConnection,
     book_id: BookId,
     file_format: String,
@@ -107,7 +203,10 @@ pub fn add_book_file_from_path(
     };
 
     match book_files::create(conn, new_file) {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            books::touch(conn, book_id)?;
+            Ok(())
+        }
         Err(e) => {
             // If database entry fails, remove the copied file
             let _ = std::fs::remove_file(&dest_path);
@@ -117,7 +216,7 @@ pub fn add_book_file_from_path(
 }
 
 pub fn set_book_cover(
-    library_root: &String,
+    library_root: &str,
     conn: &mut SqliteConnection,
     book_id: BookId,
     cover_data: Vec<u8>,
@@ -133,12 +232,13 @@ pub fn set_book_cover(
             ..Default::default()
         };
         books::update(conn, book_id, update)?;
+        books::touch(conn, book_id)?;
         Ok(())
     })
 }
 
 pub fn remove_book_file(
-    library_root: &String,
+    library_root: &str,
     conn: &mut SqliteConnection,
     book_id: BookId,
     file_format: &str,
@@ -168,6 +268,7 @@ pub fn remove_book_file(
                     eprintln!("WARNING: Failed to delete file {:?}: {}", file_path, e);
                 }
             }
+            books::touch(conn, book_id)?;
         }
 
         Ok(())
@@ -175,7 +276,7 @@ pub fn remove_book_file(
 }
 
 pub(crate) fn delete_entire_book(
-    library_root: &String,
+    library_root: &str,
     conn: &mut SqliteConnection,
     book_id: BookId,
     book_path: &str,
@@ -192,6 +293,7 @@ pub(crate) fn delete_entire_book(
     }
 
     books::delete(conn, book_id)?;
+    books::touch_catalog(conn)?;
 
     let book_dir = std::path::Path::new(library_root).join(book_path);
     match std::fs::remove_dir_all(&book_dir) {
@@ -212,7 +314,7 @@ fn filename(book_path: String, file_format: String) -> String {
     let base_name = book_path;
 
     if ext.is_empty() {
-        format!("{}", base_name)
+        base_name
     } else {
         format!("{}.{}", base_name, ext)
     }
