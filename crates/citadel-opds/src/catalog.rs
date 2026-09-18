@@ -116,8 +116,8 @@ async fn feed(
         Err(_) => return public_error(StatusCode::INTERNAL_SERVER_ERROR, "Catalog unavailable"),
     };
 
-    let last_page = page_count(page.total);
-    if page_number > last_page && !(page_number == 1 && page.total == 0) {
+    let last_page = page_count(page.total).max(1);
+    if page_number > last_page {
         return public_error(StatusCode::NOT_FOUND, "Page not found");
     }
 
@@ -482,7 +482,7 @@ mod tests {
     use super::*;
     use crate::identity::{book_identity, library_identity};
     use crate::xml::valid_xml_char;
-    use chrono::NaiveDate;
+    use chrono::{DateTime, NaiveDate};
     use diesel::{Connection, RunQueryDsl};
     use libcalibre::{
         library::Book, util::get_db_path, BookAdd, BookFileInfo, BookIdentifier, BookUpdate,
@@ -687,6 +687,9 @@ mod tests {
 
     #[derive(Default)]
     struct ParsedFeed {
+        feed_id: Option<String>,
+        feed_title: Option<String>,
+        feed_updated: Option<String>,
         ids: Vec<String>,
         titles: Vec<String>,
         content: Vec<String>,
@@ -712,6 +715,9 @@ mod tests {
                     if name == b"entry" {
                         in_entry = true;
                     } else if in_entry && matches!(name.as_slice(), b"id" | b"title" | b"content") {
+                        current = Some((name, String::new()));
+                    } else if !in_entry && matches!(name.as_slice(), b"id" | b"title" | b"updated")
+                    {
                         current = Some((name, String::new()));
                     }
                 }
@@ -768,9 +774,22 @@ mod tests {
                     if let Some((name, value)) = current.take() {
                         if element.local_name().as_ref() == name.as_slice() {
                             match name.as_slice() {
-                                b"id" => parsed.ids.push(value),
-                                b"title" => parsed.titles.push(value),
+                                b"id" => {
+                                    if in_entry {
+                                        parsed.ids.push(value);
+                                    } else {
+                                        parsed.feed_id = Some(value);
+                                    }
+                                }
+                                b"title" => {
+                                    if in_entry {
+                                        parsed.titles.push(value);
+                                    } else {
+                                        parsed.feed_title = Some(value);
+                                    }
+                                }
                                 b"content" => parsed.content.push(value),
+                                b"updated" => parsed.feed_updated = Some(value),
                                 _ => {}
                             }
                         } else {
@@ -1135,6 +1154,12 @@ mod tests {
         let feed = parsed_feed(&response.bytes().await.unwrap());
         assert!(feed.ids.is_empty());
         assert!(feed.titles.is_empty());
+        let feed_id = feed.feed_id.expect("feed-level id present");
+        assert!(!feed_id.is_empty());
+        let feed_title = feed.feed_title.expect("feed-level title present");
+        assert!(!feed_title.is_empty());
+        let feed_updated = feed.feed_updated.expect("feed-level updated present");
+        DateTime::parse_from_rfc3339(&feed_updated).expect("feed updated is valid RFC 3339");
         assert!(feed.next.is_none());
         assert!(feed.previous.is_none());
         server.abort();

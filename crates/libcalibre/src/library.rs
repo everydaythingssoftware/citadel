@@ -929,7 +929,7 @@ impl Library {
                 resolvable_ids.push(book_id);
             }
         }
-        let total = u64::try_from(resolvable_ids.len()).unwrap_or(u64::MAX);
+        let total = u64::try_from(resolvable_ids.len()).expect("usize fits in u64");
         let start = usize::try_from(offset.max(0)).unwrap_or(usize::MAX);
         let page_len = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
         let book_ids = resolvable_ids
