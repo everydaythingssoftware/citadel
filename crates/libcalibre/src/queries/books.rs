@@ -104,6 +104,7 @@ pub(crate) struct BookPageFilters<'a> {
     pub author_id: Option<AuthorId>,
     pub series_id: Option<i32>,
     pub tag_id: Option<i32>,
+    pub genre_column: Option<(i32, i32)>,
     /// Id of the `read` bool custom column. When set, books marked read are
     /// excluded.
     pub hide_read_column: Option<i32>,
@@ -180,6 +181,13 @@ fn filter_where_sql(filters: &BookPageFilters) -> String {
         clauses.push(format!(
             "EXISTS (SELECT 1 FROM books_tags_link btl2 \
              WHERE btl2.book = books.id AND btl2.tag = {tag_id})"
+        ));
+    }
+
+    if let Some((column_id, genre_id)) = filters.genre_column {
+        clauses.push(format!(
+            "EXISTS (SELECT 1 FROM books_custom_column_{column_id}_link gc \
+             WHERE gc.book = books.id AND gc.value = {genre_id})"
         ));
     }
 

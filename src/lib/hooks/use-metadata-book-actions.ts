@@ -72,6 +72,7 @@ export const useMetadataBookActions = ({
 	const [lastResolvedSubjects, setLastResolvedSubjects] = useState<string[]>(
 		[],
 	);
+	const [lastResolvedGenres, setLastResolvedGenres] = useState<string[]>([]);
 	const [lastSubjectsSource, setLastSubjectsSource] = useState<string | null>(
 		null,
 	);
@@ -144,6 +145,9 @@ export const useMetadataBookActions = ({
 			form.setFieldValue("authorList", chosen.authors);
 		}
 		setLastResolvedSubjects(chosen.subjects);
+		setLastResolvedGenres(
+			chosen.genre_candidates.map((candidate) => candidate.name),
+		);
 		setLastSubjectsSource(
 			chosen.subjects.length > 0
 				? getDescriptor(chosen.provider).displayName
@@ -299,6 +303,7 @@ export const useMetadataBookActions = ({
 			(id) => getDescriptor(id).displayName,
 		),
 		lastResolvedSubjects,
+		lastResolvedGenres,
 		lastSubjectsSource,
 		isbnIdentifier,
 		fetchFromIsbn,

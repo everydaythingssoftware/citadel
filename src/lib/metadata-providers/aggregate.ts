@@ -8,7 +8,7 @@ import type {
 } from "./types";
 
 export interface AggregatedResult {
-	/** The winning whole record (never field-spliced, except a borrowed cover). */
+	/** The winning record, plus a borrowed cover and merged genre candidates. */
 	book: BookMetadata;
 	/** Display names of other providers that returned the same ISBN. */
 	alsoOn: string[];
@@ -19,8 +19,9 @@ export interface AggregatedResult {
 /**
  * Merge results from several providers into one list. Records sharing an ISBN
  * collapse to the single highest-preference provider's WHOLE record — no
- * field-level merge — with the sole exception that a cover-less winner borrows
- * a peer's cover. Rows matching `pinIsbn` are pinned to the top.
+ * field-level merge — except that a cover-less winner borrows a peer's cover
+ * and explicit, provenanced genre candidates are combined. Rows matching
+ * `pinIsbn` are pinned to the top.
  */
 export const mergeResults = (
 	books: BookMetadata[],
@@ -63,6 +64,15 @@ export const mergeResults = (
 			const peerCover = sorted.find((member) => member.image_url);
 			if (peerCover) winner.image_url = peerCover.image_url;
 		}
+		const seenGenres = new Set<string>();
+		winner.genre_candidates = sorted
+			.flatMap((member) => member.genre_candidates)
+			.filter((candidate) => {
+				const key = candidate.name.trim().toLocaleLowerCase();
+				if (!key || seenGenres.has(key)) return false;
+				seenGenres.add(key);
+				return true;
+			});
 
 		const alsoOn = [
 			...new Set(
