@@ -28,6 +28,12 @@ Development builds are available from [GitHub actions](https://github.com/everyd
 
 Please report any issues or crashes you experience while using any version of Citadel!
 
+### Sharing with KOReader
+
+The desktop app can share the active library as a read-only OPDS catalog on the
+local network. See [Share a library with KOReader](docs/opds-sharing.md) for
+setup, authentication, security limits, and troubleshooting.
+
 ### Installing on macOS
 
 Download the `.dmg` from [Releases](https://github.com/everydaythingssoftware/citadel/releases), drag Citadel to Applications, and open it.

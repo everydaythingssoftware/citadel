@@ -229,20 +229,26 @@ export const SharingSettings = () => {
 							</Button>
 						</div>
 						{generatedPassword && (
-							<div className={classes.generatedPassword} role="status">
-								<div>
-									<strong>Generated password</strong>
-									<code>{generatedPassword}</code>
+							<>
+								<div className={classes.generatedPassword} role="status">
+									<div>
+										<strong>Generated password</strong>
+										<code>{generatedPassword}</code>
+									</div>
+									<Button
+										size="sm"
+										variant="subtle"
+										onClick={() => void copy(generatedPassword)}
+									>
+										<TablerCopy aria-hidden="true" />
+										{copiedUrl === generatedPassword ? "Copied" : "Copy"}
+									</Button>
 								</div>
-								<Button
-									size="sm"
-									variant="subtle"
-									onClick={() => void copy(generatedPassword)}
-								>
-									<TablerCopy aria-hidden="true" />
-									{copiedUrl === generatedPassword ? "Copied" : "Copy"}
-								</Button>
-							</div>
+								<p className={classes.transientNote}>
+									This password is shown only once, right here. Copy it into
+									your reader now. It travels unencrypted on your local network.
+								</p>
+							</>
 						)}
 						<TextInput
 							label={passwordConfigured ? "Replace password" : "Set password"}
