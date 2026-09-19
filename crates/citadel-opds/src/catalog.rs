@@ -13,7 +13,10 @@ use chrono::{NaiveDateTime, SecondsFormat};
 use libcalibre::{BookId, BookPage, CalibreError, ResolvedBookAsset};
 use serde::Deserialize;
 
-use super::assets::{self, AssetMethod, AssetResponseError};
+use super::{
+    assets::{self, AssetMethod, AssetResponseError},
+    auth::{require_basic_auth, OpdsBasicAuth},
+};
 use crate::identity::{book_identity, library_identity};
 
 const PAGE_SIZE: u64 = 50;
@@ -74,7 +77,7 @@ pub(crate) struct FeedEntry {
     pub(crate) content: Option<String>,
 }
 
-pub fn router(source: Arc<dyn CatalogSource>) -> Router {
+pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
     Router::new()
         .route("/opds", get(root_feed))
         .route("/opds/all", get(all_books_feed))
@@ -87,6 +90,10 @@ pub fn router(source: Arc<dyn CatalogSource>) -> Router {
             get(book_cover).head(book_cover_head),
         )
         .with_state(CatalogState { source })
+        .layer(axum::middleware::from_fn_with_state(
+            auth,
+            require_basic_auth,
+        ))
 }
 
 async fn root_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {
@@ -541,6 +548,7 @@ mod tests {
                 .map(|_| "memory-library".to_string())
                 .ok_or(CalibreError::LibraryNotInitialized)
         }
+
         fn book_page(
             &self,
             limit: i64,
@@ -588,6 +596,7 @@ mod tests {
         fn active_library_id(&self) -> Result<String, CalibreError> {
             Err(CalibreError::LibraryNotInitialized)
         }
+
         fn book_page(
             &self,
             _limit: i64,
@@ -613,6 +622,7 @@ mod tests {
         fn active_library_id(&self) -> Result<String, CalibreError> {
             Err((self.0)())
         }
+
         fn book_page(
             &self,
             _limit: i64,
@@ -680,7 +690,9 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let task = tokio::spawn(async move {
-            axum::serve(listener, router(source)).await.unwrap();
+            axum::serve(listener, router(source, OpdsBasicAuth::disabled()))
+                .await
+                .unwrap();
         });
         (format!("http://{address}"), task)
     }

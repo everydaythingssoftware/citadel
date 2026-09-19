@@ -9,7 +9,9 @@ use std::{
     time::Duration,
 };
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::future::join_all;
+use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tokio::{
     sync::{oneshot, Notify},
@@ -17,6 +19,10 @@ use tokio::{
 };
 
 use super::{
+    auth::{create_credentials, OpdsAuthCredentials, OpdsBasicAuth},
+    credentials::{
+        GeneratedOpdsCredentials, OpdsCredentialStatus, OpdsCredentialStore, StoredOpdsCredentials,
+    },
     network::{
         advertised_url, plan_bindings, InterfaceProvider, InterfaceSnapshot,
         NetdevInterfaceProvider, OpdsNetworkInterface, WaitingReason,
@@ -35,6 +41,7 @@ pub use crate::network::OpdsBindTarget;
 pub struct OpdsStartConfig {
     pub target: OpdsBindTarget,
     pub port: u32,
+    pub authentication_enabled: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
@@ -58,6 +65,9 @@ pub enum OpdsErrorCode {
     InterfaceEnumerationFailed,
     PortUnavailable,
     ListenerFailed,
+    InvalidCredentials,
+    CredentialsRequired,
+    CredentialStorageFailed,
     Unexpected,
 }
 
@@ -110,6 +120,7 @@ trait ListenerFactory: Send + Sync {
         &self,
         address: SocketAddr,
         source: Arc<dyn CatalogSource>,
+        auth: OpdsBasicAuth,
         tracker: Arc<ListenerTracker>,
     ) -> io::Result<ServerTask>;
 }
@@ -121,13 +132,14 @@ impl ListenerFactory for TcpListenerFactory {
         &self,
         address: SocketAddr,
         source: Arc<dyn CatalogSource>,
+        auth: OpdsBasicAuth,
         tracker: Arc<ListenerTracker>,
     ) -> io::Result<ServerTask> {
         let listener = StdTcpListener::bind(address)?;
         listener.set_nonblocking(true)?;
         let listener = tokio::net::TcpListener::from_std(listener)?;
         let (shutdown, shutdown_receiver) = oneshot::channel();
-        let app = router(source);
+        let app = router(source, auth);
         let completion = tracker.register();
         let task = tokio::spawn(async move {
             let _completion = completion;
@@ -174,6 +186,7 @@ struct ServiceInner {
     source: Arc<dyn CatalogSource>,
     dependencies: ServiceDependencies,
     listener_tracker: Arc<ListenerTracker>,
+    credentials: OpdsCredentialStore,
 }
 
 #[derive(Clone)]
@@ -182,11 +195,34 @@ pub struct OpdsService {
 }
 
 impl OpdsService {
-    pub fn new(source: Arc<dyn CatalogSource>) -> Self {
-        Self::with_dependencies(source, ServiceDependencies::default())
+    pub fn new(
+        source: Arc<dyn CatalogSource>,
+        credential_path: std::path::PathBuf,
+    ) -> io::Result<Self> {
+        Ok(Self::with_dependencies_and_credentials(
+            source,
+            ServiceDependencies::default(),
+            OpdsCredentialStore::load(credential_path)?,
+        ))
     }
 
-    fn with_dependencies(source: Arc<dyn CatalogSource>, dependencies: ServiceDependencies) -> Self {
+    #[cfg(test)]
+    fn with_dependencies(
+        source: Arc<dyn CatalogSource>,
+        dependencies: ServiceDependencies,
+    ) -> Self {
+        Self::with_dependencies_and_credentials(
+            source,
+            dependencies,
+            OpdsCredentialStore::in_memory(),
+        )
+    }
+
+    fn with_dependencies_and_credentials(
+        source: Arc<dyn CatalogSource>,
+        dependencies: ServiceDependencies,
+        credentials: OpdsCredentialStore,
+    ) -> Self {
         Self {
             inner: Arc::new(ServiceInner {
                 status: Arc::new(Mutex::new(OpdsServiceStatus::default())),
@@ -194,8 +230,66 @@ impl OpdsService {
                 source,
                 dependencies,
                 listener_tracker: Arc::new(ListenerTracker::default()),
+                credentials,
             }),
         }
+    }
+
+    pub fn credential_status(&self) -> OpdsCredentialStatus {
+        self.inner.credentials.status()
+    }
+
+    pub async fn configure_credentials(
+        &self,
+        username: String,
+        password: String,
+    ) -> Result<OpdsCredentialStatus, OpdsStatusError> {
+        let mut controller = self.inner.controller.lock().await;
+        reap_finished_controller(&mut controller, &self.inner.status).await;
+        ensure_credentials_editable(&controller)?;
+        let username = normalize_username(username)?;
+        if password.is_empty() {
+            return Err(invalid_credentials("Enter a password."));
+        }
+        let credentials =
+            tokio::task::spawn_blocking(move || create_credentials(username, password.as_bytes()))
+                .await
+                .map_err(|_| credential_storage_error())?
+                .map_err(|_| credential_storage_error())?;
+        self.inner
+            .credentials
+            .set(StoredOpdsCredentials {
+                username: credentials.username,
+                password_verifier: credentials.verifier,
+            })
+            .map_err(|_| credential_storage_error())?;
+        drop(controller);
+        Ok(self.credential_status())
+    }
+
+    pub async fn clear_credentials(&self) -> Result<OpdsCredentialStatus, OpdsStatusError> {
+        let mut controller = self.inner.controller.lock().await;
+        reap_finished_controller(&mut controller, &self.inner.status).await;
+        ensure_credentials_editable(&controller)?;
+        self.inner
+            .credentials
+            .clear()
+            .map_err(|_| credential_storage_error())?;
+        drop(controller);
+        Ok(self.credential_status())
+    }
+
+    pub async fn generate_credentials(
+        &self,
+        username: String,
+    ) -> Result<GeneratedOpdsCredentials, OpdsStatusError> {
+        let username = normalize_username(username)?;
+        let mut bytes = [0_u8; 18];
+        OsRng.fill_bytes(&mut bytes);
+        let password = URL_SAFE_NO_PAD.encode(bytes);
+        self.configure_credentials(username.clone(), password.clone())
+            .await?;
+        Ok(GeneratedOpdsCredentials { username, password })
     }
 
     pub async fn status(&self) -> OpdsServiceStatus {
@@ -243,6 +337,23 @@ impl OpdsService {
                 message: "Sharing is already active with different network settings. Stop it before changing the interface or port.".to_string(),
             });
         }
+
+        let auth = if config.authentication_enabled {
+            let Some(credentials) = self.inner.credentials.get() else {
+                return Err(OpdsStatusError {
+                    code: OpdsErrorCode::CredentialsRequired,
+                    message: "Set a username and password before enabling authentication."
+                        .to_string(),
+                });
+            };
+            OpdsBasicAuth::enabled(OpdsAuthCredentials {
+                username: credentials.username,
+                verifier: credentials.password_verifier,
+            })
+            .map_err(|_| credential_storage_error())?
+        } else {
+            OpdsBasicAuth::disabled()
+        };
 
         set_configured_status(
             &self.inner.status,
@@ -300,6 +411,7 @@ impl OpdsService {
                     self.inner.dependencies.listeners.as_ref(),
                     self.inner.listener_tracker.clone(),
                     self.inner.source.clone(),
+                    auth.clone(),
                     &self.inner.status,
                     Some(library_id.clone()),
                 )
@@ -323,6 +435,7 @@ impl OpdsService {
             self.inner.dependencies.listeners.clone(),
             self.inner.listener_tracker.clone(),
             self.inner.source.clone(),
+            auth,
             self.inner.status.clone(),
             config.clone(),
             port,
@@ -374,6 +487,45 @@ impl OpdsService {
         }
         drop(controller);
         self.status().await
+    }
+}
+
+fn ensure_credentials_editable(
+    controller: &Option<RunningController>,
+) -> Result<(), OpdsStatusError> {
+    if controller.is_some() {
+        return Err(OpdsStatusError {
+            code: OpdsErrorCode::ConfigurationConflict,
+            message: "Stop sharing before changing credentials.".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn normalize_username(username: String) -> Result<String, OpdsStatusError> {
+    let username = username.trim().to_string();
+    if username.is_empty() {
+        return Err(invalid_credentials("Enter a username."));
+    }
+    if username.contains(':') || username.chars().any(char::is_control) {
+        return Err(invalid_credentials(
+            "The username cannot contain a colon or control characters.",
+        ));
+    }
+    Ok(username)
+}
+
+fn invalid_credentials(message: &str) -> OpdsStatusError {
+    OpdsStatusError {
+        code: OpdsErrorCode::InvalidCredentials,
+        message: message.to_string(),
+    }
+}
+
+fn credential_storage_error() -> OpdsStatusError {
+    OpdsStatusError {
+        code: OpdsErrorCode::CredentialStorageFailed,
+        message: "Citadel could not securely save the sharing credentials.".to_string(),
     }
 }
 
@@ -450,6 +602,7 @@ async fn apply_plan(
     listeners: &dyn ListenerFactory,
     tracker: Arc<ListenerTracker>,
     source: Arc<dyn CatalogSource>,
+    auth: OpdsBasicAuth,
     status: &Mutex<OpdsServiceStatus>,
     library_id: Option<String>,
 ) {
@@ -479,7 +632,8 @@ async fn apply_plan(
             }
             shutdown_servers(&mut stale_servers).await;
 
-            if let Err(error) = start_missing_servers(servers, &desired, listeners, tracker, source)
+            if let Err(error) =
+                start_missing_servers(servers, &desired, listeners, tracker, source, auth)
             {
                 shutdown_servers(servers).await;
                 set_configured_status(
@@ -510,6 +664,7 @@ fn start_missing_servers(
     listeners: &dyn ListenerFactory,
     tracker: Arc<ListenerTracker>,
     source: Arc<dyn CatalogSource>,
+    auth: OpdsBasicAuth,
 ) -> io::Result<()> {
     for address in desired {
         if address.ip().is_unspecified() {
@@ -521,7 +676,7 @@ fn start_missing_servers(
         if !servers.contains_key(address) {
             servers.insert(
                 *address,
-                listeners.start(*address, source.clone(), tracker.clone())?,
+                listeners.start(*address, source.clone(), auth.clone(), tracker.clone())?,
             );
         }
     }
@@ -533,6 +688,7 @@ async fn monitor_service(
     listeners: Arc<dyn ListenerFactory>,
     tracker: Arc<ListenerTracker>,
     source: Arc<dyn CatalogSource>,
+    auth: OpdsBasicAuth,
     status: Arc<Mutex<OpdsServiceStatus>>,
     config: OpdsStartConfig,
     port: u16,
@@ -593,6 +749,7 @@ async fn monitor_service(
             listeners.as_ref(),
             tracker.clone(),
             source.clone(),
+            auth.clone(),
             &status,
             library_id,
         )
@@ -746,14 +903,69 @@ fn bind_error(error: io::Error) -> OpdsStatusError {
 mod tests {
     use std::{
         net::{IpAddr, Ipv4Addr},
-        path::Path,
         sync::atomic::{AtomicBool, Ordering},
     };
 
     use super::*;
-    use crate::network::{
-        AddressScope, InterfaceAddress, OpdsInterfaceKind, OpdsInterfaceState,
-    };
+    use crate::network::{AddressScope, InterfaceAddress, OpdsInterfaceKind, OpdsInterfaceState};
+
+    struct TestSource {
+        library_id: Option<String>,
+    }
+
+    impl CatalogSource for TestSource {
+        fn active_library_id(&self) -> Result<String, libcalibre::CalibreError> {
+            self.library_id
+                .clone()
+                .ok_or(libcalibre::CalibreError::LibraryNotInitialized)
+        }
+
+        fn book_page(
+            &self,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<
+            (String, Option<chrono::NaiveDateTime>, libcalibre::BookPage),
+            libcalibre::CalibreError,
+        > {
+            Ok((
+                self.active_library_id()?,
+                None,
+                libcalibre::BookPage {
+                    items: Vec::new(),
+                    total: 0,
+                },
+            ))
+        }
+
+        fn book_file(
+            &self,
+            book_id: libcalibre::BookId,
+            format: &str,
+        ) -> Result<libcalibre::ResolvedBookAsset, libcalibre::CalibreError> {
+            Err(libcalibre::CalibreError::BookFileNotFound(
+                book_id,
+                format.to_string(),
+            ))
+        }
+
+        fn book_cover(
+            &self,
+            book_id: libcalibre::BookId,
+        ) -> Result<libcalibre::ResolvedBookAsset, libcalibre::CalibreError> {
+            Err(libcalibre::CalibreError::BookCoverNotFound(book_id))
+        }
+    }
+
+    fn test_source() -> Arc<dyn CatalogSource> {
+        Arc::new(TestSource {
+            library_id: Some("test-library".to_string()),
+        })
+    }
+
+    fn missing_source() -> Arc<dyn CatalogSource> {
+        Arc::new(TestSource { library_id: None })
+    }
 
     struct FakeInterfaces {
         current: Mutex<Result<Vec<InterfaceSnapshot>, io::ErrorKind>>,
@@ -830,6 +1042,7 @@ mod tests {
             &self,
             address: SocketAddr,
             _source: Arc<dyn CatalogSource>,
+            _auth: OpdsBasicAuth,
             tracker: Arc<ListenerTracker>,
         ) -> io::Result<ServerTask> {
             if self.fail_bind.swap(false, Ordering::AcqRel) {
@@ -873,64 +1086,6 @@ mod tests {
         }
     }
 
-    struct TestSource {
-        library_id: Option<String>,
-    }
-
-    use chrono::NaiveDateTime;
-
-    impl CatalogSource for TestSource {
-        fn active_library_id(&self) -> Result<String, libcalibre::CalibreError> {
-            self.library_id
-                .clone()
-                .ok_or(libcalibre::CalibreError::LibraryNotInitialized)
-        }
-
-        fn book_page(
-            &self,
-            _limit: i64,
-            _offset: i64,
-        ) -> Result<(String, Option<NaiveDateTime>, libcalibre::BookPage), libcalibre::CalibreError>
-        {
-            Ok((
-                self.active_library_id()?,
-                None,
-                libcalibre::BookPage {
-                    items: Vec::new(),
-                    total: 0,
-                },
-            ))
-        }
-
-        fn book_file(
-            &self,
-            book_id: libcalibre::BookId,
-            format: &str,
-        ) -> Result<libcalibre::ResolvedBookAsset, libcalibre::CalibreError> {
-            Err(libcalibre::CalibreError::BookFileNotFound(
-                book_id,
-                format.to_string(),
-            ))
-        }
-
-        fn book_cover(
-            &self,
-            book_id: libcalibre::BookId,
-        ) -> Result<libcalibre::ResolvedBookAsset, libcalibre::CalibreError> {
-            Err(libcalibre::CalibreError::BookCoverNotFound(book_id))
-        }
-    }
-
-    fn test_source() -> Arc<dyn CatalogSource> {
-        Arc::new(TestSource {
-            library_id: Some("test-library".to_string()),
-        })
-    }
-
-    fn missing_source() -> Arc<dyn CatalogSource> {
-        Arc::new(TestSource { library_id: None })
-    }
-
     fn lan(state: OpdsInterfaceState, address: [u8; 4]) -> InterfaceSnapshot {
         InterfaceSnapshot {
             id: "en0".to_string(),
@@ -953,6 +1108,7 @@ mod tests {
                 id: "en0".to_string(),
             },
             port,
+            authentication_enabled: false,
         }
     }
 
@@ -1061,6 +1217,121 @@ mod tests {
         assert_eq!(service.status().await.port, Some(8080));
         service.stop().await;
         assert_eq!(service.stop().await.state, OpdsLifecycleState::Stopped);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn credentials_are_backend_owned_and_cannot_change_while_running() {
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
+            OpdsInterfaceState::Up,
+            [192, 168, 1, 5],
+        )]));
+        let service = service_with(
+            source,
+            interfaces,
+            Arc::new(FakeListeners::default()),
+            Duration::from_secs(1),
+        );
+
+        let status = service
+            .configure_credentials("  reader  ".to_string(), "secret".to_string())
+            .await
+            .unwrap();
+        assert_eq!(status.username.as_deref(), Some("reader"));
+        assert!(status.configured);
+        assert!(service
+            .inner
+            .credentials
+            .get()
+            .unwrap()
+            .password_verifier
+            .starts_with("$argon2id$"));
+
+        let mut authenticated = config(8080);
+        authenticated.authentication_enabled = true;
+        assert_eq!(
+            service.start(authenticated).await.unwrap().state,
+            OpdsLifecycleState::Running
+        );
+        assert_eq!(
+            service.clear_credentials().await.unwrap_err().code,
+            OpdsErrorCode::ConfigurationConflict
+        );
+        service.stop().await;
+        assert!(!service.clear_credentials().await.unwrap().configured);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn authentication_requires_configured_credentials() {
+        let source = test_source();
+        let service = service_with(
+            source,
+            Arc::new(FakeInterfaces::new(vec![lan(
+                OpdsInterfaceState::Up,
+                [192, 168, 1, 5],
+            )])),
+            Arc::new(FakeListeners::default()),
+            Duration::from_secs(1),
+        );
+        let mut authenticated = config(8080);
+        authenticated.authentication_enabled = true;
+
+        assert_eq!(
+            service.start(authenticated).await.unwrap_err().code,
+            OpdsErrorCode::CredentialsRequired
+        );
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn credential_validation_and_generation_have_defined_whitespace_behavior() {
+        let service = service_with(
+            missing_source(),
+            Arc::new(FakeInterfaces::new(Vec::new())),
+            Arc::new(FakeListeners::default()),
+            Duration::from_secs(1),
+        );
+
+        for username in ["", "   ", "read:er", "read\ner"] {
+            assert_eq!(
+                service
+                    .configure_credentials(username.to_string(), "secret".to_string())
+                    .await
+                    .unwrap_err()
+                    .code,
+                OpdsErrorCode::InvalidCredentials
+            );
+        }
+        assert_eq!(
+            service
+                .configure_credentials("reader".to_string(), String::new())
+                .await
+                .unwrap_err()
+                .code,
+            OpdsErrorCode::InvalidCredentials
+        );
+
+        service
+            .configure_credentials(" reader ".to_string(), "   ".to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            service.credential_status().username.as_deref(),
+            Some("reader")
+        );
+
+        let generated = service
+            .generate_credentials("reader".to_string())
+            .await
+            .unwrap();
+        assert_eq!(generated.password.len(), 24);
+        assert!(!service
+            .inner
+            .credentials
+            .get()
+            .unwrap()
+            .password_verifier
+            .contains(&generated.password));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1185,7 +1456,12 @@ mod tests {
         let address = occupied.local_addr().unwrap();
         let factory = TcpListenerFactory;
         let tracker = Arc::new(ListenerTracker::default());
-        let error = match factory.start(address, missing_source(), tracker.clone()) {
+        let error = match factory.start(
+            address,
+            missing_source(),
+            OpdsBasicAuth::disabled(),
+            tracker.clone(),
+        ) {
             Ok(_) => panic!("occupied listener unexpectedly bound"),
             Err(error) => error,
         };
@@ -1195,7 +1471,12 @@ mod tests {
         let mut servers = BTreeMap::from([(
             address,
             factory
-                .start(address, missing_source(), tracker.clone())
+                .start(
+                    address,
+                    missing_source(),
+                    OpdsBasicAuth::disabled(),
+                    tracker.clone(),
+                )
                 .unwrap(),
         )]);
         shutdown_servers(&mut servers).await;
