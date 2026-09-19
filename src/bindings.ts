@@ -555,7 +555,7 @@ export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: s
  */
 export type MetadataProvider = "hardcover" | "loc" | "dnb" | "k10plus" | "openlibrary"
 export type NewAuthor = { name: string; sortable_name: string | null }
-export type OpdsBindTarget = { type: "allLocalNetworks" } | { type: "interface"; id: string }
+export type OpdsBindTarget = { type: "allLocalNetworks" } | { type: "interface"; id: string } | { type: "addresses"; addresses: string[] }
 export type OpdsCredentialStatus = { configured: boolean; username: string | null }
 export type OpdsErrorCode = "invalidPort" | "libraryNotReady" | "configurationConflict" | "interfaceUnavailable" | "interfaceEnumerationFailed" | "portUnavailable" | "listenerFailed" | "invalidCredentials" | "credentialsRequired" | "credentialStorageFailed" | "unexpected"
 export type OpdsInterfaceKind = "lan" | "vpn" | "loopback" | "other"

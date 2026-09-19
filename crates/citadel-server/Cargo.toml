@@ -1,0 +1,20 @@
+[package]
+name = "citadel-server"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "Headless Citadel OPDS server"
+
+[dependencies]
+chrono = "0.4.31"
+citadel-opds = { path = "../citadel-opds" }
+libcalibre = { path = "../libcalibre" }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "signal", "time"] }
+toml = "0.9"
+
+[dev-dependencies]
+base64 = "0.22"
+nix = { version = "0.30", features = ["signal"] }
+reqwest = { version = "0.12", features = ["blocking"] }
+tempfile = "3.8"
