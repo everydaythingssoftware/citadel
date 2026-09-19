@@ -252,3 +252,25 @@ describe("useSettings smart shelves", () => {
 		expect(useSettings.getState().smartShelves).toHaveLength(1);
 	});
 });
+
+describe("useSettings sharing preferences", () => {
+	it("persists the safe sharing shape across an app restart", async () => {
+		const manager = createFakeSettingsManager();
+		const first = await importStore(manager);
+		const sharing = {
+			target: { type: "interface", id: "en7" } as const,
+			port: 9090,
+			authenticationEnabled: true,
+			username: "reader",
+		};
+
+		await first.getState().setSharing(sharing);
+		expect(await manager.get("sharing")).toEqual(sharing);
+		expect(JSON.stringify(await manager.get("sharing"))).not.toMatch(
+			/password|verifier/i,
+		);
+
+		const second = await importStore(manager);
+		expect(second.getState().sharing).toEqual(sharing);
+	});
+});

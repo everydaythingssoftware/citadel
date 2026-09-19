@@ -45,7 +45,7 @@ describe("migrateSettings", () => {
 			},
 		};
 		const result = migrateSettings(v1);
-		expect(result.settingsSchemaVersion).toBe(2);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		// K10plus added and enabled, inserted right after DNB.
 		expect(result.metadataProviders.configs.k10plus).toEqual({
 			enabled: true,
@@ -61,6 +61,21 @@ describe("migrateSettings", () => {
 		// Existing choices untouched.
 		expect(result.metadataProviders.configs.loc?.enabled).toBe(false);
 		expect(result.metadataProviders.configs.hardcover?.apiKey).toBe("kept");
+	});
+
+	it("advances v2 installs without persisting any sharing secret", () => {
+		const result = migrateSettings({
+			...defaultSettings,
+			settingsSchemaVersion: 2,
+		});
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+		expect(result.sharing).toEqual({
+			target: { type: "allLocalNetworks" },
+			port: 8080,
+			authenticationEnabled: false,
+			username: "",
+		});
+		expect(JSON.stringify(result.sharing)).not.toMatch(/password|verifier/i);
 	});
 
 	it("is a no-op once already at the current version", () => {
