@@ -1,6 +1,11 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::{
+    atomic::{AtomicU8, Ordering},
+    Arc,
+};
+
 use libs::calibre;
 #[cfg(debug_assertions)]
 use specta_typescript::Typescript;
@@ -16,6 +21,7 @@ pub mod libs {
 mod book;
 mod menu;
 mod metadata;
+pub mod opds;
 mod state;
 
 fn run_tauri_backend() -> std::io::Result<()> {
@@ -64,6 +70,11 @@ fn run_tauri_backend() -> std::io::Result<()> {
         metadata::commands::clb_query_metadata_by_isbn,
         app_updates::clb_cmd_check_for_updates,
         app_updates::clb_cmd_install_update_if_available,
+        // OPDS sharing commands
+        opds::commands::clb_query_opds_interfaces,
+        opds::commands::clb_cmd_start_opds,
+        opds::commands::clb_cmd_stop_opds,
+        opds::commands::clb_query_opds_status,
         // Window commands
         menu::clb_cmd_open_settings,
     ]);
@@ -86,10 +97,13 @@ fn run_tauri_backend() -> std::io::Result<()> {
         tauri_builder = tauri_builder.plugin(tauri_plugin_webdriver_automation::init());
     }
 
-    tauri_builder
+    let state = state::CitadelState::new();
+    let opds_service = citadel_opds::OpdsService::new(Arc::new(state.clone()));
+    let app = tauri_builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(state::CitadelState::new())
+        .manage(state)
+        .manage(opds_service)
         .invoke_handler(builder.invoke_handler())
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {
@@ -140,8 +154,42 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    const RUNNING: u8 = 0;
+    const STOPPING: u8 = 1;
+    const EXITING: u8 = 2;
+    let exit_phase = Arc::new(AtomicU8::new(RUNNING));
+    app.run(move |app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
+            match exit_phase.compare_exchange(
+                RUNNING,
+                STOPPING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    api.prevent_exit();
+                    let app_handle = app_handle.clone();
+                    let opds_service = app_handle
+                        .state::<citadel_opds::OpdsService>()
+                        .inner()
+                        .clone();
+                    let exit_phase = exit_phase.clone();
+                    let exit_code = code.unwrap_or(0);
+                    tauri::async_runtime::spawn(async move {
+                        opds_service.stop().await;
+                        exit_phase.store(EXITING, Ordering::Release);
+                        app_handle.exit(exit_code);
+                    });
+                }
+                Err(STOPPING) => api.prevent_exit(),
+                Err(EXITING) => {}
+                Err(_) => unreachable!(),
+            }
+        }
+    });
 
     Ok(())
 }
