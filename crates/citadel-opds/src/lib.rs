@@ -3,6 +3,7 @@
 pub mod assets;
 pub mod catalog;
 mod identity;
+pub mod network;
 mod xml;
 
 pub use catalog::{router, CatalogSource};
