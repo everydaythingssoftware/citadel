@@ -19,9 +19,9 @@ pub mod util;
 pub use custom_columns::{CustomColumn, CustomColumnKind, CustomColumnSpec, CustomValue};
 pub use error::CalibreError;
 pub use library::{
-    Author as LibraryAuthor, AuthorAdd, AuthorUpdate, Book as LibraryBook, BookAdd, BookFileInfo,
-    BookIdentifier, BookPage, BookQuery, BookSortOrder, BookUpdate, Library, ResolvedBookAsset,
-    SeriesSummary, TagSummary,
+    Author as LibraryAuthor, AuthorAdd, AuthorSummary, AuthorUpdate, Book as LibraryBook, BookAdd,
+    BookFileInfo, BookIdentifier, BookPage, BookQuery, BookSortOrder, BookUpdate, Library,
+    ResolvedBookAsset, SeriesSummary, TagSummary,
 };
 pub use stats::{library_stats, LibraryStats};
 pub use types::{AuthorId, BookFileId, BookId};
