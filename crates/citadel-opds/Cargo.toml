@@ -7,6 +7,7 @@ description = "OPDS catalog, authentication, and networking runtime for Citadel"
 
 [dependencies]
 axum = "0.8.9"
+base64 = "0.22"
 bytes = "1"
 chrono = { version = "0.4.31", features = ["serde"] }
 futures-util = "0.3"
@@ -21,5 +22,6 @@ uuid = { version = "1.6.1", features = ["v4", "fast-rng"] }
 
 [dev-dependencies]
 diesel = { version = "2.2.4", features = ["sqlite"] }
-reqwest = "0.12"
+reqwest = { version = "0.12", features = ["json"] }
 tempfile = "3.8"
+tower = "0.5"

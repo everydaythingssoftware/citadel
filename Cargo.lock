@@ -658,6 +658,7 @@ name = "citadel-opds"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "diesel",
@@ -670,6 +671,7 @@ dependencies = [
  "specta",
  "tempfile",
  "tokio",
+ "tower",
  "urlencoding",
  "uuid",
 ]
@@ -687,6 +689,7 @@ dependencies = [
  "libcalibre",
  "log",
  "mobi",
+ "netdev",
  "quick-xml 0.38.4",
  "regex",
  "reqwest 0.12.28",
@@ -708,6 +711,7 @@ dependencies = [
  "tauri-plugin-webdriver-automation",
  "tauri-specta",
  "tempfile",
+ "tokio",
  "urlencoding",
  "uuid",
  "zip 0.6.6",
