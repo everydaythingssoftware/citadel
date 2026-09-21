@@ -6,7 +6,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures_util::future::join_all;
@@ -18,7 +18,7 @@ use tokio::{
 
 use super::{
     network::{
-        advertised_url, plan_bindings, InterfaceProvider, InterfaceSnapshot,
+        advertised_url, plan_bindings, BindPolicy, InterfaceProvider, InterfaceSnapshot,
         NetdevInterfaceProvider, OpdsNetworkInterface, WaitingReason,
     },
     router, CatalogSource,
@@ -27,6 +27,8 @@ use super::{
 const MONITOR_INTERVAL: Duration = Duration::from_secs(2);
 const LISTENER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const WORKER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(6);
+const MAX_RETRY_BACKOFF: Duration = Duration::from_secs(60);
+const TRANSIENT_ERROR_THRESHOLD: usize = 2;
 
 pub use crate::network::OpdsBindTarget;
 
@@ -305,6 +307,9 @@ impl OpdsService {
                     self.inner.source.clone(),
                     &self.inner.status,
                     Some(library_id.clone()),
+                    &mut BTreeMap::new(),
+                    self.inner.dependencies.monitor_interval,
+                    BindPolicy::default(),
                 )
                 .await;
             }
@@ -445,6 +450,76 @@ async fn active_library_id(source: Arc<dyn CatalogSource>) -> Option<String> {
         .flatten()
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BindFailureClass {
+    Persistent,
+    Transient,
+}
+
+struct ListenerFailure {
+    class: BindFailureClass,
+    consecutive: usize,
+    next_retry: Option<Instant>,
+}
+
+impl Default for ListenerFailure {
+    fn default() -> Self {
+        Self {
+            class: BindFailureClass::Transient,
+            consecutive: 0,
+            next_retry: None,
+        }
+    }
+}
+
+/// Address-in-use and permission errors do not heal on their own; everything
+/// else (an address vanishing mid-bind, transient socket exhaustion) is worth
+/// retrying.
+fn classify_bind_error(error: &io::Error) -> BindFailureClass {
+    match error.kind() {
+        io::ErrorKind::AddrInUse | io::ErrorKind::PermissionDenied => BindFailureClass::Persistent,
+        _ => BindFailureClass::Transient,
+    }
+}
+
+fn bind_failure_error(address: SocketAddr, class: BindFailureClass) -> OpdsStatusError {
+    match class {
+        BindFailureClass::Persistent => OpdsStatusError {
+            code: OpdsErrorCode::PortUnavailable,
+            message: format!(
+                "The port Citadel uses for {address} is unavailable or restricted. Pick a different port."
+            ),
+        },
+        BindFailureClass::Transient => OpdsStatusError {
+            code: OpdsErrorCode::ListenerFailed,
+            message: format!(
+                "Citadel could not open the listener on {address}. It will keep trying."
+            ),
+        },
+    }
+}
+
+fn retry_delay(attempts: usize, base: Duration) -> Duration {
+    let shift = attempts.saturating_sub(1).min(6) as u32;
+    base.saturating_mul(1u32 << shift).min(MAX_RETRY_BACKOFF)
+}
+
+fn record_failure(
+    failures: &mut BTreeMap<SocketAddr, ListenerFailure>,
+    address: SocketAddr,
+    class: BindFailureClass,
+    now: Instant,
+    retry_base: Duration,
+) {
+    let entry = failures.entry(address).or_default();
+    entry.class = class;
+    entry.consecutive = entry.consecutive.saturating_add(1);
+    entry.next_retry = match class {
+        BindFailureClass::Persistent => None,
+        BindFailureClass::Transient => Some(now + retry_delay(entry.consecutive, retry_base)),
+    };
+}
+
 async fn apply_plan(
     interfaces: &[InterfaceSnapshot],
     config: &OpdsStartConfig,
@@ -455,10 +530,14 @@ async fn apply_plan(
     source: Arc<dyn CatalogSource>,
     status: &Mutex<OpdsServiceStatus>,
     library_id: Option<String>,
+    failures: &mut BTreeMap<SocketAddr, ListenerFailure>,
+    retry_base: Duration,
+    policy: BindPolicy,
 ) {
-    match plan_bindings(interfaces, &config.target, port) {
+    match plan_bindings(interfaces, &config.target, port, policy) {
         super::network::BindPlan::Wait(reason) => {
             shutdown_servers(servers).await;
+            failures.clear();
             set_configured_status(
                 status,
                 config,
@@ -479,56 +558,100 @@ async fn apply_plan(
                 if let Some(server) = servers.remove(&address) {
                     stale_servers.insert(address, server);
                 }
+                failures.remove(&address);
             }
             shutdown_servers(&mut stale_servers).await;
 
-            if let Err(error) = start_missing_servers(servers, &desired, listeners, tracker, source)
-            {
-                shutdown_servers(servers).await;
+            let now = Instant::now();
+            let mut persistent_failure = None;
+            let mut worst_transient = 0usize;
+            for address in &desired {
+                if servers.contains_key(address) {
+                    continue;
+                }
+                if failures
+                    .get(address)
+                    .is_some_and(|failure| match failure.class {
+                        BindFailureClass::Persistent => true,
+                        BindFailureClass::Transient => {
+                            failure.next_retry.is_some_and(|at| at > now)
+                        }
+                    })
+                {
+                    continue;
+                }
+                match listeners.start(*address, source.clone(), tracker.clone()) {
+                    Ok(task) => {
+                        servers.insert(*address, task);
+                        failures.remove(address);
+                    }
+                    Err(error) => {
+                        let class = classify_bind_error(&error);
+                        let consecutive = failures
+                            .get(address)
+                            .map(|failure| failure.consecutive)
+                            .unwrap_or_default()
+                            + 1;
+                        record_failure(failures, *address, class, now, retry_base);
+                        match class {
+                            BindFailureClass::Persistent => {
+                                if persistent_failure.is_none() {
+                                    persistent_failure = Some((*address, class));
+                                }
+                            }
+                            BindFailureClass::Transient => {
+                                worst_transient = worst_transient.max(consecutive);
+                            }
+                        }
+                    }
+                }
+            }
+
+            let bound: BTreeSet<SocketAddr> = servers.keys().copied().collect();
+            if let Some((address, class)) = persistent_failure {
                 set_configured_status(
                     status,
                     config,
                     OpdsLifecycleState::Error,
-                    Some(bind_error(error)),
+                    Some(bind_failure_error(address, class)),
+                    urls(&bound),
+                    library_id,
+                );
+            } else if worst_transient >= TRANSIENT_ERROR_THRESHOLD {
+                set_configured_status(
+                    status,
+                    config,
+                    OpdsLifecycleState::Error,
+                    Some(OpdsStatusError {
+                        code: OpdsErrorCode::ListenerFailed,
+                        message:
+                            "Citadel is having trouble opening its sharing listeners. It will keep trying."
+                                .to_string(),
+                    }),
+                    urls(&bound),
+                    library_id,
+                );
+            } else if !bound.is_empty() {
+                set_configured_status(
+                    status,
+                    config,
+                    OpdsLifecycleState::Running,
+                    None,
+                    urls(&bound),
+                    library_id,
+                );
+            } else {
+                set_configured_status(
+                    status,
+                    config,
+                    OpdsLifecycleState::Starting,
+                    None,
                     Vec::new(),
                     library_id,
                 );
-                return;
             }
-            set_configured_status(
-                status,
-                config,
-                OpdsLifecycleState::Running,
-                None,
-                urls(&desired),
-                library_id,
-            );
         }
     }
-}
-
-fn start_missing_servers(
-    servers: &mut BTreeMap<SocketAddr, ServerTask>,
-    desired: &BTreeSet<SocketAddr>,
-    listeners: &dyn ListenerFactory,
-    tracker: Arc<ListenerTracker>,
-    source: Arc<dyn CatalogSource>,
-) -> io::Result<()> {
-    for address in desired {
-        if address.ip().is_unspecified() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "wildcard listeners are forbidden",
-            ));
-        }
-        if !servers.contains_key(address) {
-            servers.insert(
-                *address,
-                listeners.start(*address, source.clone(), tracker.clone())?,
-            );
-        }
-    }
-    Ok(())
 }
 
 async fn monitor_service(
@@ -546,44 +669,38 @@ async fn monitor_service(
     let mut ticker = tokio::time::interval(interval);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     ticker.tick().await;
+    let mut failures: BTreeMap<SocketAddr, ListenerFailure> = BTreeMap::new();
     loop {
         tokio::select! {
             _ = &mut stop => break,
             _ = ticker.tick() => {}
         }
 
-        if servers
-            .values()
-            .any(|server| server.task.as_ref().is_some_and(JoinHandle::is_finished))
-        {
-            shutdown_servers(&mut servers).await;
-            set_configured_status(
-                &status,
-                &config,
-                OpdsLifecycleState::Error,
-                Some(OpdsStatusError {
-                    code: OpdsErrorCode::ListenerFailed,
-                    message: "An OPDS listener stopped unexpectedly; Citadel will retry."
-                        .to_string(),
-                }),
-                Vec::new(),
-                None,
+        let dead = servers
+            .iter()
+            .filter(|(_, server)| server.task.as_ref().is_some_and(JoinHandle::is_finished))
+            .map(|(address, _)| *address)
+            .collect::<Vec<_>>();
+        for address in dead {
+            if let Some(mut server) = servers.remove(&address) {
+                if let Some(task) = server.task.take() {
+                    let _ = task.await;
+                }
+            }
+            record_failure(
+                &mut failures,
+                address,
+                BindFailureClass::Transient,
+                Instant::now(),
+                interval,
             );
-            continue;
         }
 
         let snapshot = match snapshot_interfaces(interfaces.clone()).await {
             Ok(snapshot) => snapshot,
             Err(_) => {
-                shutdown_servers(&mut servers).await;
-                set_configured_status(
-                    &status,
-                    &config,
-                    OpdsLifecycleState::Error,
-                    Some(interface_enumeration_error(true)),
-                    Vec::new(),
-                    None,
-                );
+                // Keep the existing listeners serving on the last known plan;
+                // advertisement refreshes on the next successful snapshot.
                 continue;
             }
         };
@@ -598,6 +715,9 @@ async fn monitor_service(
             source.clone(),
             &status,
             library_id,
+            &mut failures,
+            interval,
+            BindPolicy::default(),
         )
         .await;
     }
@@ -731,20 +851,6 @@ fn interface_enumeration_error(retrying: bool) -> OpdsStatusError {
     }
 }
 
-fn bind_error(error: io::Error) -> OpdsStatusError {
-    if error.kind() == io::ErrorKind::AddrInUse {
-        OpdsStatusError {
-            code: OpdsErrorCode::PortUnavailable,
-            message: "That port is already in use on the selected network interface.".to_string(),
-        }
-    } else {
-        OpdsStatusError {
-            code: OpdsErrorCode::Unexpected,
-            message: "Citadel could not open the requested OPDS listener.".to_string(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::{
@@ -824,6 +930,8 @@ mod tests {
         fail_bind: AtomicBool,
         fail_task: AtomicBool,
         hold_shutdown: Arc<AtomicBool>,
+        fail_every: Mutex<Option<io::ErrorKind>>,
+        fail_addrs: Mutex<BTreeSet<SocketAddr>>,
     }
 
     impl ListenerFactory for FakeListeners {
@@ -833,6 +941,12 @@ mod tests {
             _source: Arc<dyn CatalogSource>,
             tracker: Arc<ListenerTracker>,
         ) -> io::Result<ServerTask> {
+            if let Some(kind) = *self.fail_every.lock().unwrap() {
+                return Err(io::Error::from(kind));
+            }
+            if self.fail_addrs.lock().unwrap().contains(&address) {
+                return Err(io::Error::from(io::ErrorKind::AddrInUse));
+            }
             if self.fail_bind.swap(false, Ordering::AcqRel) {
                 return Err(io::Error::from(io::ErrorKind::AddrInUse));
             }
@@ -936,6 +1050,7 @@ mod tests {
         InterfaceSnapshot {
             id: "en0".to_string(),
             label: "Ethernet".to_string(),
+            description: None,
             state,
             kind: OpdsInterfaceKind::Lan,
             addresses: vec![InterfaceAddress {
@@ -1113,12 +1228,127 @@ mod tests {
         );
 
         service.start(config(8080)).await.unwrap();
-        let failed = wait_for_state(&service, OpdsLifecycleState::Error).await;
-        assert_eq!(failed.error.unwrap().code, OpdsErrorCode::ListenerFailed);
-        wait_for_state(&service, OpdsLifecycleState::Running).await;
-        assert_eq!(listeners.active.lock().unwrap().len(), 1);
+        while !listeners.active.lock().unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let mut restarted = None;
+        for _ in 0..200 {
+            let status = service.status().await;
+            if status.state == OpdsLifecycleState::Running
+                && listeners.active.lock().unwrap().len() == 1
+            {
+                restarted = Some(status);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let restarted = restarted.expect("listener was not restarted");
+        assert!(restarted.error.is_none());
         service.stop().await;
         assert!(listeners.active.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn repeated_transient_bind_failures_surface_an_error_then_recover() {
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
+            OpdsInterfaceState::Up,
+            [192, 168, 1, 5],
+        )]));
+        let listeners = Arc::new(FakeListeners::default());
+        *listeners.fail_every.lock().unwrap() = Some(io::ErrorKind::AddrNotAvailable);
+        let service = service_with(
+            source,
+            interfaces,
+            listeners.clone(),
+            Duration::from_millis(10),
+        );
+
+        service.start(config(8080)).await.unwrap();
+        let failed = wait_for_state(&service, OpdsLifecycleState::Error).await;
+        assert_eq!(failed.error.unwrap().code, OpdsErrorCode::ListenerFailed);
+
+        *listeners.fail_every.lock().unwrap() = None;
+        wait_for_state(&service, OpdsLifecycleState::Running).await;
+        service.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn persistent_bind_failure_keeps_the_other_listeners_serving() {
+        let source = test_source();
+        let other = InterfaceSnapshot {
+            id: "en1".to_string(),
+            label: "en1 label".to_string(),
+            description: None,
+            state: OpdsInterfaceState::Up,
+            kind: OpdsInterfaceKind::Lan,
+            addresses: vec![InterfaceAddress {
+                address: IpAddr::V4(Ipv4Addr::new(192, 168, 2, 5)),
+                scope: AddressScope::Private,
+                deprecated: false,
+                tentative: false,
+                duplicated: false,
+            }],
+        };
+        let interfaces = Arc::new(FakeInterfaces::new(vec![
+            lan(OpdsInterfaceState::Up, [192, 168, 1, 5]),
+            other,
+        ]));
+        let listeners = Arc::new(FakeListeners::default());
+        listeners
+            .fail_addrs
+            .lock()
+            .unwrap()
+            .insert("192.168.2.5:8080".parse().unwrap());
+        let service = service_with(
+            source,
+            interfaces,
+            listeners.clone(),
+            Duration::from_millis(10),
+        );
+
+        let failed = service
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::AllLocalNetworks,
+                port: 8080,
+            })
+            .await
+            .unwrap();
+        assert_eq!(failed.state, OpdsLifecycleState::Error);
+        assert_eq!(failed.error.unwrap().code, OpdsErrorCode::PortUnavailable);
+        assert!(!failed.urls.is_empty());
+        assert_eq!(listeners.active.lock().unwrap().len(), 1);
+        service.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn interface_enumeration_hiccup_keeps_listeners_serving() {
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
+            OpdsInterfaceState::Up,
+            [192, 168, 1, 5],
+        )]));
+        let listeners = Arc::new(FakeListeners::default());
+        let service = service_with(
+            source,
+            interfaces.clone(),
+            listeners.clone(),
+            Duration::from_millis(10),
+        );
+
+        service.start(config(8080)).await.unwrap();
+        interfaces.set_error(io::ErrorKind::Other);
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        assert_eq!(
+            service.status().await.state,
+            OpdsLifecycleState::Running,
+            "a transient snapshot failure must not stop serving"
+        );
+        assert_eq!(listeners.active.lock().unwrap().len(), 1);
+
+        interfaces.set(vec![lan(OpdsInterfaceState::Up, [192, 168, 1, 5])]);
+        wait_for_state(&service, OpdsLifecycleState::Running).await;
+        service.stop().await;
     }
 
     #[tokio::test(flavor = "multi_thread")]

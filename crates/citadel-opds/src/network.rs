@@ -65,9 +65,11 @@ pub(crate) struct InterfaceSnapshot {
 }
 
 impl InterfaceSnapshot {
-    pub fn bindable_ips(&self) -> impl Iterator<Item = IpAddr> + '_ {
+    pub fn bindable_ips(&self, policy: BindPolicy) -> impl Iterator<Item = IpAddr> + '_ {
+        let allow_global = policy.allow_global;
         self.addresses
             .iter()
+            .filter(move |address| allow_global || address.scope != AddressScope::Global)
             .filter_map(|address| match (address.address, &address.scope) {
                 (
                     IpAddr::V4(ip),
@@ -82,8 +84,8 @@ impl InterfaceSnapshot {
             })
     }
 
-    pub fn bindable_addresses(&self, port: u16) -> Vec<SocketAddr> {
-        self.bindable_ips()
+    pub fn bindable_addresses(&self, port: u16, policy: BindPolicy) -> Vec<SocketAddr> {
+        self.bindable_ips(policy)
             .map(|ip| match ip {
                 IpAddr::V4(ip) => SocketAddr::new(IpAddr::V4(ip), port),
                 IpAddr::V6(ip) => SocketAddr::V6(SocketAddrV6::new(ip, port, 0, 0)),
@@ -93,7 +95,7 @@ impl InterfaceSnapshot {
 
     pub fn public(&self) -> OpdsNetworkInterface {
         let addresses = self
-            .bindable_ips()
+            .bindable_ips(BindPolicy::default())
             .map(|address| address.to_string())
             .collect::<Vec<_>>();
         OpdsNetworkInterface {
@@ -334,6 +336,21 @@ pub(crate) enum BindPlan {
     Wait(WaitingReason),
 }
 
+/// What address scopes sharing may reach. Globally-routable addresses stay
+/// excluded until the caller can vouch for them (auth-enabled sharing).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct BindPolicy {
+    pub allow_global: bool,
+}
+
+impl Default for BindPolicy {
+    fn default() -> Self {
+        Self {
+            allow_global: false,
+        }
+    }
+}
+
 /// Pure and cheap: the service layer re-snapshots interfaces and re-plans on
 /// every change (DHCP renew, roam, sleep/wake), so callers must not assume a
 /// plan outlives the interface state it was computed from.
@@ -341,6 +358,7 @@ pub(crate) fn plan_bindings(
     interfaces: &[InterfaceSnapshot],
     target: &OpdsBindTarget,
     port: u16,
+    policy: BindPolicy,
 ) -> BindPlan {
     let selected = match target {
         OpdsBindTarget::AllLocalNetworks => interfaces
@@ -366,7 +384,7 @@ pub(crate) fn plan_bindings(
 
     let addresses = selected
         .into_iter()
-        .flat_map(|interface| interface.bindable_addresses(port))
+        .flat_map(|interface| interface.bindable_addresses(port, policy))
         .collect::<BTreeSet<_>>();
     if addresses.is_empty() {
         BindPlan::Wait(match target {
@@ -463,6 +481,7 @@ mod tests {
             &interfaces,
             &OpdsBindTarget::AllLocalNetworks,
             8080,
+            BindPolicy::default(),
         ));
 
         assert_eq!(
@@ -490,7 +509,7 @@ mod tests {
                 "en1",
                 OpdsInterfaceKind::Lan,
                 OpdsInterfaceState::Up,
-                vec![ipv4([192, 168, 2, 42]), ipv6("2001:db8::42")],
+                vec![ipv4([192, 168, 2, 42]), ipv6("fd12:3456::42")],
             ),
         ];
 
@@ -500,13 +519,14 @@ mod tests {
                 id: "en1".to_string(),
             },
             8080,
+            BindPolicy::default(),
         ));
 
         assert_eq!(
             addresses,
             BTreeSet::from([
                 "192.168.2.42:8080".parse().unwrap(),
-                "[2001:db8::42]:8080".parse().unwrap(),
+                "[fd12:3456::42]:8080".parse().unwrap(),
             ])
         );
     }
@@ -519,6 +539,7 @@ mod tests {
                 id: "en0".to_string(),
             },
             8080,
+            BindPolicy::default(),
         );
         assert_eq!(
             missing,
@@ -536,6 +557,7 @@ mod tests {
                 id: "en0".to_string(),
             },
             8080,
+            BindPolicy::default(),
         );
         assert_eq!(
             down,
@@ -553,6 +575,7 @@ mod tests {
                 id: "en0".to_string(),
             },
             8080,
+            BindPolicy::default(),
         );
         assert_eq!(
             unusable,
@@ -578,6 +601,7 @@ mod tests {
                 id: "lo0".to_string(),
             },
             8080,
+            BindPolicy::default(),
         );
 
         assert_eq!(
@@ -608,7 +632,7 @@ mod tests {
         );
 
         assert_eq!(
-            snapshot.bindable_addresses(8080),
+            snapshot.bindable_addresses(8080, BindPolicy::default()),
             vec!["[fd12::1]:8080".parse().unwrap()]
         );
     }
@@ -690,8 +714,32 @@ mod tests {
                     id: "br0".to_string(),
                 },
                 8080,
+                BindPolicy::default(),
             ),
             BindPlan::Listen(BTreeSet::from(["192.168.1.7:8080".parse().unwrap()]))
+        );
+    }
+
+    #[test]
+    fn global_addresses_bind_only_when_the_policy_allows_them() {
+        let snapshot = interface(
+            "en0",
+            OpdsInterfaceKind::Lan,
+            OpdsInterfaceState::Up,
+            vec![ipv4([192, 168, 1, 42]), ipv6("2001:db8::42")],
+        );
+
+        assert_eq!(
+            snapshot
+                .bindable_addresses(8080, BindPolicy::default())
+                .len(),
+            1
+        );
+        assert_eq!(
+            snapshot
+                .bindable_addresses(8080, BindPolicy { allow_global: true })
+                .len(),
+            2
         );
     }
 
