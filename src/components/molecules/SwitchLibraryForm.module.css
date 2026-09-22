@@ -4,75 +4,9 @@
 	gap: 20px;
 }
 
-.currentLibrary {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	margin-bottom: 12px;
-}
-
 .text {
 	margin: 0;
 	font-size: 13px;
 	line-height: 1.45;
 	color: var(--ctd-ink);
-}
-
-/* Path chip: monospace on a control-colored capsule, same treatment the
- * Mantine <Code> block had via inline token overrides. */
-.code {
-	width: fit-content;
-	max-width: 100%;
-	overflow-wrap: anywhere;
-	font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
-	font-size: 12px;
-	line-height: 1.45;
-	padding: 3px 8px;
-	border-radius: 5px;
-	background-color: var(--ctd-control-bg);
-	border: 1px solid var(--ctd-border);
-	color: var(--ctd-ink);
-}
-
-.heading {
-	margin: 0;
-	font-size: 13px;
-	font-weight: 600;
-	color: var(--ctd-ink);
-}
-
-.libraryGrid {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 10px;
-}
-
-/* Each grid cell: the switch button plus a hover-free rename affordance
-   beside it; the rename input takes the cell over entirely. */
-.libraryRow {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	min-width: 0;
-}
-
-.libraryNameButton {
-	flex: 1;
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.libraryRenameButton {
-	width: 28px;
-	flex-shrink: 0;
-	color: var(--ctd-ink-soft);
-}
-
-.renameInput {
-	/* Match the button footprint so entering rename mode doesn't shift the
-	   grid. */
-	min-height: 28px;
-	font-size: 13px;
 }
