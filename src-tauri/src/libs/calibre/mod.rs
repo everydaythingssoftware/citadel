@@ -26,12 +26,22 @@ pub struct CalibreClientConfig {
 
 #[tauri::command]
 #[specta::specta]
-pub fn init_client(
+pub async fn init_client(
     handle: tauri::AppHandle,
-    state: tauri::State<CitadelState>,
+    state: tauri::State<'_, CitadelState>,
     library_path: String,
 ) -> Result<CalibreClientConfig, String> {
     use tauri::Manager;
+
+    // Stop BEFORE the swap: the running server reads live state, so draining
+    // after the swap would serve the new library under the old share. If the
+    // new library then fails to open, sharing stays off - the right failure
+    // direction (better a dead share than a wrong one). Re-opening the
+    // already-active library keeps sharing.
+    let same_library = state.get_library_path().as_deref() == Some(library_path.as_str());
+    if !same_library {
+        handle.state::<citadel_opds::OpdsService>().stop().await;
+    }
 
     state.init_library(library_path.clone())?;
 
