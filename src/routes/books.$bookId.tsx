@@ -1,10 +1,15 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	useNavigate,
+	useParams,
+} from "@tanstack/react-router";
 import { type CSSProperties, useCallback } from "react";
 import type { BookUpdate, NewAuthor } from "@/bindings";
 import { BookPage } from "@/components/pages/EditBook";
 import { Spinner } from "@/components/ui";
 import { tagListChanged } from "@/lib/domain/tag";
 import { useEditBookData } from "@/lib/hooks/use-edit-book-data";
+import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import {
 	LibraryState,
 	useAuthors,
@@ -23,6 +28,20 @@ const EditBookRoute = () => {
 	const { bookId } = useParams({ from: "/books/$bookId" });
 	const state = useLibraryState();
 	const actions = useLibraryActions();
+	const navigate = useNavigate();
+
+	// A library flip invalidates the bookId this route was opened with: the
+	// id belongs to the outgoing library, so the incoming fetch lands null
+	// and the page would sit on "Book not found." forever. Photos-style,
+	// switching libraries closes the item being viewed — go home, replacing
+	// history so Back cannot return to a dead id, before the flip's first
+	// paint of this route. List routes (/authors, /series) are
+	// library-agnostic and self-heal on a flip, so they need no treatment.
+	useOnLibraryFlip(
+		useCallback(() => {
+			void navigate({ to: "/", replace: true });
+		}, [navigate]),
+	);
 
 	// Scoped fetches: this route loads exactly its own book and the tag
 	// vocabulary (for the tag autocomplete) — never the whole library.
