@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { SwitchEvent, SwitchSnapshot } from "./machine";
 import {
+	CURTAIN_DEADLINE_MS,
 	CURTAIN_IN_MS,
 	CURTAIN_OUT_MS,
 	FIRST_PULSE_MS,
-	PULSE_MS,
 	initSwitch,
 	msToPulseBoundary,
+	PULSE_MS,
 	progressFor,
 	transition,
 } from "./machine";
@@ -209,5 +210,12 @@ describe("timing constants", () => {
 		expect(FIRST_PULSE_MS).toBeGreaterThanOrEqual(400);
 		expect(FIRST_PULSE_MS).toBeLessThanOrEqual(600);
 		expect(PULSE_MS).toBe(1400);
+	});
+
+	it("arms the curtain only after the shadow-load deadline", () => {
+		// Long enough that a fast flip (well under it) never curtains, short
+		// enough that a slow open arms within a beat of the click.
+		expect(CURTAIN_DEADLINE_MS).toBeGreaterThanOrEqual(100);
+		expect(CURTAIN_DEADLINE_MS).toBeLessThanOrEqual(300);
 	});
 });

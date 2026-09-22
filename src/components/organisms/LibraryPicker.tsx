@@ -1,12 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { commands } from "@/bindings";
 import { toast } from "@/components/ui";
 import { POPOVER_ATTRIBUTE } from "@/components/ui/popover-interop";
-import { ADOPT_INVALID_ERROR } from "@/lib/first-run/machine";
+import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { usePlatform } from "@/lib/platform/context";
-import { createLibrary, setActiveLibrary } from "@/stores/settings/actions";
-import { useSettings } from "@/stores/settings/store";
 import styles from "./LibraryPicker.module.css";
 
 interface MenuRect {
@@ -75,18 +72,14 @@ const PlusIcon = () => (
  * not by this component.
  */
 export const LibraryPicker = () => {
-	const libraries = useSettings((state) => state.libraryPaths);
-	const activeLibraryId = useSettings((state) => state.activeLibraryId);
+	const { libraries, activeLibrary, switchTo, adoptLibrary } =
+		useLibrarySelection();
 	const platform = usePlatform();
 
 	const [open, setOpen] = useState(false);
 	const [menuRect, setMenuRect] = useState<MenuRect | null>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
-
-	const activeLibrary = libraries.find(
-		(library) => library.id === activeLibraryId,
-	);
 
 	// Re-measured on scroll/resize like TagsInput's completion list.
 	useLayoutEffect(() => {
@@ -158,35 +151,6 @@ export const LibraryPicker = () => {
 
 	if (!activeLibrary) return null;
 
-	const switchTo = (id: string) => {
-		if (id === activeLibraryId) return;
-		const library = libraries.find((entry) => entry.id === id);
-		if (!library) return;
-		void (async () => {
-			try {
-				const valid = await commands.clbQueryIsPathValidLibrary(
-					library.absolutePath,
-				);
-				if (!valid) {
-					toast.show({
-						id: INVALID_TOAST_ID,
-						title: "Not a Calibre library",
-						message: ADOPT_INVALID_ERROR,
-					});
-					return;
-				}
-				await setActiveLibrary(id);
-			} catch (error) {
-				console.error("Library switch failed:", error);
-				toast.show({
-					id: INVALID_TOAST_ID,
-					title: "Couldn't switch libraries",
-					message: error instanceof Error ? error.message : String(error),
-				});
-			}
-		})();
-	};
-
 	const addLibrary = () => {
 		void (async () => {
 			try {
@@ -194,17 +158,14 @@ export const LibraryPicker = () => {
 					title: "Select Calibre Library Folder",
 				});
 				if (path === null) return;
-				const valid = await commands.clbQueryIsPathValidLibrary(path);
-				if (!valid) {
+				const result = await adoptLibrary(path);
+				if (!result.ok) {
 					toast.show({
 						id: INVALID_TOAST_ID,
 						title: "Not a Calibre library",
-						message: ADOPT_INVALID_ERROR,
+						message: result.message,
 					});
-					return;
 				}
-				const newLibraryId = await createLibrary(path);
-				await setActiveLibrary(newLibraryId);
 			} catch (error) {
 				console.error("Adding a library failed:", error);
 				toast.show({
@@ -280,7 +241,7 @@ export const LibraryPicker = () => {
 						aria-checked={library.id === activeLibrary.id}
 						className={styles.menuRow}
 						onClick={() => {
-							switchTo(library.id);
+							void switchTo(library.id);
 							setOpen(false);
 						}}
 					>

@@ -96,6 +96,13 @@ interface LibraryStoreState {
 	library: Library | null;
 	libraryState: LibraryState;
 	libraryError: Error | null;
+	/**
+	 * Path of the library the current visible generation belongs to — set
+	 * atomically at the flip, never during a shadow load. The UI derives
+	 * "which library am I looking at" from this instead of the settings
+	 * store's instantly-updated activeLibraryId.
+	 */
+	confirmedLibraryPath: string | null;
 
 	// Paged book grid state
 	bookFilter: BookGridFilter;
@@ -140,6 +147,7 @@ const initialState = {
 	library: null,
 	libraryState: LibraryState.uninitialized,
 	libraryError: null,
+	confirmedLibraryPath: null,
 	bookFilter: ALL_BOOKS_FILTER,
 	bookCache: emptyBookCache(serializeBookFilter(ALL_BOOKS_FILTER), 0),
 	bookPagesError: null,
@@ -168,9 +176,114 @@ const inFlightBookPages = new Map<string, Promise<void>>();
 // (the backend cache answers by cover mtime) and picks up replaced covers.
 const requestedThumbIds = new Set<string>();
 
+// Shadow-switch machinery (module scope: non-reactive coordination).
+//
+// A switch loads the target library into a SHADOW generation while the old
+// content stays rendered: `initClient` + authors/series/total + first page
+// all resolve into locals, and only a fully-loaded shadow commits (the
+// flip). `pendingSwitch` identifies the one shadow allowed to flip; every
+// other async commit site checks `canCommitActive`, so results fetched for
+// a superseded library (or during a pending shadow, when the backend global
+// may already point at the target) can never land in visible state.
+let shadowTokenCounter = 0;
+let pendingSwitch: { token: number; path: string } | null = null;
+// A cancelled or failed switch re-opens the confirmed library, but the
+// backend global keeps pointing elsewhere until that open resolves. The
+// restore token holds the same guard as a pending shadow for that window,
+// so no read or mutation reaches the wrong library in between.
+let pendingRestore: number | null = null;
+// The backend holds ONE global library; `initClient` swaps it. Opens are
+// serialized so a cancel's restore cannot race a superseded shadow's open
+// (last call in the chain always wins the global, in call order).
+let backendOpenChain: Promise<unknown> = Promise.resolve();
+
+const SWITCH_IN_PROGRESS_ERROR = "A library switch is in progress";
+
+/** The backend global may not match the visible library: a shadow switch is
+ * loading, or a cancelled/failed switch is still restoring. */
+const isBackendDiverted = (): boolean =>
+	pendingSwitch !== null || pendingRestore !== null;
+
+const openBackend = (libraryPath: string): Promise<Library> => {
+	const open = backendOpenChain.then(() =>
+		initClient(localLibraryFromPath(libraryPath)),
+	);
+	backendOpenChain = open.catch(() => undefined);
+	return open;
+};
+
+interface Settled<T> {
+	value: T | null;
+	error: string | null;
+}
+
+/** Resolves a shadow-load fact without failing the whole load: value +
+ * error message, mirroring how `loadAuthors`/`loadSeries` isolate failures. */
+const settleWithMessage = async <T>(
+	promise: Promise<T>,
+	fallback: string,
+): Promise<Settled<T>> => {
+	try {
+		return { value: await promise, error: null };
+	} catch (error) {
+		return {
+			value: null,
+			error: error instanceof Error ? error.message : fallback,
+		};
+	}
+};
+
 export const useLibraryStore = create<LibraryStoreState>((set, get) => {
-	const mergeCoverThumbs = (thumbs: CoverThumbnail[]): void => {
+	/**
+	 * Whether an async result captured under `generation` may still commit to
+	 * the ACTIVE state. Dead while the backend is diverted (a pending shadow
+	 * or restore — the global may point at another library) or once a later
+	 * generation owns the cache (flip, filter change, invalidation, reset).
+	 */
+	const canCommitActive = (generation: number): boolean =>
+		!isBackendDiverted() && generation === get().bookCache.generation;
+
+	/**
+	 * Re-points the backend global at the confirmed library after a cancelled
+	 * or failed switch, holding the diverted guard until the open resolves.
+	 * Fetches were refused (and in-flight answers discarded) meanwhile, so a
+	 * successful restore bumps the generation — loaded pages stay, and the
+	 * grid refetches only the ones it's missing.
+	 */
+	const restoreBackend = (libraryPath: string): void => {
+		const token = ++shadowTokenCounter;
+		pendingRestore = token;
+		openBackend(libraryPath).then(
+			() => {
+				if (pendingRestore !== token) return;
+				pendingRestore = null;
+				if (pendingSwitch !== null) return;
+				set((state) => ({
+					bookCache: {
+						...state.bookCache,
+						generation: state.bookCache.generation + 1,
+					},
+				}));
+			},
+			(error: unknown) => {
+				if (pendingRestore !== token) return;
+				pendingRestore = null;
+				console.error("Failed to restore the active library backend:", error);
+				if (pendingSwitch !== null) return;
+				set({
+					libraryError:
+						error instanceof Error ? error : new Error(String(error)),
+				});
+			},
+		);
+	};
+
+	const mergeCoverThumbs = (
+		thumbs: CoverThumbnail[],
+		generation: number,
+	): void => {
 		if (thumbs.length === 0) return;
+		if (!canCommitActive(generation)) return;
 		set((state) => {
 			const next = new Map(state.coverThumbs);
 			for (const thumb of thumbs) next.set(thumb.book_id, thumb);
@@ -181,11 +294,14 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 	/**
 	 * Fire-and-forget thumbnail fetch for freshly landed page items. Failures
 	 * un-mark the ids so a later page fetch retries; the grid just keeps its
-	 * fallback rendering in the meantime.
+	 * fallback rendering in the meantime. Skipped entirely while a shadow
+	 * switch is pending: the requests would race the backend swap.
 	 */
 	const ensureCoverThumbs = (books: LibraryBook[]): void => {
+		if (isBackendDiverted()) return;
 		const { library } = get();
 		if (!library) return;
+		const generation = get().bookCache.generation;
 		const wanted = books
 			.filter(
 				(book) => book.cover_image !== null && !requestedThumbIds.has(book.id),
@@ -196,7 +312,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 
 		void library
 			.ensureCoverThumbnails(wanted)
-			.then(mergeCoverThumbs)
+			.then((thumbs) => mergeCoverThumbs(thumbs, generation))
 			.catch((error: unknown) => {
 				for (const id of wanted) requestedThumbIds.delete(id);
 				console.error("Failed to load cover thumbnails:", error);
@@ -211,21 +327,22 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 	 */
 	const warmCoverThumbs = async (): Promise<void> => {
 		const { library } = get();
+		const generation = get().bookCache.generation;
 		if (!library) {
-			set({ coversSeeded: true });
+			if (canCommitActive(generation)) set({ coversSeeded: true });
 			return;
 		}
 		try {
-			mergeCoverThumbs(await library.listCoverThumbnails());
+			mergeCoverThumbs(await library.listCoverThumbnails(), generation);
 		} catch (error) {
 			console.error("Failed to seed cover thumbnails:", error);
 		} finally {
 			// Even a failed seed unblocks anything waiting on it (the first-run
 			// flow's cover stage); the grid just falls back to placeholders.
-			set({ coversSeeded: true });
+			if (canCommitActive(generation)) set({ coversSeeded: true });
 		}
 		try {
-			mergeCoverThumbs(await library.warmCoverThumbnails());
+			mergeCoverThumbs(await library.warmCoverThumbnails(), generation);
 		} catch (error) {
 			console.error("Failed to warm cover thumbnails:", error);
 		}
@@ -245,6 +362,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 		const flight = (async () => {
 			try {
 				const page = await library.queryBooks(toBookQuery(filter, pageIndex));
+				if (!canCommitActive(generation)) return;
 				// A series reads in series order; the backend only sorts by
 				// title/author, so the (single, unbounded) series page is
 				// sorted by series_index here.
@@ -271,6 +389,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				});
 				ensureCoverThumbs(items);
 			} catch (error) {
+				if (!canCommitActive(generation)) return;
 				set({
 					bookPagesError:
 						error instanceof Error ? error.message : "Failed to load books",
@@ -286,12 +405,14 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 	const refreshLibraryTotal = async (): Promise<void> => {
 		const { library } = get();
 		if (!library) return;
+		const generation = get().bookCache.generation;
 		try {
 			// limit 0: count-only query (items stay empty, total ignores paging).
 			const page = await library.queryBooks({
 				...toBookQuery(ALL_BOOKS_FILTER, 0),
 				limit: 0,
 			});
+			if (!canCommitActive(generation)) return;
 			set({ libraryTotal: page.total });
 		} catch (error) {
 			console.error("Failed to load library total:", error);
@@ -306,12 +427,16 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			loadAuthors: async () => {
 				const { library } = get();
 				if (!library) return;
+				if (isBackendDiverted()) return;
+				const generation = get().bookCache.generation;
 
 				set({ authorsLoading: true, authorsError: null });
 				try {
 					const authors = await library.listAuthors();
+					if (!canCommitActive(generation)) return;
 					set({ authors: authors.sort(sortAuthors), authorsLoading: false });
 				} catch (error) {
+					if (!canCommitActive(generation)) return;
 					set({
 						authorsError:
 							error instanceof Error ? error.message : "Failed to load authors",
@@ -323,12 +448,16 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			loadSeries: async () => {
 				const { library } = get();
 				if (!library) return;
+				if (isBackendDiverted()) return;
+				const generation = get().bookCache.generation;
 
 				set({ seriesLoading: true, seriesError: null });
 				try {
 					const series = await library.listSeries();
+					if (!canCommitActive(generation)) return;
 					set({ series, seriesLoading: false });
 				} catch (error) {
+					if (!canCommitActive(generation)) return;
 					set({
 						seriesError:
 							error instanceof Error ? error.message : "Failed to load series",
@@ -344,6 +473,11 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			},
 
 			ensureBookRange: async (start: number, end: number) => {
+				// No new fetches for the outgoing generation while a shadow
+				// switch is loading: the backend global may already point at
+				// the target library, and the old content is about to be
+				// replaced wholesale.
+				if (isBackendDiverted()) return;
 				const { library, bookFilter, bookCache } = get();
 				if (!library) return;
 				// Only serve the current key; a filter change mid-scroll means
@@ -395,58 +529,166 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			},
 
 			initialize: async (libraryPath: string) => {
-				const actions = get().actions;
+				const startState = get();
+				const confirmedPath = startState.confirmedLibraryPath;
+				const switchingFromReady =
+					startState.libraryState === LibraryState.ready &&
+					confirmedPath !== null;
 
-				// Retire any cached data from a previously open library. The
-				// paged cache keeps its key but moves to a new generation so
-				// in-flight fetches against the old library cannot land.
-				// Clear the stale snapshot and thumbnails too — they belong to the
-				// old library.
+				// Switching back to the confirmed library (rapid A→B→A) is a
+				// cancel: drop the pending shadow — its loads resolve into the
+				// void — and re-point the backend global at the confirmed
+				// library, which a superseded shadow's open may have moved.
+				if (switchingFromReady && libraryPath === confirmedPath) {
+					if (pendingSwitch === null) return;
+					pendingSwitch = null;
+					restoreBackend(libraryPath);
+					return;
+				}
+
+				// A shadow load for this exact path is already in flight (the
+				// initializer effect can re-fire with an unchanged path): let
+				// it finish rather than racing a duplicate.
+				if (pendingSwitch?.path === libraryPath) return;
+
+				// On a switch the old content stays fully rendered through the
+				// whole load — no teardown, `libraryState` stays `ready`. Only
+				// the boot path (no confirmed library yet) clears state up
+				// front, exactly as initialize always did.
 				requestedThumbIds.clear();
-				set((state) => ({
-					libraryState: LibraryState.initializing,
-					libraryError: null,
-					bookCache: emptyBookCache(
-						state.bookCache.key,
-						state.bookCache.generation + 1,
-					),
-					staleBookSnapshot: null,
-					coverThumbs: new Map<LibraryBook["id"], CoverThumbnail>(),
-					libraryTotal: null,
-					coversSeeded: false,
-				}));
+				if (!switchingFromReady) {
+					set((state) => ({
+						libraryState: LibraryState.initializing,
+						libraryError: null,
+						bookCache: emptyBookCache(
+							state.bookCache.key,
+							state.bookCache.generation + 1,
+						),
+						staleBookSnapshot: null,
+						coverThumbs: new Map<LibraryBook["id"], CoverThumbnail>(),
+						libraryTotal: null,
+						coversSeeded: false,
+					}));
+				}
+
+				const shadowToken = ++shadowTokenCounter;
+				pendingSwitch = { token: shadowToken, path: libraryPath };
+
+				const filterAtStart = get().bookFilter;
+				const keyAtStart = serializeBookFilter(filterAtStart);
 
 				try {
-					const library = await initClient(localLibraryFromPath(libraryPath));
-					set({ library });
+					const library = await openBackend(libraryPath);
+					if (pendingSwitch?.token !== shadowToken) return;
+					// Boot path mirrors the old flow: the client handle lands
+					// before the metadata does (the first-run flow observes
+					// CONNECTED at this point). On a switch the handle only
+					// becomes visible at the flip.
+					if (!switchingFromReady) set({ library });
 
-					// The grid pages books in on demand (ensureBookRange); only
-					// the cheap whole-library facts load eagerly.
-					await Promise.all([
-						actions.loadAuthors(),
-						actions.loadSeries(),
-						refreshLibraryTotal(),
+					// Shadow facts load in parallel; each failure is isolated
+					// exactly as loadAuthors/loadSeries/refreshLibraryTotal do
+					// today — only an open failure fails the whole initialize.
+					const [authors, series, totalCount, firstPage] = await Promise.all([
+						settleWithMessage(library.listAuthors(), "Failed to load authors"),
+						settleWithMessage(library.listSeries(), "Failed to load series"),
+						settleWithMessage(
+							library.queryBooks({
+								...toBookQuery(ALL_BOOKS_FILTER, 0),
+								limit: 0,
+							}),
+							"Failed to load library total",
+						),
+						settleWithMessage(
+							library.queryBooks(toBookQuery(filterAtStart, 0)),
+							"Failed to load books",
+						),
 					]);
+					if (pendingSwitch?.token !== shadowToken) return;
 
-					set({ libraryState: LibraryState.ready });
+					// FLIP — one zustand set(): a single React commit that swaps
+					// the active generation, its data, and the confirmed library
+					// together. No blank frame between the old and new library.
+					// Scroll-adjacent view state (bookFilter key, library-view
+					// store) is intentionally untouched, matching the old
+					// initialize.
+					const shadowPages = new Map<number, LibraryBook[]>();
+					if (firstPage.value !== null) {
+						const items =
+							filterAtStart.seriesId !== null
+								? [...firstPage.value.items].sort(compareBySeriesIndex)
+								: firstPage.value.items;
+						shadowPages.set(0, items);
+					}
+					const shadowCache: PagedBookCache = {
+						key: keyAtStart,
+						generation: get().bookCache.generation + 1,
+						total: firstPage.value?.total ?? null,
+						pages: shadowPages,
+					};
+					const cache = cacheForKey(shadowCache, get().bookCache.key);
+					set({
+						library,
+						libraryState: LibraryState.ready,
+						libraryError: null,
+						confirmedLibraryPath: libraryPath,
+						bookCache: cache,
+						staleBookSnapshot: null,
+						coverThumbs: new Map<LibraryBook["id"], CoverThumbnail>(),
+						libraryTotal: totalCount.value?.total ?? null,
+						coversSeeded: false,
+						authors: authors.value ? authors.value.sort(sortAuthors) : [],
+						authorsLoading: false,
+						authorsError: authors.error,
+						series: series.value ?? [],
+						seriesLoading: false,
+						seriesError: series.error,
+						bookPagesError: firstPage.error,
+					});
+					pendingSwitch = null;
 
-					// Background warm: generate every cover's thumbnail so the grid
-					// decodes small images at any scroll offset, not just visited
-					// pages. Book pages themselves load lazily (viewport + one page
-					// of padding); a long-distance jump into unvisited territory
-					// shows placeholder cells for one ~60ms page query.
+					// GC the old generation: in-flight page fetches stamped with
+					// a superseded generation can never land, so drop their
+					// de-dupe entries.
+					for (const flightKey of inFlightBookPages.keys()) {
+						if (!flightKey.startsWith(`${cache.generation}:`)) {
+							inFlightBookPages.delete(flightKey);
+						}
+					}
+
+					// Background warm (as before): thumbnails for any scroll
+					// offset; book pages load lazily via ensureBookRange.
 					void warmCoverThumbs();
 				} catch (error) {
+					if (pendingSwitch?.token !== shadowToken) return;
+					pendingSwitch = null;
 					console.error("Failed to initialize library:", error);
+					const normalizedError =
+						error instanceof Error ? error : new Error(String(error));
+					if (!switchingFromReady) {
+						set({
+							libraryState: LibraryState.error,
+							libraryError: normalizedError,
+						});
+						return;
+					}
+					// A failed switch keeps the old content on screen (no
+					// teardown, state stays ready); the shell surfaces the toast.
+					// Always restore: `init_client` swaps the backend global
+					// before granting the asset scope, so even a rejected open
+					// can leave the backend pointing at the target.
+					restoreBackend(confirmedPath);
 					set({
-						libraryState: LibraryState.error,
-						libraryError:
-							error instanceof Error ? error : new Error(String(error)),
+						libraryError: normalizedError,
+						authorsLoading: false,
+						seriesLoading: false,
 					});
 				}
 			},
 
 			reset: () => {
+				pendingSwitch = null;
+				pendingRestore = null;
 				requestedThumbIds.clear();
 				set((state) => ({
 					...initialState,
@@ -495,6 +737,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			},
 
 			commitAddBook: async (metadata: ImportableBookMetadata) => {
+				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
 				const { library } = get();
 				if (!library) return;
 
@@ -505,6 +748,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				bookId: string,
 				updates: BookUpdate,
 			): Promise<void> => {
+				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
 				const { library } = get();
 				if (!library) throw new Error("Library not initialized");
 				await library.updateBook(bookId, updates);
@@ -515,6 +759,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				authorId: string,
 				updates: AuthorUpdate,
 			): Promise<void> => {
+				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
 				const { library } = get();
 				if (!library) throw new Error("Library not initialized");
 				await library.updateAuthor(authorId, updates);
@@ -524,6 +769,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			},
 
 			createAuthors: async (newAuthors: NewAuthor[]): Promise<void> => {
+				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
 				const { library } = get();
 				if (!library) throw new Error("Library not initialized");
 				await library.createAuthors(newAuthors);
@@ -531,6 +777,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			},
 
 			deleteAuthor: async (authorId: string): Promise<void> => {
+				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
 				const { library } = get();
 				if (!library) throw new Error("Library not initialized");
 				await library.deleteAuthor(authorId);
@@ -541,6 +788,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				bookId: string,
 				identifierId: number,
 			): Promise<void> => {
+				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
 				const { library } = get();
 				if (!library) throw new Error("Library not initialized");
 				await library.deleteBookIdentifier(bookId, identifierId);
@@ -553,6 +801,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				label: string,
 				value: string,
 			): Promise<void> => {
+				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
 				const { library } = get();
 				if (!library) throw new Error("Library not initialized");
 				await library.upsertBookIdentifier(bookId, identifierId, label, value);
@@ -562,6 +811,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			addBook: async (
 				metadata: ImportableBookMetadata,
 			): Promise<string | undefined> => {
+				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
 				const { library } = get();
 				if (!library) throw new Error("Library not initialized");
 				const bookId = await library.addImportableFileByMetadata(metadata);
@@ -579,6 +829,8 @@ export const useLibraryState = () =>
 	useLibraryStore((state) => state.libraryState);
 export const useLibraryReady = () =>
 	useLibraryStore((state) => state.libraryState === LibraryState.ready);
+export const useConfirmedLibraryPath = () =>
+	useLibraryStore((state) => state.confirmedLibraryPath);
 export const useLibraryInitializing = () =>
 	useLibraryStore((state) => state.libraryState === LibraryState.initializing);
 export const useLibraryError = () =>

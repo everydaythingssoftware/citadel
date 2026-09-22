@@ -9,21 +9,14 @@ import { LibraryListCard } from "@/components/molecules/LibraryListCard";
 import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
 import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
 import classes from "@/components/organisms/SettingsPanes.module.css";
-import {
-	Button,
-	SegmentedControl,
-	Switch,
-	TextInput,
-	toast,
-} from "@/components/ui";
-import { ADOPT_INVALID_ERROR } from "@/lib/first-run/machine";
+import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
 import { useAppUpdates } from "@/lib/hooks/use-app-updates";
+import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
 import { none, some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
 import { applyColorScheme } from "@/lib/theme-manager";
-import { createLibrary, setActiveLibrary } from "@/stores/settings/actions";
 import { useAnySourceEnabled } from "@/stores/settings/metadata-providers";
 import { useSettings } from "@/stores/settings/store";
 
@@ -282,63 +275,18 @@ interface LibraryTabProps {
 	closeSettings: () => void;
 }
 
-const INVALID_LIBRARY_TOAST_ID = "settings-library-invalid";
-
 const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
-	const libraries = useSettings((state) => state.libraryPaths);
-	const activeLibraryId = useSettings((state) => state.activeLibraryId);
+	const { libraries, activeLibrary, switchTo, adoptLibrary } =
+		useLibrarySelection();
 	const platform = usePlatform();
-	const activeLibrary = libraries.find(
-		(library) => library.id === activeLibraryId,
-	);
 
 	const addNewLibraryByPath = useCallback(
 		async (form: SwitchLibraryForm): Promise<AddLibraryResult> => {
-			const isPathValidLibrary = await commands.clbQueryIsPathValidLibrary(
-				form.libraryPath,
-			);
-
-			if (!isPathValidLibrary) {
-				return { ok: false, message: ADOPT_INVALID_ERROR };
-			}
-			const newLibraryId = await createLibrary(form.libraryPath);
-			await setActiveLibrary(newLibraryId);
-			closeSettings();
-			return { ok: true };
+			const result = await adoptLibrary(form.libraryPath);
+			if (result.ok) closeSettings();
+			return result;
 		},
-		[closeSettings],
-	);
-
-	// Same validate-before-switch semantics as the sidebar LibraryPicker:
-	// invalid paths toast instead of switching.
-	const selectExistingLibrary = useCallback(
-		async (id: string) => {
-			if (id === activeLibraryId) return;
-			const library = libraries.find((entry) => entry.id === id);
-			if (!library) return;
-			try {
-				const valid = await commands.clbQueryIsPathValidLibrary(
-					library.absolutePath,
-				);
-				if (!valid) {
-					toast.show({
-						id: INVALID_LIBRARY_TOAST_ID,
-						title: "Not a Calibre library",
-						message: ADOPT_INVALID_ERROR,
-					});
-					return;
-				}
-				await setActiveLibrary(id);
-			} catch (error) {
-				console.error("Library switch failed:", error);
-				toast.show({
-					id: INVALID_LIBRARY_TOAST_ID,
-					title: "Couldn't switch libraries",
-					message: error instanceof Error ? error.message : String(error),
-				});
-			}
-		},
-		[activeLibraryId, libraries],
+		[adoptLibrary, closeSettings],
 	);
 
 	const revealActiveLibrary = useCallback(() => {
@@ -357,9 +305,9 @@ const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
 	return (
 		<div className={classes.groups}>
 			<LibraryListCard
-				currentLibraryId={activeLibraryId}
+				currentLibraryId={activeLibrary.id}
 				libraries={libraries}
-				onSwitchLibrary={selectExistingLibrary}
+				onSwitchLibrary={switchTo}
 			/>
 			<CurrentLibraryCard
 				library={activeLibrary}

@@ -16,7 +16,16 @@
  * The shell withholds READY until a pulse boundary, so the bar always
  * completes its current sweep before the reveal — a fast open must never
  * flash a single blank frame between the outgoing and incoming library.
+ *
+ * The curtain is a deadline, not a given: the library store loads the target
+ * into a shadow generation while the old content stays on screen, and the
+ * shell only dispatches SWITCH_STARTED once that load outlives
+ * CURTAIN_DEADLINE_MS. A flip inside the deadline never curtains at all.
  */
+
+/** How long a shadow load may run before the curtain arms. Fast flips
+ * inside this window swap in a single frame with no curtain. */
+export const CURTAIN_DEADLINE_MS = 200;
 
 /** Curtain fade-in duration. */
 export const CURTAIN_IN_MS = 120;
