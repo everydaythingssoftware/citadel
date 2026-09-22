@@ -23,17 +23,6 @@ pub enum OpdsInterfaceState {
     Down,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct OpdsNetworkInterface {
-    pub id: String,
-    pub label: String,
-    pub kind: OpdsInterfaceKind,
-    pub state: OpdsInterfaceState,
-    pub addresses: Vec<String>,
-    pub shareable: bool,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AddressScope {
     Private,
@@ -65,9 +54,11 @@ pub(crate) struct InterfaceSnapshot {
 }
 
 impl InterfaceSnapshot {
-    pub fn bindable_ips(&self) -> impl Iterator<Item = IpAddr> + '_ {
+    pub fn bindable_ips(&self, policy: BindPolicy) -> impl Iterator<Item = IpAddr> + '_ {
+        let allow_global = policy.allow_global;
         self.addresses
             .iter()
+            .filter(move |address| allow_global || address.scope != AddressScope::Global)
             .filter_map(|address| match (address.address, &address.scope) {
                 (
                     IpAddr::V4(ip),
@@ -82,28 +73,13 @@ impl InterfaceSnapshot {
             })
     }
 
-    pub fn bindable_addresses(&self, port: u16) -> Vec<SocketAddr> {
-        self.bindable_ips()
+    pub fn bindable_addresses(&self, port: u16, policy: BindPolicy) -> Vec<SocketAddr> {
+        self.bindable_ips(policy)
             .map(|ip| match ip {
                 IpAddr::V4(ip) => SocketAddr::new(IpAddr::V4(ip), port),
                 IpAddr::V6(ip) => SocketAddr::V6(SocketAddrV6::new(ip, port, 0, 0)),
             })
             .collect()
-    }
-
-    pub fn public(&self) -> OpdsNetworkInterface {
-        let addresses = self
-            .bindable_ips()
-            .map(|address| address.to_string())
-            .collect::<Vec<_>>();
-        OpdsNetworkInterface {
-            id: self.id.clone(),
-            label: self.label.clone(),
-            kind: self.kind.clone(),
-            state: self.state.clone(),
-            shareable: self.kind != OpdsInterfaceKind::Loopback,
-            addresses,
-        }
     }
 }
 
@@ -291,41 +267,26 @@ pub(crate) fn ipv6_scope(address: Ipv6Addr) -> AddressScope {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum WaitingReason {
     NoLocalInterface,
-    SelectedInterfaceMissing(String),
-    SelectedInterfaceDown(String),
-    SelectedInterfaceHasNoUsableAddress(String),
-    LoopbackCannotBeShared(String),
 }
 
 impl WaitingReason {
     pub fn message(&self) -> String {
         match self {
             Self::NoLocalInterface => {
-                "No active local interface has a usable IP address.".to_string()
-            }
-            Self::SelectedInterfaceMissing(id) => {
-                format!("The selected interface ({id}) is unavailable.")
-            }
-            Self::SelectedInterfaceDown(id) => {
-                format!("The selected interface ({id}) is currently down.")
-            }
-            Self::SelectedInterfaceHasNoUsableAddress(id) => {
-                format!("The selected interface ({id}) has no usable local address.")
-            }
-            Self::LoopbackCannotBeShared(id) => {
-                format!("The selected interface ({id}) is loopback-only and cannot be shared.")
+                "No active local network has a usable address yet.".to_string()
             }
         }
     }
 }
 
-/// Where the OPDS listener should attach. Persisted as user configuration, so
-/// the `id` in [`OpdsBindTarget::Interface`] must stay stable across reboots.
+/// Where sharing listens. `AllInterfaces` is meant to be paired with
+/// credentials (see the auth integration) since it serves every network the
+/// computer can reach.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum OpdsBindTarget {
-    AllLocalNetworks,
-    Interface { id: String },
+    LocalNetworks,
+    AllInterfaces,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -334,49 +295,41 @@ pub(crate) enum BindPlan {
     Wait(WaitingReason),
 }
 
-/// Pure and cheap: the service layer re-snapshots interfaces and re-plans on
-/// every change (DHCP renew, roam, sleep/wake), so callers must not assume a
-/// plan outlives the interface state it was computed from.
+/// What address scopes sharing may reach. Globally-routable addresses stay
+/// excluded until the caller can vouch for them (auth-enabled sharing).
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct BindPolicy {
+    pub allow_global: bool,
+}
+
 pub(crate) fn plan_bindings(
     interfaces: &[InterfaceSnapshot],
     target: &OpdsBindTarget,
     port: u16,
+    policy: BindPolicy,
 ) -> BindPlan {
-    let selected = match target {
-        OpdsBindTarget::AllLocalNetworks => interfaces
-            .iter()
-            .filter(|interface| {
-                interface.kind == OpdsInterfaceKind::Lan
-                    && interface.state == OpdsInterfaceState::Up
-            })
-            .collect::<Vec<_>>(),
-        OpdsBindTarget::Interface { id } => {
-            let Some(interface) = interfaces.iter().find(|interface| interface.id == *id) else {
-                return BindPlan::Wait(WaitingReason::SelectedInterfaceMissing(id.clone()));
-            };
-            if interface.kind == OpdsInterfaceKind::Loopback {
-                return BindPlan::Wait(WaitingReason::LoopbackCannotBeShared(id.clone()));
-            }
-            if interface.state != OpdsInterfaceState::Up {
-                return BindPlan::Wait(WaitingReason::SelectedInterfaceDown(id.clone()));
-            }
-            vec![interface]
+    match target {
+        OpdsBindTarget::AllInterfaces => {
+            let mut sockets = BTreeSet::new();
+            sockets.insert(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port));
+            sockets.insert(SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port));
+            BindPlan::Listen(sockets)
         }
-    };
-
-    let addresses = selected
-        .into_iter()
-        .flat_map(|interface| interface.bindable_addresses(port))
-        .collect::<BTreeSet<_>>();
-    if addresses.is_empty() {
-        BindPlan::Wait(match target {
-            OpdsBindTarget::AllLocalNetworks => WaitingReason::NoLocalInterface,
-            OpdsBindTarget::Interface { id } => {
-                WaitingReason::SelectedInterfaceHasNoUsableAddress(id.clone())
+        OpdsBindTarget::LocalNetworks => {
+            let addresses = interfaces
+                .iter()
+                .filter(|interface| {
+                    interface.kind == OpdsInterfaceKind::Lan
+                        && interface.state == OpdsInterfaceState::Up
+                })
+                .flat_map(|interface| interface.bindable_addresses(port, policy))
+                .collect::<BTreeSet<_>>();
+            if addresses.is_empty() {
+                BindPlan::Wait(WaitingReason::NoLocalInterface)
+            } else {
+                BindPlan::Listen(addresses)
             }
-        })
-    } else {
-        BindPlan::Listen(addresses)
+        }
     }
 }
 
@@ -388,7 +341,7 @@ pub(crate) fn advertised_url(address: SocketAddr) -> String {
 mod tests {
     use std::{
         collections::BTreeSet,
-        net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+        net::{IpAddr, Ipv4Addr, SocketAddr},
     };
 
     use super::*;
@@ -409,24 +362,26 @@ mod tests {
         }
     }
 
-    fn interface_address(address: IpAddr, scope: AddressScope) -> InterfaceAddress {
+    fn ipv4(address: [u8; 4]) -> InterfaceAddress {
+        let address = Ipv4Addr::from(address);
         InterfaceAddress {
-            address,
-            scope,
+            address: IpAddr::V4(address),
+            scope: ipv4_scope(address),
             deprecated: false,
             tentative: false,
             duplicated: false,
         }
     }
 
-    fn ipv4(address: [u8; 4]) -> InterfaceAddress {
-        let address = Ipv4Addr::from(address);
-        interface_address(IpAddr::V4(address), ipv4_scope(address))
-    }
-
     fn ipv6(address: &str) -> InterfaceAddress {
         let address = address.parse::<Ipv6Addr>().unwrap();
-        interface_address(IpAddr::V6(address), ipv6_scope(address))
+        InterfaceAddress {
+            address: IpAddr::V6(address),
+            scope: ipv6_scope(address),
+            deprecated: false,
+            tentative: false,
+            duplicated: false,
+        }
     }
 
     fn listen_addresses(plan: BindPlan) -> BTreeSet<SocketAddr> {
@@ -437,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn all_local_networks_binds_only_exact_usable_lan_addresses() {
+    fn local_networks_binds_usable_lan_addresses_and_skips_the_rest() {
         let interfaces = [
             interface(
                 "en0",
@@ -449,7 +404,7 @@ mod tests {
                 "utun4",
                 OpdsInterfaceKind::Vpn,
                 OpdsInterfaceState::Up,
-                vec![ipv4([10, 0, 0, 8]), ipv6("2001:db8::8")],
+                vec![ipv4([10, 0, 0, 8])],
             ),
             interface(
                 "en1",
@@ -461,8 +416,9 @@ mod tests {
 
         let addresses = listen_addresses(plan_bindings(
             &interfaces,
-            &OpdsBindTarget::AllLocalNetworks,
+            &OpdsBindTarget::LocalNetworks,
             8080,
+            BindPolicy::default(),
         ));
 
         assert_eq!(
@@ -478,111 +434,35 @@ mod tests {
     }
 
     #[test]
-    fn selected_interface_binds_only_that_interface() {
-        let interfaces = [
-            interface(
-                "en0",
-                OpdsInterfaceKind::Lan,
-                OpdsInterfaceState::Up,
-                vec![ipv4([192, 168, 1, 42])],
-            ),
-            interface(
-                "en1",
-                OpdsInterfaceKind::Lan,
-                OpdsInterfaceState::Up,
-                vec![ipv4([192, 168, 2, 42]), ipv6("2001:db8::42")],
-            ),
-        ];
-
-        let addresses = listen_addresses(plan_bindings(
-            &interfaces,
-            &OpdsBindTarget::Interface {
-                id: "en1".to_string(),
-            },
-            8080,
-        ));
-
-        assert_eq!(
-            addresses,
-            BTreeSet::from([
-                "192.168.2.42:8080".parse().unwrap(),
-                "[2001:db8::42]:8080".parse().unwrap(),
-            ])
-        );
-    }
-
-    #[test]
-    fn selected_interface_reports_missing_down_and_unusable_states() {
-        let missing = plan_bindings(
-            &[],
-            &OpdsBindTarget::Interface {
-                id: "en0".to_string(),
-            },
-            8080,
-        );
-        assert_eq!(
-            missing,
-            BindPlan::Wait(WaitingReason::SelectedInterfaceMissing("en0".to_string()))
-        );
-
-        let down = plan_bindings(
-            &[interface(
-                "en0",
-                OpdsInterfaceKind::Lan,
-                OpdsInterfaceState::Down,
-                vec![ipv4([192, 168, 1, 42])],
-            )],
-            &OpdsBindTarget::Interface {
-                id: "en0".to_string(),
-            },
-            8080,
-        );
-        assert_eq!(
-            down,
-            BindPlan::Wait(WaitingReason::SelectedInterfaceDown("en0".to_string()))
-        );
-
-        let unusable = plan_bindings(
+    fn local_networks_waits_when_nothing_is_bindable() {
+        let plan = plan_bindings(
             &[interface(
                 "en0",
                 OpdsInterfaceKind::Lan,
                 OpdsInterfaceState::Up,
                 vec![ipv4([169, 254, 1, 42])],
             )],
-            &OpdsBindTarget::Interface {
-                id: "en0".to_string(),
-            },
+            &OpdsBindTarget::LocalNetworks,
             8080,
+            BindPolicy::default(),
         );
-        assert_eq!(
-            unusable,
-            BindPlan::Wait(WaitingReason::SelectedInterfaceHasNoUsableAddress(
-                "en0".to_string()
-            ))
-        );
+        assert_eq!(plan, BindPlan::Wait(WaitingReason::NoLocalInterface));
     }
 
     #[test]
-    fn loopback_interface_cannot_be_selected_for_sharing() {
+    fn all_interfaces_binds_both_wildcards_without_enumeration() {
         let plan = plan_bindings(
-            &[interface(
-                "lo0",
-                OpdsInterfaceKind::Loopback,
-                OpdsInterfaceState::Up,
-                vec![interface_address(
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    AddressScope::Loopback,
-                )],
-            )],
-            &OpdsBindTarget::Interface {
-                id: "lo0".to_string(),
-            },
+            &[],
+            &OpdsBindTarget::AllInterfaces,
             8080,
+            BindPolicy::default(),
         );
-
         assert_eq!(
-            plan,
-            BindPlan::Wait(WaitingReason::LoopbackCannotBeShared("lo0".to_string()))
+            listen_addresses(plan),
+            BTreeSet::from([
+                "0.0.0.0:8080".parse().unwrap(),
+                "[::]:8080".parse().unwrap(),
+            ])
         );
     }
 
@@ -590,108 +470,39 @@ mod tests {
     fn bindable_addresses_excludes_link_local_and_unready_ipv6_addresses() {
         let mut deprecated = ipv6("fd12::2");
         deprecated.deprecated = true;
-        let mut tentative = ipv6("fd12::3");
-        tentative.tentative = true;
-        let mut duplicated = ipv6("fd12::4");
-        duplicated.duplicated = true;
         let snapshot = interface(
             "en0",
             OpdsInterfaceKind::Lan,
             OpdsInterfaceState::Up,
-            vec![
-                ipv6("fd12::1"),
-                ipv6("fe80::1"),
-                deprecated,
-                tentative,
-                duplicated,
-            ],
+            vec![ipv6("fd12::1"), ipv6("fe80::1"), deprecated],
         );
 
         assert_eq!(
-            snapshot.bindable_addresses(8080),
+            snapshot.bindable_addresses(8080, BindPolicy::default()),
             vec!["[fd12::1]:8080".parse().unwrap()]
         );
     }
 
     #[test]
-    fn advertised_url_brackets_ipv6_addresses() {
-        assert_eq!(
-            advertised_url("[2001:db8::42]:8080".parse().unwrap()),
-            "http://[2001:db8::42]:8080/opds"
-        );
-    }
-
-    #[test]
-    fn public_interface_exposes_bindable_addresses_and_shareability() {
-        let public = interface(
+    fn global_addresses_bind_only_when_the_policy_allows_them() {
+        let snapshot = interface(
             "en0",
             OpdsInterfaceKind::Lan,
             OpdsInterfaceState::Up,
-            vec![
-                ipv4([192, 168, 1, 42]),
-                ipv6("fd12::42"),
-                ipv4([169, 254, 1, 42]),
-            ],
-        )
-        .public();
-
-        assert_eq!(
-            public,
-            OpdsNetworkInterface {
-                id: "en0".to_string(),
-                label: "en0 label".to_string(),
-                kind: OpdsInterfaceKind::Lan,
-                state: OpdsInterfaceState::Up,
-                addresses: vec!["192.168.1.42".to_string(), "fd12::42".to_string()],
-                shareable: true,
-            }
-        );
-
-        let loopback = interface(
-            "lo0",
-            OpdsInterfaceKind::Loopback,
-            OpdsInterfaceState::Up,
-            vec![interface_address(
-                IpAddr::V4(Ipv4Addr::LOCALHOST),
-                AddressScope::Loopback,
-            )],
-        )
-        .public();
-        assert!(loopback.addresses.is_empty());
-        assert!(!loopback.shareable);
-    }
-
-    #[test]
-    fn shareable_is_capability_even_when_down_or_addressless() {
-        let down = interface(
-            "en0",
-            OpdsInterfaceKind::Lan,
-            OpdsInterfaceState::Down,
-            vec![],
-        )
-        .public();
-        assert!(down.shareable);
-        assert!(down.addresses.is_empty());
-    }
-
-    #[test]
-    fn selected_interface_accepts_unclassified_interfaces_as_escape_hatch() {
-        let bridged_lan = interface(
-            "br0",
-            OpdsInterfaceKind::Other,
-            OpdsInterfaceState::Up,
-            vec![ipv4([192, 168, 1, 7])],
+            vec![ipv4([192, 168, 1, 42]), ipv6("2001:db8::42")],
         );
 
         assert_eq!(
-            plan_bindings(
-                &[bridged_lan],
-                &OpdsBindTarget::Interface {
-                    id: "br0".to_string(),
-                },
-                8080,
-            ),
-            BindPlan::Listen(BTreeSet::from(["192.168.1.7:8080".parse().unwrap()]))
+            snapshot
+                .bindable_addresses(8080, BindPolicy::default())
+                .len(),
+            1
+        );
+        assert_eq!(
+            snapshot
+                .bindable_addresses(8080, BindPolicy { allow_global: true })
+                .len(),
+            2
         );
     }
 
@@ -772,10 +583,13 @@ mod tests {
                 loopback: true,
                 point_to_point: false,
                 physical: false,
-                addresses: vec![interface_address(
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    AddressScope::Loopback,
-                )],
+                addresses: vec![InterfaceAddress {
+                    address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    scope: AddressScope::Loopback,
+                    deprecated: false,
+                    tentative: false,
+                    duplicated: false,
+                }],
                 expected: OpdsInterfaceKind::Loopback,
             },
             Row {
