@@ -1,8 +1,7 @@
 //! The generated-password chunk shape and algorithm.
 
 use super::words::WORD_POOL;
-use rand_core::{OsRng, RngCore};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// Returned once when credentials are generated; the plaintext is never
 /// stored, so this is the only chance to copy it into a reader.

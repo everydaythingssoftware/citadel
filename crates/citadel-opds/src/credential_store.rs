@@ -82,11 +82,7 @@ impl OpdsCredentialStore {
     /// Disk is the source of truth; memory mirrors the last successful disk
     /// operation.
     pub fn status(&self) -> OpdsCredentialStatus {
-        let credentials = self
-            .inner
-            .credentials
-            .read()
-            .expect("OPDS credential store poisoned");
+        let credentials = self.read();
         OpdsCredentialStatus {
             configured: credentials.is_some(),
             username: credentials
@@ -96,22 +92,14 @@ impl OpdsCredentialStore {
     }
 
     pub fn get(&self) -> Option<StoredOpdsCredentials> {
-        self.inner
-            .credentials
-            .read()
-            .expect("OPDS credential store poisoned")
-            .clone()
+        self.read().clone()
     }
 
     pub fn set(&self, credentials: StoredOpdsCredentials) -> io::Result<()> {
         if let Some(path) = &self.inner.path {
             persist(path, &credentials)?;
         }
-        *self
-            .inner
-            .credentials
-            .write()
-            .expect("OPDS credential store poisoned") = Some(credentials);
+        *self.write() = Some(credentials);
         Ok(())
     }
 
@@ -123,11 +111,7 @@ impl OpdsCredentialStore {
                 Err(error) => return Err(error),
             }
         }
-        *self
-            .inner
-            .credentials
-            .write()
-            .expect("OPDS credential store poisoned") = None;
+        *self.write() = None;
         Ok(())
     }
 }
