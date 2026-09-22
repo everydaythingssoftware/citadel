@@ -8,6 +8,7 @@ import {
 } from "@/components/ui";
 import { IS_DEV } from "@/lib/env";
 import { useInitializeLibraryStore } from "@/lib/hooks/use-initialize-library-store";
+import { useLibrarySwitch } from "@/lib/hooks/use-library-switch";
 import { usePlatform } from "@/lib/platform/context";
 import { checkForUpdates } from "@/lib/services/app-updates";
 import { useApplyColorScheme } from "@/lib/theme-manager";
@@ -57,6 +58,7 @@ export const App = () => {
 	const theme = useSettings((state) => state.theme);
 	const platform = usePlatform();
 	useApplyColorScheme(theme);
+	const { stage: switchStage } = useLibrarySwitch();
 
 	useEffect(() => {
 		if (hydrated) {
@@ -121,7 +123,7 @@ export const App = () => {
 					<RouterProvider router={router} />
 				</LibraryStoreInitializer>
 			</FirstRunGate>
-			<LibrarySwitchCurtain />
+			<LibrarySwitchCurtain stage={switchStage} />
 		</TooltipProvider>
 	);
 };

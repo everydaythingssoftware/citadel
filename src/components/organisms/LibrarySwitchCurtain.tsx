@@ -1,14 +1,12 @@
-import { useLibrarySwitch } from "@/lib/hooks/use-library-switch";
+import type { SwitchStage } from "@/lib/library-switch/machine";
 import styles from "./LibrarySwitchCurtain.module.css";
 
 /**
  * Full-window curtain for library switches: pure renderer of the machine's
  * stage. Behavior (store watching, timers, toasts) lives in
- * `use-library-switch.ts`.
+ * `use-library-switch.ts`; App calls the hook and passes the stage down.
  */
-export const LibrarySwitchCurtain = () => {
-	const { stage } = useLibrarySwitch();
-
+export const LibrarySwitchCurtain = ({ stage }: { stage: SwitchStage }) => {
 	if (stage.id === "idle") return null;
 
 	return (

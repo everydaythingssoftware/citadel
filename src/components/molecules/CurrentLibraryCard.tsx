@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button, TextInput } from "@/components/ui";
-import { useLibraryStats } from "@/lib/hooks/use-library-stats";
+import {
+	type LibraryStatsState,
+	useLibraryStats,
+} from "@/lib/hooks/use-library-stats";
 import type { LibraryPath } from "@/lib/platform/settings/types";
 import { renameLibrary } from "@/stores/settings/actions";
 import styles from "./CurrentLibraryCard.module.css";
@@ -9,6 +12,8 @@ interface CurrentLibraryCardProps {
 	library: LibraryPath;
 	/** Reveal the library folder in the system file manager; null when the platform can't. */
 	onRevealInFileManager: (() => void) | null;
+	/** Story seam: overrides the card's own useLibraryStats fetch when set. */
+	statsOverride?: LibraryStatsState;
 }
 
 const plural = (count: number, word: string) =>
@@ -21,8 +26,13 @@ const plural = (count: number, word: string) =>
 export const CurrentLibraryCard = ({
 	library,
 	onRevealInFileManager,
+	statsOverride,
 }: CurrentLibraryCardProps) => {
-	const stats = useLibraryStats(library.absolutePath);
+	const fetchedStats = useLibraryStats(
+		library.absolutePath,
+		statsOverride === undefined,
+	);
+	const stats = statsOverride ?? fetchedStats;
 	const [draftName, setDraftName] = useState(library.displayName);
 	const [nameError, setNameError] = useState<string | null>(null);
 

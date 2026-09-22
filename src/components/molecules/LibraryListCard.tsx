@@ -6,7 +6,10 @@ import {
 	type ContextMenuState,
 	TextInput,
 } from "@/components/ui";
-import { useLibraryStats } from "@/lib/hooks/use-library-stats";
+import {
+	type LibraryStatsState,
+	useLibraryStats,
+} from "@/lib/hooks/use-library-stats";
 import { usePlatform } from "@/lib/platform/context";
 import type { LibraryPath } from "@/lib/platform/settings/types";
 import { renameLibrary } from "@/stores/settings/actions";
@@ -16,6 +19,11 @@ interface LibraryListCardProps {
 	currentLibraryId: string;
 	libraries: LibraryPath[];
 	onSwitchLibrary: (id: string) => Promise<void>;
+	/**
+	 * Story seam: pre-resolved stats per library path. When omitted (the
+	 * production path) each row fetches its own stats via useLibraryStats.
+	 */
+	statsByPath?: ReadonlyMap<string, LibraryStatsState>;
 }
 
 interface RenameState {
@@ -55,6 +63,7 @@ export const LibraryListCard = ({
 	currentLibraryId,
 	libraries,
 	onSwitchLibrary,
+	statsByPath,
 }: LibraryListCardProps) => {
 	const platform = usePlatform();
 	const [rename, setRename] = useState<RenameState | null>(null);
@@ -136,6 +145,7 @@ export const LibraryListCard = ({
 						isRenaming={rename?.id === library.id}
 						renameDraft={rename?.draft ?? ""}
 						renameError={rename?.error ?? null}
+						statsOverride={statsByPath?.get(library.absolutePath)}
 						rowRef={(node) => {
 							if (node) rowRefs.current.set(library.id, node);
 							else rowRefs.current.delete(library.id);
@@ -172,6 +182,8 @@ interface LibraryRowProps {
 	isRenaming: boolean;
 	renameDraft: string;
 	renameError: string | null;
+	/** Story seam: overrides the row's own useLibraryStats fetch when set. */
+	statsOverride?: LibraryStatsState;
 	rowRef: (node: HTMLButtonElement | null) => void;
 	onSwitchLibrary: (id: string) => Promise<void>;
 	onStartRename: (id: string) => void;
@@ -188,6 +200,7 @@ const LibraryRow = ({
 	isRenaming,
 	renameDraft,
 	renameError,
+	statsOverride,
 	rowRef,
 	onSwitchLibrary,
 	onStartRename,
@@ -196,7 +209,11 @@ const LibraryRow = ({
 	onCancelRename,
 	onOpenMenu,
 }: LibraryRowProps) => {
-	const stats = useLibraryStats(library.absolutePath);
+	const fetchedStats = useLibraryStats(
+		library.absolutePath,
+		statsOverride === undefined,
+	);
+	const stats = statsOverride ?? fetchedStats;
 
 	const openMenuFromPointer = (event: React.MouseEvent<HTMLButtonElement>) => {
 		event.preventDefault();
