@@ -1,0 +1,45 @@
+/* Same menu treatment as the LibraryPicker popover: surface-strong, hairline
+   border, lift shadow. Colors come from --ctd-* tokens only. */
+
+.menu {
+	position: fixed;
+	z-index: 300;
+	min-width: 180px;
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	max-height: calc(100vh - 16px);
+	background-color: var(--ctd-surface-strong);
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-control);
+	box-shadow: var(--ctd-popover-shadow);
+	padding: 4px 0;
+	animation: context-menu-fade-in 120ms ease-out;
+}
+
+@keyframes context-menu-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.menuItem {
+	margin: 1px 5px;
+	padding: 4px 8px;
+	border: none;
+	border-radius: min(4px, var(--ctd-radius-control));
+	background: transparent;
+	font-family: inherit;
+	font-size: 13px;
+	color: var(--ctd-ink);
+	text-align: left;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+	background-color: var(--ctd-nav-hover-bg);
+	outline: none;
+}

@@ -2,6 +2,12 @@ export { AlertDialog, type AlertDialogProps } from "./AlertDialog";
 export { Button, type ButtonProps } from "./Button";
 export { Checkbox, type CheckboxProps } from "./Checkbox";
 export {
+	ContextMenu,
+	type ContextMenuItem,
+	type ContextMenuProps,
+	type ContextMenuState,
+} from "./ContextMenu";
+export {
 	DialogCloseButton,
 	type DialogCloseButtonProps,
 } from "./DialogCloseButton";

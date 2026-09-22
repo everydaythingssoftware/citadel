@@ -54,6 +54,12 @@
 	outline: none;
 }
 
+/* Finder-style target highlight: shows which row an open context menu acts
+   on, since focus has moved into the menu. */
+.libraryRow[data-menu-target] {
+	background-color: var(--ctd-nav-hover-bg);
+}
+
 .row {
 	display: flex;
 	align-items: center;
