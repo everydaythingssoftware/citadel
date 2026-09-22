@@ -8,7 +8,6 @@ pub mod service;
 mod xml;
 
 pub use catalog::{router, CatalogSource};
-pub use network::{OpdsInterfaceKind, OpdsInterfaceState, OpdsNetworkInterface};
 pub use service::{
     OpdsBindTarget, OpdsErrorCode, OpdsLifecycleState, OpdsService, OpdsServiceStatus,
     OpdsStartConfig, OpdsStatusError,

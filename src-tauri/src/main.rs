@@ -71,7 +71,6 @@ fn run_tauri_backend() -> std::io::Result<()> {
         app_updates::clb_cmd_check_for_updates,
         app_updates::clb_cmd_install_update_if_available,
         // OPDS sharing commands
-        opds::commands::clb_query_opds_interfaces,
         opds::commands::clb_cmd_start_opds,
         opds::commands::clb_cmd_stop_opds,
         opds::commands::clb_query_opds_status,
