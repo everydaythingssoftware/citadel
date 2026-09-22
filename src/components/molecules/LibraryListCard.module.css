@@ -46,7 +46,6 @@
 	font-family: inherit;
 	text-align: left;
 	color: var(--ctd-ink);
-	cursor: pointer;
 }
 
 .libraryRow:hover,
