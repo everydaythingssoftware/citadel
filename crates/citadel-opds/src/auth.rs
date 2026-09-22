@@ -84,6 +84,44 @@ struct EnabledAuth {
     /// Caps concurrent Argon2 verifications; hashing is deliberately expensive
     /// and unbounded parallelism would make every request slow.
     permits: Arc<tokio::sync::Semaphore>,
+    backoff: Mutex<Backoff>,
+}
+
+/// Global exponential backoff on consecutive rejected attempts. With a
+/// ~30.5-bit generated password, throttling the online attacker to ~1 guess
+/// per second is what turns the margin into years.
+#[derive(Default)]
+struct Backoff {
+    consecutive_failures: u32,
+    until: Option<Instant>,
+}
+
+const BACKOFF_START_THRESHOLD: u32 = 3;
+const BACKOFF_BASE: Duration = Duration::from_secs(2);
+const BACKOFF_CAP: Duration = Duration::from_secs(60);
+
+impl Backoff {
+    /// Some(_) while the attacker is being refused without a hash.
+    fn refused_until(&self, now: Instant) -> Option<Duration> {
+        self.until
+            .filter(|until| *until > now)
+            .map(|until| until.duration_since(now))
+    }
+
+    fn note_rejection(&mut self, now: Instant) {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        if self.consecutive_failures >= BACKOFF_START_THRESHOLD {
+            let shift = self
+                .consecutive_failures
+                .saturating_sub(BACKOFF_START_THRESHOLD)
+                .min(5) as u32;
+            self.until = Some(now + BACKOFF_BASE.saturating_mul(1 << shift).min(BACKOFF_CAP));
+        }
+    }
+
+    fn note_success(&mut self) {
+        *self = Backoff::default();
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -174,6 +212,7 @@ impl OpdsBasicAuth {
                 cache: Mutex::new(AuthCache::new(cache_capacity, cache_ttl)),
                 target_duration: Mutex::new(target_duration),
                 permits: Arc::new(tokio::sync::Semaphore::new(ARGON2_CONCURRENCY)),
+                backoff: Mutex::new(Backoff::default()),
             })),
         })
     }
@@ -188,6 +227,13 @@ impl OpdsBasicAuth {
             return AuthOutcome::Authorized;
         };
 
+        {
+            let backoff = enabled.backoff.lock().unwrap();
+            if backoff.refused_until(Instant::now()).is_some() {
+                return AuthOutcome::Backoff;
+            }
+        }
+
         let started_at = Instant::now();
         let authorization = authorization.unwrap_or_default();
         let tag = opaque_tag(&enabled.cache_key, authorization);
@@ -198,6 +244,13 @@ impl OpdsBasicAuth {
             .and_then(|mut cache| cache.get(&tag))
         {
             let target_duration = current_target_duration(enabled).max(cached_duration);
+            {
+                let mut backoff = enabled.backoff.lock().unwrap();
+                match outcome {
+                    CachedOutcome::Authorized => backoff.note_success(),
+                    CachedOutcome::Rejected => backoff.note_rejection(Instant::now()),
+                }
+            }
             pad_to_target(started_at, target_duration).await;
             return match outcome {
                 CachedOutcome::Authorized => AuthOutcome::Authorized,
@@ -233,6 +286,13 @@ impl OpdsBasicAuth {
         if let Ok(mut cache) = enabled.cache.lock() {
             cache.insert(tag, outcome, target_duration);
         }
+        {
+            let mut backoff = enabled.backoff.lock().unwrap();
+            match outcome {
+                CachedOutcome::Authorized => backoff.note_success(),
+                CachedOutcome::Rejected => backoff.note_rejection(Instant::now()),
+            }
+        }
         pad_to_target(started_at, target_duration).await;
         match outcome {
             CachedOutcome::Authorized => AuthOutcome::Authorized,
@@ -245,6 +305,7 @@ enum AuthOutcome {
     Authorized,
     Rejected,
     Busy,
+    Backoff,
 }
 
 /// Axum 0.8 middleware. Apply it as the final layer around the OPDS router.
@@ -263,6 +324,11 @@ pub(crate) async fn require_basic_auth(
         .map(|value| value.as_bytes().to_vec());
     match auth.authorize(authorization.as_deref()).await {
         AuthOutcome::Authorized => next.run(request).await,
+        AuthOutcome::Backoff => (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(RETRY_AFTER, HeaderValue::from_static("1"))],
+        )
+            .into_response(),
         AuthOutcome::Busy => (
             StatusCode::SERVICE_UNAVAILABLE,
             [
@@ -402,6 +468,40 @@ mod tests {
         assert!(argon2id()
             .verify_password(b"correct horse", &password_hash)
             .is_ok());
+    }
+
+    #[tokio::test]
+    async fn repeated_failures_throttle_into_a_backoff_window() {
+        let auth = enabled_auth("reader", b"correct horse", Duration::ZERO);
+        let wrong = Some(&basic_header("reader", b"wrong password")[..]);
+
+        for _ in 0..BACKOFF_START_THRESHOLD {
+            assert!(matches!(auth.authorize(wrong).await, AuthOutcome::Rejected));
+        }
+        // Next attempt is refused without a verification pass.
+        assert!(matches!(auth.authorize(wrong).await, AuthOutcome::Backoff));
+
+        // Backoff expires and verification resumes.
+        tokio::time::sleep(BACKOFF_BASE).await;
+        assert!(matches!(auth.authorize(wrong).await, AuthOutcome::Rejected));
+    }
+
+    #[tokio::test]
+    async fn successful_authentication_resets_the_backoff_budget() {
+        let auth = enabled_auth("reader", b"correct horse", Duration::ZERO);
+        let right = Some(&basic_header("reader", b"correct horse")[..]);
+        let wrong = Some(&basic_header("reader", b"wrong password")[..]);
+
+        for _ in 0..BACKOFF_START_THRESHOLD.saturating_sub(1) {
+            assert!(matches!(auth.authorize(wrong).await, AuthOutcome::Rejected));
+        }
+        assert!(matches!(
+            auth.authorize(right).await,
+            AuthOutcome::Authorized
+        ));
+        // The failure streak was reset: more failures are answered (slowly),
+        // not refused.
+        assert!(matches!(auth.authorize(wrong).await, AuthOutcome::Rejected));
     }
 
     #[tokio::test]
