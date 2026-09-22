@@ -1,6 +1,6 @@
 # 2. Bind OPDS listeners to selected interfaces
 
-Status: Accepted - 2026-07-31
+Status: Superseded by 0004 - 2026-09-21 (interface selection and the reconcile loop are replaced; exact-address binding and Basic authentication are retained there).
 
 ## Context
 
