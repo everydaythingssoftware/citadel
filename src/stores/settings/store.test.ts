@@ -252,3 +252,82 @@ describe("useSettings smart shelves", () => {
 		expect(useSettings.getState().smartShelves).toHaveLength(1);
 	});
 });
+
+describe("useSettings library rename", () => {
+	const CALIBRE_PATH = "/Users/reader/Books/Calibre Library";
+
+	it("renameLibrary trims the name and persists it", async () => {
+		const manager = createFakeSettingsManager();
+		const useSettings = await importStore(manager);
+		const id = await useSettings.getState().createLibrary(CALIBRE_PATH);
+
+		await useSettings.getState().renameLibrary(id, "  Main Shelf  ");
+
+		const renamed = useSettings
+			.getState()
+			.libraryPaths.find((library) => library.id === id);
+		expect(renamed?.displayName).toBe("Main Shelf");
+
+		const persisted = await manager.get("libraryPaths");
+		expect(persisted).toContainEqual({
+			id,
+			displayName: "Main Shelf",
+			absolutePath: CALIBRE_PATH,
+		});
+	});
+
+	it("renameLibrary is a no-op (no persist) when the trimmed name is unchanged", async () => {
+		const manager = createFakeSettingsManager();
+		const setSpy = vi.spyOn(manager, "set");
+		const useSettings = await importStore(manager);
+		const id = await useSettings.getState().createLibrary(CALIBRE_PATH);
+		setSpy.mockClear();
+
+		await useSettings.getState().renameLibrary(id, "  Calibre Library  ");
+
+		expect(setSpy).not.toHaveBeenCalled();
+		expect(useSettings.getState().libraryPaths).toHaveLength(1);
+	});
+
+	it("renameLibrary rejects empty and whitespace-only names without changing state", async () => {
+		const manager = createFakeSettingsManager();
+		const useSettings = await importStore(manager);
+		const id = await useSettings.getState().createLibrary(CALIBRE_PATH);
+
+		await expect(useSettings.getState().renameLibrary(id, "")).rejects.toThrow(
+			"Library name cannot be empty",
+		);
+		await expect(
+			useSettings.getState().renameLibrary(id, "   "),
+		).rejects.toThrow("Library name cannot be empty");
+
+		const persisted = await manager.get("libraryPaths");
+		expect(persisted).toContainEqual({
+			id,
+			displayName: "Calibre Library",
+			absolutePath: CALIBRE_PATH,
+		});
+	});
+
+	it("renameLibrary throws for an unknown id", async () => {
+		const useSettings = await importStore(createFakeSettingsManager());
+
+		await expect(
+			useSettings.getState().renameLibrary("no-such-library", "Anything"),
+		).rejects.toThrow("No library with id no-such-library");
+	});
+
+	it("a renamed library survives an app restart with the same manager", async () => {
+		const manager = createFakeSettingsManager();
+		const first = await importStore(manager);
+		const id = await first.getState().createLibrary(CALIBRE_PATH);
+		await first.getState().renameLibrary(id, "Main Shelf");
+
+		const second = await importStore(manager);
+
+		expect(
+			second.getState().libraryPaths.find((library) => library.id === id)
+				?.displayName,
+		).toBe("Main Shelf");
+	});
+});

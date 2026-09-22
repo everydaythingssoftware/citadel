@@ -1,7 +1,15 @@
 import { useState } from "react";
-import { Button, FormField, TextInput } from "@/components/ui";
+import { F7Pencil } from "@/components/icons/F7Pencil";
+import {
+	Button,
+	FormField,
+	IconButton,
+	TextInput,
+	Tooltip,
+} from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
 import type { Option } from "@/lib/option";
+import { renameLibrary } from "@/stores/settings/actions";
 import styles from "./SwitchLibraryForm.module.css";
 
 export interface SwitchLibraryForm {
@@ -59,22 +67,104 @@ export const SwitchLibraryForm = ({
 					</h3>
 					<div className={styles.libraryGrid}>
 						{libraries.map((library) => (
-							<Button
+							<LibraryRenameRow
 								key={library.id}
-								variant="default"
-								disabled={library.id === currentLibraryId}
-								onClick={safeAsyncEventHandler(async () => {
-									if (library.id === currentLibraryId) return;
-									await selectExistingLibrary(library.id);
-								})}
-							>
-								{library.displayName}
-							</Button>
+								library={library}
+								isCurrent={library.id === currentLibraryId}
+								onSelect={selectExistingLibrary}
+							/>
 						))}
 					</div>
 				</>
 			)}
 			<AddNewLibraryPathForm {...props} />
+		</div>
+	);
+};
+
+interface LibraryRenameRowProps {
+	library: {
+		id: string;
+		displayName: string;
+		absolutePath: string;
+	};
+	isCurrent: boolean;
+	onSelect: (id: string) => Promise<void>;
+}
+
+/** Switch row with Finder-style inline rename: the pencil (or a double-click
+ * on the name) swaps in an input; Enter and blur commit, Escape cancels. */
+const LibraryRenameRow = ({
+	library,
+	isCurrent,
+	onSelect,
+}: LibraryRenameRowProps) => {
+	const [isRenaming, setIsRenaming] = useState(false);
+	const [draftName, setDraftName] = useState(library.displayName);
+	const [renameError, setRenameError] = useState<string | null>(null);
+
+	const commitRename = async () => {
+		try {
+			await renameLibrary(library.id, draftName);
+			setIsRenaming(false);
+		} catch (e) {
+			setRenameError(e instanceof Error ? e.message : String(e));
+		}
+	};
+
+	const startRenaming = () => {
+		setDraftName(library.displayName);
+		setRenameError(null);
+		setIsRenaming(true);
+	};
+
+	if (isRenaming) {
+		return (
+			<TextInput
+				value={draftName}
+				error={renameError}
+				aria-label={`Library name for ${library.displayName}`}
+				autoFocus
+				className={styles.renameInput}
+				onChange={(event) => {
+					setDraftName(event.currentTarget.value);
+					setRenameError(null);
+				}}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						void commitRename();
+					} else if (event.key === "Escape") {
+						setIsRenaming(false);
+					}
+				}}
+				onBlur={() => void commitRename()}
+			/>
+		);
+	}
+
+	return (
+		<div className={styles.libraryRow}>
+			<Button
+				variant="default"
+				disabled={isCurrent}
+				className={styles.libraryNameButton}
+				onClick={safeAsyncEventHandler(async () => {
+					if (isCurrent) return;
+					await onSelect(library.id);
+				})}
+				onDoubleClick={startRenaming}
+			>
+				{library.displayName}
+			</Button>
+			<Tooltip label="Edit library name">
+				<IconButton
+					aria-label={`Edit library name for ${library.displayName}`}
+					className={styles.libraryRenameButton}
+					onClick={startRenaming}
+				>
+					<F7Pencil width={14} height={14} />
+				</IconButton>
+			</Tooltip>
 		</div>
 	);
 };

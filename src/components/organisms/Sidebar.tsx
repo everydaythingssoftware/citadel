@@ -13,6 +13,7 @@ import { LibraryState, useLibraryState } from "@/stores/library/store";
 import { useLibraryView } from "@/stores/library-view/store";
 import { deleteSmartShelf, renameSmartShelf } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
+import { LibraryPicker } from "./LibraryPicker";
 import styles from "./Sidebar.module.css";
 
 export const Sidebar = () => {
@@ -65,6 +66,7 @@ interface SidebarPureProps {
 
 const SidebarPure = ({ currentPathname, openSettings }: SidebarPureProps) => {
 	const smartShelves = useSettings((s) => s.smartShelves);
+	const libraryCount = useSettings((s) => s.libraryPaths.length);
 	const hydrated = useSettings((s) => s.hydrated);
 	const activeShelfId = useLibraryView((s) => s.activeShelfId);
 	const resetToAllBooks = useLibraryView((s) => s.resetToAllBooks);
@@ -86,7 +88,11 @@ const SidebarPure = ({ currentPathname, openSettings }: SidebarPureProps) => {
 		<div className={styles.root}>
 			<div className={styles.sections}>
 				<div className={styles.section}>
-					<h2 className={styles.sectionLabel}>Library</h2>
+					{libraryCount >= 2 ? (
+						<LibraryPicker />
+					) : (
+						<h2 className={styles.sectionLabel}>Library</h2>
+					)}
 					<Link
 						to="/"
 						className={clsx("ctd-nav-link", styles.navLink)}
