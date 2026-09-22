@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use tokio::{sync::oneshot, task::JoinHandle};
 
 use super::{
+    auth::{OpdsAuthCredentials, OpdsBasicAuth},
+    credential_store::OpdsCredentialStore,
     network::{
         advertised_url, plan_bindings, BindPolicy, InterfaceProvider, InterfaceSnapshot,
         NetdevInterfaceProvider, WaitingReason,
@@ -30,6 +32,7 @@ pub use crate::network::OpdsBindTarget;
 pub struct OpdsStartConfig {
     pub target: OpdsBindTarget,
     pub port: u32,
+    pub authentication_enabled: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
@@ -96,18 +99,28 @@ impl InterfaceSnapshots for NetdevInterfaceSnapshots {
 }
 
 trait ListenerFactory: Send + Sync {
-    fn start(&self, address: SocketAddr, source: Arc<dyn CatalogSource>) -> io::Result<ServerTask>;
+    fn start(
+        &self,
+        address: SocketAddr,
+        source: Arc<dyn CatalogSource>,
+        auth: OpdsBasicAuth,
+    ) -> io::Result<ServerTask>;
 }
 
 struct TcpListenerFactory;
 
 impl ListenerFactory for TcpListenerFactory {
-    fn start(&self, address: SocketAddr, source: Arc<dyn CatalogSource>) -> io::Result<ServerTask> {
+    fn start(
+        &self,
+        address: SocketAddr,
+        source: Arc<dyn CatalogSource>,
+        auth: OpdsBasicAuth,
+    ) -> io::Result<ServerTask> {
         let listener = bind_socket(address)?;
         listener.set_nonblocking(true)?;
         let listener = tokio::net::TcpListener::from_std(listener)?;
         let (shutdown, shutdown_receiver) = oneshot::channel();
-        let app = router(source);
+        let app = router(source, auth);
         let task = tokio::spawn(async move {
             let _ = tokio::spawn(async move {
                 let _ = axum::serve(listener, app)
@@ -271,15 +284,6 @@ enum SharingState {
 }
 
 impl SharingState {
-    fn generation(&self) -> u64 {
-        match self {
-            SharingState::Starting { gen }
-            | SharingState::Running { gen, .. }
-            | SharingState::Waiting { gen, .. } => *gen,
-            _ => 0,
-        }
-    }
-
     fn begin_start(&mut self, gen: u64) -> Result<(), OpdsStatusError> {
         match self {
             SharingState::Stopped | SharingState::Failed { .. } | SharingState::Waiting { .. } => {
@@ -415,10 +419,13 @@ impl Default for ServiceDependencies {
     }
 }
 
+mod credentials;
+
 struct ServiceInner {
     state: Mutex<SharingState>,
     next_gen: std::sync::atomic::AtomicU64,
     source: Arc<dyn CatalogSource>,
+    credentials: OpdsCredentialStore,
     dependencies: ServiceDependencies,
 }
 
@@ -437,21 +444,56 @@ enum BindOutcome {
 }
 
 impl OpdsService {
-    pub fn new(source: Arc<dyn CatalogSource>) -> Self {
-        Self::with_dependencies(source, ServiceDependencies::default())
+    pub fn new(
+        source: Arc<dyn CatalogSource>,
+        credential_path: std::path::PathBuf,
+    ) -> io::Result<Self> {
+        let credentials = OpdsCredentialStore::load(credential_path)?;
+        Ok(Self::with_dependencies_and_credentials(
+            source,
+            credentials,
+            ServiceDependencies::default(),
+        ))
     }
 
+    #[cfg(test)]
     fn with_dependencies(
         source: Arc<dyn CatalogSource>,
+        dependencies: ServiceDependencies,
+    ) -> Self {
+        Self::with_dependencies_and_credentials(
+            source,
+            OpdsCredentialStore::in_memory(),
+            dependencies,
+        )
+    }
+
+    fn with_dependencies_and_credentials(
+        source: Arc<dyn CatalogSource>,
+        credentials: OpdsCredentialStore,
         dependencies: ServiceDependencies,
     ) -> Self {
         Self {
             inner: Arc::new(ServiceInner {
                 state: Mutex::new(SharingState::Stopped),
-                next_gen: std::sync::atomic::AtomicU64::new(0),
+                next_gen: AtomicU64::new(0),
                 source,
+                credentials,
                 dependencies,
             }),
+        }
+    }
+
+    /// Any credential change while sharing is not Stopped stops sharing: the
+    /// running listeners (and a Waiting poll) hold an auth built from the old
+    /// credentials, and stale passwords must not keep working.
+    async fn stop_if_active(&self) {
+        let listeners = {
+            let mut state = self.inner.state.lock().unwrap();
+            state.stop()
+        };
+        if let Some(listeners) = listeners {
+            listeners.drain().await;
         }
     }
 
@@ -467,14 +509,6 @@ impl OpdsService {
     pub async fn start(
         &self,
         config: OpdsStartConfig,
-    ) -> Result<OpdsServiceStatus, OpdsStatusError> {
-        self.start_with_policy(config, BindPolicy::default()).await
-    }
-
-    pub(crate) async fn start_with_policy(
-        &self,
-        config: OpdsStartConfig,
-        policy: BindPolicy,
     ) -> Result<OpdsServiceStatus, OpdsStatusError> {
         let port = u16::try_from(config.port)
             .ok()
@@ -501,9 +535,37 @@ impl OpdsService {
             return Ok(self.status().await);
         }
 
+        let stored = if config.authentication_enabled {
+            let stored = self.inner.credentials.get();
+            if stored.is_none() {
+                return Err(OpdsStatusError {
+                    code: OpdsErrorCode::AuthRequired,
+                    message: "Set a username and password to require them for sharing.".to_string(),
+                });
+            }
+            stored
+        } else {
+            None
+        };
+        let auth = match &stored {
+            Some(credentials) => OpdsBasicAuth::enabled(OpdsAuthCredentials {
+                username: credentials.username.clone(),
+                verifier: credentials.password_verifier.clone(),
+            })
+            .map_err(|error| OpdsStatusError {
+                code: OpdsErrorCode::Unexpected,
+                message: error.to_string(),
+            })?,
+            None => OpdsBasicAuth::disabled(),
+        };
+        // Credentials configured is the only thing that unlocks serving
+        // beyond the local network.
+        let policy = BindPolicy {
+            allow_global: stored.is_some(),
+        };
         if matches!(config.target, OpdsBindTarget::AllInterfaces) && !policy.allow_global {
             // AllInterfaces serves every network the computer can reach; it
-            // exists to be paired with credentials (wired in by the auth PR).
+            // exists to be paired with credentials.
             return Err(OpdsStatusError {
                 code: OpdsErrorCode::AuthRequired,
                 message: "Sharing on all networks requires a username and password.".to_string(),
@@ -522,6 +584,7 @@ impl OpdsService {
             &config.target,
             port,
             policy,
+            auth,
         )
         .await;
 
@@ -611,6 +674,7 @@ impl OpdsService {
                     &config.target,
                     port,
                     BindPolicy::default(),
+                    OpdsBasicAuth::disabled(),
                 )
                 .await;
 
@@ -666,6 +730,7 @@ async fn attempt_bind(
     target: &OpdsBindTarget,
     port: u16,
     policy: BindPolicy,
+    auth: OpdsBasicAuth,
 ) -> BindOutcome {
     let desired = match target {
         OpdsBindTarget::AllInterfaces => {
@@ -698,7 +763,10 @@ async fn attempt_bind(
     let mut listeners = Listeners::new();
     let mut first_failure = None;
     for address in desired {
-        match dependencies.listeners.start(address, source.clone()) {
+        match dependencies
+            .listeners
+            .start(address, source.clone(), auth.clone())
+        {
             Ok(mut task) => {
                 task.address = address;
                 let completion = task.task.take().expect("fresh listener has a task");
@@ -787,6 +855,7 @@ mod tests {
             &self,
             address: SocketAddr,
             _source: Arc<dyn CatalogSource>,
+            _auth: OpdsBasicAuth,
         ) -> io::Result<ServerTask> {
             if let Some(kind) = *self.fail_every.lock().unwrap() {
                 return Err(io::Error::from(kind));
@@ -907,6 +976,7 @@ mod tests {
         OpdsStartConfig {
             target: OpdsBindTarget::LocalNetworks,
             port,
+            authentication_enabled: false,
         }
     }
 
@@ -981,7 +1051,8 @@ mod tests {
                 6,
                 OpdsStartConfig {
                     target: OpdsBindTarget::LocalNetworks,
-                    port: 8080
+                    port: 8080,
+                    authentication_enabled: false,
                 },
                 Listeners::new(),
                 Vec::new()
@@ -995,7 +1066,8 @@ mod tests {
                 7,
                 OpdsStartConfig {
                     target: OpdsBindTarget::LocalNetworks,
-                    port: 8080
+                    port: 8080,
+                    authentication_enabled: false,
                 },
                 Listeners::new(),
                 Vec::new()
@@ -1223,12 +1295,14 @@ mod tests {
             .start(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
                 missing_source(),
+                OpdsBasicAuth::disabled(),
             )
             .expect("v4 wildcard bind");
         let v6 = factory
             .start(
                 SocketAddr::new(IpAddr::V6("::".parse().unwrap()), port),
                 missing_source(),
+                OpdsBasicAuth::disabled(),
             )
             .expect("v6 wildcard bind (V6ONLY must be set)");
 
@@ -1251,6 +1325,7 @@ mod tests {
                 .start(OpdsStartConfig {
                     target: OpdsBindTarget::AllInterfaces,
                     port: 8080,
+                    authentication_enabled: false,
                 })
                 .await,
             Err(OpdsStatusError {
@@ -1273,14 +1348,16 @@ mod tests {
             Duration::from_secs(1),
         );
 
+        service
+            .configure_credentials("reader".to_string(), "correct-horse".to_string())
+            .await
+            .unwrap();
         let started = service
-            .start_with_policy(
-                OpdsStartConfig {
-                    target: OpdsBindTarget::AllInterfaces,
-                    port: 8080,
-                },
-                BindPolicy { allow_global: true },
-            )
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::AllInterfaces,
+                port: 8080,
+                authentication_enabled: true,
+            })
             .await
             .unwrap();
         assert_eq!(started.state, OpdsLifecycleState::Running);
@@ -1288,6 +1365,108 @@ mod tests {
         assert_eq!(interfaces.calls.load(Ordering::Acquire), 0);
         assert_eq!(listeners.active.lock().unwrap().len(), 2);
         service.stop().await;
+        assert!(listeners.active.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn generating_credentials_while_running_stops_sharing() {
+        // Generate persists a new verifier immediately, which invalidates the
+        // password the running listeners accept - so the share must stop.
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
+            OpdsInterfaceState::Up,
+            [192, 168, 1, 5],
+        )]));
+        let listeners = Arc::new(FakeListeners::default());
+        let service = service_with(
+            source,
+            interfaces,
+            listeners.clone(),
+            Duration::from_secs(1),
+        );
+
+        service
+            .configure_credentials("reader".to_string(), "correct-horse".to_string())
+            .await
+            .unwrap();
+        service.start(config(8080)).await.unwrap();
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
+
+        let generated = service
+            .generate_credentials("reader".to_string())
+            .await
+            .unwrap();
+        assert!(!generated.password.is_empty());
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
+        assert!(listeners.active.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn credential_change_while_waiting_stops_the_poll() {
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(Vec::new()));
+        let listeners = Arc::new(FakeListeners::default());
+        let service = service_with(
+            source,
+            interfaces.clone(),
+            listeners.clone(),
+            Duration::from_millis(10),
+        );
+
+        service
+            .configure_credentials("reader".to_string(), "correct-horse".to_string())
+            .await
+            .unwrap();
+        let started = service
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::LocalNetworks,
+                port: 8080,
+                authentication_enabled: true,
+            })
+            .await
+            .unwrap();
+        assert_eq!(started.state, OpdsLifecycleState::WaitingForInterface);
+
+        // Reconfiguring while a Waiting poll holds a stale auth must stop it;
+        // otherwise the poll would bind with credentials just replaced.
+        service
+            .configure_credentials("other".to_string(), "battery-staple".to_string())
+            .await
+            .unwrap();
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
+        assert!(listeners.active.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn clearing_credentials_while_gated_stops_sharing() {
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(Vec::new()));
+        let listeners = Arc::new(FakeListeners::default());
+        let service = service_with(
+            source,
+            interfaces,
+            listeners.clone(),
+            Duration::from_secs(1),
+        );
+
+        service
+            .configure_credentials("reader".to_string(), "correct-horse".to_string())
+            .await
+            .unwrap();
+        let started = service
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::AllInterfaces,
+                port: 8080,
+                authentication_enabled: true,
+            })
+            .await
+            .unwrap();
+        assert_eq!(started.state, OpdsLifecycleState::Running);
+        assert_eq!(listeners.active.lock().unwrap().len(), 2);
+
+        let status = service.clear_credentials().await.unwrap();
+        assert!(!status.configured);
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
         assert!(listeners.active.lock().unwrap().is_empty());
     }
 
@@ -1300,7 +1479,9 @@ mod tests {
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
         let factory = TcpListenerFactory;
         let source = missing_source();
-        let mut first = factory.start(address, source.clone()).unwrap();
+        let mut first = factory
+            .start(address, source.clone(), OpdsBasicAuth::disabled())
+            .unwrap();
         // A client connects and the SERVER closes first: this port now has a
         // TIME_WAIT-eligible connection on the server side.
         let client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -1310,7 +1491,7 @@ mod tests {
 
         // Immediate rebind must succeed (SO_REUSEADDR on the socket2 path).
         let second = factory
-            .start(address, source)
+            .start(address, source, OpdsBasicAuth::disabled())
             .expect("rebind after server-side close must not hit TIME_WAIT");
         drop(second);
     }
