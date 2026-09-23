@@ -154,6 +154,99 @@ export const invalidateBookCache = (cache: PagedBookCache): PagedBookCache => ({
 	pages: new Map(),
 });
 
+export const findCachedBook = (
+	cache: PagedBookCache,
+	bookId: LibraryBook["id"],
+): LibraryBook | undefined => {
+	for (const pageItems of cache.pages.values()) {
+		const found = pageItems.find((item) => item.id === bookId);
+		if (found) return found;
+	}
+	return undefined;
+};
+
+const replaceById = <TItem extends LibraryBook | undefined>(
+	items: readonly TItem[],
+	book: LibraryBook,
+): TItem[] | null => {
+	const index = items.findIndex((item) => item?.id === book.id);
+	if (index === -1) return null;
+	const next = [...items];
+	next[index] = book as TItem;
+	return next;
+};
+
+/**
+ * Swaps one book's cached copy for `book` wherever it is loaded, keeping the
+ * key, generation, and total. Only valid when the change cannot move the
+ * book (see [`bookPlacementChanged`]); returns the same cache if it is not
+ * loaded.
+ */
+export const replaceBookInCache = (
+	cache: PagedBookCache,
+	book: LibraryBook,
+): PagedBookCache => {
+	for (const [pageIndex, pageItems] of cache.pages) {
+		const replaced = replaceById(pageItems, book);
+		if (replaced === null) continue;
+		const pages = new Map(cache.pages);
+		pages.set(pageIndex, replaced);
+		return { ...cache, pages };
+	}
+	return cache;
+};
+
+export const replaceBookInSnapshot = (
+	snapshot: BookSnapshot | null,
+	book: LibraryBook,
+): BookSnapshot | null => {
+	if (snapshot === null) return null;
+	const replaced = replaceById(snapshot.items, book);
+	return replaced === null ? snapshot : { ...snapshot, items: replaced };
+};
+
+const primaryAuthorId = (book: LibraryBook): string | undefined =>
+	book.author_list[0]?.id;
+
+const authorIdsKey = (book: LibraryBook): string =>
+	book.author_list.map((author) => author.id).join(",");
+
+/**
+ * Whether going from `before` to `after` can change the book's position or
+ * membership under `filter`, mirroring the backend's WHERE/ORDER BY (sorts
+ * tie-break on id, so only the sort column itself moves a book). When true,
+ * an in-place patch would leave the grid misordered and pages must refetch.
+ */
+export const bookPlacementChanged = (
+	before: LibraryBook,
+	after: LibraryBook,
+	filter: BookGridFilter,
+): boolean => {
+	const hasText = normalizedText(filter) !== null;
+	const titleSort =
+		filter.sortOrder === "nameAz" || filter.sortOrder === "nameZa";
+	const authorSort = !titleSort;
+
+	const titleChanged =
+		before.title !== after.title ||
+		before.sortable_title !== after.sortable_title;
+	const authorsChanged = authorIdsKey(before) !== authorIdsKey(after);
+	const primaryAuthorChanged =
+		primaryAuthorId(before) !== primaryAuthorId(after);
+	const seriesChanged = before.series !== after.series;
+	const seriesIndexChanged = before.series_index !== after.series_index;
+
+	if (titleChanged && (titleSort || hasText || filter.seriesId !== null)) {
+		return true;
+	}
+	if (primaryAuthorChanged && authorSort) return true;
+	if (authorsChanged && (hasText || filter.authorId !== null)) return true;
+	if (seriesChanged && (hasText || filter.seriesId !== null)) return true;
+	if (seriesIndexChanged && filter.seriesId !== null) return true;
+	if (before.is_read !== after.is_read && filter.hideRead) return true;
+	return false;
+};
+
 export interface FetchedBookPage {
 	key: string;
 	generation: number;

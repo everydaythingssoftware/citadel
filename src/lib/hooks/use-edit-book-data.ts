@@ -17,6 +17,11 @@ export interface EditBookData {
 	 * stale form stays on screen instead of flashing a spinner.
 	 */
 	refreshBook: () => Promise<void>;
+	/**
+	 * Show a copy the caller already has (e.g. the one a save returned),
+	 * skipping the refetch. Ignored if the route has moved to another book.
+	 */
+	replaceBook: (book: LibraryBook) => void;
 	/** Re-fetch the tag vocabulary (after a save that changed tags). */
 	refreshTags: () => Promise<void>;
 }
@@ -40,6 +45,10 @@ export const useEditBookData = (bookId: string): EditBookData => {
 		if (!library) return;
 		setBook(await library.getBook(bookId));
 	}, [library, bookId]);
+
+	const replaceBook = useCallback((next: LibraryBook) => {
+		setBook((current) => (current?.id === next.id ? next : current));
+	}, []);
 
 	const refreshTags = useCallback(async () => {
 		if (!library) return;
@@ -82,5 +91,13 @@ export const useEditBookData = (bookId: string): EditBookData => {
 		};
 	}, [ready, library, bookId]);
 
-	return { book, allTagList, loading, error, refreshBook, refreshTags };
+	return {
+		book,
+		allTagList,
+		loading,
+		error,
+		refreshBook,
+		replaceBook,
+		refreshTags,
+	};
 };

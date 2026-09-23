@@ -41,6 +41,24 @@ pub fn get_one(
     ))
 }
 
+/// Applies `update` and returns the book hydrated exactly like [`get_one`],
+/// so callers can patch it into their state without a follow-up read.
+pub fn update_one(
+    library_root: String,
+    lib: &mut Library,
+    book_id: libcalibre::BookId,
+    update: libcalibre::BookUpdate,
+) -> Result<LibraryBook, libcalibre::CalibreError> {
+    let book = lib.update_book(book_id, update)?;
+    let author_book_counts = lib.author_book_counts()?;
+    Ok(to_library_book(
+        &library_root,
+        &book,
+        &author_book_counts,
+        true,
+    ))
+}
+
 pub fn search(
     library_root: String,
     lib: &mut Library,
@@ -70,4 +88,76 @@ pub fn query_page(
             .collect(),
         page.total,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    fn open_empty_library(target: &Path) -> (String, Library) {
+        let zip_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/empty_7_2_calibre_lib.zip");
+        let file = std::fs::File::open(zip_path).unwrap();
+        zip::ZipArchive::new(file).unwrap().extract(target).unwrap();
+        let library_root = target.to_string_lossy().into_owned();
+        let db_path = libcalibre::util::get_db_path(&library_root).unwrap();
+        (library_root, Library::new(db_path).unwrap())
+    }
+
+    #[test]
+    fn update_one_returns_the_hydrated_updated_book() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (library_root, mut lib) = open_empty_library(tmp.path());
+        let added = lib
+            .add_book(libcalibre::BookAdd {
+                title: "Old Title".to_string(),
+                author_names: vec!["Ann Author".to_string()],
+                tags: None,
+                series: None,
+                series_index: None,
+                publisher: None,
+                publication_date: None,
+                rating: None,
+                comments: None,
+                identifiers: HashMap::new(),
+                language: None,
+                file_paths: Vec::new(),
+            })
+            .unwrap();
+
+        let updated = update_one(
+            library_root.clone(),
+            &mut lib,
+            added.id,
+            libcalibre::BookUpdate {
+                title: Some("New Title".to_string()),
+                author_names: None,
+                author_ids: None,
+                description: None,
+                is_read: Some(true),
+                publication_date: None,
+                tags: Some(vec!["fiction".to_string()]),
+                series: None,
+                series_index: None,
+                language_codes: None,
+                publisher: None,
+                rating: None,
+                comments: None,
+                identifiers: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(updated.id, added.id.as_i32().to_string());
+        assert_eq!(updated.title, "New Title");
+        assert!(updated.is_read);
+        assert_eq!(updated.tag_list, vec!["fiction".to_string()]);
+        assert_eq!(updated.author_list.len(), 1);
+
+        let refetched = get_one(library_root, &mut lib, added.id).unwrap();
+        assert_eq!(refetched.title, updated.title);
+        assert_eq!(refetched.is_read, updated.is_read);
+    }
 }

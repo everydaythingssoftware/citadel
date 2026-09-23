@@ -18,16 +18,21 @@ import {
 	BOOK_PAGE_SIZE,
 	type BookGridFilter,
 	type BookSnapshot,
+	bookPlacementChanged,
 	cacheForKey,
 	compareBySeriesIndex,
 	emptyBookCache,
+	findCachedBook,
 	invalidateBookCache,
 	type PagedBookCache,
 	pagesCoveringRange,
+	replaceBookInCache,
+	replaceBookInSnapshot,
 	serializeBookFilter,
 	toBookQuery,
 } from "@/lib/book-page-cache";
 import { sortAuthors } from "@/lib/domain/author";
+import { projectBookUpdate } from "@/lib/domain/book";
 import type { Library, Options } from "@/lib/services/library";
 import { initClient } from "@/lib/services/library";
 
@@ -77,7 +82,12 @@ interface LibraryActions {
 	) => Promise<string | undefined>;
 
 	// Book and author mutations
-	updateBook: (bookId: string, updates: BookUpdate) => Promise<void>;
+	/**
+	 * Saves a book edit. The loaded copy updates optimistically, then takes
+	 * the server's copy (or rolls back on failure); pages only refetch when
+	 * the edit can move the book under the current sort or filter.
+	 */
+	updateBook: (bookId: string, updates: BookUpdate) => Promise<LibraryBook>;
 	updateAuthor: (authorId: string, updates: AuthorUpdate) => Promise<void>;
 	createAuthors: (newAuthors: NewAuthor[]) => Promise<void>;
 	deleteAuthor: (authorId: string) => Promise<void>;
@@ -198,6 +208,12 @@ let pendingRestore: number | null = null;
 let backendOpenChain: Promise<unknown> = Promise.resolve();
 
 const SWITCH_IN_PROGRESS_ERROR = "A library switch is in progress";
+
+const sameAuthors = (a: LibraryBook, b: LibraryBook): boolean =>
+	a.author_list.length === b.author_list.length &&
+	a.author_list.every(
+		(author, index) => author.id === b.author_list[index]?.id,
+	);
 
 /** The backend global may not match the visible library: a shadow switch is
  * loading, or a cancelled/failed switch is still restoring. */
@@ -400,6 +416,14 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 		})();
 		inFlightBookPages.set(flightKey, flight);
 		return flight;
+	};
+
+	/** Swaps one book's copy in the loaded pages and the stale snapshot. */
+	const patchBook = (book: LibraryBook): void => {
+		set((state) => ({
+			bookCache: replaceBookInCache(state.bookCache, book),
+			staleBookSnapshot: replaceBookInSnapshot(state.staleBookSnapshot, book),
+		}));
 	};
 
 	const refreshLibraryTotal = async (): Promise<void> => {
@@ -747,12 +771,47 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			updateBook: async (
 				bookId: string,
 				updates: BookUpdate,
-			): Promise<void> => {
+			): Promise<LibraryBook> => {
 				if (isBackendDiverted()) throw new Error(SWITCH_IN_PROGRESS_ERROR);
-				const { library } = get();
+				const { library, bookCache, authors } = get();
 				if (!library) throw new Error("Library not initialized");
-				await library.updateBook(bookId, updates);
-				get().actions.invalidateBooks();
+
+				const before = findCachedBook(bookCache, bookId);
+				const optimistic =
+					before && projectBookUpdate(before, updates, authors);
+				if (optimistic) patchBook(optimistic);
+				// Results for a library that is no longer visible must not land.
+				const stillCurrent = () =>
+					get().library === library && !isBackendDiverted();
+
+				let saved: LibraryBook;
+				try {
+					saved = await library.updateBook(bookId, updates);
+				} catch (error) {
+					// Only undo our own guess: a newer edit may have replaced it.
+					if (
+						before &&
+						stillCurrent() &&
+						findCachedBook(get().bookCache, bookId) === optimistic
+					) {
+						patchBook(before);
+					}
+					throw error;
+				}
+				if (!stillCurrent()) return saved;
+
+				// A book that was never loaded, or whose sort position or
+				// filter membership may have changed, can't be patched in
+				// place: refetch instead.
+				if (!before || bookPlacementChanged(before, saved, get().bookFilter)) {
+					get().actions.invalidateBooks();
+					return saved;
+				}
+				patchBook(saved);
+				// Per-series and per-author book counts ride on those lists.
+				if (before.series !== saved.series) void get().actions.loadSeries();
+				if (!sameAuthors(before, saved)) void get().actions.loadAuthors();
+				return saved;
 			},
 
 			updateAuthor: async (

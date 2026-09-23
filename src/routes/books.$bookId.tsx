@@ -45,8 +45,15 @@ const EditBookRoute = () => {
 
 	// Scoped fetches: this route loads exactly its own book and the tag
 	// vocabulary (for the tag autocomplete) — never the whole library.
-	const { book, allTagList, loading, error, refreshBook, refreshTags } =
-		useEditBookData(bookId);
+	const {
+		book,
+		allTagList,
+		loading,
+		error,
+		refreshBook,
+		replaceBook,
+		refreshTags,
+	} = useEditBookData(bookId);
 	const allAuthorList = useAuthors();
 
 	const onSave = useCallback(
@@ -56,15 +63,14 @@ const EditBookRoute = () => {
 				book?.tag_list ?? [],
 				bookUpdate.tag_list,
 			);
-			// updateBook drops the paged grid cache (visible pages refetch
-			// lazily); this route then re-fetches only its own data.
-			await actions.updateBook(bookId, bookUpdate);
-			await refreshBook();
+			// updateBook returns the stored book (and patches the grid), so
+			// the form shows it without a second fetch.
+			replaceBook(await actions.updateBook(bookId, bookUpdate));
 			if (tagsChanged) {
 				await refreshTags();
 			}
 		},
-		[actions, bookId, book, refreshBook, refreshTags],
+		[actions, bookId, book, replaceBook, refreshTags],
 	);
 
 	const onCreateAuthor = useCallback(

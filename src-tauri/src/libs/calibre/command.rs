@@ -2,7 +2,9 @@ use tauri::Manager;
 
 use crate::book::ImportableBookMetadata;
 use crate::book::LibraryAuthor;
+use crate::book::LibraryBook;
 use crate::calibre::author::NewAuthor;
+use crate::calibre::book;
 use crate::libs::cover_thumbs::{self, CoverThumbnail};
 use crate::state::CitadelState;
 
@@ -23,14 +25,18 @@ pub fn clb_cmd_update_book(
     state: tauri::State<CitadelState>,
     book_id: String,
     updates: BookUpdate,
-) -> Result<i32, String> {
+) -> Result<LibraryBook, String> {
+    let library_root = state
+        .get_library_path()
+        .ok_or("No library loaded".to_string())?;
     state.with_library(|lib| {
         let book_id_int = book_id.parse::<i32>().map_err(|e| e.to_string())?;
-        lib.update_book(
+        book::update_one(
+            library_root,
+            lib,
             libcalibre::BookId::from(book_id_int),
             updates.to_library_update(),
         )
-        .map(|entry| entry.id.as_i32())
         .map_err(|e| e.to_string())
     })?
 }

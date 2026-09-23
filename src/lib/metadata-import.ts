@@ -22,7 +22,7 @@ export interface ApplyMetadataDeps {
 		label: string,
 		value: string,
 	) => Promise<void>;
-	updateBook: (bookId: string, updates: BookUpdate) => Promise<void>;
+	updateBook: (bookId: string, updates: BookUpdate) => Promise<unknown>;
 	setBookCoverFromUrl: (bookId: string, url: string) => Promise<void>;
 }
 

@@ -138,6 +138,7 @@ const genLocalCalibreClient = async (
 			if (result.status === "error") {
 				throw new Error(result.error);
 			}
+			return result.data;
 		},
 		updateAuthor: async (authorId, updates) => {
 			const result = await commands.clbCmdUpdateAuthor(authorId, updates);

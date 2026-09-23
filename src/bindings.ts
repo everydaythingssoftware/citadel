@@ -121,7 +121,7 @@ async clbCmdCreateBook(md: ImportableBookMetadata) : Promise<Result<string, stri
     else return { status: "error", error: e  as any };
 }
 },
-async clbCmdUpdateBook(bookId: string, updates: BookUpdate) : Promise<Result<number, string>> {
+async clbCmdUpdateBook(bookId: string, updates: BookUpdate) : Promise<Result<LibraryBook, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_update_book", { bookId, updates }) };
 } catch (e) {

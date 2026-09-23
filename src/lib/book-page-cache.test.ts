@@ -5,11 +5,15 @@ import {
 	applyBookPage,
 	BOOK_PAGE_SIZE,
 	type BookGridFilter,
+	bookPlacementChanged,
 	cacheForKey,
 	compareBySeriesIndex,
 	emptyBookCache,
+	findCachedBook,
 	invalidateBookCache,
 	pagesCoveringRange,
+	replaceBookInCache,
+	replaceBookInSnapshot,
 	serializeBookFilter,
 	sparseBookItems,
 	toBookQuery,
@@ -374,5 +378,157 @@ describe("compareBySeriesIndex", () => {
 			"a",
 			"z",
 		]);
+	});
+});
+
+describe("findCachedBook", () => {
+	it("finds a book in any fetched page", () => {
+		const cache = {
+			...emptyBookCache("k", 1),
+			total: 3,
+			pages: new Map([
+				[0, [book("1")]],
+				[2, [book("2"), book("3")]],
+			]),
+		};
+		expect(findCachedBook(cache, "3")?.id).toBe("3");
+		expect(findCachedBook(cache, "9")).toBeUndefined();
+	});
+});
+
+describe("replaceBookInCache", () => {
+	const cache = {
+		...emptyBookCache("k", 4),
+		total: 3,
+		pages: new Map([
+			[0, [book("1"), book("2")]],
+			[1, [book("3")]],
+		]),
+	};
+
+	it("swaps the book in place without touching key, generation, or total", () => {
+		const next = replaceBookInCache(cache, book("2", { title: "Renamed" }));
+		expect(next.key).toBe("k");
+		expect(next.generation).toBe(4);
+		expect(next.total).toBe(3);
+		expect(next.pages.get(0)?.map((b) => b.title)).toEqual([
+			"Book 1",
+			"Renamed",
+		]);
+		expect(next.pages.get(1)).toBe(cache.pages.get(1));
+		expect(cache.pages.get(0)?.[1]?.title).toBe("Book 2");
+	});
+
+	it("returns the same cache when the book is not loaded", () => {
+		expect(replaceBookInCache(cache, book("9"))).toBe(cache);
+	});
+});
+
+describe("replaceBookInSnapshot", () => {
+	it("swaps the book in place, keeping holes", () => {
+		const snapshot = { key: "k", items: [book("1"), undefined], total: 2 };
+		const next = replaceBookInSnapshot(snapshot, book("1", { is_read: true }));
+		expect(next?.items[0]?.is_read).toBe(true);
+		expect(next?.items).toHaveLength(2);
+		expect(snapshot.items[0]?.is_read).toBe(false);
+	});
+
+	it("returns the same snapshot when the book is absent", () => {
+		const snapshot = { key: "k", items: [book("1")], total: 1 };
+		expect(replaceBookInSnapshot(snapshot, book("2"))).toBe(snapshot);
+		expect(replaceBookInSnapshot(null, book("2"))).toBeNull();
+	});
+});
+
+describe("bookPlacementChanged", () => {
+	const ann = { id: "a1", name: "Ann", sortable_name: "Ann", book_count: 1 };
+	const bob = { id: "b1", name: "Bob", sortable_name: "Bob", book_count: 1 };
+	const before = book("1", {
+		title: "Dune",
+		author_list: [ann] as LibraryBook["author_list"],
+		series: "Saga",
+		series_index: 1,
+	});
+
+	it("ignores fields that never move a book", () => {
+		const after = {
+			...before,
+			tag_list: ["sf"],
+			description: "Spice",
+			language_list: ["eng"],
+		};
+		expect(bookPlacementChanged(before, after, filter())).toBe(false);
+		expect(
+			bookPlacementChanged(
+				before,
+				after,
+				filter({ text: "dune", seriesId: 1 }),
+			),
+		).toBe(false);
+	});
+
+	it("a title change moves the book only under title sort, text, or series filters", () => {
+		const after = { ...before, title: "Dune Messiah" };
+		expect(bookPlacementChanged(before, after, filter())).toBe(false);
+		expect(
+			bookPlacementChanged(before, after, filter({ sortOrder: "nameAz" })),
+		).toBe(true);
+		expect(bookPlacementChanged(before, after, filter({ text: "x" }))).toBe(
+			true,
+		);
+		expect(bookPlacementChanged(before, after, filter({ seriesId: 1 }))).toBe(
+			true,
+		);
+	});
+
+	it("an author change moves the book under author sort, author, or text filters", () => {
+		const after = {
+			...before,
+			author_list: [bob] as LibraryBook["author_list"],
+		};
+		expect(bookPlacementChanged(before, after, filter())).toBe(true);
+		expect(
+			bookPlacementChanged(before, after, filter({ sortOrder: "nameZa" })),
+		).toBe(false);
+		expect(
+			bookPlacementChanged(
+				before,
+				after,
+				filter({ sortOrder: "nameAz", authorId: "a1" }),
+			),
+		).toBe(true);
+		expect(
+			bookPlacementChanged(
+				before,
+				after,
+				filter({ sortOrder: "nameAz", text: "x" }),
+			),
+		).toBe(true);
+	});
+
+	it("a series change moves the book under series or text filters", () => {
+		const renamed = { ...before, series: "Other" };
+		const reindexed = { ...before, series_index: 2 };
+		expect(bookPlacementChanged(before, renamed, filter())).toBe(false);
+		expect(bookPlacementChanged(before, renamed, filter({ text: "x" }))).toBe(
+			true,
+		);
+		expect(bookPlacementChanged(before, renamed, filter({ seriesId: 1 }))).toBe(
+			true,
+		);
+		expect(bookPlacementChanged(before, reindexed, filter({ text: "x" }))).toBe(
+			false,
+		);
+		expect(
+			bookPlacementChanged(before, reindexed, filter({ seriesId: 1 })),
+		).toBe(true);
+	});
+
+	it("a read-state change moves the book only when read books are hidden", () => {
+		const after = { ...before, is_read: true };
+		expect(bookPlacementChanged(before, after, filter())).toBe(false);
+		expect(
+			bookPlacementChanged(before, after, filter({ hideRead: true })),
+		).toBe(true);
 	});
 });
