@@ -3,8 +3,8 @@
 use super::words::WORD_POOL;
 use serde::Serialize;
 
-/// Returned once when credentials are generated; the plaintext is never
-/// stored, so this is the only chance to copy it into a reader.
+/// Returned when credentials are generated; the password is also stored
+/// reversibly (ADR 0005) so the UI can reveal it again later.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedOpdsCredentials {
@@ -19,9 +19,8 @@ pub(crate) const PASSWORD_SYMBOLS: &[char] = &['!', '*', '-', '=', '~', '$'];
 /// `word` + three digits (2-9) + one symbol + `word`, e.g. `wren724=wolf`.
 /// Lowercase words from a curated pool, digits without 0/1, symbols from a
 /// URL-safe set (`! * - = ~ $`) so readers that paste credentials into
-/// `http://user:pass@host/` logins cannot mangle them. Roughly 30.5 bits: an
-/// online-only attacker faces an Argon2-slowed endpoint, and auth failures
-/// back off.
+/// `http://user:pass@host/` logins cannot mangle them. Roughly 30.5 bits:
+/// an online-only attacker faces exponential backoff on failures.
 /// Symbols that survive e-reader input fields and `user:pass@host` logins.
 pub(crate) fn generate_password() -> String {
     use rand_core::{OsRng, RngCore};

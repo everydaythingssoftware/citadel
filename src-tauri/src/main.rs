@@ -77,7 +77,9 @@ fn run_tauri_backend() -> std::io::Result<()> {
         opds::commands::clb_cmd_clear_opds_credentials,
         opds::commands::clb_cmd_start_opds,
         opds::commands::clb_cmd_stop_opds,
+        opds::commands::clb_cmd_reconfigure_opds,
         opds::commands::clb_query_opds_status,
+        opds::commands::clb_query_opds_credential_secret,
         // Window commands
         menu::clb_cmd_open_settings,
     ]);

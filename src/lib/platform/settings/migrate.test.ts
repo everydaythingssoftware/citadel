@@ -45,7 +45,7 @@ describe("migrateSettings", () => {
 			},
 		};
 		const result = migrateSettings(v1);
-		expect(result.settingsSchemaVersion).toBe(2);
+		expect(result.settingsSchemaVersion).toBe(4);
 		// K10plus added and enabled, inserted right after DNB.
 		expect(result.metadataProviders.configs.k10plus).toEqual({
 			enabled: true,
@@ -74,5 +74,54 @@ describe("migrateSettings", () => {
 			},
 		};
 		expect(migrateSettings(already)).toBe(already);
+	});
+
+	it("adds the sharing block to a v2 install", () => {
+		const v2: SettingsSchema = {
+			...defaultSettings,
+			settingsSchemaVersion: 2,
+		};
+		const result = migrateSettings(v2);
+		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.sharing).toEqual({
+			target: "localNetworks",
+			port: 9028,
+			authenticationEnabled: false,
+			username: "",
+		});
+	});
+
+	it("moves an untouched 8080 sharing port to 9028 in v4", () => {
+		const v3: SettingsSchema = {
+			...defaultSettings,
+			settingsSchemaVersion: 3,
+			sharing: {
+				target: "localNetworks",
+				port: 8080,
+				authenticationEnabled: true,
+				username: "phil",
+			},
+		};
+		const result = migrateSettings(v3);
+		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.sharing.port).toBe(9028);
+		expect(result.sharing.authenticationEnabled).toBe(true);
+		expect(result.sharing.username).toBe("phil");
+	});
+
+	it("leaves a chosen sharing port alone in v4", () => {
+		const chosen: SettingsSchema = {
+			...defaultSettings,
+			settingsSchemaVersion: 3,
+			sharing: {
+				target: "allInterfaces",
+				port: 54321,
+				authenticationEnabled: true,
+				username: "phil",
+			},
+		};
+		const result = migrateSettings(chosen);
+		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.sharing.port).toBe(54321);
 	});
 });

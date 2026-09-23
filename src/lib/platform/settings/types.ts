@@ -41,6 +41,17 @@ export interface MetadataProvidersSettings {
 }
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+/** Where the OPDS server listens. `allInterfaces` additionally requires
+ * credentials (see the sharing pane); `localNetworks` never does. */
+export type SharingTarget = "localNetworks" | "allInterfaces";
+
+export interface SharingSettings {
+	target: SharingTarget;
+	port: number;
+	authenticationEnabled: boolean;
+	username: string;
+}
+
 export interface SettingsSchema {
 	theme: "dark" | "light" | "auto";
 	startFullscreen: boolean;
@@ -57,6 +68,7 @@ export interface SettingsSchema {
 	/** Bumped when the settings shape changes; gates one-time migrations. */
 	settingsSchemaVersion: number;
 	metadataProviders: MetadataProvidersSettings;
+	sharing: SharingSettings;
 }
 
 export const defaultSettings: SettingsSchema = {
@@ -89,6 +101,12 @@ export const defaultSettings: SettingsSchema = {
 			hardcover: { enabled: false, apiKey: "" },
 		},
 		autoLookupOnImport: false,
+	},
+	sharing: {
+		target: "localNetworks",
+		port: 9028,
+		authenticationEnabled: false,
+		username: "",
 	},
 };
 

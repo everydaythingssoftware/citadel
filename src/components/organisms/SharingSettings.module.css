@@ -1,0 +1,604 @@
+/* Sharing pane (production). Rows layout signed off by Phil; cursors follow
+ * the AppKit-style policy in styles.css — no pointer hands anywhere.
+ *
+ * Motion values (Phil's dial-in): hold 700ms with an 80ms lead before the
+ * fill starts (620ms fill), fill = gold disc 1.5× the button spilling into
+ * the shell, 260ms fade on fire, 360° turn overshooting to 384° in 620ms,
+ * gold letter wave 500ms/letter at 42ms stagger, Copied 1.5s. The JS
+ * constants in SharingSettings.tsx mirror these. */
+
+.stack {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+}
+
+.intro {
+	margin-bottom: 0.25rem;
+}
+
+.sectionTitle {
+	margin: 0;
+	font-size: 1.0625rem;
+	font-weight: 600;
+	line-height: 1.3;
+	color: var(--ctd-ink);
+}
+
+.note {
+	max-width: 34rem;
+	margin: 0.375rem 0 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: var(--ctd-ink-soft);
+}
+
+.unsupported {
+	padding: 0.25rem 0.125rem;
+}
+
+.unsupported h3 {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.unsupported p {
+	max-width: 65ch;
+	margin: 0.25rem 0 0;
+	font-size: 0.75rem;
+	line-height: 1.45;
+	color: var(--ctd-ink-soft);
+}
+
+.card {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--ctd-border);
+	border-radius: 0.5rem;
+	background: var(--ctd-surface);
+}
+
+:global([data-theme="dark"]) .card {
+	background: var(--ctd-surface-strong);
+}
+
+.card > * + * {
+	border-top: 1px solid var(--ctd-border);
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	min-height: 2.75rem;
+	padding: 0.5rem 0.875rem;
+}
+
+/* Rows whose control side carries extra text (errors, lock notes): the label
+ * stays pinned to the field, not centered against the whole column. */
+.rowTop {
+	align-items: flex-start;
+}
+
+.rowTop > label,
+.rowTop > .rowLabelText {
+	/* Match the control's line box so flex-start aligns label to field. */
+	line-height: 1.625rem;
+}
+
+.row > label,
+.row > .rowLabelText,
+.row label {
+	font-size: 0.8125rem;
+	color: var(--ctd-ink);
+}
+
+.rowNote {
+	margin: 0.125rem 0 0;
+	font-size: 0.75rem;
+	line-height: 1.4;
+	color: var(--ctd-ink-soft);
+}
+
+.controlStack {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.25rem;
+}
+
+.fieldNote,
+.fieldError {
+	margin: 0;
+	font-size: 0.6875rem;
+	line-height: 1.3;
+	text-align: right;
+}
+
+.fieldNote {
+	color: var(--ctd-ink-soft);
+}
+
+.fieldError {
+	color: var(--pal-red);
+}
+
+/* ------------------------------------------------------------------------
+ * Listening strip: darker than the card, left-aligned under Share library.
+ * The URL itself is the button (hover bg); the copy icon sits inside at the
+ * trailing edge and appears on hover/focus; Copy/Copied sits outside.
+ * ---------------------------------------------------------------------- */
+.rowListen {
+	display: flex;
+	padding: 0.4rem 0.875rem;
+	background: var(--pal-mantle);
+}
+
+.listen {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	margin: 0;
+	font-size: 0.8125rem;
+	color: var(--ctd-ink-soft);
+}
+
+.listen code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.8125rem;
+	color: var(--ctd-ink);
+}
+
+.urlChip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	padding: 0.1rem 0.4rem 0.1rem 0.5rem;
+	border: none;
+	background: transparent;
+	border-radius: 0.375rem;
+	font: inherit;
+	color: var(--ctd-ink);
+}
+
+.urlChip:hover,
+.urlChip.urlCopied {
+	background: var(--ctd-nav-hover-bg);
+}
+
+.urlChip:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+/* Fixed 0.75rem slot: reserved even when hidden, so hover/copied never
+ * shifts the URL or collapses the button. */
+.urlChipIcon {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	width: 0.75rem;
+	height: 0.75rem;
+	font-size: 0.75rem;
+	color: var(--ctd-ink-soft);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+.urlChipIcon svg {
+	width: 1em;
+	height: 1em;
+	display: block;
+}
+
+.urlChip:hover .urlChipIcon,
+.urlChip:focus-visible .urlChipIcon,
+.urlChip.urlCopied .urlChipIcon {
+	opacity: 1;
+}
+
+.urlChip.urlCopied .urlChipIcon {
+	color: var(--ctd-ink);
+}
+
+/* Check pops into the slot the copy glyph just left (5B). */
+.urlCheck {
+	animation: check-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1.2) both;
+}
+
+@keyframes check-in {
+	from {
+		opacity: 0;
+		transform: scale(0.6);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+/* Copy/Copied share one grid cell sized to the wider word, so swapping never
+ * moves anything. Revealed while the URL button is hovered/focused and held
+ * while "Copied" flashes. */
+.urlCopyLabel {
+	display: inline-grid;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	line-height: 1;
+	color: var(--ctd-ink-soft);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 120ms ease-out;
+}
+
+.urlCopyLabel > span {
+	grid-area: 1 / 1;
+	visibility: hidden;
+}
+
+.urlCopyLabel:not([data-copied="true"]) > span:first-child,
+.urlCopyLabel[data-copied="true"] > span:last-child {
+	visibility: visible;
+}
+
+.urlChip:hover + .urlCopyLabel,
+.urlChip:focus-visible + .urlCopyLabel,
+.urlCopyLabel[data-copied="true"] {
+	opacity: 1;
+}
+
+.urlCopyLabel[data-copied="true"] {
+	color: var(--ctd-ink);
+}
+
+/* ------------------------------------------------------------------------
+ * Fields
+ * ---------------------------------------------------------------------- */
+.portInput {
+	width: 6rem;
+	padding: 0.3rem 0.6rem;
+	border: 1px solid var(--ctd-border-strong);
+	border-radius: var(--ctd-radius-control);
+	background: var(--ctd-control-bg-strong);
+	box-shadow: var(--ctd-field-inner-shadow);
+	font: inherit;
+	font-size: 0.8125rem;
+	color: var(--ctd-control-text);
+	text-align: right;
+}
+
+.fieldInput {
+	width: 13.5rem;
+	padding: 0.3rem 0.6rem;
+	border: 1px solid var(--ctd-border-strong);
+	border-radius: var(--ctd-radius-control);
+	background: var(--ctd-control-bg-strong);
+	box-shadow: var(--ctd-field-inner-shadow);
+	font: inherit;
+	font-size: 0.8125rem;
+	color: var(--ctd-control-text);
+}
+
+.portInput:focus,
+.fieldInput:focus {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+/* Red border only; the text stays ink. Focused, the ring turns red too so
+ * the border and ring read as one error state instead of grey-on-red. */
+.inputError {
+	border-color: var(--ctd-danger-border);
+}
+
+.inputError:focus {
+	box-shadow: 0 0 0 3px oklch(from var(--pal-red) l c h / 0.3);
+}
+
+/* Error text in the gap between a row's label and its control. */
+.inlineError {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	font-size: 0.6875rem;
+	line-height: 1.3;
+	text-align: right;
+	color: var(--pal-red);
+}
+
+/* Wrapper that gives the early-release pill an unclipped mount. */
+.shellWrap {
+	position: relative;
+	display: inline-flex;
+}
+
+/* The password field shell: input + eye + regenerate as one control. The
+ * shell clips (overflow hidden) — the gold disc spilling out of the hold
+ * button is meant to stop at the shell's edge. */
+.fieldShell {
+	display: flex;
+	align-items: center;
+	width: 13.5rem;
+	padding-right: 0.25rem;
+	border: 1px solid var(--ctd-border-strong);
+	border-radius: var(--ctd-radius-control);
+	background: var(--ctd-control-bg-strong);
+	box-shadow: var(--ctd-field-inner-shadow);
+	position: relative;
+	overflow: hidden;
+}
+
+.fieldShell:focus-within {
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.fieldBare {
+	flex: 1;
+	min-width: 0;
+	border: none;
+	background: transparent;
+	box-shadow: none;
+}
+
+.fieldBare:focus {
+	box-shadow: none;
+}
+
+.mono {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	letter-spacing: 0.02em;
+}
+
+/* Gold letter wave when the password rotates: the real input text goes
+ * transparent and a per-glyph overlay plays the wave in place. The overlay
+ * mirrors the input's metrics exactly (mono, 0.8125rem, 0.6rem left pad,
+ * 0.02em tracking) so glyphs land on top of their own pixels. */
+.washing .washTarget {
+	color: transparent;
+	caret-color: transparent;
+}
+
+.washOverlay {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	right: 3.5rem;
+	display: flex;
+	align-items: center;
+	padding-left: 0.6rem;
+	overflow: hidden;
+	white-space: pre;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.8125rem;
+	letter-spacing: 0.02em;
+	color: var(--ctd-control-text);
+	pointer-events: none;
+	z-index: 1;
+}
+
+/* Each glyph: 500ms, gold for the middle 50% of its own timeline; JS sets the
+ * per-letter delay (index × 42ms). 13 glyphs ≈ 1000ms end to end. The 50%
+ * brightness > 1 renders above SDR white on HDR displays (WebKit). */
+.washOverlay > span {
+	animation: letter-wave 500ms ease-in-out both;
+}
+
+@keyframes letter-wave {
+	0% {
+		color: var(--ctd-control-text);
+		filter: brightness(1);
+	}
+	25%,
+	75% {
+		color: oklch(75% 0.14 90);
+		filter: brightness(1);
+	}
+	50% {
+		color: oklch(75% 0.14 90);
+		filter: brightness(1.8);
+	}
+	100% {
+		color: var(--ctd-control-text);
+		filter: brightness(1);
+	}
+}
+
+.inlineIcon {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 1.625rem;
+	height: 1.625rem;
+	padding: 0;
+	border: none;
+	background: transparent;
+	border-radius: var(--ctd-radius-control);
+	font-size: 0.9375rem;
+	color: var(--ctd-ink-soft);
+}
+
+.inlineIcon:hover:not(:disabled) {
+	color: var(--ctd-ink);
+}
+
+.inlineIcon:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.inlineIcon:disabled {
+	opacity: 0.45;
+}
+
+.inlineIcon svg,
+.urlChip svg,
+.holdButton svg {
+	pointer-events: none;
+}
+
+/* ------------------------------------------------------------------------
+ * Press-and-hold regenerate. Circle button; a gold disc 1.5× the button
+ * grows from its centre (spilling into the shell) over 620ms after an 80ms
+ * lead, so it completes exactly at the 700ms threshold. On fire the disc
+ * holds full and fades 260ms while the icon does one overshooting turn.
+ * Releasing early cancels the fill and shows the pill.
+ * ---------------------------------------------------------------------- */
+.holdButton {
+	position: relative;
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 1.625rem;
+	height: 1.625rem;
+	padding: 0;
+	border: none;
+	background: transparent;
+	border-radius: 50%;
+	overflow: visible;
+	font-size: 0.9375rem;
+	color: var(--ctd-ink-soft);
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+.holdButton:hover:not(:disabled) {
+	color: var(--ctd-ink);
+}
+
+.holdButton:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.holdButton:disabled {
+	opacity: 0.45;
+}
+
+.holdIcon {
+	position: relative;
+	z-index: 1;
+	display: inline-flex;
+	transform-origin: 50% 50%;
+	transition: color 140ms ease-out;
+}
+
+.holdIcon svg {
+	display: block;
+	width: 1em;
+	height: 1em;
+}
+
+/* Icon goes to ink over the gold as the disc covers it. */
+.holdButton.holding .holdIcon {
+	color: var(--ctd-ink);
+	transition: color 220ms ease-out 80ms;
+}
+
+.holdButton.fired .holdIcon {
+	color: var(--ctd-ink);
+	animation: hold-spin 620ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* 1.5 × 1.625rem = 2.4375rem. */
+.holdFill {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 2.4375rem;
+	height: 2.4375rem;
+	border-radius: 50%;
+	background: oklch(85% 0.1 90);
+	transform: translate(-50%, -50%) scale(0);
+	pointer-events: none;
+}
+
+.holdButton.holding .holdFill {
+	animation: hold-fill 620ms linear 80ms forwards;
+}
+
+.holdButton.fired .holdFill {
+	transform: translate(-50%, -50%) scale(1);
+	opacity: 0;
+	transition: opacity 260ms ease-out;
+}
+
+@keyframes hold-fill {
+	from {
+		transform: translate(-50%, -50%) scale(0);
+	}
+	to {
+		transform: translate(-50%, -50%) scale(1);
+	}
+}
+
+@keyframes hold-spin {
+	0% {
+		transform: rotate(0deg);
+	}
+	62% {
+		transform: rotate(384deg);
+		animation-timing-function: ease-in-out;
+	}
+	100% {
+		transform: rotate(360deg);
+	}
+}
+
+/* Early-release pill: anchored under the hold button, outside the shell. */
+.holdHint {
+	position: absolute;
+	right: 0;
+	top: calc(100% + 0.3rem);
+	white-space: nowrap;
+	padding: 0.15rem 0.5rem;
+	border-radius: 0.375rem;
+	background: var(--ctd-ink);
+	color: var(--pal-base);
+	font-size: 0.6875rem;
+	line-height: 1.4;
+	pointer-events: none;
+	z-index: 10;
+	animation: hint-in 120ms ease-out both;
+}
+
+@keyframes hint-in {
+	from {
+		opacity: 0;
+		transform: translateY(-3px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+/* Reduce Motion: keep the states (fill appears full at the 80ms lead, check
+ * and pill just appear) but drop the motion and the letter wave. */
+@media (prefers-reduced-motion: reduce) {
+	.holdFill,
+	.holdIcon,
+	.urlCheck,
+	.holdHint,
+	.urlChipIcon,
+	.urlCopyLabel {
+		/* biome-ignore lint/complexity/noImportantStyles: reduced-motion must beat the animation declarations above */
+		animation-duration: 1ms !important;
+		/* biome-ignore lint/complexity/noImportantStyles: see above */
+		transition-duration: 1ms !important;
+	}
+
+	.washOverlay {
+		display: none;
+	}
+
+	.washing .washTarget {
+		color: var(--ctd-control-text);
+		caret-color: auto;
+	}
+}

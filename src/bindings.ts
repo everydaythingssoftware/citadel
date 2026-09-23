@@ -337,9 +337,25 @@ async clbCmdStopOpds() : Promise<Result<OpdsServiceStatus, OpdsStatusError>> {
     else return { status: "error", error: e  as any };
 }
 },
+async clbCmdReconfigureOpds(config: OpdsStartConfig) : Promise<Result<OpdsServiceStatus, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_reconfigure_opds", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbQueryOpdsStatus() : Promise<Result<OpdsServiceStatus, OpdsStatusError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clbQueryOpdsCredentialSecret() : Promise<Result<OpdsCredentialSecret | null, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_credential_secret") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -459,6 +475,11 @@ export type DetectionSource =
  */
 "default-folder"
 /**
+ * Returned when credentials are generated; the password is also stored
+ * reversibly (ADR 0005) so the UI can reveal it again later.
+ */
+export type GeneratedOpdsCredentials = { username: string; password: string }
+/**
  * Book identifiers, such as ISBN, DOI, Google Books ID, etc.
  */
 export type Identifier = { id: number; label: string; value: string }
@@ -551,13 +572,22 @@ export type NewAuthor = { name: string; sortable_name: string | null }
  * credentials (see the auth integration) since it serves every network the
  * computer can reach.
  */
-export type OpdsBindTarget = { type: "localNetworks" } | { type: "allInterfaces" }
+export type OpdsBindTarget = "localNetworks" | "allInterfaces"
+/**
+ * The stored secret, for the reader UI's reveal flow. The password is kept
+ * reversibly on purpose (ADR 0005); the app process may show it to its user.
+ */
+export type OpdsCredentialSecret = { username: string; password: string }
+export type OpdsCredentialStatus = { configured: boolean; username: string | null }
 export type OpdsErrorCode = "invalidPort" | "libraryNotReady" | "authRequired" | "configurationConflict" | "interfaceUnavailable" | "portUnavailable" | "listenerFailed" | "unexpected"
 export type OpdsLifecycleState = "stopped" | "starting" | "running" | "waitingForInterface" | "error"
-export type OpdsServiceStatus = { state: OpdsLifecycleState; activeLibraryId: string | null; urls: string[]; error: OpdsStatusError | null }
+export type OpdsServiceStatus = { state: OpdsLifecycleState; activeLibraryId: string | null; urls: string[]; error: OpdsStatusError | null; 
+/**
+ * The configuration the server is actually running with, so the UI can
+ * show the live port and scope instead of a possibly-stale draft.
+ */
+config: OpdsStartConfig | null }
 export type OpdsStartConfig = { target: OpdsBindTarget; port: number; authenticationEnabled: boolean }
-export type GeneratedOpdsCredentials = { username: string; password: string }
-export type OpdsCredentialStatus = { configured: boolean; username: string | null }
 export type OpdsStatusError = { code: OpdsErrorCode; message: string }
 export type ProviderStatus = { provider: MetadataProvider; is_valid: boolean; message: string }
 export type RemoteFile = { url: string }

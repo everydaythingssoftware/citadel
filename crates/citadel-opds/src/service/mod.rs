@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{sync::oneshot, task::JoinHandle};
 
 use super::{
-    auth::{OpdsAuthCredentials, OpdsBasicAuth},
+    auth::OpdsBasicAuth,
     credential_store::OpdsCredentialStore,
     network::{
         advertised_url, plan_bindings, BindPolicy, InterfaceProvider, InterfaceSnapshot,
@@ -72,6 +72,9 @@ pub struct OpdsServiceStatus {
     pub active_library_id: Option<String>,
     pub urls: Vec<String>,
     pub error: Option<OpdsStatusError>,
+    /// The configuration the server is actually running with, so the UI can
+    /// show the live port and scope instead of a possibly-stale draft.
+    pub config: Option<OpdsStartConfig>,
 }
 
 impl Default for OpdsServiceStatus {
@@ -81,6 +84,7 @@ impl Default for OpdsServiceStatus {
             active_library_id: None,
             urls: Vec::new(),
             error: None,
+            config: None,
         }
     }
 }
@@ -238,9 +242,7 @@ fn bind_failure_error(address: SocketAddr, class: BindFailureClass) -> OpdsStatu
     match class {
         BindFailureClass::Persistent => OpdsStatusError {
             code: OpdsErrorCode::PortUnavailable,
-            message: format!(
-                "The port Citadel uses for {address} is unavailable or restricted. Pick a different port."
-            ),
+            message: format!("Network address {address} is not available; please pick a new port."),
         },
         BindFailureClass::Transient => OpdsStatusError {
             code: OpdsErrorCode::Unexpected,
@@ -255,6 +257,11 @@ fn listener_failed_error() -> OpdsStatusError {
         code: OpdsErrorCode::ListenerFailed,
         message: "Sharing stopped unexpectedly. Turn it back on to share again.".to_string(),
     }
+}
+
+struct Preflight {
+    port: u16,
+    policy: BindPolicy,
 }
 
 /// The whole sharing lifecycle. Variants own their resources, so state and
@@ -373,21 +380,29 @@ impl SharingState {
 
 impl From<&SharingState> for OpdsServiceStatus {
     fn from(state: &SharingState) -> Self {
-        let plain =
-            |state: OpdsLifecycleState, urls: Vec<String>, error: Option<OpdsStatusError>| {
-                OpdsServiceStatus {
-                    state,
-                    active_library_id: None,
-                    urls,
-                    error,
-                }
-            };
-        match state {
-            SharingState::Stopped => plain(OpdsLifecycleState::Stopped, Vec::new(), None),
-            SharingState::Starting { .. } => plain(OpdsLifecycleState::Starting, Vec::new(), None),
-            SharingState::Running { urls, .. } => {
-                plain(OpdsLifecycleState::Running, urls.clone(), None)
+        let plain = |state: OpdsLifecycleState,
+                     urls: Vec<String>,
+                     error: Option<OpdsStatusError>,
+                     config: Option<OpdsStartConfig>| {
+            OpdsServiceStatus {
+                state,
+                active_library_id: None,
+                urls,
+                error,
+                config,
             }
+        };
+        match state {
+            SharingState::Stopped => plain(OpdsLifecycleState::Stopped, Vec::new(), None, None),
+            SharingState::Starting { .. } => {
+                plain(OpdsLifecycleState::Starting, Vec::new(), None, None)
+            }
+            SharingState::Running { urls, config, .. } => plain(
+                OpdsLifecycleState::Running,
+                urls.clone(),
+                None,
+                Some(config.clone()),
+            ),
             SharingState::Waiting { reason, .. } => plain(
                 OpdsLifecycleState::WaitingForInterface,
                 Vec::new(),
@@ -395,10 +410,14 @@ impl From<&SharingState> for OpdsServiceStatus {
                     code: OpdsErrorCode::InterfaceUnavailable,
                     message: reason.message(),
                 }),
+                None,
             ),
-            SharingState::Failed { error, urls } => {
-                plain(OpdsLifecycleState::Error, urls.clone(), Some(error.clone()))
-            }
+            SharingState::Failed { error, urls } => plain(
+                OpdsLifecycleState::Error,
+                urls.clone(),
+                Some(error.clone()),
+                None,
+            ),
         }
     }
 }
@@ -426,6 +445,11 @@ struct ServiceInner {
     next_gen: std::sync::atomic::AtomicU64,
     source: Arc<dyn CatalogSource>,
     credentials: OpdsCredentialStore,
+    auth: OpdsBasicAuth,
+    /// Serializes start/stop/reconfigure/clear across their await points so
+    /// two windows (or a window and a poll race) cannot interleave a stop
+    /// into a restart's drain.
+    op_lock: tokio::sync::Mutex<()>,
     dependencies: ServiceDependencies,
 }
 
@@ -479,14 +503,17 @@ impl OpdsService {
                 next_gen: AtomicU64::new(0),
                 source,
                 credentials,
+                auth: OpdsBasicAuth::new(),
+                op_lock: tokio::sync::Mutex::new(()),
                 dependencies,
             }),
         }
     }
 
-    /// Any credential change while sharing is not Stopped stops sharing: the
-    /// running listeners (and a Waiting poll) hold an auth built from the old
-    /// credentials, and stale passwords must not keep working.
+    /// Clearing credentials while sharing is live stops sharing: the
+    /// all-networks bind policy exists only while credentials exist, and a
+    /// required auth snapshot with no secret could only reject everyone.
+    /// Configure and generate do NOT stop; they hot-swap the snapshot.
     async fn stop_if_active(&self) {
         let listeners = {
             let mut state = self.inner.state.lock().unwrap();
@@ -506,23 +533,38 @@ impl OpdsService {
         status
     }
 
+    /// Applies a changed port or scope to a live share: a deliberate restart
+    /// through the normal stop/start transitions, so binding rules and the
+    /// auth gate are re-checked in one place. Stopped shares just start.
+    pub async fn reconfigure(
+        &self,
+        config: OpdsStartConfig,
+    ) -> Result<OpdsServiceStatus, OpdsStatusError> {
+        let _guard = self.inner.op_lock.lock().await;
+        self.preflight(&config)?;
+        let listeners = {
+            let mut state = self.inner.state.lock().unwrap();
+            state.stop()
+        };
+        if let Some(listeners) = listeners {
+            listeners.drain().await;
+        }
+        self.start_inner(config).await
+    }
+
     pub async fn start(
         &self,
         config: OpdsStartConfig,
     ) -> Result<OpdsServiceStatus, OpdsStatusError> {
-        let port = u16::try_from(config.port)
-            .ok()
-            .filter(|port| *port != 0)
-            .ok_or(OpdsStatusError {
-                code: OpdsErrorCode::InvalidPort,
-                message: "Choose a port between 1 and 65535.".to_string(),
-            })?;
-        if active_library_id(self.inner.source.clone()).is_none() {
-            return Err(OpdsStatusError {
-                code: OpdsErrorCode::LibraryNotReady,
-                message: "Open a library before starting sharing.".to_string(),
-            });
-        }
+        let _guard = self.inner.op_lock.lock().await;
+        self.start_inner(config).await
+    }
+
+    async fn start_inner(
+        &self,
+        config: OpdsStartConfig,
+    ) -> Result<OpdsServiceStatus, OpdsStatusError> {
+        let Preflight { port, policy } = self.preflight(&config)?;
 
         let already_running = {
             let state = self.inner.state.lock().unwrap();
@@ -535,48 +577,17 @@ impl OpdsService {
             return Ok(self.status().await);
         }
 
-        let stored = if config.authentication_enabled {
-            let stored = self.inner.credentials.get();
-            if stored.is_none() {
-                return Err(OpdsStatusError {
-                    code: OpdsErrorCode::AuthRequired,
-                    message: "Set a username and password to require them for sharing.".to_string(),
-                });
-            }
-            stored
-        } else {
-            None
-        };
-        let auth = match &stored {
-            Some(credentials) => OpdsBasicAuth::enabled(OpdsAuthCredentials {
-                username: credentials.username.clone(),
-                verifier: credentials.password_verifier.clone(),
-            })
-            .map_err(|error| OpdsStatusError {
-                code: OpdsErrorCode::Unexpected,
-                message: error.to_string(),
-            })?,
-            None => OpdsBasicAuth::disabled(),
-        };
-        // Credentials configured is the only thing that unlocks serving
-        // beyond the local network.
-        let policy = BindPolicy {
-            allow_global: stored.is_some(),
-        };
-        if matches!(config.target, OpdsBindTarget::AllInterfaces) && !policy.allow_global {
-            // AllInterfaces serves every network the computer can reach; it
-            // exists to be paired with credentials.
-            return Err(OpdsStatusError {
-                code: OpdsErrorCode::AuthRequired,
-                message: "Sharing on all networks requires a username and password.".to_string(),
-            });
-        }
-
         let gen = self.inner.next_gen.fetch_add(1, Ordering::Relaxed) + 1;
         {
             let mut state = self.inner.state.lock().unwrap();
             state.begin_start(gen)?;
         }
+
+        // The transition above committed us to starting; only now may the
+        // shared auth gate change — a rejected start must never mutate what
+        // live listeners serve.
+        self.inner.auth.set_required(config.authentication_enabled);
+        self.swap_auth_from_store();
 
         let outcome = attempt_bind(
             &self.inner.dependencies,
@@ -584,7 +595,7 @@ impl OpdsService {
             &config.target,
             port,
             policy,
-            auth,
+            self.inner.auth.clone(),
         )
         .await;
 
@@ -623,7 +634,59 @@ impl OpdsService {
         Ok(self.status().await)
     }
 
+    /// Every check a config must pass before any state changes, so
+    /// `reconfigure` can reject a bad config without stopping a live share.
+    fn preflight(&self, config: &OpdsStartConfig) -> Result<Preflight, OpdsStatusError> {
+        let port = u16::try_from(config.port)
+            .ok()
+            .filter(|port| *port != 0)
+            .ok_or(OpdsStatusError {
+                code: OpdsErrorCode::InvalidPort,
+                message: "Choose a port between 1 and 65535.".to_string(),
+            })?;
+        if active_library_id(self.inner.source.clone()).is_none() {
+            return Err(OpdsStatusError {
+                code: OpdsErrorCode::LibraryNotReady,
+                message: "Open a library before starting sharing.".to_string(),
+            });
+        }
+
+        let stored = if config.authentication_enabled {
+            let stored = self.inner.credentials.get();
+            if stored.is_none() {
+                return Err(OpdsStatusError {
+                    code: OpdsErrorCode::AuthRequired,
+                    message: "Reader sign-in needs a password. Generate or set one, then turn sharing on.".to_string(),
+                });
+            }
+            stored
+        } else {
+            None
+        };
+        // Credentials configured is the only thing that unlocks serving
+        // beyond the local network.
+        let policy = BindPolicy {
+            allow_global: stored.is_some(),
+        };
+        if matches!(config.target, OpdsBindTarget::AllInterfaces) && !policy.allow_global {
+            // AllInterfaces serves every network the computer can reach; it
+            // exists to be paired with credentials.
+            return Err(OpdsStatusError {
+                code: OpdsErrorCode::AuthRequired,
+                message: "Sharing on all networks requires reader sign-in. Set a password first."
+                    .to_string(),
+            });
+        }
+
+        Ok(Preflight { port, policy })
+    }
+
     pub async fn stop(&self) -> OpdsServiceStatus {
+        let _guard = self.inner.op_lock.lock().await;
+        self.stop_inner().await
+    }
+
+    async fn stop_inner(&self) -> OpdsServiceStatus {
         let listeners = {
             let mut state = self.inner.state.lock().unwrap();
             state.stop()
@@ -674,7 +737,7 @@ impl OpdsService {
                     &config.target,
                     port,
                     BindPolicy::default(),
-                    OpdsBasicAuth::disabled(),
+                    inner.auth.clone(),
                 )
                 .await;
 
@@ -1295,14 +1358,14 @@ mod tests {
             .start(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
                 missing_source(),
-                OpdsBasicAuth::disabled(),
+                OpdsBasicAuth::new(),
             )
             .expect("v4 wildcard bind");
         let v6 = factory
             .start(
                 SocketAddr::new(IpAddr::V6("::".parse().unwrap()), port),
                 missing_source(),
-                OpdsBasicAuth::disabled(),
+                OpdsBasicAuth::new(),
             )
             .expect("v6 wildcard bind (V6ONLY must be set)");
 
@@ -1350,7 +1413,6 @@ mod tests {
 
         service
             .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .await
             .unwrap();
         let started = service
             .start(OpdsStartConfig {
@@ -1369,9 +1431,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn generating_credentials_while_running_stops_sharing() {
-        // Generate persists a new verifier immediately, which invalidates the
-        // password the running listeners accept - so the share must stop.
+    async fn generating_credentials_while_running_keeps_sharing_live() {
+        // Generate hot-swaps the live credential snapshot; rotation never
+        // reads as "sharing turned off".
         let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
             OpdsInterfaceState::Up,
@@ -1387,22 +1449,19 @@ mod tests {
 
         service
             .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .await
             .unwrap();
         service.start(config(8080)).await.unwrap();
         assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
 
-        let generated = service
-            .generate_credentials("reader".to_string())
-            .await
-            .unwrap();
+        let generated = service.generate_credentials("reader".to_string()).unwrap();
         assert!(!generated.password.is_empty());
-        assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
-        assert!(listeners.active.lock().unwrap().is_empty());
+        // The snapshot swapped in place: the share never went down.
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
+        assert_eq!(listeners.active.lock().unwrap().len(), 1);
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn credential_change_while_waiting_stops_the_poll() {
+    async fn credential_change_while_waiting_keeps_the_poll_alive() {
         let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(Vec::new()));
         let listeners = Arc::new(FakeListeners::default());
@@ -1415,7 +1474,6 @@ mod tests {
 
         service
             .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .await
             .unwrap();
         let started = service
             .start(OpdsStartConfig {
@@ -1427,13 +1485,15 @@ mod tests {
             .unwrap();
         assert_eq!(started.state, OpdsLifecycleState::WaitingForInterface);
 
-        // Reconfiguring while a Waiting poll holds a stale auth must stop it;
-        // otherwise the poll would bind with credentials just replaced.
+        // The poll reads the live snapshot per attempt, so reconfiguring
+        // mid-wait is safe: it keeps waiting and will bind the latest secret.
         service
             .configure_credentials("other".to_string(), "battery-staple".to_string())
-            .await
             .unwrap();
-        assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
+        assert_eq!(
+            service.status().await.state,
+            OpdsLifecycleState::WaitingForInterface
+        );
         assert!(listeners.active.lock().unwrap().is_empty());
     }
 
@@ -1451,7 +1511,6 @@ mod tests {
 
         service
             .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .await
             .unwrap();
         let started = service
             .start(OpdsStartConfig {
@@ -1471,6 +1530,96 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn rejected_start_leaves_the_live_auth_gate_untouched() {
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
+            OpdsInterfaceState::Up,
+            [192, 168, 1, 5],
+        )]));
+        let listeners = Arc::new(FakeListeners::default());
+        let service = service_with(
+            source,
+            interfaces,
+            listeners.clone(),
+            Duration::from_secs(1),
+        );
+
+        service
+            .configure_credentials("reader".to_string(), "correct-horse".to_string())
+            .unwrap();
+        service
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::LocalNetworks,
+                port: 8080,
+                authentication_enabled: true,
+            })
+            .await
+            .unwrap();
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
+        assert!(service.inner.auth.required());
+
+        // A stale pane calling start with a conflicting auth flag must fail
+        // without flipping the gate the running listeners serve.
+        let conflict = service
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::LocalNetworks,
+                port: 8081,
+                authentication_enabled: false,
+            })
+            .await;
+        assert!(conflict.is_err());
+        assert!(service.inner.auth.required());
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
+        service.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn reconfigure_with_an_invalid_config_keeps_the_share_running() {
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
+            OpdsInterfaceState::Up,
+            [192, 168, 1, 5],
+        )]));
+        let listeners = Arc::new(FakeListeners::default());
+        let service = service_with(
+            source,
+            interfaces,
+            listeners.clone(),
+            Duration::from_secs(1),
+        );
+
+        service.start(config(8080)).await.unwrap();
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
+
+        // No credentials stored: requiring sign-in must be rejected up front,
+        // not after the live share has been torn down.
+        let rejected = service
+            .reconfigure(OpdsStartConfig {
+                target: OpdsBindTarget::LocalNetworks,
+                port: 8080,
+                authentication_enabled: true,
+            })
+            .await;
+        assert_eq!(rejected.unwrap_err().code, OpdsErrorCode::AuthRequired);
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
+        assert!(!listeners.active.lock().unwrap().is_empty());
+        service.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn configure_credentials_rejects_a_colon_in_the_username() {
+        let source = test_source();
+        let interfaces = Arc::new(FakeInterfaces::new(vec![]));
+        let listeners = Arc::new(FakeListeners::default());
+        let service = service_with(source, interfaces, listeners, Duration::from_secs(1));
+
+        let rejected =
+            service.configure_credentials("me:home".to_string(), "correct-horse".to_string());
+        assert!(rejected.is_err());
+        assert!(!service.credential_status().configured);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn restarting_after_a_client_connection_releases_the_port() {
         let probe = StdTcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = probe.local_addr().unwrap().port();
@@ -1480,7 +1629,7 @@ mod tests {
         let factory = TcpListenerFactory;
         let source = missing_source();
         let mut first = factory
-            .start(address, source.clone(), OpdsBasicAuth::disabled())
+            .start(address, source.clone(), OpdsBasicAuth::new())
             .unwrap();
         // A client connects and the SERVER closes first: this port now has a
         // TIME_WAIT-eligible connection on the server side.
@@ -1491,7 +1640,7 @@ mod tests {
 
         // Immediate rebind must succeed (SO_REUSEADDR on the socket2 path).
         let second = factory
-            .start(address, source, OpdsBasicAuth::disabled())
+            .start(address, source, OpdsBasicAuth::new())
             .expect("rebind after server-side close must not hit TIME_WAIT");
         drop(second);
     }

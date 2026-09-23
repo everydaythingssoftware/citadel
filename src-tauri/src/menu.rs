@@ -173,7 +173,7 @@ pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) {
     // are vertically centered on the ~58px tab strip.
     let builder = WebviewWindowBuilder::new(app, "settings", url)
         .title("Settings")
-        .inner_size(680.0, 480.0)
+        .inner_size(680.0, 520.0)
         .resizable(false)
         .minimizable(false)
         .visible(false)

@@ -13,13 +13,13 @@ import {
 import type { BookView } from "@/BookView";
 import type { LibraryBook } from "@/bindings";
 import { LoadingOverlay } from "@/components/ui";
-import { useCoverThumbsMap } from "@/stores/library/store";
 import {
 	computeColumnCount,
 	computeRowCount,
 	rowOfIndex,
 	rowSlice,
 } from "@/lib/grid-virtual";
+import { useCoverThumbsMap } from "@/stores/library/store";
 import { BookCard } from "../atoms/BookCard";
 import cardClasses from "../atoms/BookCard.module.css";
 

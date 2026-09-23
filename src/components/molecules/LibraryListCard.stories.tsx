@@ -12,6 +12,7 @@ const MOCK_PLATFORM: PlatformAdapter = {
 		canCopyToClipboard: true,
 		canOpenLocalPaths: true,
 		supportsAutoUpdates: true,
+		supportsLocalOpdsServer: true,
 	},
 	dialogs: {
 		openFile: async () => null,

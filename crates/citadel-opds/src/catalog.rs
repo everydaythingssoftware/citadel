@@ -685,7 +685,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let task = tokio::spawn(async move {
-            axum::serve(listener, router(source, OpdsBasicAuth::disabled()))
+            axum::serve(listener, router(source, OpdsBasicAuth::new()))
                 .await
                 .unwrap();
         });

@@ -7,6 +7,7 @@ export interface SegmentedControlItem {
 	value: string;
 	label: ReactNode;
 	"aria-label"?: string;
+	disabled?: boolean;
 }
 
 export interface SegmentedControlProps {
@@ -40,6 +41,7 @@ export const SegmentedControl = ({
 				key={item.value}
 				value={item.value}
 				aria-label={item["aria-label"]}
+				disabled={item.disabled}
 				className={styles.item}
 			>
 				{item.label}

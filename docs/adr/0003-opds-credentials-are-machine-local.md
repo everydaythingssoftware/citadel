@@ -1,6 +1,6 @@
 # 3. OPDS credentials are machine-local
 
-Status: Accepted - 2026-09-21
+Status: Accepted - 2026-09-21. Storage format amended by ADR 0005: the file holds the reversible password, not a verifier.
 
 ## Context
 

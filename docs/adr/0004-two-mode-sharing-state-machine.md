@@ -2,6 +2,8 @@
 
 Status: Accepted - 2026-09-21
 
+> Amended 2026-09-23 by ADR 0005: the credential is stored reversibly, not as an Argon2 verifier; the live auth snapshot hot-swaps instead of stopping the share.
+
 Supersedes 0002. See "Relationship to 0002" below.
 
 ## Context

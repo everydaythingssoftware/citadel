@@ -3,12 +3,14 @@ import { useCallback, useId, useRef, useState } from "react";
 import { commands } from "@/bindings";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import { F7Gear } from "@/components/icons/F7Gear";
+import { F7Wifi } from "@/components/icons/F7Wifi";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { CurrentLibraryCard } from "@/components/molecules/CurrentLibraryCard";
 import { LibraryListCard } from "@/components/molecules/LibraryListCard";
 import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
 import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
 import classes from "@/components/organisms/SettingsPanes.module.css";
+import { SharingSettings } from "@/components/organisms/SharingSettings";
 import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
 import { useAppUpdates } from "@/lib/hooks/use-app-updates";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
@@ -20,7 +22,12 @@ import { applyColorScheme } from "@/lib/theme-manager";
 import { useAnySourceEnabled } from "@/stores/settings/metadata-providers";
 import { useSettings } from "@/stores/settings/store";
 
-const SETTINGS_TABS = ["general", "library", "integrations"] as const;
+const SETTINGS_TABS = [
+	"general",
+	"library",
+	"sharing",
+	"integrations",
+] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 const TAB_META: Record<
@@ -34,6 +41,10 @@ const TAB_META: Record<
 	library: {
 		label: "Library",
 		icon: (className) => <FluentLibraryFilled className={className} />,
+	},
+	sharing: {
+		label: "Sharing",
+		icon: (className) => <F7Wifi className={className} />,
 	},
 	integrations: {
 		label: "Metadata",
@@ -146,6 +157,7 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 				<div className={classes.panelInner}>
 					{activeTab === "general" && <GeneralTab />}
 					{activeTab === "library" && <LibraryTab closeSettings={close} />}
+					{activeTab === "sharing" && <SharingSettings />}
 					{activeTab === "integrations" && <IntegrationsTab />}
 				</div>
 			</div>
