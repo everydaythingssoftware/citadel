@@ -776,7 +776,8 @@ impl Library {
         value: Option<CustomValue>,
     ) -> Result<(), CalibreError> {
         let column = custom_columns::get_column(&mut self.conn, column_id)?;
-        custom_columns::set_value(&mut self.conn, &column, book_id, value)
+        self.conn
+            .transaction(|conn| set_custom_value_and_touch(conn, &column, book_id, value))
     }
 
     /// One column's values for many books at once. Books with no stored
@@ -826,12 +827,9 @@ impl Library {
         is_read: bool,
     ) -> Result<(), CalibreError> {
         let column = self.get_or_create_read_state_column()?;
-        custom_columns::set_value(
-            &mut self.conn,
-            &column,
-            book_id,
-            Some(CustomValue::Bool(is_read)),
-        )
+        self.conn.transaction(|conn| {
+            set_custom_value_and_touch(conn, &column, book_id, Some(CustomValue::Bool(is_read)))
+        })
     }
 
     pub fn batch_get_read_states(
@@ -1003,6 +1001,23 @@ impl Library {
 
         Ok(books)
     }
+}
+
+/// Compares the stored value before and after the write, so no-op edits and
+/// values `set_value` normalises to what's already stored leave
+/// `last_modified` alone, as Calibre does.
+fn set_custom_value_and_touch(
+    conn: &mut SqliteConnection,
+    column: &CustomColumn,
+    book_id: BookId,
+    value: Option<CustomValue>,
+) -> Result<(), CalibreError> {
+    let before = custom_columns::get_value(conn, column, book_id)?;
+    custom_columns::set_value(conn, column, book_id, value)?;
+    if custom_columns::get_value(conn, column, book_id)? != before {
+        book_queries::touch(conn, book_id)?;
+    }
+    Ok(())
 }
 
 // =============================================================================
