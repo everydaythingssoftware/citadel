@@ -8,11 +8,13 @@ import {
 } from "@/components/ui";
 import { IS_DEV } from "@/lib/env";
 import { useInitializeLibraryStore } from "@/lib/hooks/use-initialize-library-store";
+import { useLibrarySwitch } from "@/lib/hooks/use-library-switch";
 import { usePlatform } from "@/lib/platform/context";
 import { checkForUpdates } from "@/lib/services/app-updates";
 import { useApplyColorScheme } from "@/lib/theme-manager";
 import { safeAsyncEventHandler } from "$lib/async";
 import { FirstRunGate } from "./components/organisms/FirstRunFlow";
+import { LibrarySwitchCurtain } from "./components/organisms/LibrarySwitchCurtain";
 import { routeTree } from "./routeTree.gen";
 import { useSettings } from "./stores/settings/store";
 
@@ -56,6 +58,7 @@ export const App = () => {
 	const theme = useSettings((state) => state.theme);
 	const platform = usePlatform();
 	useApplyColorScheme(theme);
+	const { stage: switchStage } = useLibrarySwitch();
 
 	useEffect(() => {
 		if (hydrated) {
@@ -108,7 +111,10 @@ export const App = () => {
 	// FirstRunGate decides the boot path: first run (no library) and
 	// broken-path (configured library fails validation) render the CDL-19
 	// flow, which mounts the app beneath its card once a library is
-	// committed; a healthy boot renders the app untouched.
+	// committed; a healthy boot renders the app untouched. The switch
+	// curtain sits outside the gate so it covers everything, including the
+	// app remounting under first-run's handoff — the shell's from-ready
+	// guard keeps it inert during onboarding.
 	return (
 		<TooltipProvider>
 			<Toaster />
@@ -117,6 +123,7 @@ export const App = () => {
 					<RouterProvider router={router} />
 				</LibraryStoreInitializer>
 			</FirstRunGate>
+			<LibrarySwitchCurtain stage={switchStage} />
 		</TooltipProvider>
 	);
 };

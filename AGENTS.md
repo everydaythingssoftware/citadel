@@ -9,6 +9,28 @@
 - **Test**: `cargo test` (for Rust), `vitest` or `bun test` (for frontend)
 - **Run single test**: `cargo test test_name` or `vitest run path/to/test.ts`
 
+## Consulting Plato (implementation questions)
+
+For judgment calls mid-implementation (design interpretation, risk calls,
+"which approach"), agents may — and should — consult Plato directly: Phil's
+external consultant on Omnara. Send terse numbered questions with receipts,
+never whole files:
+
+```bash
+# send (msg.txt holds the question)
+npx -y omnara agents input agt_agqmpzmnwf52bdvrrdts3kn6gi \
+  --content-blocks "$(jq -nc --rawfile m msg.txt '[{type:"text",text:$m}]')"
+
+# read latest reply (~90-110s later; poll if still reasoning)
+npx -y omnara agents events list agt_agqmpzmnwf52bdvrrdts3kn6gi --json \
+  | jq -r '.data[-1] | .event_kind, (.content_blocks | map(.text // empty) | join(""))'
+```
+
+Verify advice against the actual code before executing. If the instance is
+unresponsive (repeated 409 `state_transition_conflict`), launch a fresh one:
+`npx -y omnara profiles get aprf_agqk3u2l5v63roaqj24gps7qyy` → launch with
+`--config <current_config_id> --name <topic> --message "<first question>"`.
+
 ## Architecture
 - **Tauri app**: Backend in Rust (src-tauri/), frontend in React/TypeScript (src/)
 - **libcalibre**: Internal library for Calibre database operations (SQLite via Diesel ORM)

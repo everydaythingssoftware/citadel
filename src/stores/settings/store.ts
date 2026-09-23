@@ -29,6 +29,7 @@ interface SettingsStore extends SettingsSchema {
 	setHasCompletedFirstLaunch: (enabled: boolean) => Promise<void>;
 	setActiveLibrary: (libraryId: string) => Promise<void>;
 	createLibrary: (absolutePath: string) => Promise<string>;
+	renameLibrary: (id: string, displayName: string) => Promise<void>;
 	getActiveLibrary: () => Option<LibraryPath>;
 	setProviderConfig: (
 		id: MetadataProvider,
@@ -173,6 +174,29 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 		]);
 
 		return libraryId;
+	},
+
+	renameLibrary: async (id, displayName) => {
+		const { libraryPaths } = get();
+		const target = libraryPaths.find((library) => library.id === id);
+		if (!target) {
+			throw new Error(`No library with id ${id}`);
+		}
+
+		const trimmed = displayName.trim();
+		if (trimmed.length === 0) {
+			throw new Error("Library name cannot be empty");
+		}
+		if (trimmed === target.displayName) return;
+
+		await persistSetting(
+			set,
+			get,
+			"libraryPaths",
+			libraryPaths.map((library) =>
+				library.id === id ? { ...library, displayName: trimmed } : library,
+			),
+		);
 	},
 
 	getActiveLibrary: () => {

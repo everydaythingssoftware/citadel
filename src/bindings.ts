@@ -546,6 +546,11 @@ export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: s
  */
 export type MetadataProvider = "hardcover" | "loc" | "dnb" | "k10plus" | "openlibrary"
 export type NewAuthor = { name: string; sortable_name: string | null }
+/**
+ * Where sharing listens. `AllInterfaces` is meant to be paired with
+ * credentials (see the auth integration) since it serves every network the
+ * computer can reach.
+ */
 export type OpdsBindTarget = { type: "localNetworks" } | { type: "allInterfaces" }
 export type OpdsErrorCode = "invalidPort" | "libraryNotReady" | "authRequired" | "configurationConflict" | "interfaceUnavailable" | "portUnavailable" | "listenerFailed" | "unexpected"
 export type OpdsLifecycleState = "stopped" | "starting" | "running" | "waitingForInterface" | "error"

@@ -1,0 +1,128 @@
+/*
+ * Library picker (sidebar-top placement): the trigger re-skins the section
+ * label it replaces (same typography, vibrancy-safe transparent chrome); the
+ * menu copies the Select popover look (surface-strong, hairline border, lift
+ * shadow). Colors come from --ctd-* tokens only.
+ */
+
+.trigger {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: fit-content;
+	max-width: 100%;
+	margin: 0 0 4px;
+	padding: 2px 0.65rem;
+	border: none;
+	border-radius: var(--ctd-radius-control);
+	background: transparent;
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--ctd-ink-soft);
+	text-align: left;
+	transition: color 140ms ease;
+}
+
+.trigger:hover,
+.trigger:focus-visible,
+.trigger[data-open] {
+	color: var(--ctd-ink);
+}
+
+.trigger:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 3px var(--ctd-focus-ring);
+}
+
+.triggerName {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.triggerChevron {
+	display: inline-flex;
+	flex-shrink: 0;
+	color: var(--ctd-ink-soft);
+	transition: transform 140ms ease;
+}
+
+.trigger[data-open] .triggerChevron {
+	transform: rotate(180deg);
+}
+
+/* --- Menu (body portal, fixed positioning) ------------------------------- */
+
+.menu {
+	position: fixed;
+	z-index: 300;
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	background-color: var(--ctd-surface-strong);
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-control);
+	box-shadow: var(--ctd-popover-shadow);
+	padding: 4px 0;
+	animation: library-picker-menu-fade-in 120ms ease-out;
+}
+
+@keyframes library-picker-menu-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.menuRow {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 1px 5px;
+	padding: 4px 8px 4px 6px;
+	border: none;
+	border-radius: min(4px, var(--ctd-radius-control));
+	background: transparent;
+	font-family: inherit;
+	font-size: 13px;
+	color: var(--ctd-ink);
+	text-align: left;
+}
+
+.menuRow:hover,
+.menuRow:focus-visible {
+	background-color: var(--ctd-nav-hover-bg);
+	outline: none;
+}
+
+.menuCheck {
+	display: inline-flex;
+	justify-content: center;
+	width: 16px;
+	flex-shrink: 0;
+	color: var(--ctd-ink);
+}
+
+.menuName {
+	flex: 1;
+	min-width: 0;
+	line-height: 1.25;
+	text-align: left;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.menuDivider {
+	flex-shrink: 0;
+	height: 1px;
+	margin: 4px 10px;
+	background-color: var(--ctd-border);
+}

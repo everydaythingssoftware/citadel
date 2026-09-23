@@ -29,6 +29,7 @@ import {
 } from "@/lib/book-page-cache";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
+import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { usePlatform } from "@/lib/platform/context";
 import { formatSeriesIndex } from "@/lib/series";
 import {
@@ -210,6 +211,21 @@ export const Books = ({ author_id, series_id }: BookSearchOptions) => {
 			gridContainerRef.current.scrollTop = 0;
 		}
 	}, [cache.key]);
+
+	// Reset scroll to top on a library flip: the flip swaps in a new
+	// generation under the SAME filter key, so the reset above never fires
+	// and the old offset would show placeholders below the incoming page 0.
+	// The flip hook's layout effect lands before the generation-triggered
+	// refetch above reads lastRangeRef (refetch the top viewport, not the
+	// stale one).
+	useOnLibraryFlip(
+		useCallback(() => {
+			if (gridContainerRef.current) {
+				gridContainerRef.current.scrollTop = 0;
+			}
+			lastRangeRef.current = { start: 0, end: 0 };
+		}, []),
+	);
 
 	const { selectedBookId } = useLibraryKeymap({
 		books,

@@ -31,6 +31,6 @@ dist-ssr
 .output
 .eslintcache
 
-test-library/metadata.db
+test-library/**/metadata.db
 
 /target/

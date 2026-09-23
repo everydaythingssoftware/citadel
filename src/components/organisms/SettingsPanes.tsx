@@ -4,18 +4,19 @@ import { commands } from "@/bindings";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import { F7Gear } from "@/components/icons/F7Gear";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
+import { CurrentLibraryCard } from "@/components/molecules/CurrentLibraryCard";
+import { LibraryListCard } from "@/components/molecules/LibraryListCard";
 import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
 import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
 import classes from "@/components/organisms/SettingsPanes.module.css";
 import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
-import { ADOPT_INVALID_ERROR } from "@/lib/first-run/machine";
 import { useAppUpdates } from "@/lib/hooks/use-app-updates";
+import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
 import { none, some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
 import { applyColorScheme } from "@/lib/theme-manager";
-import { createLibrary, setActiveLibrary } from "@/stores/settings/actions";
 import { useAnySourceEnabled } from "@/stores/settings/metadata-providers";
 import { useSettings } from "@/stores/settings/store";
 
@@ -275,36 +276,25 @@ interface LibraryTabProps {
 }
 
 const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
-	const libraries = useSettings((state) => state.libraryPaths);
-	const activeLibraryId = useSettings((state) => state.activeLibraryId);
+	const { libraries, activeLibrary, switchTo, adoptLibrary } =
+		useLibrarySelection();
 	const platform = usePlatform();
 
 	const addNewLibraryByPath = useCallback(
 		async (form: SwitchLibraryForm): Promise<AddLibraryResult> => {
-			const isPathValidLibrary = await commands.clbQueryIsPathValidLibrary(
-				form.libraryPath,
-			);
-
-			if (!isPathValidLibrary) {
-				return { ok: false, message: ADOPT_INVALID_ERROR };
-			}
-			const newLibraryId = await createLibrary(form.libraryPath);
-			await setActiveLibrary(newLibraryId);
-			closeSettings();
-			return { ok: true };
+			const result = await adoptLibrary(form.libraryPath);
+			if (result.ok) closeSettings();
+			return result;
 		},
-		[closeSettings],
+		[adoptLibrary, closeSettings],
 	);
 
-	const selectExistingLibrary = useCallback(
-		async (id: string) => {
-			await setActiveLibrary(id);
-			closeSettings();
-		},
-		[closeSettings],
-	);
+	const revealActiveLibrary = useCallback(() => {
+		if (!activeLibrary) return;
+		void platform.fileOpener.revealInFileManager(activeLibrary.absolutePath);
+	}, [platform, activeLibrary]);
 
-	if (!activeLibraryId) {
+	if (!activeLibrary) {
 		return (
 			<p className={classes.paneNote}>
 				Something went wrong loading your libraries.
@@ -314,12 +304,22 @@ const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
 
 	return (
 		<div className={classes.groups}>
+			<LibraryListCard
+				currentLibraryId={activeLibrary.id}
+				libraries={libraries}
+				onSwitchLibrary={switchTo}
+			/>
+			<CurrentLibraryCard
+				library={activeLibrary}
+				onRevealInFileManager={
+					platform.capabilities.canRevealInFileManager
+						? revealActiveLibrary
+						: null
+				}
+			/>
 			<div className={classes.formGroup}>
 				<SwitchLibraryForm
-					currentLibraryId={activeLibraryId}
-					libraries={libraries}
 					onSubmit={addNewLibraryByPath}
-					selectExistingLibrary={selectExistingLibrary}
 					selectNewLibrary={async () => {
 						const path = await platform.dialogs.openDirectory({
 							title: "Select Calibre Library Folder",

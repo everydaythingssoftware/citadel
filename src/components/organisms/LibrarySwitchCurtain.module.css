@@ -1,0 +1,76 @@
+/*
+ * Library-switch curtain: an opaque window-background surface over the whole
+ * app (header, drag region, sidebar), centered "Opening '<name>'" + progress
+ * bar. The fade is an animation
+ * rather than a transition so the mount itself animates in; stage changes
+ * arming→working share one animation and never restart it.
+ */
+.curtain {
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	background: var(--ctd-bg);
+	opacity: 0;
+}
+
+.curtain[data-stage="arming"],
+.curtain[data-stage="working"] {
+	animation: library-switch-curtain-in 120ms ease forwards;
+}
+
+.curtain[data-stage="revealing"] {
+	animation: library-switch-curtain-out 320ms ease forwards;
+}
+
+@keyframes library-switch-curtain-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes library-switch-curtain-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+.title {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 650;
+	letter-spacing: -0.01em;
+	color: var(--ctd-ink);
+}
+
+.track {
+	width: 260px;
+	height: 4px;
+	border-radius: var(--ctd-radius-capsule);
+	background: oklch(from var(--ctd-ink) l c h / 0.12);
+	overflow: hidden;
+}
+
+.fill {
+	height: 100%;
+	border-radius: inherit;
+	background: var(--ctd-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.curtain[data-stage="arming"],
+	.curtain[data-stage="working"],
+	.curtain[data-stage="revealing"] {
+		animation-duration: 0.01ms;
+	}
+}

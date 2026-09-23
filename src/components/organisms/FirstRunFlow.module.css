@@ -139,7 +139,6 @@
 	border: none;
 	border-radius: 5px;
 	padding: 4px 8px 4px 5px;
-	cursor: pointer;
 }
 
 .back:hover:not(:disabled) {
@@ -297,7 +296,6 @@
 	border-radius: 8px;
 	box-shadow: var(--ctd-control-shadow);
 	color: var(--ctd-ink);
-	cursor: pointer;
 	transition: background-color 120ms ease-out;
 }
 

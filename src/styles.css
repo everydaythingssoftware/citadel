@@ -339,19 +339,11 @@ a:any-link {
 
 /*
  * Cursor policy: a deliberate departure from strict AppKit (which keeps the
- * arrow cursor on controls). The user wants interactivity signaled, so real
- * interactive elements get the pointer and text fields keep the text beam.
+ * arrow cursor on controls; interactivity is signaled by hover states and
+ * static design instead. Text fields keep the text beam.
  * These rules must stay AFTER the `* { cursor: default }` reset earlier in
  * this file so they win on source order / specificity.
  */
-a:any-link,
-button:not(:disabled),
-[role="button"],
-label[for],
-select {
-	cursor: pointer;
-}
-
 input[type="text"],
 input[type="search"],
 textarea {

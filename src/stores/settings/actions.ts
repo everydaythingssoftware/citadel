@@ -13,6 +13,13 @@ export const createLibrary = (absolutePath: string): Promise<string> => {
 	return useSettings.getState().createLibrary(absolutePath);
 };
 
+export const renameLibrary = (
+	id: string,
+	displayName: string,
+): Promise<void> => {
+	return useSettings.getState().renameLibrary(id, displayName);
+};
+
 export const getActiveLibrary = () => {
 	return useSettings.getState().getActiveLibrary();
 };

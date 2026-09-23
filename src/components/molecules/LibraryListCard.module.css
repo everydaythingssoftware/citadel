@@ -1,0 +1,118 @@
+.cardTitle {
+	margin: 0 0 0.375rem;
+	padding: 0 0.125rem;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--ctd-ink-soft);
+}
+
+/* Same card treatment as the settings groups (SettingsPanes.module.css):
+   raised surface with a hairline border and inset hairlines between rows. */
+.card {
+	border: 1px solid var(--ctd-border);
+	border-radius: 0.5rem;
+	background-color: var(--ctd-surface);
+}
+
+:global([data-theme="dark"]) .card {
+	background-color: var(--ctd-surface-strong);
+}
+
+.card > * + * {
+	position: relative;
+}
+
+.card > * + *::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0.875rem;
+	right: 0;
+	height: 1px;
+	background-color: var(--ctd-border);
+}
+
+.libraryRow {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+	width: 100%;
+	min-height: 2.375rem;
+	padding: 0.4375rem 0.875rem;
+	border: none;
+	background: none;
+	font-family: inherit;
+	text-align: left;
+	color: var(--ctd-ink);
+}
+
+.libraryRow:hover,
+.libraryRow:focus-visible {
+	background-color: var(--ctd-nav-hover-bg);
+	outline: none;
+}
+
+/* Finder-style target highlight: shows which row an open context menu acts
+   on, since focus has moved into the menu. */
+.libraryRow[data-menu-target] {
+	background-color: var(--ctd-nav-hover-bg);
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+	min-height: 2.375rem;
+	padding: 0.4375rem 0.875rem;
+}
+
+.rowIcon {
+	flex-shrink: 0;
+	width: 1rem;
+	height: 1rem;
+	color: var(--ctd-ink-soft);
+}
+
+.rowLabels {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	flex: 1;
+	min-width: 0;
+}
+
+.rowName {
+	overflow: hidden;
+	font-size: 0.8125rem;
+	line-height: 1.35;
+	color: var(--ctd-ink);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rowSubtitle {
+	font-size: 0.75rem;
+	line-height: 1.35;
+	color: var(--ctd-ink-soft);
+}
+
+.checkSlot {
+	display: inline-flex;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 16px;
+	color: var(--ctd-accent);
+}
+
+.renameField {
+	flex: 1;
+	min-width: 0;
+}
+
+.renameInput {
+	/* Match the row footprint so entering rename mode doesn't shift layout. */
+	min-height: 28px;
+	font-size: 13px;
+}
