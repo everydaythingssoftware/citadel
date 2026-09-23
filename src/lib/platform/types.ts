@@ -15,6 +15,8 @@ export interface PlatformCapabilities {
 	canCopyToClipboard: boolean;
 	canOpenLocalPaths: boolean;
 	supportsAutoUpdates: boolean;
+	/** Only the desktop build can host the local OPDS server. */
+	supportsLocalOpdsServer: boolean;
 }
 
 export interface DialogAdapter {

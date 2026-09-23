@@ -26,8 +26,13 @@
 	transition: background-color 120ms ease-out;
 }
 
-.item[data-state="off"]:hover {
+.item[data-state="off"]:hover:not([data-disabled]) {
 	color: var(--ctd-ink);
+}
+
+.item[data-disabled] {
+	color: var(--ctd-control-disabled-text);
+	cursor: default;
 }
 
 .item[data-state="on"] {

@@ -1,7 +1,8 @@
+import { defaultSettings } from "./types";
 import type { MetadataProvidersSettings, SettingsSchema } from "./types";
 
 /** The current settings schema version. Bump when the shape changes. */
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 /**
  * v0 -> v1: fold the flat `hardcoverApiKey` / `hardcoverAutoLookup` keys into
@@ -53,6 +54,42 @@ const migrateV1toV2 = (raw: SettingsSchema): SettingsSchema => {
 	return { ...raw, settingsSchemaVersion: 2, metadataProviders };
 };
 
+/** v2 -> v3: add the OPDS sharing block (local-network mode, port 8080, auth
+ * off, no username). Existing installs have never shared, so defaults only. */
+const migrateV2toV3 = (raw: SettingsSchema): SettingsSchema => ({
+	...raw,
+	settingsSchemaVersion: 3,
+	sharing: {
+		target: "localNetworks",
+		port: 8080,
+		authenticationEnabled: false,
+		username: "",
+	},
+});
+
+/** v3 -> v4: move the sharing port off the crowded 8080 (Calibre's own
+ * server's default) to an uncommon high port, and normalize the sharing
+ * block against partial writes or a tagged `target` shape from an abandoned
+ * serialization experiment. Only the untouched default port is migrated — a
+ * port the user actually chose is left alone. */
+const migrateV3toV4 = (raw: SettingsSchema): SettingsSchema => {
+	const fallback = defaultSettings.sharing;
+	const sharing = { ...fallback, ...(raw.sharing ?? {}) };
+	const rawTarget = sharing.target as unknown;
+	sharing.target =
+		rawTarget === "allInterfaces" || rawTarget === "localNetworks"
+			? rawTarget
+			: fallback.target;
+	if ((raw.sharing?.port ?? 8080) !== 8080) {
+		return { ...raw, settingsSchemaVersion: 4, sharing };
+	}
+	return {
+		...raw,
+		settingsSchemaVersion: 4,
+		sharing: { ...sharing, port: 9028 },
+	};
+};
+
 /**
  * Bring a loaded settings object up to the current schema version by applying
  * each step in order. Gated on an explicit version, not value-equality with
@@ -66,6 +103,12 @@ export const migrateSettings = (raw: SettingsSchema): SettingsSchema => {
 	}
 	if (settings.settingsSchemaVersion < 2) {
 		settings = migrateV1toV2(settings);
+	}
+	if (settings.settingsSchemaVersion < 3) {
+		settings = migrateV2toV3(settings);
+	}
+	if (settings.settingsSchemaVersion < 4) {
+		settings = migrateV3toV4(settings);
 	}
 	return settings;
 };

@@ -11,6 +11,7 @@ import {
 	type SettingsManager,
 	type SettingsSchema,
 	type SettingsValue,
+	type SharingSettings,
 	type SmartShelf,
 	type SmartShelfFilter,
 } from "@/lib/platform/settings/types";
@@ -28,6 +29,7 @@ interface SettingsStore extends SettingsSchema {
 	setAutoUpdateCheckingEnabled: (enabled: boolean) => Promise<void>;
 	setHasCompletedFirstLaunch: (enabled: boolean) => Promise<void>;
 	setActiveLibrary: (libraryId: string) => Promise<void>;
+	setSharing: (sharing: SharingSettings) => Promise<void>;
 	createLibrary: (absolutePath: string) => Promise<string>;
 	renameLibrary: (id: string, displayName: string) => Promise<void>;
 	getActiveLibrary: () => Option<LibraryPath>;
@@ -233,6 +235,10 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 
 	setLastNotifiedUpdateVersion: async (version) => {
 		await persistSetting(set, get, "lastNotifiedUpdateVersion", version);
+	},
+
+	setSharing: async (sharing) => {
+		await persistSetting(set, get, "sharing", sharing);
 	},
 
 	createSmartShelf: async (name, filter) => {
