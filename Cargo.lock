@@ -708,6 +708,7 @@ dependencies = [
 name = "citadel-rs"
 version = "0.6.1"
 dependencies = [
+ "axum",
  "chrono",
  "citadel-core",
  "citadel-opds",
