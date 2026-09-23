@@ -283,7 +283,7 @@ impl WaitingReason {
 /// credentials (see the auth integration) since it serves every network the
 /// computer can reach.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
-#[serde(rename_all = "camelCase", tag = "type")]
+#[serde(rename_all = "camelCase")]
 pub enum OpdsBindTarget {
     LocalNetworks,
     AllInterfaces,

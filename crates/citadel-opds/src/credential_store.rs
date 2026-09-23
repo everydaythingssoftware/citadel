@@ -1,4 +1,9 @@
 //! Persistence for OPDS sharing credentials.
+//!
+//! The secret is stored reversibly and that is deliberate — the reader UI
+//! reveals it on demand, so rotation is never forced (ADR 0005). The file is
+//! 0600; a same-user attacker who can read it can already read every book in
+//! the library, so hashing buys nothing here.
 
 use std::{
     fs::{self, OpenOptions},
@@ -13,7 +18,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StoredOpdsCredentials {
     pub username: String,
-    pub password_verifier: String,
+    pub password: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, specta::Type)]
@@ -21,6 +26,15 @@ pub(crate) struct StoredOpdsCredentials {
 pub struct OpdsCredentialStatus {
     pub configured: bool,
     pub username: Option<String>,
+}
+
+/// The stored secret, for the reader UI's reveal flow. The password is kept
+/// reversibly on purpose (ADR 0005); the app process may show it to its user.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct OpdsCredentialSecret {
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, specta::Type)]
@@ -43,7 +57,17 @@ struct CredentialStoreInner {
 impl OpdsCredentialStore {
     pub fn load(path: PathBuf) -> io::Result<Self> {
         let credentials = match fs::read(&path) {
-            Ok(contents) => Some(serde_json::from_slice(&contents).map_err(io::Error::other)?),
+            // Unparseable contents (e.g. pre-reveal verifier files from a
+            // nightly) mean no usable credentials; regeneration is the path
+            // forward, so treat them as absent — but log it, because genuine
+            // corruption deserves to be visible too.
+            Ok(contents) => match serde_json::from_slice(&contents) {
+                Ok(credentials) => Some(credentials),
+                Err(error) => {
+                    log::warn!("Ignoring unreadable OPDS credential file ({error}); regenerate reader sign-in.");
+                    None
+                }
+            },
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => return Err(error),
         };
@@ -93,6 +117,13 @@ impl OpdsCredentialStore {
 
     pub fn get(&self) -> Option<StoredOpdsCredentials> {
         self.read().clone()
+    }
+
+    pub fn secret(&self) -> Option<OpdsCredentialSecret> {
+        self.get().map(|credentials| OpdsCredentialSecret {
+            username: credentials.username,
+            password: credentials.password,
+        })
     }
 
     pub fn set(&self, credentials: StoredOpdsCredentials) -> io::Result<()> {
@@ -150,28 +181,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn persists_only_username_and_verifier_with_private_permissions() {
+    fn persists_username_and_password_with_private_permissions() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("opds-credentials.json");
         let store = OpdsCredentialStore::load(path.clone()).unwrap();
         store
             .set(StoredOpdsCredentials {
                 username: "reader".to_string(),
-                password_verifier: "$argon2id$verifier".to_string(),
+                password: "wren724=wolf".to_string(),
             })
             .unwrap();
 
         let contents = fs::read_to_string(&path).unwrap();
         assert!(contents.contains("reader"));
-        assert!(contents.contains("$argon2id$verifier"));
-        assert!(!contents.contains("password\":"));
+        assert!(contents.contains("wren724=wolf"));
         assert_eq!(
             OpdsCredentialStore::load(path)
                 .unwrap()
-                .status()
-                .username
-                .as_deref(),
-            Some("reader")
+                .get()
+                .unwrap()
+                .password,
+            "wren724=wolf"
         );
 
         #[cfg(unix)]
@@ -189,6 +219,26 @@ mod tests {
     }
 
     #[test]
+    fn legacy_verifier_files_are_treated_as_unconfigured() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("opds-credentials.json");
+        fs::write(
+            &path,
+            r#"{"username":"reader","passwordVerifier":"$argon2id$abc"}"#,
+        )
+        .unwrap();
+
+        let store = OpdsCredentialStore::load(path).unwrap();
+        assert_eq!(
+            store.status(),
+            OpdsCredentialStatus {
+                configured: false,
+                username: None
+            }
+        );
+    }
+
+    #[test]
     fn clear_is_idempotent() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("opds-credentials.json");
@@ -196,7 +246,7 @@ mod tests {
         store
             .set(StoredOpdsCredentials {
                 username: "reader".to_string(),
-                password_verifier: "verifier".to_string(),
+                password: "wren724=wolf".to_string(),
             })
             .unwrap();
 
