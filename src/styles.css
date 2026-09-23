@@ -333,8 +333,9 @@ a:any-link {
 
 /* ==========================================================================
  * Interactivity polish (additive block; keep at the end of this file).
- * Everything below signals what is clickable: pointer cursors, hover
- * backgrounds, and larger touch targets. Token blocks above are off limits.
+ * Hover backgrounds and larger touch targets; cursors are governed by the
+ * AppKit-style policy at the top of this file. Token blocks above are off
+ * limits.
  * ========================================================================== */
 
 /*
