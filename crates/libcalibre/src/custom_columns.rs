@@ -275,6 +275,20 @@ pub(crate) fn find_by_label_and_kind(
         .map_err(CalibreError::from)
 }
 
+pub(crate) fn find_by_label(
+    conn: &mut SqliteConnection,
+    column_label: &str,
+) -> Result<Option<CustomColumn>, CalibreError> {
+    use crate::schema::custom_columns::dsl::*;
+
+    custom_columns
+        .filter(label.eq(column_label))
+        .first::<CustomColumnRow>(conn)
+        .optional()
+        .map(|row| row.map(CustomColumnRow::into_column))
+        .map_err(CalibreError::from)
+}
+
 // =============================================================================
 // Column creation
 // =============================================================================

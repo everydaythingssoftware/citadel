@@ -116,6 +116,7 @@ pub fn clb_query_books(
         text: query.text,
         author_id,
         series_id: query.series_id,
+        genre_id: None,
         hide_read: query.hide_read,
         sort: query.sort.into(),
         limit: query.limit.map(i64::from),
