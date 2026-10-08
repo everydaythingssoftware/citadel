@@ -240,20 +240,19 @@
 
 /*
  * Liquid glass: on macOS the webview is transparent over an
- * NSVisualEffectView (sidebar material), so the chrome regions need only a
+ * NSVisualEffectView, so the shared chrome shell needs only a
  * faint tint — the real blur and desktop tint come from the window itself.
  * Everywhere else these tokens keep their opaque fallbacks above.
  */
 :root[data-vibrancy] {
-	--ctd-shell-gradient: transparent;
+	--ctd-shell-gradient: oklch(from var(--pal-base) l c h / 0.08);
 	--ctd-main-gradient: transparent;
-	--ctd-header-bg: oklch(from var(--pal-base) l c h / 0.08);
+	--ctd-header-bg: transparent;
 	--ctd-nav-bg: transparent;
 }
 
 :root[data-vibrancy][data-theme="dark"] {
-	--ctd-header-bg: oklch(from var(--pal-base) l c h / 0.12);
-	--ctd-nav-bg: transparent;
+	--ctd-shell-gradient: oklch(from var(--pal-base) l c h / 0.12);
 }
 
 body {
