@@ -34,3 +34,6 @@ dist-ssr
 test-library/**/metadata.db
 
 /target/
+
+# Python test tooling
+__pycache__/
