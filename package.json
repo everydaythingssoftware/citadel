@@ -11,17 +11,18 @@
     "dev:web": "vite dev",
     "format": "bun format:web; bun format:backend",
     "format:backend": "cargo fmt --all",
-    "format:web": "biome format --write src/",
-    "format:check": "biome format src/ && cargo fmt --check --all",
+    "format:web": "biome format --write src/ tools/testing/",
+    "format:check": "biome format src/ tools/testing/ && cargo fmt --check --all",
     "lint": "bun lint:web && bun lint:backend",
-    "lint:web": "biome lint src/",
+    "lint:web": "biome lint src/ tools/testing/",
     "lint:backend": "cargo clippy --workspace",
     "quality": "bun format:check; bun lint",
     "preview:web": "vite preview",
     "test": "vitest",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "typecheck": "tsgo"
+    "typecheck": "tsgo",
+    "test:lists": "python3 tools/testing/check-lists.py"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.1",

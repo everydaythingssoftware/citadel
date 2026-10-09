@@ -24,6 +24,6 @@
       "$lib/*": ["./src/lib/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "tools/testing"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

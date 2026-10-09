@@ -78,8 +78,11 @@ the background — no window focus, no macOS permissions:
 - Do NOT use `/element/send-keys` on React controlled inputs — it updates
   React's value tracker without firing onChange. Instead use `/script/execute`
   with the `HTMLInputElement.prototype` value-setter + dispatched `input` event.
-- Plugin screenshots are WKWebView snapshots: light-scheme, no vibrancy or
-  translucent sidebar — fine for layout/DOM checks, not for visual fidelity.
+- The installed plugin (0.1.3) reconstructs screenshots from serialized HTML
+  in an SVG foreignObject. It loses element scroll offsets, so deep-scroll
+  captures can look blank even when row geometry is correct. Use DOM checks
+  for scrolling and a browser/native capture for visual verification. These
+  captures omit vibrancy and the translucent sidebar.
 - Full endpoint list: https://github.com/danielraffel/tauri-webdriver/blob/main/SPEC.md
 
 `tauri-wd` (W3C WebDriver CLI for WebDriverIO suites) launches its own app

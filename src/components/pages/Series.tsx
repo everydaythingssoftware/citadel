@@ -4,6 +4,7 @@ import { type CSSProperties, useMemo, useState } from "react";
 
 import type { LibrarySeries } from "@/bindings";
 import { SearchField } from "@/components/ui";
+import { useSeriesRows } from "@/lib/hooks/use-series-rows";
 import { useSeriesList, useSeriesLoading } from "@/stores/library/store";
 import styles from "./Series.module.css";
 
@@ -49,26 +50,59 @@ export const Series = () => {
 				/>
 			</div>
 
-			<div className={styles.headerRow} style={SERIES_GRID}>
+			<div data-series-header className={styles.headerRow} style={SERIES_GRID}>
 				<span className={styles.columnLabel}>Name</span>
 				<span className={clsx(styles.columnLabel, styles.columnLabelRight)}>
 					Books
 				</span>
 			</div>
 
-			<div className={styles.rows}>
-				{filteredSeries.map((series) => (
-					<SeriesRow series={series} key={series.id} />
-				))}
-			</div>
+			<SeriesRows series={filteredSeries} />
 
-			<div className={styles.footer}>
+			<div data-series-footer className={styles.footer}>
 				<span className={styles.footerText}>
 					{filteredSeries.length === seriesList.length
 						? `${seriesList.length} series`
 						: `${filteredSeries.length} of ${seriesList.length} series`}
 				</span>
 			</div>
+		</div>
+	);
+};
+
+interface SeriesRowsProps {
+	series: LibrarySeries[];
+}
+
+const SeriesRows = ({ series }: SeriesRowsProps) => {
+	const { rowsRef, virtualizer, scrollMargin } = useSeriesRows(series);
+
+	return (
+		<div
+			ref={rowsRef}
+			className={styles.rows}
+			style={{ position: "relative", height: virtualizer.getTotalSize() }}
+		>
+			{virtualizer.getVirtualItems().map((virtualRow) => {
+				const item = series[virtualRow.index];
+				if (!item) return null;
+				return (
+					<div
+						key={virtualRow.key}
+						ref={virtualizer.measureElement}
+						data-index={virtualRow.index}
+						style={{
+							position: "absolute",
+							top: 0,
+							left: 0,
+							width: "100%",
+							transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+						}}
+					>
+						<SeriesRow series={item} />
+					</div>
+				);
+			})}
 		</div>
 	);
 };
