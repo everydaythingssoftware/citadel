@@ -7,7 +7,7 @@
 .page {
 	display: flex;
 	flex-direction: column;
-	height: 100%;
+	min-height: 100%;
 }
 
 .filterBar {
@@ -24,6 +24,7 @@
 }
 
 .headerRow {
+	flex-shrink: 0;
 	position: sticky;
 	top: 0;
 	z-index: 2;
@@ -48,7 +49,7 @@
 .rows {
 	display: flex;
 	flex-direction: column;
-	flex: 1;
+	flex: 1 0 auto;
 }
 
 .row {
@@ -83,6 +84,7 @@
 }
 
 .footer {
+	flex-shrink: 0;
 	position: sticky;
 	bottom: 0;
 	display: flex;
