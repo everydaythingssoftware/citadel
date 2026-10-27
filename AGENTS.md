@@ -14,6 +14,7 @@
 - **libcalibre**: Internal library for Calibre database operations (SQLite via Diesel ORM)
 - **Main binary**: citadel-desktop, runs embedded in Tauri
 - **Shared library API**: `crates/citadel-core` owns shared DTOs, errors and `LibraryService` operations. Tauri adapters in `src-tauri/src/library/{command,query}.rs` and Axum routes in `crates/citadel-server/src/api` delegate to it. See `docs/adr/0007-shared-library-contract.md`.
+- **citadel.db**: `citadel_core::store` owns Citadel's own database (users, sessions, library registry keyed by Calibre UUID, grants). See `docs/adr/0009-citadel-users-and-sessions.md`.
 - **Frontend services**: Library owns selected-library operations, LibraryCatalog owns discovery/opening, Metadata owns provider lookups, and Platform owns native capabilities. Runtime Tauri/generated-command imports are adapter-only (`bun lint:boundaries`). See `docs/adr/0008-frontend-service-boundaries.md`.
 - **Tauri state**: Global state managed via CitadelState in `src-tauri/src/state.rs`
 - **Database**: SQLite Calibre library, schema in `crates/libcalibre/src/schema.rs`, migrations via diesel_migrations

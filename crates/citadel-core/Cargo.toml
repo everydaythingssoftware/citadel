@@ -4,20 +4,28 @@ version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
 
-# Shared library contracts, application operations and libcalibre conversions.
-# Hosts inject URL policy and own locking/platform capabilities; no Tauri or Axum.
+# Shared library contracts, application operations, libcalibre conversions and
+# Citadel's own database (citadel.db). Hosts inject URL policy and own
+# locking/platform capabilities; no Tauri or Axum.
 
 [features]
 openapi = ["dep:utoipa"]
 
 [dependencies]
+argon2 = { version = "0.5", features = ["std"] }
+base64 = "0.22"
 chrono = { version = "0.4.31", features = ["serde"] }
 utoipa = { version = "6", features = ["chrono"], optional = true }
+diesel = { version = "2.2.4", features = ["sqlite"] }
+diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 libcalibre = { path = "../libcalibre" }
+rand_core = { version = "0.6", features = ["getrandom"] }
+sha2 = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 # Pinned to src-tauri's specta so the `Type` derive emits identical bindings.
 specta = { version = "=2.0.0-rc.22", features = ["derive", "chrono"] }
 urlencoding = "2.1.3"
+uuid = { version = "1.6.1", features = ["v4", "fast-rng"] }
 
 [dev-dependencies]
 tempfile = "3.8"

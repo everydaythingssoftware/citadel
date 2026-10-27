@@ -9,7 +9,6 @@ mod limits;
 pub mod network;
 pub mod password;
 pub mod service;
-mod words;
 mod xml;
 
 pub use catalog::{router, CatalogBookQuery, CatalogFacet, CatalogSource};
