@@ -1,6 +1,6 @@
 # 5. OPDS credentials are stored reversibly
 
-Status: Accepted - 2026-09-22
+Status: Accepted - 2026-09-22. Storage location amended by ADR 0009: the password is the local user's app password in `citadel.db`, not a credential file.
 
 ## Context
 
@@ -24,9 +24,9 @@ A same-user attacker who can read the 0600 credential file gets the plaintext â€
 
 Libraries and credential files from nightly builds with verifier-format files need one regeneration after updating.
 
-## Headless hosting
+## Hosts
 
-The persistence policy above applies to the desktop host. The headless server
-stores each Citadel user's OPDS app password reversibly in `citadel.db` and
-supplies the granted users through the runtime's ephemeral-credential list; see
-ADR 0009. `CITADEL_OPDS_USERS` has been removed.
+Both hosts now store app passwords reversibly in `citadel.db` and supply them to
+the OPDS runtime, which holds them only in memory; see ADR 0009. The desktop
+migrates `opds-credentials.json` into it once. `CITADEL_OPDS_USERS` has been
+removed.

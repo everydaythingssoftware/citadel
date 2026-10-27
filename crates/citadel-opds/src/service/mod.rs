@@ -488,26 +488,15 @@ impl OpdsService {
         crate::catalog::asset_routes(source, self.inner.auth.limits(), prefix)
     }
 
-    pub fn new(
-        source: Arc<dyn CatalogSource>,
-        credential_path: std::path::PathBuf,
-    ) -> io::Result<Self> {
-        let credentials = OpdsCredentialStore::load(credential_path)?;
-        Ok(Self::with_dependencies_and_credentials(
-            source,
-            credentials,
-            ServiceDependencies::default(),
-        ))
-    }
-
-    /// Credentials supplied by an external host remain in memory for this process.
+    /// Credentials are supplied by the host and held in memory; the host owns
+    /// persistence and calls `replace_credentials` when they change.
     pub fn with_ephemeral_credentials(
         source: Arc<dyn CatalogSource>,
         users: Vec<crate::credential_store::OpdsCredentialSecret>,
     ) -> Result<Self, OpdsStatusError> {
         Ok(Self::with_dependencies_and_credentials(
             source,
-            OpdsCredentialStore::ephemeral(credentials::validate_user_list(users)?),
+            OpdsCredentialStore::new(credentials::validate_user_list(users)?),
             ServiceDependencies::default(),
         ))
     }
@@ -519,7 +508,7 @@ impl OpdsService {
     ) -> Self {
         Self::with_dependencies_and_credentials(
             source,
-            OpdsCredentialStore::in_memory(),
+            OpdsCredentialStore::default(),
             dependencies,
         )
     }
@@ -1029,7 +1018,7 @@ mod tests {
     }
 
     #[test]
-    fn ephemeral_users_can_be_replaced_but_persisted_credentials_cannot() {
+    fn host_supplied_users_can_be_replaced() {
         use crate::credential_store::OpdsCredentialSecret;
         let reader = |name: &str| OpdsCredentialSecret {
             username: name.into(),
@@ -1038,7 +1027,7 @@ mod tests {
         let service =
             OpdsService::with_ephemeral_credentials(missing_source(), vec![reader("one")]).unwrap();
         service
-            .replace_ephemeral_credentials(vec![reader("two"), reader("three")])
+            .replace_credentials(vec![reader("two"), reader("three")])
             .unwrap();
         let names: Vec<_> = service
             .inner
@@ -1049,17 +1038,10 @@ mod tests {
             .collect();
         assert_eq!(names, ["two", "three"]);
         assert!(service
-            .replace_ephemeral_credentials(vec![reader("two"), reader("two")])
+            .replace_credentials(vec![reader("two"), reader("two")])
             .is_err());
-        service.replace_ephemeral_credentials(Vec::new()).unwrap();
+        service.replace_credentials(Vec::new()).unwrap();
         assert!(!service.credential_status().configured);
-
-        let directory = tempfile::tempdir().unwrap();
-        let persisted =
-            OpdsService::new(missing_source(), directory.path().join("credentials.json")).unwrap();
-        assert!(persisted
-            .replace_ephemeral_credentials(vec![reader("one")])
-            .is_err());
     }
 
     #[test]

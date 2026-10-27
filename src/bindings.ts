@@ -328,6 +328,9 @@ async clbQueryOpdsCredentialStatus() : Promise<Result<OpdsCredentialStatus, Opds
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Stores the credentials and hot-swaps them into a running share.
+ */
 async clbCmdConfigureOpdsCredentials(username: string, password: string) : Promise<Result<OpdsCredentialStatus, OpdsStatusError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_configure_opds_credentials", { username, password }) };
@@ -344,6 +347,10 @@ async clbCmdGenerateOpdsCredentials(username: string) : Promise<Result<Generated
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Clearing stops a running share that requires sign-in (see
+ * `OpdsService::clear_credentials`).
+ */
 async clbCmdClearOpdsCredentials() : Promise<Result<OpdsCredentialStatus, OpdsStatusError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_clear_opds_credentials") };

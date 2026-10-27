@@ -7,7 +7,7 @@ use crate::{
         LibrarySeries, LibraryTag, NewAuthor,
     },
     error::LibraryError,
-    BookUrlBuilder, LibraryAuthor, LibraryBook,
+    Actor, BookUrlBuilder, LibraryAuthor, LibraryBook,
 };
 use libcalibre::{BookId, Library};
 
@@ -130,18 +130,23 @@ impl<'a> LibraryService<'a> {
             .collect())
     }
 
-    pub fn create_book(&mut self, book: libcalibre::BookAdd) -> Result<String> {
+    pub fn create_book(&mut self, _actor: &Actor, book: libcalibre::BookAdd) -> Result<String> {
         Ok(self.library.add_book(book)?.id.as_i32().to_string())
     }
 
-    pub fn update_book(&mut self, id: &str, updates: BookUpdate) -> Result<i32> {
+    pub fn update_book(&mut self, _actor: &Actor, id: &str, updates: BookUpdate) -> Result<i32> {
         Ok(self
             .library
             .update_book(book_id(id)?, updates.to_library_update())?
             .id
             .as_i32())
     }
-    pub fn update_author(&mut self, id: &str, updates: AuthorUpdate) -> Result<i32> {
+    pub fn update_author(
+        &mut self,
+        _actor: &Actor,
+        id: &str,
+        updates: AuthorUpdate,
+    ) -> Result<i32> {
         let id = id
             .parse::<i32>()
             .map(libcalibre::AuthorId::from)
@@ -152,7 +157,7 @@ impl<'a> LibraryService<'a> {
             .id
             .as_i32())
     }
-    pub fn delete_author(&mut self, id: &str) -> Result<()> {
+    pub fn delete_author(&mut self, _actor: &Actor, id: &str) -> Result<()> {
         let id = id
             .parse::<i32>()
             .map(libcalibre::AuthorId::from)
@@ -160,7 +165,11 @@ impl<'a> LibraryService<'a> {
         self.library.remove_author(id)?;
         Ok(())
     }
-    pub fn create_authors(&mut self, authors: Vec<NewAuthor>) -> Result<Vec<LibraryAuthor>> {
+    pub fn create_authors(
+        &mut self,
+        _actor: &Actor,
+        authors: Vec<NewAuthor>,
+    ) -> Result<Vec<LibraryAuthor>> {
         let counts = std::collections::HashMap::new();
         authors
             .into_iter()
@@ -179,6 +188,7 @@ impl<'a> LibraryService<'a> {
     }
     pub fn upsert_identifier(
         &mut self,
+        _actor: &Actor,
         id: &str,
         label: String,
         value: String,
@@ -188,7 +198,12 @@ impl<'a> LibraryService<'a> {
             .upsert_book_identifier(book_id(id)?, label, value, existing_id)?;
         Ok(())
     }
-    pub fn delete_identifier(&mut self, id: &str, identifier_id: i32) -> Result<()> {
+    pub fn delete_identifier(
+        &mut self,
+        _actor: &Actor,
+        id: &str,
+        identifier_id: i32,
+    ) -> Result<()> {
         self.library
             .delete_book_identifier(book_id(id)?, identifier_id)?;
         Ok(())
@@ -216,6 +231,7 @@ impl<'a> LibraryService<'a> {
     }
     pub fn set_custom_value(
         &mut self,
+        _actor: &Actor,
         id: &str,
         column_id: i32,
         value: Option<CustomValueDto>,
@@ -228,11 +244,11 @@ impl<'a> LibraryService<'a> {
             .set_custom_value(book_id(id)?, column_id, value)?;
         Ok(())
     }
-    pub fn add_genres(&mut self, id: &str, genres: Vec<String>) -> Result<()> {
+    pub fn add_genres(&mut self, _actor: &Actor, id: &str, genres: Vec<String>) -> Result<()> {
         self.library.add_book_genres(book_id(id)?, genres)?;
         Ok(())
     }
-    pub fn set_cover(&mut self, id: &str, bytes: Vec<u8>) -> Result<()> {
+    pub fn set_cover(&mut self, _actor: &Actor, id: &str, bytes: Vec<u8>) -> Result<()> {
         self.library.set_book_cover(book_id(id)?, bytes)?;
         Ok(())
     }

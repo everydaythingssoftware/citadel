@@ -1,51 +1,87 @@
 use citadel_opds::{
     credential_store::{OpdsCredentialSecret, OpdsCredentialStatus},
-    password::GeneratedOpdsCredentials,
-    service::{OpdsServiceStatus, OpdsStartConfig, OpdsStatusError},
+    password::{generate_password, GeneratedOpdsCredentials},
+    service::{OpdsErrorCode, OpdsServiceStatus, OpdsStartConfig, OpdsStatusError},
     OpdsService,
 };
+
+use crate::account::LocalAccount;
+
+fn unexpected(message: String) -> OpdsStatusError {
+    OpdsStatusError {
+        code: OpdsErrorCode::Unexpected,
+        message,
+    }
+}
+
+/// The local user's app password is the only credential desktop sharing serves.
+pub fn sync_credentials(
+    service: &OpdsService,
+    account: &LocalAccount,
+) -> Result<(), OpdsStatusError> {
+    let credentials = account.opds_credentials().map_err(unexpected)?;
+    service.replace_credentials(credentials.into_iter().collect())
+}
 
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_query_opds_credential_status(
-    service: tauri::State<'_, OpdsService>,
+    account: tauri::State<'_, LocalAccount>,
 ) -> Result<OpdsCredentialStatus, OpdsStatusError> {
-    Ok(service.credential_status())
+    account.opds_status().map_err(unexpected)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_query_opds_credential_secret(
-    service: tauri::State<'_, OpdsService>,
+    account: tauri::State<'_, LocalAccount>,
 ) -> Result<Option<OpdsCredentialSecret>, OpdsStatusError> {
-    Ok(service.credential_secret())
+    account.opds_credentials().map_err(unexpected)
 }
 
+/// Stores the credentials and hot-swaps them into a running share.
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_cmd_configure_opds_credentials(
     service: tauri::State<'_, OpdsService>,
+    account: tauri::State<'_, LocalAccount>,
     username: String,
     password: String,
 ) -> Result<OpdsCredentialStatus, OpdsStatusError> {
-    service.configure_credentials(username, password)
+    account
+        .configure(&username, &password)
+        .map_err(unexpected)?;
+    sync_credentials(&service, &account)?;
+    account.opds_status().map_err(unexpected)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_cmd_generate_opds_credentials(
     service: tauri::State<'_, OpdsService>,
+    account: tauri::State<'_, LocalAccount>,
     username: String,
 ) -> Result<GeneratedOpdsCredentials, OpdsStatusError> {
-    service.generate_credentials(username)
+    let password = generate_password();
+    account
+        .configure(&username, &password)
+        .map_err(unexpected)?;
+    sync_credentials(&service, &account)?;
+    let username = account.user().map_err(unexpected)?.username;
+    Ok(GeneratedOpdsCredentials { username, password })
 }
 
+/// Clearing stops a running share that requires sign-in (see
+/// `OpdsService::clear_credentials`).
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_cmd_clear_opds_credentials(
     service: tauri::State<'_, OpdsService>,
+    account: tauri::State<'_, LocalAccount>,
 ) -> Result<OpdsCredentialStatus, OpdsStatusError> {
-    service.clear_credentials().await
+    account.clear().map_err(unexpected)?;
+    service.clear_credentials().await?;
+    account.opds_status().map_err(unexpected)
 }
 
 #[tauri::command]

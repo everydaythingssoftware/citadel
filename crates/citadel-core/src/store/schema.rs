@@ -32,6 +32,12 @@ diesel::table! {
     }
 }
 diesel::table! {
+    properties (key) {
+        key -> Text,
+        value -> Text,
+    }
+}
+diesel::table! {
     library_grants (user_id, library_id) {
         user_id -> Text,
         library_id -> Text,
@@ -47,5 +53,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     external_identities,
     sessions,
     libraries,
-    library_grants
+    library_grants,
+    properties
 );

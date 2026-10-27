@@ -13,14 +13,15 @@ migrations.
 ## Decision
 
 `citadel-core` owns `citadel.db` (`citadel_core::store`) alongside the library
-contracts: the database is Citadel's own state, not only accounts, and the
-desktop app will adopt it too. A host keeps it in its state directory (the
-server's `stateDirectory`), never inside a library (ADR 0003). It is one concrete SQLite store; traits wait for a second backend.
+contracts: the database is Citadel's own state, not only accounts, and both
+hosts use it. Each host keeps it in its state directory (the server's
+`stateDirectory`, the desktop's app-data directory), never inside a library
+(ADR 0003). It is one concrete SQLite store; traits wait for a second backend.
 Diesel embeds its migrations. Tables:
 
 - `users`: opaque UUID `id`; `username` is unique case-insensitively and for
   display only. Sign-in passwords are Argon2id hashes and may be absent
-  (e.g. future OIDC-only users). `app_password` is the user's
+  (OIDC-only users, the desktop's local user). `app_password` is the user's
   OPDS password, stored reversibly so it can be revealed again (ADR 0005); it
   may be absent.
 - `external_identities`: `(issuer, subject)` → user. Empty until OIDC; a user
@@ -32,6 +33,7 @@ Diesel embeds its migrations. Tables:
   opened from. A library that moves keeps its ID, name and grants. A copied
   library shares its original's UUID, so registering the copy moves the entry
   to it; telling such copies apart is deferred.
+- `properties`: installation-wide values, such as the desktop's local user ID.
 - `library_grants`: user × library. v1 is binary access. A library a user cannot
   access is invisible: its routes answer 404, and its OPDS catalog rejects the
   user's app password.
@@ -73,12 +75,25 @@ Every `LibraryService` write takes an `Actor`. The desktop passes its local
 user; the server will pass the session's user when write routes land. The enum
 is non-exhaustive so non-human actors can follow.
 
+### Desktop
+
+The desktop app has one real user, the local user, created on first launch and
+named after the OS account. It has no sign-in password. Its app password is the
+desktop's OPDS sharing password: Sharing settings reveal, set, generate and
+clear it, and choosing an OPDS username renames the local user. Desktop sharing
+may still run without sign-in on local networks; only the server always
+requires it.
+
+On first launch after upgrading, `opds-credentials.json` becomes the local
+user's name and app password and is deleted; unreadable verifier-format files
+are discarded.
+
 ## Consequences
 
 Users, grants and app passwords are per installation, not per library:
-copying a library never copies access. The desktop app keeps its own
-machine-local sharing credential (ADR 0003, ADR 0005) and `settings.json`
-library list until it moves onto `citadel.db` with a local user, in a follow-up.
+copying a library never copies access. The OPDS runtime no longer persists
+credentials; hosts supply them from `citadel.db`. The desktop's `settings.json`
+library list moves into the registry in a follow-up.
 
 Deferred without blocking this model: roles beyond access, library owners,
 instance permissions, anonymous access, download-only permission, sign-up,

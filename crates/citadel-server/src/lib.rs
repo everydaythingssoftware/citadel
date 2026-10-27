@@ -401,7 +401,7 @@ async fn refresh_opds_users(service: &OpdsService, accounts: &Arc<CitadelStore>,
     let users = tokio::task::spawn_blocking(move || opds_users(&accounts, &library_id)).await;
     let result = match users {
         Ok(Ok(users)) => service
-            .replace_ephemeral_credentials(users)
+            .replace_credentials(users)
             .map_err(|error| error.message),
         Ok(Err(error)) => Err(error),
         Err(error) => Err(error.to_string()),

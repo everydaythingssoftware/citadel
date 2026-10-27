@@ -6,12 +6,13 @@ use argon2::{
 use diesel::{prelude::*, sqlite::SqliteConnection};
 
 use super::{
-    schema::{library_grants, sessions, users},
+    schema::{library_grants, properties, sessions, users},
     unix_now, CitadelStore, Result, StoreError,
 };
 use crate::Actor;
 
 const USERNAME_MAX_CHARS: usize = 64;
+const LOCAL_USER_PROPERTY: &str = "local_user_id";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct User {
@@ -119,6 +120,70 @@ impl CitadelStore {
             Ok(())
         })
     }
+
+    pub fn rename_user(&self, username: &str, new_username: &str) -> Result<User> {
+        let user = self.user(username)?;
+        let new_username = validate_username(new_username)?;
+        let mut connection = self.connection();
+        connection.immediate_transaction(|connection| {
+            if find_user(connection, &new_username)?.is_some_and(|other| other.id != user.id) {
+                return Err(StoreError::Conflict(format!(
+                    "A user named '{new_username}' already exists."
+                )));
+            }
+            diesel::update(users::table.filter(users::id.eq(&user.id)))
+                .set(users::username.eq(&new_username))
+                .execute(connection)?;
+            Ok(())
+        })?;
+        Ok(User {
+            id: user.id,
+            username: new_username,
+        })
+    }
+
+    /// The desktop installation's own user, created on first use. It has no
+    /// sign-in password and no app password until sharing needs one.
+    pub fn local_user(&self, default_username: &str) -> Result<User> {
+        let mut connection = self.connection();
+        connection.immediate_transaction(|connection| {
+            let existing = properties::table
+                .filter(properties::key.eq(LOCAL_USER_PROPERTY))
+                .inner_join(users::table.on(users::id.eq(properties::value)))
+                .select((users::id, users::username))
+                .first::<(String, String)>(connection)
+                .optional()?;
+            if let Some((id, username)) = existing {
+                return Ok(User { id, username });
+            }
+            let mut username =
+                validate_username(default_username).unwrap_or_else(|_| "Citadel".to_string());
+            let base = username.clone();
+            let mut suffix = 2;
+            while find_user(connection, &username)?.is_some() {
+                username = format!("{base} {suffix}");
+                suffix += 1;
+            }
+            let user = User {
+                id: uuid::Uuid::new_v4().to_string(),
+                username,
+            };
+            diesel::insert_into(users::table)
+                .values((
+                    users::id.eq(&user.id),
+                    users::username.eq(&user.username),
+                    users::created_at.eq(unix_now()),
+                ))
+                .execute(connection)?;
+            diesel::replace_into(properties::table)
+                .values((
+                    properties::key.eq(LOCAL_USER_PROPERTY),
+                    properties::value.eq(&user.id),
+                ))
+                .execute(connection)?;
+            Ok(user)
+        })
+    }
 }
 
 fn find_user(connection: &mut SqliteConnection, username: &str) -> Result<Option<User>> {
@@ -205,5 +270,29 @@ mod tests {
             ));
         }
         assert!(store.create_user("bob", "short").is_err());
+    }
+
+    #[test]
+    fn the_local_user_is_created_once_and_can_be_renamed() {
+        let (_directory, store, library) = store();
+        store.create_user("phil", "correct horse").unwrap();
+        let local = store.local_user("phil").unwrap();
+        assert_eq!(local.username, "phil 2");
+        assert_eq!(store.local_user("someone else").unwrap(), local);
+        assert!(store.app_password(&local.username).unwrap().is_none());
+        assert!(store
+            .verify_password(&local.username, "")
+            .unwrap()
+            .is_none());
+        let renamed = store.rename_user(&local.username, "reader").unwrap();
+        assert_eq!(renamed.id, local.id);
+        assert_eq!(store.local_user("phil").unwrap(), renamed);
+        assert!(matches!(
+            store.rename_user("reader", "PHIL"),
+            Err(StoreError::Conflict(_))
+        ));
+        store.grant("reader", &library.id).unwrap();
+        assert!(store.can_access(&local.id, &library.id).unwrap());
+        assert_eq!(store.local_user("").unwrap().id, local.id);
     }
 }

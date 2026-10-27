@@ -11,6 +11,7 @@ use specta_typescript::Typescript;
 use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
 
+mod account;
 mod app_updates;
 pub mod libs {
     pub mod cover_thumbs;
@@ -120,13 +121,17 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .setup(move |app| {
             builder.mount_events(app);
 
-            // Sharing lives here so the credential store can live under the
-            // user's app-data directory next to the rest of Citadel's state.
-            let credential_path = app.path().app_data_dir()?.join("opds-credentials.json");
-            app.manage(citadel_opds::OpdsService::new(
+            // citadel.db lives in app data: the local user and its sharing
+            // password (ADR 0009).
+            let account = account::LocalAccount::open(&app.path().app_data_dir()?)?;
+            let sharing = citadel_opds::OpdsService::with_ephemeral_credentials(
                 Arc::new(opds_state.clone()),
-                credential_path,
-            )?);
+                Vec::new(),
+            )
+            .map_err(|error| error.message)?;
+            opds::sync_credentials(&sharing, &account).map_err(|error| error.message)?;
+            app.manage(account);
+            app.manage(sharing);
 
             // Native macOS menu bar: app menu with Settings…, File > Add
             // Book…, and the standard Edit/View/Window items.

@@ -5,7 +5,7 @@
 //! [`Book`](libcalibre::library::Book) into them. None of this depends on
 //! Tauri. Shared queries and mutations live in [`library::LibraryService`], with
 //! serializable inputs in [`contracts`] and transport-independent [`error`] codes.
-//! [`Actor`] identifies who a write is performed for. [`store`] owns
+//! Every write names the [`Actor`] it is performed for. [`store`] owns
 //! `citadel.db`: users, sessions, the library registry and grants.
 //! The cover/file URL scheme is injected through [`BookUrlBuilder`]: desktop
 //! supplies [`AssetUrlBuilder`] and the server supplies [`HttpUrlBuilder`].

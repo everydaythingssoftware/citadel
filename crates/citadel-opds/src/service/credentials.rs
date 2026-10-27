@@ -1,69 +1,48 @@
-//! The credential half of [`OpdsService`]: status, set, generate, clear.
+//! The credential half of [`OpdsService`]: status, replace, clear.
 //! A child of `service` so it can reach the service's private state without
 //! visibility holes.
 
 use super::super::auth::OpdsAuthCredentials;
-use super::super::password::{generate_password, GeneratedOpdsCredentials};
 use super::OpdsService;
 use crate::credential_store::{OpdsCredentialSecret, OpdsCredentialStatus, StoredOpdsCredentials};
 use crate::{OpdsErrorCode, OpdsStatusError};
 
 const USERNAME_FORBIDDEN: char = ':';
 
-fn store_error(error: std::io::Error) -> OpdsStatusError {
-    OpdsStatusError {
-        code: OpdsErrorCode::Unexpected,
-        message: error.to_string(),
-    }
-}
-
 impl OpdsService {
     pub fn credential_status(&self) -> OpdsCredentialStatus {
         self.inner.credentials.status()
     }
 
-    pub fn credential_secret(&self) -> Option<OpdsCredentialSecret> {
-        self.inner.credentials.secret()
+    /// Replaces the host-supplied user list, e.g. after the host's user
+    /// database changed. Running listeners check the next request against it.
+    pub fn replace_credentials(
+        &self,
+        users: Vec<OpdsCredentialSecret>,
+    ) -> Result<(), OpdsStatusError> {
+        self.inner.credentials.replace(validate_user_list(users)?);
+        self.swap_auth_from_store();
+        Ok(())
     }
 
-    /// Stores new credentials and swaps the live auth snapshot. A running
-    /// share keeps running; the next request already checks against the new
-    /// secret.
-    pub fn configure_credentials(
+    #[cfg(test)]
+    pub(crate) fn configure_credentials(
         &self,
         username: String,
         password: String,
     ) -> Result<OpdsCredentialStatus, OpdsStatusError> {
-        let credentials = validate_credentials(username, password)?;
-        self.inner
-            .credentials
-            .set(credentials)
-            .map_err(store_error)?;
-        self.swap_auth_from_store();
+        self.replace_credentials(vec![OpdsCredentialSecret { username, password }])?;
         Ok(self.credential_status())
     }
 
-    pub fn generate_credentials(
+    #[cfg(test)]
+    pub(crate) fn generate_credentials(
         &self,
         username: String,
-    ) -> Result<GeneratedOpdsCredentials, OpdsStatusError> {
-        let password = generate_password();
+    ) -> Result<crate::password::GeneratedOpdsCredentials, OpdsStatusError> {
+        let password = crate::password::generate_password();
         self.configure_credentials(username.clone(), password.clone())?;
-        Ok(GeneratedOpdsCredentials { username, password })
-    }
-
-    /// Replaces a host-supplied user list in place, e.g. after the host's user
-    /// database changed. Running listeners check the next request against it.
-    pub fn replace_ephemeral_credentials(
-        &self,
-        users: Vec<OpdsCredentialSecret>,
-    ) -> Result<(), OpdsStatusError> {
-        self.inner
-            .credentials
-            .replace_ephemeral(validate_user_list(users)?)
-            .map_err(store_error)?;
-        self.swap_auth_from_store();
-        Ok(())
+        Ok(crate::password::GeneratedOpdsCredentials { username, password })
     }
 
     /// Clearing credentials while sharing is gated on them must stop sharing:
@@ -71,7 +50,7 @@ impl OpdsService {
     /// and a snapshot with no secret could only reject everyone.
     pub async fn clear_credentials(&self) -> Result<OpdsCredentialStatus, OpdsStatusError> {
         self.stop_if_active().await;
-        self.inner.credentials.clear().map_err(store_error)?;
+        self.inner.credentials.replace(Vec::new());
         self.swap_auth_from_store();
         Ok(self.credential_status())
     }

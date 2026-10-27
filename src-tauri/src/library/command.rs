@@ -1,11 +1,12 @@
 use tauri::Manager;
 
+use crate::account::LocalAccount;
 use crate::imports::ImportableBookMetadata;
 use crate::libs::cover_thumbs::{self, CoverThumbnail};
 use crate::state::CitadelState;
 use citadel_core::{
     contracts::{custom_columns::CustomValueDto, AuthorUpdate, BookUpdate, NewAuthor},
-    LibraryAuthor,
+    Actor, LibraryAuthor,
 };
 
 use super::onboarding::{self, CreateTargetBlocker};
@@ -20,11 +21,12 @@ pub const ERR_CREATE_LIBRARY_TARGET_NOT_EMPTY: &str = "create-library/folder-not
 #[specta::specta]
 pub fn clb_cmd_update_book(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     book_id: String,
     updates: BookUpdate,
 ) -> Result<i32, String> {
     state
-        .with_library_service(|service| service.update_book(&book_id, updates))
+        .with_library_service(|service| service.update_book(&account.actor(), &book_id, updates))
         .map_err(|error| error.to_string())
 }
 
@@ -32,12 +34,15 @@ pub fn clb_cmd_update_book(
 #[specta::specta]
 pub fn clb_cmd_set_custom_value(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     book_id: String,
     column_id: i32,
     value: Option<CustomValueDto>,
 ) -> Result<(), String> {
     state
-        .with_library_service(|service| service.set_custom_value(&book_id, column_id, value))
+        .with_library_service(|service| {
+            service.set_custom_value(&account.actor(), &book_id, column_id, value)
+        })
         .map_err(|error| error.to_string())
 }
 
@@ -45,11 +50,12 @@ pub fn clb_cmd_set_custom_value(
 #[specta::specta]
 pub fn clb_cmd_add_book_genres(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     book_id: String,
     genres: Vec<String>,
 ) -> Result<(), String> {
     state
-        .with_library_service(|service| service.add_genres(&book_id, genres))
+        .with_library_service(|service| service.add_genres(&account.actor(), &book_id, genres))
         .map_err(|error| error.to_string())
 }
 
@@ -102,10 +108,11 @@ pub fn clb_cmd_create_library(
 #[specta::specta]
 pub fn clb_cmd_create_book(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     md: ImportableBookMetadata,
 ) -> Result<String, String> {
     state
-        .with_library_service(|service| service.create_book(md.to_book_add()))
+        .with_library_service(|service| service.create_book(&account.actor(), md.to_book_add()))
         .map_err(|error| error.to_string())
 }
 
@@ -113,6 +120,7 @@ pub fn clb_cmd_create_book(
 #[specta::specta]
 pub fn clb_cmd_upsert_book_identifier(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     book_id: String,
     label: String,
     value: String,
@@ -120,7 +128,7 @@ pub fn clb_cmd_upsert_book_identifier(
 ) -> Result<(), String> {
     state
         .with_library_service(|service| {
-            service.upsert_identifier(&book_id, label, value, existing_id)
+            service.upsert_identifier(&account.actor(), &book_id, label, value, existing_id)
         })
         .map_err(|error| error.to_string())
 }
@@ -129,11 +137,14 @@ pub fn clb_cmd_upsert_book_identifier(
 #[specta::specta]
 pub fn clb_cmd_delete_book_identifier(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     book_id: String,
     identifier_id: i32,
 ) -> Result<(), String> {
     state
-        .with_library_service(|service| service.delete_identifier(&book_id, identifier_id))
+        .with_library_service(|service| {
+            service.delete_identifier(&account.actor(), &book_id, identifier_id)
+        })
         .map_err(|error| error.to_string())
 }
 
@@ -141,14 +152,23 @@ pub fn clb_cmd_delete_book_identifier(
 #[specta::specta]
 pub async fn clb_cmd_set_book_cover_from_url(
     state: tauri::State<'_, CitadelState>,
+    account: tauri::State<'_, LocalAccount>,
     book_id: String,
     image_url: String,
 ) -> Result<(), String> {
-    download_book_cover(state.inner(), book_id, image_url, &reqwest::Client::new()).await
+    download_book_cover(
+        state.inner(),
+        &account.actor(),
+        book_id,
+        image_url,
+        &reqwest::Client::new(),
+    )
+    .await
 }
 
 async fn download_book_cover(
     state: &CitadelState,
+    actor: &Actor,
     book_id: String,
     image_url: String,
     client: &reqwest::Client,
@@ -182,7 +202,7 @@ async fn download_book_cover(
             return Err("Library changed while downloading the cover".to_string());
         }
         citadel_core::library::LibraryService::new(library, &citadel_core::AssetUrlBuilder)
-            .set_cover(&book_id, bytes.to_vec())
+            .set_cover(actor, &book_id, bytes.to_vec())
             .map_err(|error| error.to_string())
     })?
 }
@@ -302,11 +322,14 @@ pub async fn clb_cmd_warm_cover_thumbnails(
 #[specta::specta]
 pub fn clb_cmd_update_author(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     author_id: String,
     updates: AuthorUpdate,
 ) -> Result<i32, String> {
     state
-        .with_library_service(|service| service.update_author(&author_id, updates))
+        .with_library_service(|service| {
+            service.update_author(&account.actor(), &author_id, updates)
+        })
         .map_err(|error| error.to_string())
 }
 
@@ -314,10 +337,11 @@ pub fn clb_cmd_update_author(
 #[specta::specta]
 pub fn clb_cmd_delete_author(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     author_id: String,
 ) -> Result<(), String> {
     state
-        .with_library_service(|service| service.delete_author(&author_id))
+        .with_library_service(|service| service.delete_author(&account.actor(), &author_id))
         .map_err(|error| error.to_string())
 }
 
@@ -416,10 +440,11 @@ fn remove_empty_author_dir(library_root: &std::path::Path, book_dir: &std::path:
 #[specta::specta]
 pub fn clb_cmd_create_authors(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     new_authors: Vec<NewAuthor>,
 ) -> Result<Vec<LibraryAuthor>, String> {
     state
-        .with_library_service(|service| service.create_authors(new_authors))
+        .with_library_service(|service| service.create_authors(&account.actor(), new_authors))
         .map_err(|error| error.to_string())
 }
 
@@ -497,6 +522,7 @@ mod cover_download_tests {
             async move {
                 download_book_cover(
                     &state,
+                    &Actor::User { id: "test".into() },
                     "1".into(),
                     url,
                     &reqwest::Client::builder().no_proxy().build().unwrap(),

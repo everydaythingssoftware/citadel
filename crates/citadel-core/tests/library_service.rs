@@ -2,9 +2,15 @@ use citadel_core::{
     contracts::{BookSortOrder, BookUpdate, LibraryBookQuery},
     error::LibraryErrorCode,
     library::LibraryService,
-    AssetUrlBuilder, BookFile, HttpUrlBuilder,
+    Actor, AssetUrlBuilder, BookFile, HttpUrlBuilder,
 };
 use libcalibre::{BookAdd, Library};
+
+fn actor() -> Actor {
+    Actor::User {
+        id: "test-user".into(),
+    }
+}
 
 fn fixture() -> (tempfile::TempDir, Library, String) {
     let directory = tempfile::tempdir().unwrap();
@@ -21,20 +27,23 @@ fn fixture() -> (tempfile::TempDir, Library, String) {
     let source = directory.path().join("source.txt");
     std::fs::write(&source, "contract parity").unwrap();
     let id = LibraryService::new(&mut library, &AssetUrlBuilder)
-        .create_book(BookAdd {
-            title: "Contract Book".into(),
-            author_names: vec!["Contract Author".into()],
-            tags: Some(vec!["contract".into()]),
-            series: Some("Contract Series".into()),
-            series_index: Some(2.0),
-            publisher: Some("Contract Press".into()),
-            publication_date: None,
-            rating: None,
-            comments: None,
-            identifiers: Default::default(),
-            language: Some("en".into()),
-            file_paths: vec![source],
-        })
+        .create_book(
+            &actor(),
+            BookAdd {
+                title: "Contract Book".into(),
+                author_names: vec!["Contract Author".into()],
+                tags: Some(vec!["contract".into()]),
+                series: Some("Contract Series".into()),
+                series_index: Some(2.0),
+                publisher: Some("Contract Press".into()),
+                publication_date: None,
+                rating: None,
+                comments: None,
+                identifiers: Default::default(),
+                language: Some("en".into()),
+                file_paths: vec![source],
+            },
+        )
         .unwrap();
     (directory, library, id)
 }
@@ -86,9 +95,9 @@ fn shared_mutation_read_state_and_genres_use_existing_library_behavior() {
     }))
     .unwrap();
     let mut service = LibraryService::new(&mut library, &AssetUrlBuilder);
-    service.update_book(&id, updates).unwrap();
+    service.update_book(&actor(), &id, updates).unwrap();
     service
-        .add_genres(&id, vec!["Speculative Fiction".into()])
+        .add_genres(&actor(), &id, vec!["Speculative Fiction".into()])
         .unwrap();
     let book = service.get_book(&id).unwrap();
     assert_eq!(book.title, "Updated Contract");

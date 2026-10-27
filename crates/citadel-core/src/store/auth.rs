@@ -119,6 +119,18 @@ impl CitadelStore {
         }))
     }
 
+    /// Sets or clears the OPDS app password; the desktop lets its user choose one.
+    pub fn set_app_password(&self, username: &str, password: Option<&str>) -> Result<()> {
+        let user = self.user(username)?;
+        if password.is_some_and(str::is_empty) {
+            return Err(StoreError::Invalid("App passwords can't be empty.".into()));
+        }
+        diesel::update(users::table.filter(users::id.eq(&user.id)))
+            .set(users::app_password.eq(password))
+            .execute(&mut *self.connection())?;
+        Ok(())
+    }
+
     pub fn rotate_app_password(&self, username: &str) -> Result<AppCredential> {
         let user = self.user(username)?;
         let password = crate::password::generate_app_password();
@@ -251,6 +263,13 @@ mod tests {
         let rotated = store.rotate_app_password("alice").unwrap();
         assert_ne!(rotated.password, app.password);
         assert_eq!(store.app_password("alice").unwrap(), Some(rotated));
+        store.set_app_password("alice", None).unwrap();
+        assert!(store.app_credentials(&library.id).unwrap().is_empty());
+        store.set_app_password("alice", Some("chosen")).unwrap();
+        assert_eq!(
+            store.app_credentials(&library.id).unwrap()[0].password,
+            "chosen"
+        );
         assert!(matches!(
             store.grant("alice", "missing"),
             Err(StoreError::NotFound(_))
