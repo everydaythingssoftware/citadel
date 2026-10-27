@@ -1,4 +1,5 @@
-//! Read-only JSON API. Contracts and application behavior live in citadel-core.
+//! Read-only JSON API. Contracts and application behavior live in citadel-core;
+//! browsers authenticate with a Citadel session cookie (see `session`).
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
@@ -18,26 +19,40 @@ use citadel_core::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use utoipa::openapi::{
-    security::{Http, HttpAuthScheme, SecurityScheme},
+    security::{ApiKey, ApiKeyValue, SecurityScheme},
     OpenApi,
 };
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::CalibreCatalogSource;
+use citadel_core::store::CitadelStore;
 
+mod session;
 mod thumbnails;
 pub(crate) mod web;
+
+pub use session::{PublicUrl, SESSION_COOKIE};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApiConfig {
     pub listen: SocketAddr,
+    pub public_url: String,
     pub web_directory: Option<std::path::PathBuf>,
+}
+
+/// Who may use the API: the accounts database, the Citadel ID of the library
+/// this server serves, and the origin browsers sign in from.
+pub struct ApiAccess {
+    pub accounts: Arc<CitadelStore>,
+    pub library_id: String,
+    pub public_url: PublicUrl,
 }
 
 #[derive(Clone)]
 struct ApiState {
     source: Arc<CalibreCatalogSource>,
+    access: Arc<session::Access>,
     work: Arc<Semaphore>,
     thumbnails: thumbnails::ThumbnailCache,
 }
@@ -112,7 +127,7 @@ impl IntoResponse for ApiFailure {
     responses((status = 200, body = LibraryBookPage), (status = 400, body = LibraryError),
         (status = 401, body = LibraryError), (status = 429, body = LibraryError), (status = 413, body = LibraryError),
         (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
-    security(("reader" = [])))]
+    security(("session" = [])))]
 async fn query_books(
     State(state): State<ApiState>,
     query: Result<Json<LibraryBookQuery>, JsonRejection>,
@@ -133,7 +148,7 @@ async fn query_books(
     responses((status = 200, body = LibraryBook), (status = 400, body = LibraryError),
         (status = 401, body = LibraryError), (status = 429, body = LibraryError), (status = 404, body = LibraryError),
         (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
-    security(("reader" = [])))]
+    security(("session" = [])))]
 async fn get_book(
     State(state): State<ApiState>,
     Path(id): Path<String>,
@@ -153,11 +168,12 @@ struct LibraryDescriptor {
 
 #[utoipa::path(get, path = "/api/library", operation_id = "getLibrary",
     responses((status = 200, body = LibraryDescriptor), (status = 401, body = LibraryError),
-        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("reader" = [])))]
+        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("session" = [])))]
 async fn library_descriptor(
     State(state): State<ApiState>,
 ) -> Result<Json<LibraryDescriptor>, ApiFailure> {
-    let id = run_library(state, |library| Ok(library.library_uuid()?)).await?;
+    let id = state.access.library_id.clone();
+    run_library(state, |library| Ok(library.library_uuid()?)).await?;
     Ok(Json(LibraryDescriptor {
         id,
         name: "Citadel Library".into(),
@@ -167,7 +183,7 @@ async fn library_descriptor(
 
 #[utoipa::path(get, path = "/api/authors", operation_id = "listAuthors",
     responses((status = 200, body = Vec<citadel_core::LibraryAuthor>), (status = 401, body = LibraryError),
-        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("reader" = [])))]
+        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("session" = [])))]
 async fn authors(
     State(state): State<ApiState>,
 ) -> Result<Json<Vec<citadel_core::LibraryAuthor>>, ApiFailure> {
@@ -176,7 +192,7 @@ async fn authors(
 
 #[utoipa::path(get, path = "/api/series", operation_id = "listSeries",
     responses((status = 200, body = Vec<citadel_core::contracts::LibrarySeries>), (status = 401, body = LibraryError),
-        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("reader" = [])))]
+        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("session" = [])))]
 async fn series(
     State(state): State<ApiState>,
 ) -> Result<Json<Vec<citadel_core::contracts::LibrarySeries>>, ApiFailure> {
@@ -185,7 +201,7 @@ async fn series(
 
 #[utoipa::path(get, path = "/api/tags", operation_id = "listTags",
     responses((status = 200, body = Vec<citadel_core::contracts::LibraryTag>), (status = 401, body = LibraryError),
-        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("reader" = [])))]
+        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("session" = [])))]
 async fn tags(
     State(state): State<ApiState>,
 ) -> Result<Json<Vec<citadel_core::contracts::LibraryTag>>, ApiFailure> {
@@ -194,7 +210,7 @@ async fn tags(
 
 #[utoipa::path(get, path = "/api/publishers", operation_id = "listPublishers",
     responses((status = 200, body = Vec<citadel_core::contracts::LibraryPublisher>), (status = 401, body = LibraryError),
-        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("reader" = [])))]
+        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("session" = [])))]
 async fn publishers(
     State(state): State<ApiState>,
 ) -> Result<Json<Vec<citadel_core::contracts::LibraryPublisher>>, ApiFailure> {
@@ -203,7 +219,7 @@ async fn publishers(
 
 #[utoipa::path(get, path = "/api/custom-columns", operation_id = "listCustomColumns",
     responses((status = 200, body = Vec<citadel_core::contracts::custom_columns::CustomColumnDef>), (status = 401, body = LibraryError),
-        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("reader" = [])))]
+        (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("session" = [])))]
 async fn custom_columns(
     State(state): State<ApiState>,
 ) -> Result<Json<Vec<citadel_core::contracts::custom_columns::CustomColumnDef>>, ApiFailure> {
@@ -217,7 +233,7 @@ async fn custom_columns(
     responses((status = 200, body = Vec<citadel_core::contracts::custom_columns::BookCustomValue>),
         (status = 400, body = LibraryError), (status = 401, body = LibraryError),
         (status = 404, body = LibraryError), (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
-    security(("reader" = [])))]
+    security(("session" = [])))]
 async fn custom_values(
     State(state): State<ApiState>,
     Path(id): Path<String>,
@@ -247,7 +263,7 @@ fn routes() -> OpenApiRouter<ApiState> {
 }
 
 pub fn openapi() -> OpenApi {
-    let (_, mut schema) = routes().split_for_parts();
+    let (_, mut schema) = routes().merge(session::routes()).split_for_parts();
     // These handlers are mounted from OPDS so byte streaming, range support and
     // containment checks have one implementation across both transports.
     for (path, operation_id, content_type, extra_parameters) in [
@@ -271,7 +287,7 @@ pub fn openapi() -> OpenApi {
         let operation = serde_json::json!({
             "operationId": operation_id,
             "parameters": parameters,
-            "security": [{"reader":[]}],
+            "security": [{"session":[]}],
             "responses": {
                 "200": {"description":"Book asset", "content":{content_type:{"schema":{"type":"string", "format":"binary"}}}},
                 "206": {"description":"Partial book asset"},
@@ -297,8 +313,8 @@ pub fn openapi() -> OpenApi {
         .as_mut()
         .expect("API has schemas")
         .add_security_scheme(
-            "reader",
-            SecurityScheme::Http(Http::new(HttpAuthScheme::Basic)),
+            "session",
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new(SESSION_COOKIE))),
         );
     schema
 }
@@ -306,17 +322,25 @@ pub fn openapi() -> OpenApi {
 pub fn router(
     source: Arc<CalibreCatalogSource>,
     service: &citadel_opds::OpdsService,
+    access: ApiAccess,
     web_directory: Option<&std::path::Path>,
 ) -> Router {
-    let (router, _) = routes().split_for_parts();
-    let assets = service.book_asset_routes(source.clone(), "/api");
+    let state = ApiState {
+        source: source.clone(),
+        access: Arc::new(session::Access::new(
+            access.accounts,
+            access.library_id,
+            access.public_url,
+        )),
+        work: Arc::new(Semaphore::new(64)),
+        thumbnails: Default::default(),
+    };
+    let (library, _) = routes().split_for_parts();
+    let (session, _) = session::routes().split_for_parts();
+    let assets = service.book_asset_routes(source, "/api");
     let schema = openapi();
-    let router = router
-        .with_state(ApiState {
-            source,
-            work: Arc::new(Semaphore::new(64)),
-            thumbnails: Default::default(),
-        })
+    let library = library
+        .with_state(state.clone())
         .merge(assets)
         .route(
             "/api/openapi.json",
@@ -324,18 +348,25 @@ pub fn router(
                 let schema = schema.clone();
                 async move { Json(schema) }
             }),
-        );
+        )
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            session::require_session,
+        ));
+    // The frontend build is public so a signed-out browser can load the
+    // sign-in page; everything it reads afterwards goes through the API.
+    let router = session.with_state(state).merge(library);
     let router = match web_directory {
         Some(directory) => router.fallback_service(web::router(directory)),
         None => router,
     };
     service
-        .protect_http_routes(router)
+        .limit_http_routes(router)
         .layer(axum::middleware::from_fn(normalize_errors))
 }
 
-// Authentication/admission middleware is shared with OPDS, which uses plain
-// text errors. Preserve its status and headers while presenting a JSON API error.
+// Admission middleware is shared with OPDS, which uses plain text errors.
+// Preserve its status and headers while presenting a JSON API error.
 async fn normalize_errors(request: Request, next: Next) -> Response {
     let response = next.run(request).await;
     if !response.status().is_client_error() && !response.status().is_server_error() {

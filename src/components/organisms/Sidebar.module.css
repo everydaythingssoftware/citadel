@@ -59,6 +59,12 @@
 	color: var(--ctd-nav-active-text);
 }
 
+.footer {
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+}
+
 /* size 28 keeps the gear's hit area comfortably clickable; hover background
    comes from .ctd-settings-button in styles.css. */
 .settingsButton {

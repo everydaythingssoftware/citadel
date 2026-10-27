@@ -43,7 +43,7 @@ pub(super) struct ThumbnailQuery {
     request_body = ThumbnailQuery,
     responses((status = 200, body = Vec<CoverThumbnail>), (status = 400, body = LibraryError),
         (status = 401, body = LibraryError), (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
-    security(("reader" = [])))]
+    security(("session" = [])))]
 pub(super) async fn ensure(
     State(state): State<ApiState>,
     input: Result<Json<ThumbnailQuery>, JsonRejection>,
@@ -69,7 +69,7 @@ pub(super) async fn ensure(
 #[utoipa::path(get, path = "/api/covers/thumbnails", operation_id = "listCoverThumbnails",
     description = "Cached thumbnails only. The bounded in-memory index is rebuilt on demand after a restart.",
     responses((status = 200, body = Vec<CoverThumbnail>), (status = 401, body = LibraryError), (status = 503, body = LibraryError)),
-    security(("reader" = [])))]
+    security(("session" = [])))]
 pub(super) async fn list(
     State(state): State<ApiState>,
 ) -> Result<Json<Vec<CoverThumbnail>>, ApiFailure> {
@@ -90,7 +90,7 @@ pub(super) async fn list(
     responses((status = 200, body = Vec<u8>, content_type = "image/jpeg"),
         (status = 400, body = LibraryError), (status = 401, body = LibraryError),
         (status = 404, body = LibraryError), (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
-    security(("reader" = [])))]
+    security(("session" = [])))]
 pub(super) async fn image(
     State(state): State<ApiState>,
     Path(id): Path<String>,

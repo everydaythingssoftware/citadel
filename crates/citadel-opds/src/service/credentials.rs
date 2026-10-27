@@ -52,6 +52,20 @@ impl OpdsService {
         Ok(GeneratedOpdsCredentials { username, password })
     }
 
+    /// Replaces a host-supplied user list in place, e.g. after the host's user
+    /// database changed. Running listeners check the next request against it.
+    pub fn replace_ephemeral_credentials(
+        &self,
+        users: Vec<OpdsCredentialSecret>,
+    ) -> Result<(), OpdsStatusError> {
+        self.inner
+            .credentials
+            .replace_ephemeral(validate_user_list(users)?)
+            .map_err(store_error)?;
+        self.swap_auth_from_store();
+        Ok(())
+    }
+
     /// Clearing credentials while sharing is gated on them must stop sharing:
     /// the running server's bind policy advertises credential-gated reach,
     /// and a snapshot with no secret could only reject everyone.
@@ -77,6 +91,25 @@ impl OpdsService {
             .collect();
         self.inner.auth.swap_credential_list(snapshot);
     }
+}
+
+pub(super) fn validate_user_list(
+    users: Vec<OpdsCredentialSecret>,
+) -> Result<Vec<StoredOpdsCredentials>, OpdsStatusError> {
+    let mut names = std::collections::BTreeSet::new();
+    users
+        .into_iter()
+        .map(|user| {
+            let user = validate_credentials(user.username, user.password)?;
+            if !names.insert(user.username.clone()) {
+                return Err(OpdsStatusError {
+                    code: OpdsErrorCode::ConfigurationConflict,
+                    message: "Duplicate reader username.".into(),
+                });
+            }
+            Ok(user)
+        })
+        .collect()
 }
 
 pub(super) fn validate_credentials(

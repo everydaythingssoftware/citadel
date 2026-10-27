@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod api;
 
 use std::{
@@ -8,22 +9,51 @@ use std::{
 };
 
 use chrono::NaiveDateTime;
+use citadel_core::store::{CitadelStore, RegisteredLibrary};
 use citadel_opds::{
-    CatalogBookQuery, CatalogFacet, CatalogSource, OpdsLifecycleState, OpdsService,
-    OpdsServiceStatus, OpdsStartConfig,
+    credential_store::OpdsCredentialSecret, CatalogBookQuery, CatalogFacet, CatalogSource,
+    OpdsBindTarget, OpdsLifecycleState, OpdsService, OpdsServiceStatus, OpdsStartConfig,
 };
 use libcalibre::{BookId, BookPage, CalibreError, Library, ResolvedBookAsset};
 use serde::Deserialize;
 
-const USERS_ENVIRONMENT: &str = "CITADEL_OPDS_USERS";
+const ACCOUNTS_DATABASE: &str = "citadel.db";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ServerConfig {
     pub library_path: PathBuf,
     pub state_directory: Option<PathBuf>,
-    pub sharing: OpdsStartConfig,
+    pub sharing: SharingConfig,
     pub api: Option<api::ApiConfig>,
+}
+
+/// OPDS listener settings. Reader sign-in is always required: each Citadel
+/// user signs in to OPDS with their app password.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SharingConfig {
+    pub port: u32,
+    pub target: OpdsBindTarget,
+    /// Removed setting, kept only to explain the migration.
+    authentication_enabled: Option<bool>,
+}
+
+impl SharingConfig {
+    fn start_config(&self) -> OpdsStartConfig {
+        OpdsStartConfig {
+            target: self.target.clone(),
+            port: self.port,
+            authentication_enabled: true,
+        }
+    }
+}
+
+/// What the process was asked to do: serve, or administer `citadel.db`.
+#[derive(Debug, Eq, PartialEq)]
+pub enum Invocation {
+    Serve(PathBuf),
+    Admin(PathBuf, Vec<String>),
 }
 
 pub struct CalibreCatalogSource {
@@ -143,7 +173,7 @@ impl CatalogSource for CalibreCatalogSource {
     }
 }
 
-pub fn config_path_from_args<I, S>(args: I) -> Result<PathBuf, String>
+pub fn invocation_from_args<I, S>(args: I) -> Result<Invocation, String>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
@@ -152,9 +182,25 @@ where
     let program = args
         .next()
         .unwrap_or_else(|| OsString::from("citadel-server"));
-    let usage = || format!("usage: {} --config <path>", program.to_string_lossy());
-    match (args.next(), args.next(), args.next()) {
-        (Some(flag), Some(path), None) if flag == "--config" => Ok(PathBuf::from(path)),
+    let usage = || {
+        format!(
+            "usage: {program} --config <path> [command]\n\n{}",
+            admin::USAGE,
+            program = program.to_string_lossy()
+        )
+    };
+    match (args.next(), args.next()) {
+        (Some(flag), Some(path)) if flag == "--config" => {
+            let rest = args
+                .map(|arg| arg.into_string().map_err(|_| usage()))
+                .collect::<Result<Vec<_>, _>>()?;
+            let path = PathBuf::from(path);
+            Ok(if rest.is_empty() {
+                Invocation::Serve(path)
+            } else {
+                Invocation::Admin(path, rest)
+            })
+        }
         _ => Err(usage()),
     }
 }
@@ -181,26 +227,27 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
     {
         return Err("stateDirectory must be absolute".to_string());
     }
+    if config.sharing.authentication_enabled.is_some() {
+        return Err(
+            "sharing.authenticationEnabled has been removed: Citadel server always \
+             requires sign-in. Delete the line; readers use their Citadel app password \
+             (`citadel-server --config <path> users app-password <name>`)."
+                .into(),
+        );
+    }
     if config.sharing.port == 0 || config.sharing.port > u32::from(u16::MAX) {
         return Err("sharing.port must be between 1 and 65535".to_string());
     }
-    if let citadel_opds::OpdsBindTarget::Addresses { addresses } = &config.sharing.target {
-        citadel_opds::network::validate_explicit_addresses(
-            addresses,
-            config.sharing.authentication_enabled,
-        )?;
+    if let OpdsBindTarget::Addresses { addresses } = &config.sharing.target {
+        citadel_opds::network::validate_explicit_addresses(addresses, true)?;
     }
 
     if let Some(api) = &config.api {
         if api.listen.port() == 0 {
             return Err("api.listen must use a nonzero port".into());
         }
-        if !config.sharing.authentication_enabled {
-            return Err(
-                "The JSON API requires sharing.authenticationEnabled and CITADEL_OPDS_USERS".into(),
-            );
-        }
         citadel_opds::network::validate_explicit_addresses(&[api.listen.ip().to_string()], true)?;
+        api::PublicUrl::parse(&api.public_url)?;
         if let Some(directory) = &api.web_directory {
             api::web::validate(directory)?;
         }
@@ -208,8 +255,15 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn run(config: ServerConfig) -> Result<(), String> {
-    validate_config(&config)?;
+/// The accounts database, with this config's library registered under its
+/// Calibre library UUID.
+pub(crate) fn open_accounts(
+    config: &ServerConfig,
+    source: &CalibreCatalogSource,
+) -> Result<(CitadelStore, RegisteredLibrary), String> {
+    let library_id = source
+        .active_library_id()
+        .map_err(|error| format!("could not read the library's Calibre UUID: {error}"))?;
     let state_directory = config
         .state_directory
         .clone()
@@ -221,16 +275,47 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
             state_directory.display()
         )
     })?;
-    let users = load_users(std::env::var_os(USERS_ENVIRONMENT))?;
-    if config.sharing.authentication_enabled && users.is_empty() {
-        return Err("Reader sign-in requires CITADEL_OPDS_USERS.".into());
-    }
+    let accounts = CitadelStore::open(&state_directory.join(ACCOUNTS_DATABASE))
+        .map_err(|error| error.to_string())?;
+    let library = accounts
+        .register_library(&library_id, &config.library_path, None)
+        .map_err(|error| error.to_string())?;
+    Ok((accounts, library))
+}
+
+fn opds_users(
+    accounts: &CitadelStore,
+    library_id: &str,
+) -> Result<Vec<OpdsCredentialSecret>, String> {
+    Ok(accounts
+        .app_credentials(library_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|credential| OpdsCredentialSecret {
+            username: credential.username,
+            password: credential.password,
+        })
+        .collect())
+}
+
+pub async fn run(config: ServerConfig, config_path: &Path) -> Result<(), String> {
+    validate_config(&config)?;
     let source = Arc::new(CalibreCatalogSource::open(&config.library_path)?);
+    let (accounts, library) = open_accounts(&config, &source)?;
+    let accounts = Arc::new(accounts);
+    let users = opds_users(&accounts, &library.id)?;
+    if users.is_empty() {
+        return Err(format!(
+            "No Citadel user can access this library yet. Create one with:\n  \
+             citadel-server --config {} users add <name>",
+            config_path.display()
+        ));
+    }
     let service = OpdsService::with_ephemeral_credentials(source.clone(), users)
         .map_err(|error| error.message)?;
 
     let initial = service
-        .start(config.sharing)
+        .start(config.sharing.start_config())
         .await
         .map_err(|error| error.message)?;
     log_status(&initial);
@@ -242,14 +327,22 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     }
 
     let mut api = if let Some(config) = &config.api {
+        let access = api::ApiAccess {
+            accounts: accounts.clone(),
+            library_id: library.id.clone(),
+            public_url: api::PublicUrl::parse(&config.public_url)?,
+        };
         match api::start(
             config,
-            api::router(source, &service, config.web_directory.as_deref()),
+            api::router(source, &service, access, config.web_directory.as_deref()),
         )
         .await
         {
             Ok(api) => {
-                println!("citadel_server api=http://{}", config.listen);
+                println!(
+                    "citadel_server api=http://{} public_url={}",
+                    config.listen, config.public_url
+                );
                 Some(api)
             }
             Err(error) => {
@@ -282,6 +375,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
                 return Err(error);
             }
             _ = interval.tick() => {
+                refresh_opds_users(&service, &accounts, &library.id).await;
                 let status = service.status().await;
                 if status != last_status {
                     log_status(&status);
@@ -297,6 +391,24 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     let stopped = service.stop().await;
     log_status(&stopped);
     Ok(())
+}
+
+/// The admin CLI edits `citadel.db` from another process; pick up added,
+/// removed and re-granted users and rotated app passwords without a restart.
+async fn refresh_opds_users(service: &OpdsService, accounts: &Arc<CitadelStore>, library_id: &str) {
+    let accounts = accounts.clone();
+    let library_id = library_id.to_string();
+    let users = tokio::task::spawn_blocking(move || opds_users(&accounts, &library_id)).await;
+    let result = match users {
+        Ok(Ok(users)) => service
+            .replace_ephemeral_credentials(users)
+            .map_err(|error| error.message),
+        Ok(Err(error)) => Err(error),
+        Err(error) => Err(error.to_string()),
+    };
+    if let Err(error) = result {
+        eprintln!("citadel_server warning=\"could not refresh OPDS users: {error}\"");
+    }
 }
 
 fn is_fatal_startup(status: &OpdsServiceStatus) -> bool {
@@ -364,21 +476,28 @@ mod tests {
     #[test]
     fn arguments_require_one_explicit_config_path() {
         assert_eq!(
-            config_path_from_args(["citadel-server", "--config", "/tmp/server.toml"]).unwrap(),
-            PathBuf::from("/tmp/server.toml")
+            invocation_from_args(["citadel-server", "--config", "/tmp/server.toml"]).unwrap(),
+            Invocation::Serve(PathBuf::from("/tmp/server.toml"))
         );
-        assert!(config_path_from_args(["citadel-server"]).is_err());
-        assert!(config_path_from_args(["citadel-server", "server.toml"]).is_err());
+        assert_eq!(
+            invocation_from_args(["citadel-server", "--config", "/tmp/s.toml", "users", "list"])
+                .unwrap(),
+            Invocation::Admin(
+                PathBuf::from("/tmp/s.toml"),
+                vec!["users".into(), "list".into()]
+            )
+        );
+        assert!(invocation_from_args(["citadel-server"]).is_err());
+        assert!(invocation_from_args(["citadel-server", "server.toml"]).is_err());
     }
 
     #[test]
-    fn api_is_opt_in_and_requires_authentication_and_a_valid_listener() {
+    fn api_is_opt_in_and_requires_a_public_url_and_a_valid_listener() {
         let directory = tempfile::tempdir().unwrap();
         let base = format!(
             r#"libraryPath = {}
 [sharing]
 port = 8080
-authenticationEnabled = false
 target = "localNetworks"
 "#,
             toml::Value::String(directory.path().to_string_lossy().into_owned())
@@ -386,16 +505,38 @@ target = "localNetworks"
         let config: ServerConfig = toml::from_str(&base).unwrap();
         assert!(config.api.is_none());
         assert!(validate_config(&config).is_ok());
-        let with_api = format!("{base}\n[api]\nlisten = \"127.0.0.1:8081\"\n");
-        let config: ServerConfig = toml::from_str(&with_api).unwrap();
-        assert!(validate_config(&config).unwrap_err().contains("requires"));
-        let authenticated = with_api.replace(
-            "authenticationEnabled = false",
-            "authenticationEnabled = true",
+        assert!(toml::from_str::<ServerConfig>(&format!(
+            "{base}\n[api]\nlisten = \"127.0.0.1:8081\"\n"
+        ))
+        .is_err());
+        let with_api = format!(
+            "{base}\n[api]\nlisten = \"127.0.0.1:8081\"\npublicUrl = \"https://books.example.com\"\n"
         );
-        assert!(validate_config(&toml::from_str::<ServerConfig>(&authenticated).unwrap()).is_ok());
-        let invalid = authenticated.replace("127.0.0.1:8081", "127.0.0.1:0");
-        assert!(validate_config(&toml::from_str::<ServerConfig>(&invalid).unwrap()).is_err());
+        assert!(validate_config(&toml::from_str::<ServerConfig>(&with_api).unwrap()).is_ok());
+        for invalid in [
+            with_api.replace("127.0.0.1:8081", "127.0.0.1:0"),
+            with_api.replace("https://books.example.com", "books.example.com"),
+        ] {
+            assert!(validate_config(&toml::from_str::<ServerConfig>(&invalid).unwrap()).is_err());
+        }
+    }
+
+    #[test]
+    fn removed_authentication_setting_explains_the_migration() {
+        let directory = tempfile::tempdir().unwrap();
+        let config: ServerConfig = toml::from_str(&format!(
+            r#"libraryPath = {}
+[sharing]
+port = 8080
+authenticationEnabled = true
+target = "localNetworks"
+"#,
+            toml::Value::String(directory.path().to_string_lossy().into_owned())
+        ))
+        .unwrap();
+        let error = validate_config(&config).unwrap_err();
+        assert!(error.contains("always requires sign-in"), "{error}");
+        assert!(error.contains("users app-password"), "{error}");
     }
 
     #[test]
@@ -405,7 +546,6 @@ target = "localNetworks"
 stateDirectory = "/tmp/state"
 [sharing]
 port = 8080
-authenticationEnabled = false
 target = "localNetworks"
 "#,
             r#"libraryPath = "/tmp/library"
@@ -413,14 +553,12 @@ stateDirectory = "/tmp/state"
 unknown = true
 [sharing]
 port = 8080
-authenticationEnabled = false
 target = "localNetworks"
 "#,
             r#"libraryPath = "/tmp/library"
 stateDirectory = "/tmp/state"
 [sharing]
 port = 0
-authenticationEnabled = false
 target = "localNetworks"
 "#,
         ] {
@@ -431,32 +569,6 @@ target = "localNetworks"
             assert!(rejected);
         }
     }
-}
-
-fn load_users(
-    value: Option<OsString>,
-) -> Result<Vec<citadel_opds::credential_store::OpdsCredentialSecret>, String> {
-    let Some(value) = value else {
-        return Ok(Vec::new());
-    };
-    let value = value
-        .into_string()
-        .map_err(|_| "CITADEL_OPDS_USERS must be valid UTF-8.".to_string())?;
-    let entries: Vec<String> = serde_json::from_str(&value).map_err(|_| {
-        "CITADEL_OPDS_USERS must be a JSON array of USER:PASSWORD strings.".to_string()
-    })?;
-    entries
-        .into_iter()
-        .map(|entry| {
-            let (username, password) = entry.split_once(':').ok_or_else(|| {
-                "Each CITADEL_OPDS_USERS entry must contain USER:PASSWORD.".to_string()
-            })?;
-            Ok(citadel_opds::credential_store::OpdsCredentialSecret {
-                username: username.into(),
-                password: password.into(),
-            })
-        })
-        .collect()
 }
 
 #[cfg(unix)]
@@ -489,16 +601,6 @@ fn default_state_directory() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod environment_tests {
     use super::*;
-    #[test]
-    fn users_are_an_explicit_list_and_passwords_may_contain_colons() {
-        let users = load_users(Some(r#"["alice:one", "bob:two:three"]"#.into())).unwrap();
-        assert_eq!(users.len(), 2);
-        assert_eq!(users[1].password, "two:three");
-        assert!(load_users(None).unwrap().is_empty());
-        for invalid in ["alice:one", "[", r#"["missing-separator"]"#] {
-            assert!(load_users(Some(invalid.into())).is_err());
-        }
-    }
     #[cfg(unix)]
     #[test]
     fn xdg_state_defaults_and_relative_xdg_values() {

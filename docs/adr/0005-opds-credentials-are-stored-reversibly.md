@@ -27,8 +27,6 @@ Libraries and credential files from nightly builds with verifier-format files ne
 ## Headless hosting
 
 The persistence policy above applies to the desktop host. The headless server
-reads a JSON list of `USER:PASSWORD` pairs from `CITADEL_OPDS_USERS` once at
-startup and supplies them through the runtime's ephemeral-credential constructor.
-It never reads or writes credential files. Every configured user receives the
-same read access; restarting is required to change the list. Its optional state
-directory defaults to XDG state storage on Unix and currently contains no files.
+stores each Citadel user's OPDS app password reversibly in `citadel.db` and
+supplies the granted users through the runtime's ephemeral-credential list; see
+ADR 0009. `CITADEL_OPDS_USERS` has been removed.

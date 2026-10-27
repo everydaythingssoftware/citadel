@@ -127,6 +127,19 @@ impl OpdsCredentialStore {
         }
     }
 
+    /// Only host-supplied stores can be replaced wholesale; desktop stores
+    /// persist exactly one credential.
+    pub fn replace_ephemeral(&self, credentials: Vec<StoredOpdsCredentials>) -> io::Result<()> {
+        if self.inner.path.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "persisted OPDS credentials can't be replaced as a list",
+            ));
+        }
+        *self.write() = credentials;
+        Ok(())
+    }
+
     pub fn get(&self) -> Option<StoredOpdsCredentials> {
         self.read().first().cloned()
     }

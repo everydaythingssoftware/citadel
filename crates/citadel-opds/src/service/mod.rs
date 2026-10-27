@@ -472,23 +472,18 @@ enum BindOutcome {
 }
 
 impl OpdsService {
-    /// Protect additional read-only catalog routes with this service's live
-    /// credentials and shared request/body/deadline limits. Hosts must start
-    /// the service before accepting requests on those routes.
-    pub fn protect_http_routes(&self, router: axum::Router) -> axum::Router {
-        router
-            .layer(axum::middleware::from_fn_with_state(
-                self.inner.auth.clone(),
-                crate::auth::require_basic_auth,
-            ))
-            .layer(axum::middleware::from_fn_with_state(
-                self.inner.auth.limits(),
-                crate::limits::enforce,
-            ))
+    /// Apply this service's shared request/body/deadline limits to additional
+    /// routes. The host authenticates them; hosts must start the service before
+    /// accepting requests on those routes.
+    pub fn limit_http_routes(&self, router: axum::Router) -> axum::Router {
+        router.layer(axum::middleware::from_fn_with_state(
+            self.inner.auth.limits(),
+            crate::limits::enforce,
+        ))
     }
 
     /// Unprotected book asset routes for hosts that wrap the combined router with
-    /// `protect_http_routes`. Streaming shares this service's blocking-work budget.
+    /// `limit_http_routes`. Streaming shares this service's blocking-work budget.
     pub fn book_asset_routes(&self, source: Arc<dyn CatalogSource>, prefix: &str) -> axum::Router {
         crate::catalog::asset_routes(source, self.inner.auth.limits(), prefix)
     }
@@ -510,21 +505,9 @@ impl OpdsService {
         source: Arc<dyn CatalogSource>,
         users: Vec<crate::credential_store::OpdsCredentialSecret>,
     ) -> Result<Self, OpdsStatusError> {
-        let mut names = BTreeSet::new();
-        let mut credentials = Vec::new();
-        for user in users {
-            let user = credentials::validate_credentials(user.username, user.password)?;
-            if !names.insert(user.username.clone()) {
-                return Err(OpdsStatusError {
-                    code: OpdsErrorCode::ConfigurationConflict,
-                    message: "Duplicate reader username.".into(),
-                });
-            }
-            credentials.push(user);
-        }
         Ok(Self::with_dependencies_and_credentials(
             source,
-            OpdsCredentialStore::ephemeral(credentials),
+            OpdsCredentialStore::ephemeral(credentials::validate_user_list(users)?),
             ServiceDependencies::default(),
         ))
     }
@@ -1043,6 +1026,40 @@ mod tests {
             }]
         )
         .is_err());
+    }
+
+    #[test]
+    fn ephemeral_users_can_be_replaced_but_persisted_credentials_cannot() {
+        use crate::credential_store::OpdsCredentialSecret;
+        let reader = |name: &str| OpdsCredentialSecret {
+            username: name.into(),
+            password: "secret".into(),
+        };
+        let service =
+            OpdsService::with_ephemeral_credentials(missing_source(), vec![reader("one")]).unwrap();
+        service
+            .replace_ephemeral_credentials(vec![reader("two"), reader("three")])
+            .unwrap();
+        let names: Vec<_> = service
+            .inner
+            .credentials
+            .all()
+            .into_iter()
+            .map(|user| user.username)
+            .collect();
+        assert_eq!(names, ["two", "three"]);
+        assert!(service
+            .replace_ephemeral_credentials(vec![reader("two"), reader("two")])
+            .is_err());
+        service.replace_ephemeral_credentials(Vec::new()).unwrap();
+        assert!(!service.credential_status().configured);
+
+        let directory = tempfile::tempdir().unwrap();
+        let persisted =
+            OpdsService::new(missing_source(), directory.path().join("credentials.json")).unwrap();
+        assert!(persisted
+            .replace_ephemeral_credentials(vec![reader("one")])
+            .is_err());
     }
 
     #[test]

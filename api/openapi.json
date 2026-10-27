@@ -60,7 +60,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -146,7 +146,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -232,7 +232,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -284,7 +284,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       },
@@ -334,7 +334,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -413,7 +413,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -481,7 +481,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       },
@@ -547,7 +547,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -628,7 +628,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -671,7 +671,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       },
@@ -739,7 +739,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -790,7 +790,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -838,7 +838,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -889,7 +889,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -940,9 +940,166 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
+      }
+    },
+    "/api/session": {
+      "get": {
+        "description": "The signed-in user, or 401 when the browser has no valid session.",
+        "operationId": "getSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "description": "Sign in with a Citadel username and password. Sets an HttpOnly session cookie.",
+        "operationId": "signIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "description": "End this browser's session and clear its cookie.",
+        "operationId": "signOut",
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/tags": {
@@ -991,7 +1148,7 @@
         },
         "security": [
           {
-            "reader": []
+            "session": []
           }
         ]
       }
@@ -1618,6 +1775,53 @@
           }
         }
       },
+      "SessionInfo": {
+        "type": "object",
+        "required": [
+          "user",
+          "libraryAccess"
+        ],
+        "properties": {
+          "libraryAccess": {
+            "type": "boolean",
+            "description": "False when the user exists but has no access to this server's library."
+          },
+          "user": {
+            "$ref": "#/components/schemas/SessionUser"
+          }
+        }
+      },
+      "SessionUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "username"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "SignInRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "ThumbnailQuery": {
         "type": "object",
         "required": [
@@ -1635,9 +1839,10 @@
       }
     },
     "securitySchemes": {
-      "reader": {
-        "type": "http",
-        "scheme": "basic"
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "citadel_session"
       }
     }
   }

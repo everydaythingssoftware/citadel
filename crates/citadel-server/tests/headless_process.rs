@@ -81,10 +81,10 @@ fn real_process_serves_authenticated_catalog_and_acquisition_then_stops() {
 
 [api]
 listen = "127.0.0.1:{api_port}"
+publicUrl = "http://127.0.0.1:{api_port}"
 
 [sharing]
 port = {port}
-authenticationEnabled = true
 
 [sharing.target.addresses]
 addresses = ["127.0.0.1"]
@@ -95,14 +95,54 @@ addresses = ["127.0.0.1"]
     )
     .unwrap();
 
-    let mut child = ServerProcess(
-        Command::new(env!("CARGO_BIN_EXE_citadel-server"))
+    let server = |args: &[&str]| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_citadel-server"));
+        command
             .args(["--config", config_path.to_str().unwrap()])
-            .env(
-                "CITADEL_OPDS_USERS",
-                r#"["reader:secret","reviewer:second:secret"]"#,
-            )
-            .env("XDG_STATE_HOME", &state_path)
+            .args(args)
+            .env("XDG_STATE_HOME", &state_path);
+        command
+    };
+    let admin = |args: &[&str], stdin: &str| {
+        let mut child = server(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        std::io::Write::write_all(&mut child.stdin.take().unwrap(), stdin.as_bytes()).unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let app_password = |output: &str| {
+        output
+            .lines()
+            .find_map(|line| line.strip_prefix("OPDS app password: "))
+            .unwrap()
+            .to_string()
+    };
+
+    let without_users = server(&[]).output().unwrap();
+    assert!(!without_users.status.success());
+    assert!(String::from_utf8_lossy(&without_users.stderr).contains("users add <name>"));
+    let state_directory = state_path.join("citadel");
+    assert!(state_directory.join("citadel.db").is_file());
+
+    let reader_app = app_password(&admin(
+        &["users", "add", "reader", "--password-stdin"],
+        "reader-password\n",
+    ));
+    let reviewer = admin(&["users", "add", "reviewer"], "");
+    let reviewer_app = app_password(&reviewer);
+    assert!(reviewer.contains("Sign-in password: "));
+
+    let mut child = ServerProcess(
+        server(&[])
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
@@ -147,21 +187,21 @@ addresses = ["127.0.0.1"]
     assert_eq!(client.get(&catalog_url).send().unwrap().status(), 401);
     let feed = client
         .get(&catalog_url)
-        .basic_auth("reader", Some("secret"))
+        .basic_auth("reader", Some(&reader_app))
         .send()
         .unwrap();
     assert!(feed.status().is_success());
     assert!(feed.text().unwrap().contains("All Books"));
     let all = client
         .get(format!("{catalog_url}/all"))
-        .basic_auth("reader", Some("secret"))
+        .basic_auth("reader", Some(&reader_app))
         .send()
         .unwrap();
     assert!(all.text().unwrap().contains("Headless Citadel"));
 
     let second = client
         .get(&catalog_url)
-        .basic_auth("reviewer", Some("second:secret"))
+        .basic_auth("reviewer", Some(&reviewer_app))
         .send()
         .unwrap();
     assert_eq!(second.status(), 200);
@@ -189,9 +229,24 @@ addresses = ["127.0.0.1"]
             .status(),
         401
     );
+    let signed_in = client
+        .post(format!("{api_origin}/api/session"))
+        .header("content-type", "application/json")
+        .header("origin", &api_origin)
+        .body(r#"{"username":"reader","password":"reader-password"}"#)
+        .send()
+        .unwrap();
+    assert_eq!(signed_in.status(), 200);
+    let cookie = signed_in.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
     let api_book = client
         .get(format!("{api_origin}/api/books/{}", book.id.as_i32()))
-        .basic_auth("reader", Some("secret"))
+        .header("cookie", &cookie)
         .send()
         .unwrap();
     assert_eq!(api_book.status(), 200);
@@ -205,7 +260,7 @@ addresses = ["127.0.0.1"]
     );
     let head = client
         .head(&asset_url)
-        .basic_auth("reader", Some("secret"))
+        .basic_auth("reader", Some(&reader_app))
         .send()
         .unwrap();
     assert!(head.status().is_success());
@@ -215,7 +270,7 @@ addresses = ["127.0.0.1"]
     );
     let range = client
         .get(&asset_url)
-        .basic_auth("reader", Some("secret"))
+        .basic_auth("reader", Some(&reader_app))
         .header("Range", "bytes=2-5")
         .send()
         .unwrap();
@@ -229,7 +284,7 @@ addresses = ["127.0.0.1"]
         ))
         .header(
             "Authorization",
-            format!("Basic {}", STANDARD.encode("reader:secret")),
+            format!("Basic {}", STANDARD.encode(format!("reader:{reader_app}"))),
         )
         .send()
         .unwrap();
@@ -238,6 +293,22 @@ addresses = ["127.0.0.1"]
         acquisition.bytes().unwrap().as_ref(),
         b"headless-acquisition"
     );
+
+    // Admin changes reach the running server without a restart.
+    let rotated = app_password(&admin(&["users", "app-password", "reader", "--rotate"], ""));
+    admin(&["revoke", "reviewer"], "");
+    std::thread::sleep(Duration::from_secs(3));
+    let opds_status = |username: &str, password: &str| {
+        client
+            .get(&catalog_url)
+            .basic_auth(username, Some(password))
+            .send()
+            .unwrap()
+            .status()
+    };
+    assert_eq!(opds_status("reader", &rotated), 200);
+    assert_eq!(opds_status("reader", &reader_app), 401);
+    assert_eq!(opds_status("reviewer", &reviewer_app), 401);
 
     kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -258,16 +329,5 @@ addresses = ["127.0.0.1"]
 
     observed.extend(lines_rx.try_iter());
     assert!(observed.iter().any(|line| line.contains("state=Stopped")));
-    let state_directory = state_path.join("citadel");
-    assert!(state_directory.is_dir());
-    assert_eq!(std::fs::read_dir(&state_directory).unwrap().count(), 0);
-    let restart = Command::new(env!("CARGO_BIN_EXE_citadel-server"))
-        .args(["--config", config_path.to_str().unwrap()])
-        .env_remove("CITADEL_OPDS_USERS")
-        .env("XDG_STATE_HOME", &state_path)
-        .output()
-        .unwrap();
-    assert!(!restart.status.success());
-    assert!(String::from_utf8_lossy(&restart.stderr).contains("requires CITADEL_OPDS_USERS"));
-    assert_eq!(std::fs::read_dir(state_directory).unwrap().count(), 0);
+    assert!(state_directory.join("citadel.db").is_file());
 }

@@ -4,10 +4,15 @@ import { useEffect, useState } from "react";
 import { F7Gear } from "@/components/icons/F7Gear";
 import { F7Pencil } from "@/components/icons/F7Pencil";
 import { F7Trash } from "@/components/icons/F7Trash";
-import { AlertDialog, IconButton, TextInput } from "@/components/ui";
+import { TablerLogout } from "@/components/icons/TablerLogout";
+import { AlertDialog, IconButton, TextInput, Tooltip } from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
 import { usePlatform } from "@/lib/platform/context";
 import { useAppUpdates } from "@/lib/hooks/use-app-updates";
+import {
+	type BrowserSessionControls,
+	useBrowserSessionControls,
+} from "@/lib/hooks/use-browser-session";
 import { useOpenSettings } from "@/lib/hooks/use-open-settings";
 import type { SmartShelf } from "@/lib/platform/settings/types";
 import { LibraryState, useLibraryState } from "@/stores/library/store";
@@ -22,6 +27,7 @@ export const Sidebar = () => {
 	const state = useLibraryState();
 	const { location } = useRouterState();
 	const openSettings = useOpenSettings();
+	const session = useBrowserSessionControls();
 
 	const isUpdatePromptOpen = useAppUpdates((s) => s.isUpdatePromptOpen);
 	const isInstallingUpdate = useAppUpdates((s) => s.isInstallingUpdate);
@@ -56,6 +62,7 @@ export const Sidebar = () => {
 			<SidebarPure
 				currentPathname={location.pathname}
 				openSettings={openSettings}
+				session={session}
 			/>
 		</>
 	);
@@ -64,9 +71,15 @@ export const Sidebar = () => {
 interface SidebarPureProps {
 	currentPathname: string;
 	openSettings: () => void;
+	/** The signed-in browser user; null on desktop. */
+	session: BrowserSessionControls | null;
 }
 
-const SidebarPure = ({ currentPathname, openSettings }: SidebarPureProps) => {
+const SidebarPure = ({
+	currentPathname,
+	openSettings,
+	session,
+}: SidebarPureProps) => {
 	const platform = usePlatform();
 	const smartShelves = useSettings((s) => s.smartShelves);
 	const libraryCount = useSettings((s) => s.libraryPaths.length);
@@ -146,7 +159,18 @@ const SidebarPure = ({ currentPathname, openSettings }: SidebarPureProps) => {
 					</div>
 				)}
 			</div>
-			<div className={styles.section}>
+			<div className={clsx(styles.section, session && styles.footer)}>
+				{session && (
+					<Tooltip label={`Signed in as ${session.username} · Sign out`}>
+						<IconButton
+							aria-label={`Sign out ${session.username}`}
+							className={clsx("ctd-settings-button", styles.settingsButton)}
+							onClick={safeAsyncEventHandler(session.signOut)}
+						>
+							<TablerLogout width={16} height={16} />
+						</IconButton>
+					</Tooltip>
+				)}
 				<IconButton
 					aria-label="Settings"
 					className={clsx("ctd-settings-button", styles.settingsButton)}

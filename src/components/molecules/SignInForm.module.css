@@ -1,0 +1,33 @@
+.root {
+	min-height: 100vh;
+	display: grid;
+	place-items: center;
+	padding: 24px 16px;
+	background: var(--ctd-bg);
+}
+
+.card {
+	width: 100%;
+	max-width: 320px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 24px;
+	background: var(--ctd-content-bg);
+	border: 1px solid var(--ctd-border);
+	border-radius: var(--ctd-radius-panel);
+	box-shadow: var(--ctd-shadow-soft);
+}
+
+.title {
+	margin: 0 0 4px;
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
+.error {
+	margin: 0;
+	color: var(--ctd-danger-bg);
+	font-size: 12px;
+}

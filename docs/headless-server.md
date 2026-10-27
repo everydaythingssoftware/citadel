@@ -4,34 +4,69 @@
 the desktop application. It has no desktop, WebView, or remote management UI.
 
 Copy `crates/citadel-server/example-config.toml`, use absolute paths for the
-library, then run:
+library, create the first user, then run the server:
 
 ```sh
-CITADEL_OPDS_USERS='["alice:choose-a-password","bob:another-password"]' cargo run -p citadel-server -- \
-  --config /absolute/path/to/citadel-server.toml
+CONFIG=/absolute/path/to/citadel-server.toml
+cargo run -p citadel-server -- --config "$CONFIG" users add alice
+cargo run -p citadel-server -- --config "$CONFIG"
 ```
 
-`CITADEL_OPDS_USERS` is a JSON array of `USER:PASSWORD` strings. Split is at
-the first colon, so passwords may contain colons. Usernames must be nonempty,
-unique (after trimming), and contain no colon; passwords must be nonempty.
-Every user has the same read access to the configured library.
+## Users and access
 
-Credentials are read from the environment once at startup and held only in
-memory. Restart the server to change them. The headless host never loads or
-writes credential files and does not load `.env` or secret files. Authentication
-enabled with a missing or empty list fails closed. Desktop credential persistence
-and password reveal are unchanged.
+Citadel users live in `citadel.db` in the state directory, never inside the
+library (see [ADR 0009](adr/0009-citadel-users-and-sessions.md)). The server
+always requires sign-in. Each user has:
+
+- a **sign-in password** for the browser, stored as an Argon2id hash;
+- an **OPDS app password** for e-readers, revealable at any time;
+- **library access** (a grant). Users without access to the served library
+  cannot see it in the browser or OPDS. A separate user, such as a child's
+  account, is how to give someone narrower access.
+
+The operator manages users from the command line. Commands edit `citadel.db`
+directly and do not require stopping the server; OPDS picks up changes within a
+few seconds, and browser sessions are checked on every request.
+
+```text
+citadel-server --config <path> users list
+citadel-server --config <path> users add <name> [--password-stdin] [--no-grant]
+citadel-server --config <path> users remove <name>
+citadel-server --config <path> users reset-password <name> [--password-stdin]
+citadel-server --config <path> users app-password <name> [--rotate]
+citadel-server --config <path> grant <name> [<library-id>]
+citadel-server --config <path> revoke <name> [<library-id>]
+citadel-server --config <path> libraries list
+```
+
+`users add` grants access to the configured library unless `--no-grant` is
+given, and prints a generated sign-in password and the OPDS app password. Generated
+sign-in passwords are shown only once; `--password-stdin` reads one from the
+first line of standard input instead (at least 8 characters). `reset-password`
+also signs the user out of every browser. `app-password` reveals the OPDS
+password again, and `--rotate` replaces it. `grant` and `revoke` default to the
+configured library. Usernames are case-insensitive and can't contain a colon.
+
+The server refuses to start until at least one user can access the library.
+
+### Upgrading from `CITADEL_OPDS_USERS`
+
+`CITADEL_OPDS_USERS` and `sharing.authenticationEnabled` have been removed. Delete
+`authenticationEnabled` from `[sharing]` (the server reports it as an error),
+create a user for each former OPDS reader with `users add`, and give readers
+their new app password from `users app-password`.
+
+## State and listeners
 
 `stateDirectory` is optional. On Unix it defaults to `$XDG_STATE_HOME/citadel`
 when XDG_STATE_HOME is absolute, otherwise `~/.local/state/citadel`. On Windows
 it defaults to the local application-data directory's `citadel` subdirectory.
-An explicit override must be absolute. The directory is reserved for server
-state; this version creates it but writes no files there.
+An explicit override must be absolute. It holds `citadel.db` (mode 0600 on Unix);
+back it up with the rest of the server's state.
 
 The process logs lifecycle state and every concrete OPDS URL. It remains in the
 foreground until SIGINT or SIGTERM, then gracefully closes its listeners.
-The localNetworks and allInterfaces targets use the desktop IPv4/IPv6 policy;
-allInterfaces requires reader sign-in.
+The localNetworks and allInterfaces targets use the desktop IPv4/IPv6 policy.
 
 For a reverse proxy on the same host, the target can instead use explicit
 concrete addresses without depending on interface discovery:
@@ -41,8 +76,7 @@ concrete addresses without depending on interface discovery:
 addresses = ["127.0.0.1", "::1"]
 ```
 
-Wildcard, link-local and non-unicast addresses are rejected. Public addresses
-require reader sign-in. Configure every
+Wildcard, link-local and non-unicast addresses are rejected. Configure every
 concrete address on which the process should listen.
 
 Citadel serves plain HTTP. For access beyond a trusted local network, place it
@@ -54,7 +88,7 @@ system packages are not provided by this initial server.
 
 Build the host with `cargo build --release -p citadel-server`. This selects the headless package and does not build Tauri. Its configuration uses `sharing.target = "localNetworks"` or `"allInterfaces"`, or the explicit-address table shown above; do not combine those forms.
 
-The Unix process test exercises authentication, catalog navigation, acquisition, and SIGTERM shutdown. The non-Unix Ctrl-C handler requires platform validation; it is not covered by that test. OPDS request limits are described in [Sharing](opds-sharing.md).
+The Unix process test exercises the user commands, OPDS app passwords, browser sign-in, live user changes, catalog navigation, acquisition, and SIGTERM shutdown. The non-Unix Ctrl-C handler requires platform validation; it is not covered by that test. OPDS request limits are described in [Sharing](opds-sharing.md).
 
 To generate a disposable validation library, provide an EPUB you can use for testing:
 
@@ -73,24 +107,39 @@ Tauri. The browser uses this listener for browsing; the desktop client continues
 ```toml
 [api]
 listen = "127.0.0.1:8081"
+# The origin browsers use to reach Citadel, as typed in the address bar.
+publicUrl = "https://books.example.com"
 # Optional: serve a frontend built with `bun run build:web`.
 webDirectory = "/absolute/path/to/citadel/dist"
 ```
 
-Omitting `[api]` leaves the listener disabled. Enable
-`sharing.authenticationEnabled` and provide `CITADEL_OPDS_USERS`; the API uses the
-same in-memory users and request limits as OPDS. Use TLS at a reverse proxy for
-connections beyond a trusted local network. The address must pass the same
+Omitting `[api]` leaves the listener disabled. `publicUrl` is required: when it is
+https the session cookie is marked `Secure`, and state-changing requests must come
+from that origin. Citadel itself serves plain HTTP; terminate TLS at a reverse
+proxy for connections beyond a trusted local network. The address must pass the same
 explicit-address checks as OPDS. A bind failure fails startup rather than
 silently leaving only part of the configured server running.
 
-Routes (all require HTTP Basic authentication):
+Browsers sign in with their Citadel username and sign-in password and receive an
+`HttpOnly`, `SameSite=Lax` session cookie that lasts 30 days from last use.
+Signing out deletes the session. The API no longer accepts HTTP Basic.
+
+Session routes:
+
+- `POST /api/session` with `{"username": "…", "password": "…"}`: signs in and
+  sets the cookie. Repeated failures back off (429).
+- `GET /api/session`: the signed-in user and whether they can access the
+  library, or 401.
+- `DELETE /api/session`: signs out and clears the cookie.
+
+Library routes (all require a session for a user with access; users without
+access receive 404):
 
 - `POST /api/books/query`: shared `LibraryBookQuery` JSON; HTTP requires an explicit
   `limit` between 0 and 200. Zero returns only the count. Desktop retains its
   existing unbounded-query behavior.
 - `GET /api/books/{book_id}`: one book, using the existing numeric string ID.
-- `GET /api/library`: configured library ID, display name, and read-only capability; no server filesystem path.
+- `GET /api/library`: the library's Calibre UUID, display name, and read-only capability; no server filesystem path.
 - `GET /api/authors`, `/api/series`, `/api/tags`, `/api/publishers`: browse facets and counts.
 - `GET /api/custom-columns` and `/api/books/{book_id}/custom-values`: custom-field definitions and values.
 - `GET /api/books/{book_id}/cover` and `/api/books/{book_id}/files/{format}/{filename}`: protected assets, including range and HEAD requests for downloads.
@@ -98,15 +147,15 @@ Routes (all require HTTP Basic authentication):
 - `GET /api/openapi.json`: generated OpenAPI 3.1 contract.
 
 Errors have `{ "code": "notFound", "message": "…" }` shape, with HTTP statuses
-for invalid input (400), authentication (401), missing books (404), admission
+for invalid input (400), authentication (401), cross-origin requests (403), missing books or libraries (404), admission
 limits (429), unavailable library (503), and internal failures (500). Internal
 database/filesystem diagnostics are hidden from remote callers. Responses retain
 required nullable fields; request `Option` fields may be omitted or null.
 
-Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open the API listener in your browser. The initial page uses HTTP Basic sign-in; the browser reuses that authentication for API requests, images, and downloads. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
+Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open `publicUrl` in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 
 Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. Editing and imports are hidden for this read-only connection. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
 
-For frontend development, run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite. Visit `/api/library` on the Vite origin once to sign in before opening the app.
+For frontend development, set `publicUrl` to the Vite origin (`http://localhost:1420`) and run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 
 This listener opens the library read-only. OPDS acquisition routes remain available. Mutations, uploads, metadata-provider calls, and server setup through the browser remain follow-up work (CDL-37/CDL-39). Until web setup lands, configure the library using the server configuration described above.
