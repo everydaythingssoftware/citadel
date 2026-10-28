@@ -1,6 +1,6 @@
-import clsx from "clsx";
 import { useEffect, useRef } from "react";
 import type { DatabaseProblem, RecoveryStep } from "@/bindings";
+import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { Button, Spinner } from "@/components/ui";
 import {
 	FAILED_PREFIX,
@@ -14,16 +14,8 @@ import { useDatabaseRecovery } from "@/lib/hooks/use-database-recovery";
 import styles from "./DatabaseRecovery.module.css";
 import card from "./FirstRunFlow.module.css";
 
-const AlertMark = () => (
-	<svg
-		width="28"
-		height="28"
-		viewBox="0 0 16 16"
-		fill="currentColor"
-		aria-hidden="true"
-	>
-		<path d="M8 1.6c.5 0 1 .3 1.3.8l5.3 9.6c.5 1-.2 2.2-1.3 2.2H2.7c-1.1 0-1.8-1.2-1.3-2.2L6.7 2.4c.3-.5.8-.8 1.3-.8zM8 6a.7.7 0 0 0-.7.7v2.6a.7.7 0 0 0 1.4 0V6.7A.7.7 0 0 0 8 6zm0 5.2a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8z" />
-	</svg>
+const ShelfMark = () => (
+	<FluentLibraryFilled fontSize={28} aria-hidden="true" />
 );
 
 const ChevronRight = () => (
@@ -73,8 +65,8 @@ export const DatabaseRecoveryCard = ({
 		<div className={card.layer}>
 			<section ref={cardRef} className={card.card} aria-label={copy.title}>
 				<div className={styles.body}>
-					<div className={clsx(card.mark, styles.mark)}>
-						<AlertMark />
+					<div className={card.mark}>
+						<ShelfMark />
 					</div>
 					<h1 className={card.title}>{copy.title}</h1>
 					<p className={card.lede}>{copy.lede}</p>

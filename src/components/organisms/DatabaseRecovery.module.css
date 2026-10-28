@@ -5,10 +5,6 @@
 	padding: 26px 28px 14px;
 }
 
-.mark {
-	color: var(--ctd-danger-bg);
-}
-
 .quit {
 	display: flex;
 	justify-content: center;
