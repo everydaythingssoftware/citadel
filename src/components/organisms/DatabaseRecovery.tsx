@@ -93,12 +93,16 @@ export const DatabaseRecoveryCard = ({
 										<span className={card.choiceTitle}>
 											{STEP_COPY[step].title(backupDate)}
 										</span>
-										<br />
-										<span className={card.choiceDesc}>
-											{running === step
-												? WORKING_LABEL
-												: STEP_COPY[step].description(backupDate)}
-										</span>
+										{(running === step || STEP_COPY[step].description) && (
+											<>
+												<br />
+												<span className={card.choiceDesc}>
+													{running === step
+														? WORKING_LABEL
+														: STEP_COPY[step].description}
+												</span>
+											</>
+										)}
 									</span>
 									<span className={card.choiceChevron}>
 										{running === step ? (
