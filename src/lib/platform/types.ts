@@ -1,4 +1,9 @@
-import type { UpdateCheckResult } from "@/bindings";
+import type {
+	DatabaseBackup,
+	DatabaseProblem,
+	RecoveryStep,
+	UpdateCheckResult,
+} from "@/bindings";
 import type { SettingsManager } from "./settings/types";
 
 export interface PlatformAdapter {
@@ -10,6 +15,7 @@ export interface PlatformAdapter {
 	readonly homeDirectory: () => Promise<string | null>;
 	readonly menu: { onAddBook(handler: () => void): Promise<() => void> };
 	readonly updates: UpdatesAdapter;
+	readonly recovery: RecoveryAdapter;
 	readonly settings: SettingsManager;
 }
 
@@ -52,4 +58,13 @@ export interface WindowAdapter {
 export interface UpdatesAdapter {
 	check(): Promise<UpdateCheckResult>;
 	install(): Promise<"no-update">;
+}
+
+/** citadel.db that startup couldn't open (ADR 0009). */
+export interface RecoveryAdapter {
+	problem(): Promise<DatabaseProblem | null>;
+	/** The backup a damaged database was replaced with at startup. */
+	restored(): Promise<DatabaseBackup | null>;
+	/** Restarts the app on success; `quit` exits it. */
+	recover(step: RecoveryStep): Promise<void>;
 }

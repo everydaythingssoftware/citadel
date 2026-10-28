@@ -77,6 +77,7 @@ type Result<T> = std::result::Result<T, StoreError>;
 
 pub struct CitadelStore {
     connection: Mutex<SqliteConnection>,
+    path: std::path::PathBuf,
 }
 
 impl CitadelStore {
@@ -100,6 +101,7 @@ impl CitadelStore {
         restrict_permissions(path);
         Ok(Self {
             connection: Mutex::new(connection),
+            path: path.to_path_buf(),
         })
     }
 

@@ -3,6 +3,8 @@ import { homeDirectory } from "./paths/tauri";
 import { onAddBook } from "./menu/tauri";
 import { tauriUpdates } from "./updates/tauri";
 import { webUpdates } from "./updates/web";
+import { tauriRecovery } from "./recovery/tauri";
+import { webRecovery } from "./recovery/web";
 import { createTauriClipboard } from "./clipboard/tauri";
 import { createWebClipboard } from "./clipboard/web";
 import { createTauriDialogs } from "./dialogs/tauri";
@@ -29,6 +31,7 @@ export const createTauriPlatform = (): PlatformAdapter => ({
 	homeDirectory,
 	menu: { onAddBook },
 	updates: tauriUpdates,
+	recovery: tauriRecovery,
 	dialogs: createTauriDialogs(),
 	clipboard: createTauriClipboard(),
 	fileOpener: createTauriFileOpener(),
@@ -49,6 +52,7 @@ export const createWebPlatform = (): PlatformAdapter => ({
 	homeDirectory: async () => null,
 	menu: { onAddBook: async () => () => {} },
 	updates: webUpdates,
+	recovery: webRecovery,
 	dialogs: createWebDialogs(),
 	clipboard: createWebClipboard(),
 	fileOpener: createWebFileOpener(),

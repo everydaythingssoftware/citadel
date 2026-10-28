@@ -9,6 +9,7 @@ import {
 import { IS_DEV } from "@/lib/env";
 import { useInitializeLibraryStore } from "@/lib/hooks/use-initialize-library-store";
 import { useLibrarySwitch } from "@/lib/hooks/use-library-switch";
+import { useRestoredDatabaseNotice } from "@/lib/hooks/use-restored-database-notice";
 import { usePlatform } from "@/lib/platform/context";
 import { useApplyColorScheme } from "@/lib/theme-manager";
 import { safeAsyncEventHandler } from "$lib/async";
@@ -59,6 +60,7 @@ export const App = () => {
 	const platform = usePlatform();
 	useApplyColorScheme(theme);
 	const { stage: switchStage } = useLibrarySwitch();
+	useRestoredDatabaseNotice(hydrated);
 
 	useEffect(() => {
 		if (hydrated) {

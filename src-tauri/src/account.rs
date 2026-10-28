@@ -9,7 +9,7 @@ use citadel_core::{
 use citadel_opds::credential_store::{OpdsCredentialSecret, OpdsCredentialStatus};
 use serde::Deserialize;
 
-const DATABASE: &str = "citadel.db";
+pub const DATABASE: &str = "citadel.db";
 /// Pre-CDL-45 desktop sharing credentials; migrated into `citadel.db` once.
 const LEGACY_CREDENTIALS: &str = "opds-credentials.json";
 
@@ -26,9 +26,12 @@ struct LegacyCredentials {
 }
 
 impl LocalAccount {
-    pub fn open(app_data_dir: &Path) -> Result<Self, String> {
-        std::fs::create_dir_all(app_data_dir).map_err(|error| error.to_string())?;
-        let store = CitadelStore::open(&app_data_dir.join(DATABASE)).map_err(message)?;
+    /// Errors keep the store's reason, so startup can offer recovery for an
+    /// [`StoreError::Unusable`] database.
+    pub fn open(app_data_dir: &Path) -> Result<Self, StoreError> {
+        let io = |error: std::io::Error| StoreError::Storage(error.to_string());
+        std::fs::create_dir_all(app_data_dir).map_err(io)?;
+        let store = CitadelStore::open(&app_data_dir.join(DATABASE))?;
         let legacy_path = app_data_dir.join(LEGACY_CREDENTIALS);
         // Unreadable files (pre-reveal verifier formats) carry no usable
         // password; they are dropped like the old loader ignored them.
@@ -41,16 +44,18 @@ impl LocalAccount {
             .or_else(|| std::env::var("USER").ok())
             .or_else(|| std::env::var("USERNAME").ok())
             .unwrap_or_default();
-        let user = store.local_user(&default_name).map_err(message)?;
+        let user = store.local_user(&default_name)?;
         let account = Self {
             store,
             user_id: user.id.clone(),
         };
         if legacy_path.exists() {
             if let Some(legacy) = legacy {
-                account.configure(&legacy.username, &legacy.password)?;
+                account
+                    .configure(&legacy.username, &legacy.password)
+                    .map_err(StoreError::Storage)?;
             }
-            std::fs::remove_file(&legacy_path).map_err(|error| error.to_string())?;
+            std::fs::remove_file(&legacy_path).map_err(io)?;
         }
         Ok(account)
     }

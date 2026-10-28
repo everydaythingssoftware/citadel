@@ -13,6 +13,26 @@ async initClient(libraryPath: string) : Promise<Result<CalibreClientConfig, stri
     else return { status: "error", error: e  as any };
 }
 },
+async clbQueryDatabaseProblem() : Promise<DatabaseProblem | null> {
+    return await TAURI_INVOKE("clb_query_database_problem");
+},
+/**
+ * The backup a damaged database was replaced with at startup, if any.
+ */
+async clbQueryDatabaseRestored() : Promise<DatabaseBackup | null> {
+    return await TAURI_INVOKE("clb_query_database_restored");
+},
+/**
+ * Runs a recovery step, then restarts so startup opens the result.
+ */
+async clbCmdRecoverDatabase(step: RecoveryStep) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_recover_database", { step }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbQueryIsPathValidLibrary(libraryRoot: string) : Promise<boolean> {
     return await TAURI_INVOKE("clb_query_is_path_valid_library", { libraryRoot });
 },
@@ -545,6 +565,17 @@ export type CustomValueDto = { Bool: boolean } | { Int: number } | { Float: numb
  * RFC3339 datetime string, e.g. `2024-01-15T10:30:00+00:00`.
  */
 { Datetime: string } | { Enumeration: string }
+export type DatabaseBackup = { path: string; 
+/**
+ * RFC 3339, when it's known.
+ */
+createdAt: string | null }
+export type DatabaseProblem = { kind: DatabaseProblemKind; databasePath: string; details: string; backup: DatabaseBackup | null; 
+/**
+ * The steps that can help, best first; `quit` is always last.
+ */
+steps: RecoveryStep[] }
+export type DatabaseProblemKind = "damaged" | "newerVersion" | "migrationFailed" | "migrationInterrupted" | "unreadable"
 /**
  * Result of [`clb_cmd_delete_books`]. The books are gone from the library
  * either way; `trash_failures` lists folder paths and errors for files
@@ -700,6 +731,11 @@ config: OpdsStartConfig | null }
 export type OpdsStartConfig = { target: OpdsBindTarget; port: number; authenticationEnabled: boolean }
 export type OpdsStatusError = { code: OpdsErrorCode; message: string }
 export type ProviderStatus = { provider: MetadataProvider; is_valid: boolean; message: string }
+export type RecoveryStep = 
+/**
+ * Installs a newer Citadel; the frontend runs it through the updater.
+ */
+"update" | "restoreBackup" | "startFresh" | "tryAgain" | "quit"
 export type RemoteFile = { url: string }
 /**
  * Best-effort cloud-sync verdict for a candidate library path. Informational

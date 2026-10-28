@@ -5,15 +5,14 @@
 //! or recovered by hand.
 use std::{
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use super::{
-    migrations::{self, BACKUP_SUFFIX},
-    restrict_permissions, sidecar, unix_now, CitadelStore, Result, StoreError,
+    migrations, restrict_permissions, sidecar, unix_now, CitadelStore, Result, StoreError,
 };
 
-/// A pre-migration copy written by [`migrations`].
+/// A copy written before a migration or by a daily snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Backup {
     pub path: PathBuf,
@@ -26,27 +25,45 @@ impl CitadelStore {
     /// Backups next to `path` that this build can open, newest first.
     pub fn backups(path: &Path) -> Result<Vec<Backup>> {
         let known = migrations::known_versions()?;
-        let mut backups: Vec<Backup> = migrations::backup_paths(path)
+        let mut backups: Vec<Backup> = migrations::backup_names(path)
             .map_err(|error| recovery_error(path, error))?
             .into_iter()
-            .filter_map(|backup| {
-                let version = backup
-                    .file_name()?
-                    .to_str()?
-                    .rsplit_once(BACKUP_SUFFIX)?
-                    .1
-                    .to_string();
-                known.contains(&version).then(|| Backup {
-                    modified: std::fs::metadata(&backup)
-                        .and_then(|metadata| metadata.modified())
-                        .ok(),
-                    path: backup,
-                    version,
-                })
+            .filter(|backup| known.contains(&backup.version))
+            .map(|backup| Backup {
+                modified: backup
+                    .taken_at
+                    .and_then(|seconds| u64::try_from(seconds).ok())
+                    .map(|seconds| UNIX_EPOCH + Duration::from_secs(seconds))
+                    .or_else(|| {
+                        std::fs::metadata(&backup.path)
+                            .and_then(|metadata| metadata.modified())
+                            .ok()
+                    }),
+                path: backup.path,
+                version: backup.version,
             })
             .collect();
-        backups.sort_by(|a, b| b.version.cmp(&a.version));
+        backups.sort_by(|a, b| (b.modified, &b.version).cmp(&(a.modified, &a.version)));
         Ok(backups)
+    }
+
+    /// Takes a backup when the newest is older than `age`, so a damaged
+    /// database can go back to a recent state. Only the newest few backups are
+    /// kept. Returns the new backup, if one was taken.
+    pub fn snapshot_if_older_than(&self, age: Duration) -> Result<Option<PathBuf>> {
+        let newest = Self::backups(&self.path)?
+            .into_iter()
+            .filter_map(|backup| backup.modified)
+            .max();
+        if newest.is_some_and(|newest| newest.elapsed().is_ok_and(|elapsed| elapsed < age)) {
+            return Ok(None);
+        }
+        let _lock = migrations::lock(&self.path)?;
+        let mut connection = self.connection();
+        let Some(version) = migrations::current_version(&mut connection)? else {
+            return Ok(None);
+        };
+        migrations::backup(&mut connection, &self.path, &version).map(Some)
     }
 
     /// Moves the database and its WAL files aside, so the next open starts
@@ -109,7 +126,7 @@ fn recovery_error(path: &Path, error: impl std::fmt::Display) -> StoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::OpenFailure;
+    use crate::store::{migrations::BACKUP_SUFFIX, OpenFailure};
 
     fn open(path: &Path) -> CitadelStore {
         CitadelStore::open(path).unwrap()
@@ -122,6 +139,25 @@ mod tests {
             .bind::<diesel::sql_types::Text, _>(to.to_string_lossy())
             .execute(&mut connection)
             .unwrap();
+    }
+
+    #[test]
+    fn a_snapshot_is_taken_once_a_day_and_only_a_few_are_kept() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("citadel.db");
+        let store = open(&path);
+        let day = Duration::from_secs(24 * 60 * 60);
+        assert!(store.snapshot_if_older_than(day).unwrap().is_some());
+        assert!(store.snapshot_if_older_than(day).unwrap().is_none());
+
+        for second in 0..4 {
+            // Names are dated to the second; wait so each one is distinct.
+            if second > 0 {
+                std::thread::sleep(Duration::from_millis(1100));
+            }
+            store.snapshot_if_older_than(Duration::ZERO).unwrap();
+        }
+        assert_eq!(CitadelStore::backups(&path).unwrap().len(), 3);
     }
 
     #[test]

@@ -59,6 +59,11 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbCmdClearOpdsCredentials",
 	],
 	"src/lib/platform/window/tauri.ts": ["clbCmdOpenSettings"],
+	"src/lib/platform/recovery/tauri.ts": [
+		"clbQueryDatabaseProblem",
+		"clbQueryDatabaseRestored",
+		"clbCmdRecoverDatabase",
+	],
 	"src/lib/platform/updates/tauri.ts": [
 		"clbCmdCheckForUpdates",
 		"clbCmdInstallUpdateIfAvailable",

@@ -45,9 +45,8 @@ registry) and `migrations`.
 Migrations run whenever a host opens the store. Pending migrations apply
 together in one transaction, so a failed run leaves the database as it was.
 Before migrating an existing database, Citadel writes a consistent snapshot
-next to it with `VACUUM INTO` (`citadel.db.backup-<last applied version>`,
-newest three kept), under a temporary name renamed into place once complete,
-and names it in any migration error. Backup and migration hold an exclusive
+next to it with `VACUUM INTO`, under a temporary name renamed into place once
+complete, and names it in any migration error. Backup and migration hold an exclusive
 lock on `citadel.db.lock`, so concurrent processes migrate once. A database
 migrated by a newer build, or whose pending migrations would apply out of
 order, is refused rather than opened.
@@ -60,12 +59,21 @@ forever. An interrupted run is retried once; after a second, the database is
 refused until the marker is deleted. Opening also runs `PRAGMA quick_check`.
 
 A refused database is `StoreError::Unusable` with an `OpenFailure` (`Corrupt`,
-`Incompatible`, `MigrationFailed`, `MigrationInterrupted`). Recovery is always
-a choice made by a person, never automatic: `CitadelStore::backups` lists the
+`Incompatible`, `MigrationFailed`, `MigrationInterrupted`). The store never
+recovers on its own; hosts decide when to. `CitadelStore::backups` lists the
 backups this build can open, and `restore_backup`, `set_aside` (start fresh)
 and `retry_migration` act on a closed store. None deletes a database; a
 replaced file is renamed to `citadel.db.unusable-<unix time>` with its WAL
 files. Server operators do the same by hand with the server stopped.
+
+Backups are named `citadel.db.backup-<version>-<unix time>`; only the newest
+three are kept, whether a migration or a snapshot wrote them. The desktop
+takes a snapshot at launch when the newest backup is a day old, so a damaged
+database can go back to a recent state. At startup a damaged database is
+replaced by the newest backup that opens, and the app says so once it's open;
+anything else starts without the local account and shows a recovery screen
+with the steps that can help (`src-tauri/src/recovery.rs` decides which;
+`src/lib/database-recovery/copy.ts` holds the wording).
 
 The server always requires sign-in; `sharing.authenticationEnabled` and
 `CITADEL_OPDS_USERS` are removed and rejected with migration hints.

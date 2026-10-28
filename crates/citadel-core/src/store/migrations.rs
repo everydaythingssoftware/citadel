@@ -23,7 +23,7 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
 use serde::{Deserialize, Serialize};
 
-use super::{restrict_permissions, sidecar, OpenFailure, Result, StoreError};
+use super::{restrict_permissions, sidecar, unix_now, OpenFailure, Result, StoreError};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 const BACKUPS_KEPT: usize = 3;
@@ -239,34 +239,65 @@ fn pending(
 }
 
 /// Writes a consistent copy of the database, named for the last migration it
-/// contains, and prunes older copies. The copy is written under a temporary
-/// name first, so a backup that exists is always complete.
-fn backup(connection: &mut SqliteConnection, path: &Path, version: &str) -> Result<PathBuf> {
-    let backup = sidecar(path, &format!("{BACKUP_SUFFIX}{version}"));
-    let partial = sidecar(path, &format!("{BACKUP_SUFFIX}{version}{PARTIAL_SUFFIX}"));
-    match std::fs::remove_file(&partial) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(backup_error(&backup, error)),
-    }
+/// contains and when it was taken, and prunes all but the newest few. The
+/// copy is written under a temporary name first, so a backup that exists is
+/// always complete.
+pub(super) fn backup(
+    connection: &mut SqliteConnection,
+    path: &Path,
+    version: &str,
+) -> Result<PathBuf> {
+    let name = format!("{BACKUP_SUFFIX}{version}-{}", unix_now());
+    let backup = sidecar(path, &name);
+    let partial = sidecar(path, &format!("{name}{PARTIAL_SUFFIX}"));
+    remove_partial_backups(path).map_err(|error| backup_error(&backup, error))?;
     diesel::sql_query("VACUUM INTO ?")
         .bind::<Text, _>(partial.to_string_lossy())
         .execute(connection)
         .map_err(|error| backup_error(&backup, error))?;
     restrict_permissions(&partial);
-    // Replaces a copy from an earlier failed attempt, which held the same state.
     std::fs::rename(&partial, &backup).map_err(|error| backup_error(&backup, error))?;
 
-    let mut backups = backup_paths(path).map_err(|error| backup_error(&backup, error))?;
-    backups.sort();
-    for old in backups.iter().rev().skip(BACKUPS_KEPT) {
-        let _ = std::fs::remove_file(old);
+    let mut backups = backup_names(path).map_err(|error| backup_error(&backup, error))?;
+    backups.sort_by(|a, b| (b.taken_at, &b.version).cmp(&(a.taken_at, &a.version)));
+    for old in backups.iter().skip(BACKUPS_KEPT) {
+        let _ = std::fs::remove_file(&old.path);
     }
     Ok(backup)
 }
 
+/// Removes copies a process stopped writing partway.
+fn remove_partial_backups(path: &Path) -> std::io::Result<()> {
+    let prefix = sidecar(path, BACKUP_SUFFIX);
+    let prefix = prefix
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let directory = path.parent().unwrap_or_else(|| Path::new("."));
+    for entry in std::fs::read_dir(directory)? {
+        let candidate = entry?.path();
+        if candidate
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(&prefix) && name.ends_with(PARTIAL_SUFFIX))
+        {
+            std::fs::remove_file(candidate)?;
+        }
+    }
+    Ok(())
+}
+
+/// A complete backup file and what its name says about it.
+pub(super) struct BackupName {
+    pub path: PathBuf,
+    pub version: String,
+    /// Unix seconds; absent in names from before snapshots were dated.
+    pub taken_at: Option<i64>,
+}
+
 /// Complete backups next to `path`, in no particular order.
-pub(super) fn backup_paths(path: &Path) -> std::io::Result<Vec<PathBuf>> {
+pub(super) fn backup_names(path: &Path) -> std::io::Result<Vec<BackupName>> {
     let prefix = sidecar(path, BACKUP_SUFFIX);
     let prefix = prefix
         .file_name()
@@ -276,13 +307,28 @@ pub(super) fn backup_paths(path: &Path) -> std::io::Result<Vec<PathBuf>> {
     let directory = path.parent().unwrap_or_else(|| Path::new("."));
     Ok(std::fs::read_dir(directory)?
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|candidate| {
-            candidate
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with(&prefix) && !name.ends_with(PARTIAL_SUFFIX))
+        .filter_map(|candidate| {
+            let name = candidate.file_name()?.to_str()?;
+            if name.ends_with(PARTIAL_SUFFIX) {
+                return None;
+            }
+            let rest = name.strip_prefix(&prefix)?;
+            let (version, taken_at) = match rest.split_once('-') {
+                Some((version, taken_at)) => (version, Some(taken_at.parse().ok()?)),
+                None => (rest, None),
+            };
+            Some(BackupName {
+                version: version.to_string(),
+                taken_at,
+                path: candidate,
+            })
         })
         .collect())
+}
+
+/// The newest applied migration, if any.
+pub(super) fn current_version(connection: &mut SqliteConnection) -> Result<Option<String>> {
+    Ok(applied_versions(connection)?.pop())
 }
 
 /// Versions this build's migrations know, oldest first.
@@ -298,7 +344,7 @@ pub(super) fn known_versions() -> Result<Vec<String>> {
 
 fn backup_error(backup: &Path, error: impl std::fmt::Display) -> StoreError {
     StoreError::Storage(format!(
-        "could not back up citadel.db to {} before migrating: {error}",
+        "could not back up citadel.db to {}: {error}",
         backup.display()
     ))
 }
@@ -337,6 +383,26 @@ mod tests {
         .into_iter()
         .map(|row| row.name)
         .collect()
+    }
+
+    /// Backup versions next to `path`, oldest first.
+    fn backup_versions(path: &Path) -> Vec<String> {
+        let mut versions: Vec<String> = backup_names(path)
+            .unwrap()
+            .into_iter()
+            .map(|backup| backup.version)
+            .collect();
+        versions.sort();
+        versions
+    }
+
+    fn backup_of(path: &Path, version: &str) -> PathBuf {
+        backup_names(path)
+            .unwrap()
+            .into_iter()
+            .find(|backup| backup.version == version)
+            .unwrap()
+            .path
     }
 
     fn connect(path: &Path) -> SqliteConnection {
@@ -383,7 +449,7 @@ mod tests {
             &migrations(directory.path(), &[FIRST, SECOND]),
         )
         .unwrap();
-        let backup = directory.path().join("citadel.db.backup-20260101000000");
+        let backup = backup_of(&path, "20260101000000");
         assert_eq!(tables(&mut connect(&backup)), ["first"]);
         assert_eq!(tables(&mut connect(&path)), ["first", "second"]);
 
@@ -436,19 +502,9 @@ mod tests {
             )
             .unwrap();
         }
-        let mut backups: Vec<String> = std::fs::read_dir(directory.path())
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .filter(|name| name.starts_with("citadel.db.backup-"))
-            .collect();
-        backups.sort();
         assert_eq!(
-            backups,
-            [
-                "citadel.db.backup-20260201000000",
-                "citadel.db.backup-20260301000000",
-                "citadel.db.backup-20260401000000",
-            ]
+            backup_versions(&path),
+            ["20260201000000", "20260301000000", "20260401000000"]
         );
     }
 
@@ -600,10 +656,7 @@ mod tests {
         assert_eq!(failure, OpenFailure::MigrationFailed);
         assert!(!sidecar(&path, "migrating").exists());
         assert!(!partial.exists());
-        assert_eq!(
-            backup_paths(&path).unwrap(),
-            [directory.path().join("citadel.db.backup-20260101000000")]
-        );
+        assert_eq!(backup_versions(&path), ["20260101000000"]);
     }
 
     #[test]
