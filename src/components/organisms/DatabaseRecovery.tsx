@@ -3,12 +3,10 @@ import { useEffect, useRef } from "react";
 import type { DatabaseProblem, RecoveryStep } from "@/bindings";
 import { Button, Spinner } from "@/components/ui";
 import {
-	DETAILS_LABEL,
 	FAILED_PREFIX,
 	formatBackupDate,
 	PROBLEM_COPY,
 	QUIT_LABEL,
-	REVEAL_LABEL,
 	STEP_COPY,
 	WORKING_LABEL,
 } from "@/lib/database-recovery/copy";
@@ -48,18 +46,14 @@ export interface DatabaseRecoveryCardProps {
 	problem: DatabaseProblem;
 	running: RecoveryStep | null;
 	error: string | null;
-	canReveal: boolean;
 	onRecover: (step: RecoveryStep) => void;
-	onReveal: () => void;
 }
 
 export const DatabaseRecoveryCard = ({
 	problem,
 	running,
 	error,
-	canReveal,
 	onRecover,
-	onReveal,
 }: DatabaseRecoveryCardProps) => {
 	const copy = PROBLEM_COPY[problem.kind];
 	const backupDate = formatBackupDate(problem.backup?.createdAt ?? null);
@@ -122,18 +116,6 @@ export const DatabaseRecoveryCard = ({
 							{FAILED_PREFIX} {error}
 						</p>
 					)}
-					<details className={styles.details}>
-						<summary>{DETAILS_LABEL}</summary>
-						{!problem.details.includes(problem.databasePath) && (
-							<p className={styles.path}>{problem.databasePath}</p>
-						)}
-						<p className={styles.message}>{problem.details}</p>
-						{canReveal && (
-							<Button variant="subtle" size="sm" onClick={onReveal}>
-								{REVEAL_LABEL}
-							</Button>
-						)}
-					</details>
 					<div className={card.divider} />
 					<div className={styles.quit}>
 						<Button
@@ -155,20 +137,16 @@ export const DatabaseRecoveryCard = ({
 
 export const DatabaseRecoveryScreen = ({
 	problem,
-	canReveal,
 }: {
 	problem: DatabaseProblem;
-	canReveal: boolean;
 }) => {
-	const { running, error, recover, reveal } = useDatabaseRecovery(problem);
+	const { running, error, recover } = useDatabaseRecovery(problem);
 	return (
 		<DatabaseRecoveryCard
 			problem={problem}
 			running={running}
 			error={error}
-			canReveal={canReveal}
 			onRecover={recover}
-			onReveal={reveal}
 		/>
 	);
 };

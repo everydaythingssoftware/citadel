@@ -9,29 +9,6 @@
 	color: var(--ctd-danger-bg);
 }
 
-.details {
-	margin: 16px 2px 0;
-	font-size: 12px;
-	color: var(--ctd-ink-soft);
-}
-
-.details summary {
-	cursor: default;
-	user-select: none;
-}
-
-.path {
-	margin: 8px 0 0;
-	color: var(--ctd-ink);
-	overflow-wrap: anywhere;
-}
-
-.message {
-	margin: 8px 0;
-	line-height: 1.45;
-	overflow-wrap: anywhere;
-}
-
 .quit {
 	display: flex;
 	justify-content: center;

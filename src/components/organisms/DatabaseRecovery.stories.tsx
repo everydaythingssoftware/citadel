@@ -20,9 +20,7 @@ const meta = {
 		problem: problem({}),
 		running: null,
 		error: null,
-		canReveal: true,
 		onRecover: () => {},
-		onReveal: () => {},
 	},
 	parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof DatabaseRecoveryCard>;

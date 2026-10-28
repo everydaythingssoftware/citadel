@@ -8,7 +8,6 @@ export interface DatabaseRecovery {
 	running: RecoveryStep | null;
 	error: string | null;
 	recover: (step: RecoveryStep) => void;
-	reveal: () => void;
 }
 
 export const useDatabaseRecovery = (
@@ -19,9 +18,11 @@ export const useDatabaseRecovery = (
 	const [error, setError] = useState<string | null>(null);
 
 	// Settings never load in this state, so nothing else shows the window.
+	// The technical reason goes to the log rather than the screen.
 	useEffect(() => {
+		console.error("citadel.db:", problem.details);
 		void platform.window.show();
-	}, [platform]);
+	}, [platform, problem.details]);
 
 	const recover = useCallback(
 		(step: RecoveryStep) => {
@@ -42,9 +43,5 @@ export const useDatabaseRecovery = (
 		[platform],
 	);
 
-	const reveal = useCallback(() => {
-		void platform.fileOpener.revealInFileManager(problem.databasePath);
-	}, [platform, problem.databasePath]);
-
-	return { running, error, recover, reveal };
+	return { running, error, recover };
 };

@@ -45,10 +45,7 @@ void platform.recovery
 		root.render(
 			<React.StrictMode>
 				<PlatformProvider value={platform}>
-					<DatabaseRecoveryScreen
-						problem={problem}
-						canReveal={platform.capabilities.canRevealInFileManager}
-					/>
+					<DatabaseRecoveryScreen problem={problem} />
 				</PlatformProvider>
 			</React.StrictMode>,
 		);

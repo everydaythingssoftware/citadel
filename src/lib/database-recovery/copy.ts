@@ -60,8 +60,6 @@ export const STEP_COPY: Record<
 };
 
 export const QUIT_LABEL = "Quit Citadel";
-export const DETAILS_LABEL = "Details";
-export const REVEAL_LABEL = "Show in Folder";
 export const WORKING_LABEL = "Working…";
 export const FAILED_PREFIX = "That didn’t work:";
 export const NO_UPDATE_MESSAGE = "There isn’t a newer version of Citadel yet.";
