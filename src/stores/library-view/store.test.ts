@@ -50,6 +50,22 @@ describe("useLibraryView", () => {
 		expect(state.activeShelfId).toBe(null);
 	});
 
+	it("detachShelf drops the active shelf but keeps the filters", async () => {
+		const storage = createFakeLocalStorage();
+		const { useLibraryView } = await importStore(storage);
+		useLibraryView.getState().applyShelf(shelf);
+
+		useLibraryView.getState().detachShelf();
+
+		const state = useLibraryView.getState();
+		expect(state.activeShelfId).toBe(null);
+		expect(state.query).toBe("sci-fi");
+		expect(state.sortOrder).toBe("nameZa");
+		expect(JSON.parse(storage.getItem(PREFS_KEY) ?? "{}").activeShelfId).toBe(
+			null,
+		);
+	});
+
 	it("applyShelf sets the filter fields and activeShelfId, and persists", async () => {
 		const storage = createFakeLocalStorage();
 		const { useLibraryView } = await importStore(storage);

@@ -18,6 +18,14 @@ export interface SmartShelfFilter {
 	query: string;
 	sortOrder: LibraryBookSortOrderKey;
 	hideRead: boolean;
+	/**
+	 * Author, series, tag or publisher the shelf was saved from (library ids).
+	 * Optional so shelves saved before these existed stay valid and unfiltered.
+	 */
+	authorId?: string;
+	seriesId?: number;
+	tagId?: number;
+	publisherId?: number;
 }
 
 export interface SmartShelf {

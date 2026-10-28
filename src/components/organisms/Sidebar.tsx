@@ -14,6 +14,13 @@ import {
 	useBrowserSessionControls,
 } from "@/lib/hooks/use-browser-session";
 import { useOpenSettings } from "@/lib/hooks/use-open-settings";
+import {
+	type BookRouteFilters,
+	routeFiltersFromSearch,
+	shelfLeftRoute,
+	shelfMatchesRoute,
+	shelfRouteFilters,
+} from "@/lib/shelves";
 import type { SmartShelf } from "@/lib/platform/settings/types";
 import { LibraryState, useLibraryState } from "@/stores/library/store";
 import { useLibraryView } from "@/stores/library-view/store";
@@ -61,6 +68,7 @@ export const Sidebar = () => {
 			/>
 			<SidebarPure
 				currentPathname={location.pathname}
+				routeFilters={routeFiltersFromSearch(location.search)}
 				openSettings={openSettings}
 				session={session}
 			/>
@@ -70,6 +78,8 @@ export const Sidebar = () => {
 
 interface SidebarPureProps {
 	currentPathname: string;
+	/** The Books route's deep-link filters, to tell which shelf is showing. */
+	routeFilters: BookRouteFilters;
 	openSettings: () => void;
 	/** The signed-in browser user; null on desktop. */
 	session: BrowserSessionControls | null;
@@ -77,6 +87,7 @@ interface SidebarPureProps {
 
 const SidebarPure = ({
 	currentPathname,
+	routeFilters,
 	openSettings,
 	session,
 }: SidebarPureProps) => {
@@ -89,6 +100,8 @@ const SidebarPure = ({
 	const clearMissingActiveShelf = useLibraryView(
 		(s) => s.clearMissingActiveShelf,
 	);
+	const detachShelf = useLibraryView((s) => s.detachShelf);
+	const { author_id, series_id, tag_id, publisher_id } = routeFilters;
 
 	// activeShelfId comes from localStorage, shelves from settings.json; drop a
 	// shelf id that no longer exists once settings have hydrated.
@@ -97,6 +110,33 @@ const SidebarPure = ({
 			clearMissingActiveShelf(smartShelves.map((shelf) => shelf.id));
 		}
 	}, [hydrated, smartShelves, clearMissingActiveShelf]);
+
+	// A shelf is only "showing" while the route carries its tag/author/series/
+	// publisher filter. When the route stops matching (the filter token was
+	// removed, or the app relaunched on a bare route), release the shelf
+	// rather than label a different view with its name.
+	useEffect(() => {
+		if (!hydrated || currentPathname !== "/") return;
+		const { activeShelfId: currentId } = useLibraryView.getState();
+		const active = smartShelves.find((shelf) => shelf.id === currentId);
+		if (
+			shelfLeftRoute(
+				{ author_id, series_id, tag_id, publisher_id },
+				active?.filter,
+			)
+		) {
+			detachShelf();
+		}
+	}, [
+		hydrated,
+		currentPathname,
+		smartShelves,
+		author_id,
+		series_id,
+		tag_id,
+		publisher_id,
+		detachShelf,
+	]);
 
 	const isAllBooksActive = currentPathname === "/" && activeShelfId === null;
 
@@ -153,7 +193,11 @@ const SidebarPure = ({
 							<ShelfRow
 								key={shelf.id}
 								shelf={shelf}
-								isActive={currentPathname === "/" && activeShelfId === shelf.id}
+								isActive={
+									currentPathname === "/" &&
+									activeShelfId === shelf.id &&
+									shelfMatchesRoute(shelf.filter, routeFilters)
+								}
 							/>
 						))}
 					</div>
@@ -242,7 +286,7 @@ const ShelfRow = ({ shelf, isActive }: ShelfRowProps) => {
 				data-active={isActive || undefined}
 				onClick={() => {
 					applyShelf(shelf);
-					void navigate({ to: "/" });
+					void navigate({ to: "/", search: shelfRouteFilters(shelf.filter) });
 				}}
 			>
 				<span className={styles.shelfName}>{shelf.name}</span>

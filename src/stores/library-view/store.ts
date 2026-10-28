@@ -25,6 +25,7 @@ export interface LibraryViewState {
 	setSortOrder: (sortOrder: LibraryBookSortOrderKey) => void;
 	setHideRead: (hideRead: boolean) => void;
 	applyShelf: (shelf: SmartShelf) => void;
+	detachShelf: () => void;
 	resetToAllBooks: () => void;
 	clearMissingActiveShelf: (existingShelfIds: string[]) => void;
 }
@@ -104,6 +105,13 @@ export const useLibraryView = create<LibraryViewState>((set, get) => ({
 			hideRead: shelf.filter.hideRead,
 			activeShelfId: shelf.id,
 		});
+		persist(get());
+	},
+	// Keeps the filters but stops claiming a shelf: used when the route no
+	// longer shows the shelf's deep-link filters.
+	detachShelf: () => {
+		if (get().activeShelfId === null) return;
+		set({ activeShelfId: null });
 		persist(get());
 	},
 	resetToAllBooks: () => {
