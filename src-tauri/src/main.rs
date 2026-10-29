@@ -223,6 +223,9 @@ fn run_tauri_backend() -> std::io::Result<()> {
     const EXITING: u8 = 2;
     let exit_phase = Arc::new(AtomicU8::new(RUNNING));
     app.run(move |app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            app_updates::install_pending_at_exit(app_handle);
+        }
         if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
             match exit_phase.compare_exchange(
                 RUNNING,
@@ -243,7 +246,6 @@ fn run_tauri_backend() -> std::io::Result<()> {
                     let exit_code = code.unwrap_or(0);
                     tauri::async_runtime::spawn(async move {
                         opds_service.stop().await;
-                        app_updates::install_pending_on_quit(&app_handle).await;
                         exit_phase.store(EXITING, Ordering::Release);
                         app_handle.exit(exit_code);
                     });

@@ -16,6 +16,7 @@ use citadel_opds::OpdsService;
 const DEV_BUILD_MESSAGE: &str = "Development builds don't install updates.";
 const DEV_DOWNLOAD_STEPS: u8 = 20;
 const DEV_DOWNLOAD_STEP: Duration = Duration::from_millis(75);
+const EXIT_INSTALL_DEADLINE: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -181,16 +182,68 @@ impl SoftwareUpdates {
 
     fn set<R: Runtime>(&self, app: &AppHandle<R>, status: SoftwareUpdateStatus) {
         self.lock().status = status;
+        self.broadcast(app);
+    }
+
+    fn broadcast<R: Runtime>(&self, app: &AppHandle<R>) {
         if let Err(err) = SoftwareUpdateChanged(self.state()).emit(app) {
             log::error!("Failed to broadcast update state: {err}");
         }
     }
 
+    /// Moves to the next status only if `allowed` holds, in one step under
+    /// the lock, so two presses can't both start the same work.
+    fn claim<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        allowed: impl FnOnce(&Inner) -> bool,
+        next: impl FnOnce(&Inner) -> SoftwareUpdateStatus,
+    ) -> bool {
+        {
+            let mut inner = self.lock();
+            if !allowed(&inner) {
+                return false;
+            }
+            inner.status = next(&inner);
+        }
+        self.broadcast(app);
+        true
+    }
+
+    /// Claims the found update for downloading; returns its version.
+    fn begin_download<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        allowed: impl FnOnce(&SoftwareUpdateStatus) -> bool,
+    ) -> Option<String> {
+        let mut version = None;
+        self.claim(
+            app,
+            |inner| inner.update.is_some() && allowed(&inner.status),
+            |inner| {
+                let found = inner
+                    .update
+                    .as_ref()
+                    .map(|update| update.version.clone())
+                    .unwrap_or_default();
+                version = Some(found.clone());
+                SoftwareUpdateStatus::Downloading {
+                    version: found,
+                    progress: None,
+                }
+            },
+        );
+        version
+    }
+
     pub async fn check<R: Runtime>(&self, app: &AppHandle<R>) {
-        if !may_check(&self.lock().status) {
+        if !self.claim(
+            app,
+            |inner| may_check(&inner.status),
+            |_| SoftwareUpdateStatus::Checking,
+        ) {
             return;
         }
-        self.set(app, SoftwareUpdateStatus::Checking);
 
         let result = match app.updater() {
             Ok(updater) => updater.check().await.map_err(|err| err.to_string()),
@@ -220,12 +273,13 @@ impl SoftwareUpdates {
     }
 
     pub async fn later<R: Runtime>(&self, app: &AppHandle<R>) {
-        let step = later_step(&self.lock().status, self.can_install_on_quit);
-        if step == Step::Nothing {
+        let can_install_on_quit = self.can_install_on_quit;
+        let Some(version) = self.begin_download(app, |status| {
+            later_step(status, can_install_on_quit) != Step::Nothing
+        }) else {
             return;
-        }
-        if let Ok(bytes) = self.download(app).await {
-            let version = self.pending_version();
+        };
+        if let Ok(bytes) = self.download(app, &version).await {
             self.lock().bytes = Some(bytes);
             self.set(app, SoftwareUpdateStatus::Ready { version });
         }
@@ -235,24 +289,28 @@ impl SoftwareUpdates {
         &self,
         app: &AppHandle<R>,
     ) -> Result<UpdateNowOutcome, String> {
-        let mut step = update_now_step(&self.lock().status);
-        if step == Step::CheckFirst {
+        if update_now_step(&self.lock().status) == Step::CheckFirst {
             self.check(app).await;
-            step = match &self.lock().status {
-                SoftwareUpdateStatus::Available { .. } => Step::Download {
-                    then: AfterDownload::Install,
-                },
-                SoftwareUpdateStatus::CheckFailed { message } => return Err(message.clone()),
-                _ => return Ok(UpdateNowOutcome::NoUpdate),
-            };
+            if let SoftwareUpdateStatus::CheckFailed { message } = &self.lock().status {
+                return Err(message.clone());
+            }
         }
 
-        let bytes = match step {
-            Step::Nothing => return Ok(UpdateNowOutcome::Busy),
-            Step::Install => self.lock().bytes.take(),
-            _ => Some(self.download(app).await?),
+        let bytes = if let Some(bytes) = self.take_ready_bytes() {
+            bytes
+        } else if let Some(version) = self.begin_download(app, |status| {
+            matches!(update_now_step(status), Step::Download { .. })
+        }) {
+            self.download(app, &version).await?
+        } else {
+            return Ok(match &self.lock().status {
+                SoftwareUpdateStatus::Idle | SoftwareUpdateStatus::UpToDate => {
+                    UpdateNowOutcome::NoUpdate
+                }
+                _ => UpdateNowOutcome::Busy,
+            });
         };
-        let (Some(bytes), Some(update)) = (bytes, self.lock().update.clone()) else {
+        let Some(update) = self.lock().update.clone() else {
             return Err(self.fail(app, "The downloaded update is no longer available."));
         };
 
@@ -268,6 +326,16 @@ impl SoftwareUpdates {
             opds.stop().await;
         }
         app.restart();
+    }
+
+    /// A package "Later" already downloaded, claimed for installing now.
+    fn take_ready_bytes(&self) -> Option<Vec<u8>> {
+        let mut inner = self.lock();
+        if matches!(inner.status, SoftwareUpdateStatus::Ready { .. }) {
+            inner.bytes.take()
+        } else {
+            None
+        }
     }
 
     /// The pending update and its package, if "Later" left one for quit.
@@ -299,19 +367,14 @@ impl SoftwareUpdates {
         message.to_string()
     }
 
-    async fn download<R: Runtime>(&self, app: &AppHandle<R>) -> Result<Vec<u8>, String> {
-        let version = self.pending_version();
+    async fn download<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        version: &str,
+    ) -> Result<Vec<u8>, String> {
         let Some(update) = self.lock().update.clone() else {
             return Err(self.fail(app, "No update to download."));
         };
-
-        self.set(
-            app,
-            SoftwareUpdateStatus::Downloading {
-                version: version.clone(),
-                progress: None,
-            },
-        );
 
         // Dev builds walk the progress bar instead of replacing themselves,
         // so the download UI can still be exercised.
@@ -321,7 +384,7 @@ impl SoftwareUpdates {
                 self.set(
                     app,
                     SoftwareUpdateStatus::Downloading {
-                        version: version.clone(),
+                        version: version.to_string(),
                         progress: Some(f64::from(step) / f64::from(DEV_DOWNLOAD_STEPS)),
                     },
                 );
@@ -341,7 +404,7 @@ impl SoftwareUpdates {
                         self.set(
                             app,
                             SoftwareUpdateStatus::Downloading {
-                                version: version.clone(),
+                                version: version.to_string(),
                                 progress,
                             },
                         );
@@ -354,20 +417,27 @@ impl SoftwareUpdates {
     }
 }
 
-/// Installs a package "Later" left behind, while Citadel quits. A failure
-/// leaves the current version in place; the next check offers the update
-/// again.
-pub async fn install_pending_on_quit<R: Runtime>(app: &AppHandle<R>) {
+/// Installs a package "Later" left behind, as Citadel exits. Runs from
+/// `RunEvent::Exit`, which every quit reaches (⌘Q skips `ExitRequested`).
+/// The install gets its own thread and a deadline: an app in a folder it
+/// can't write asks the main thread, which is busy exiting, for an admin
+/// prompt, and that wait gives up before anything has moved. A failure
+/// leaves the current version in place; the next check offers it again.
+pub fn install_pending_at_exit<R: Runtime>(app: &AppHandle<R>) {
     let Some(updates) = app.try_state::<SoftwareUpdates>() else {
         return;
     };
     let Some((update, bytes)) = updates.take_install_for_quit() else {
         return;
     };
-    match tauri::async_runtime::spawn_blocking(move || update.install(bytes)).await {
-        Ok(Ok(())) => log::info!("Installed the pending update at quit"),
-        Ok(Err(err)) => log::error!("Failed to install the pending update at quit: {err}"),
-        Err(err) => log::error!("Failed to install the pending update at quit: {err}"),
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = sender.send(update.install(bytes));
+    });
+    match receiver.recv_timeout(EXIT_INSTALL_DEADLINE) {
+        Ok(Ok(())) => log::info!("Installed the pending update at exit"),
+        Ok(Err(err)) => log::error!("Failed to install the pending update at exit: {err}"),
+        Err(err) => log::error!("Gave up installing the pending update at exit: {err}"),
     }
 }
 

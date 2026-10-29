@@ -8,23 +8,35 @@
 }
 
 .fill {
+	width: 0;
 	height: 100%;
 	border-radius: inherit;
 	background-color: var(--ctd-accent);
 	transition: width 200ms ease;
 }
 
-.track[data-indeterminate] .fill {
-	width: 30%;
-	animation: progress-sweep 1.2s ease-in-out infinite;
+/* Unknown size: the whole track pulses instead of a segment moving, so it
+ * never reads as progress that later jumps back to the start. The pulse is
+ * its own layer, and the fill waits at zero, so the first real value grows
+ * from empty rather than shrinking from full. */
+.track[data-indeterminate]::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background-color: var(--ctd-accent);
+	animation: progress-pulse 1.4s ease-in-out infinite;
 }
 
-@keyframes progress-sweep {
+@keyframes progress-pulse {
 	from {
-		transform: translateX(-100%);
+		opacity: 0.12;
+	}
+	50% {
+		opacity: 0.32;
 	}
 	to {
-		transform: translateX(340%);
+		opacity: 0.12;
 	}
 }
 
@@ -33,9 +45,8 @@
 		transition: none;
 	}
 
-	.track[data-indeterminate] .fill {
-		width: 100%;
+	.track[data-indeterminate]::after {
 		animation: none;
-		opacity: 0.4;
+		opacity: 0.25;
 	}
 }
