@@ -186,9 +186,10 @@ pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
             require_basic_auth,
         ))
         .layer(axum::middleware::from_fn_with_state(
-            limits,
-            limits::enforce,
+            limits.clone(),
+            limits::bound_feeds,
         ))
+        .layer(axum::middleware::from_fn_with_state(limits, limits::admit))
 }
 
 /// Asset routes shared with the JSON API, using the same resolver and streaming limits.

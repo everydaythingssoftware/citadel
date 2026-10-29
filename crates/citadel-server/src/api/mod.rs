@@ -361,8 +361,32 @@ pub fn router(
         None => router,
     };
     service
-        .limit_http_routes(router)
+        .limit_http_routes(router.layer(axum::middleware::from_fn(bound_requests)))
         .layer(axum::middleware::from_fn(normalize_errors))
+}
+
+const JSON_BODY_BYTES: usize = 1024 * 1024;
+const REQUEST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+// JSON requests are small: buffer the body (even when chunked) under the
+// deadline so slow clients can't hold handlers, then bound the handler too.
+// Asset responses only need their headers within the deadline.
+async fn bound_requests(request: Request, next: Next) -> Response {
+    let (parts, body) = request.into_parts();
+    let body = match tokio::time::timeout(REQUEST_DEADLINE, to_bytes(body, JSON_BODY_BYTES)).await {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
+        Err(_) => return ApiFailure(LibraryError::unavailable()).into_response(),
+    };
+    match tokio::time::timeout(
+        REQUEST_DEADLINE,
+        next.run(Request::from_parts(parts, Body::from(body))),
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(_) => ApiFailure(LibraryError::unavailable()).into_response(),
+    }
 }
 
 // Admission middleware is shared with OPDS, which uses plain text errors.
