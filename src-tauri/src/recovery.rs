@@ -199,6 +199,38 @@ pub fn clb_query_database_restored(handle: tauri::AppHandle) -> Option<DatabaseB
         .map(|restored| restored.0.clone())
 }
 
+/// What the app does once a step has run.
+#[derive(Debug, Eq, PartialEq)]
+enum After {
+    Restart,
+    Exit,
+}
+
+impl PendingRecovery {
+    /// Runs a step on disk; the caller restarts or exits as it says.
+    fn run(&self, step: RecoveryStep) -> Result<After, String> {
+        if !self.problem.steps.contains(&step) {
+            return Err(format!("{step:?} can't help with this database."));
+        }
+        let database = &self.database;
+        let done = match step {
+            RecoveryStep::Quit => return Ok(After::Exit),
+            RecoveryStep::Update => return Err("Updates install through the updater.".into()),
+            RecoveryStep::RestoreBackup => {
+                let backup = self
+                    .backup
+                    .as_ref()
+                    .ok_or("There's no backup to restore.")?;
+                CitadelStore::restore_backup(database, backup).map(drop)
+            }
+            RecoveryStep::StartFresh => CitadelStore::set_aside(database).map(drop),
+            RecoveryStep::TryAgain => CitadelStore::retry_migration(database),
+        };
+        done.map(|()| After::Restart)
+            .map_err(|error| error.to_string())
+    }
+}
+
 /// Runs a recovery step, then restarts so startup opens the result.
 #[tauri::command]
 #[specta::specta]
@@ -209,29 +241,9 @@ pub fn clb_cmd_recover_database(
     let pending = handle
         .try_state::<PendingRecovery>()
         .ok_or("Citadel's database doesn't need recovering.")?;
-    if !pending.problem.steps.contains(&step) {
-        return Err(format!("{step:?} can't help with this database."));
-    }
-    let database = &pending.database;
-    match step {
-        RecoveryStep::Quit => handle.exit(0),
-        RecoveryStep::Update => return Err("Updates install through the updater.".into()),
-        RecoveryStep::RestoreBackup => {
-            let backup = pending
-                .backup
-                .as_ref()
-                .ok_or("There's no backup to restore.")?;
-            CitadelStore::restore_backup(database, backup).map_err(|error| error.to_string())?;
-            handle.restart();
-        }
-        RecoveryStep::StartFresh => {
-            CitadelStore::set_aside(database).map_err(|error| error.to_string())?;
-            handle.restart();
-        }
-        RecoveryStep::TryAgain => {
-            CitadelStore::retry_migration(database).map_err(|error| error.to_string())?;
-            handle.restart();
-        }
+    match pending.run(step)? {
+        After::Restart => handle.restart(),
+        After::Exit => handle.exit(0),
     }
     Ok(())
 }
@@ -289,40 +301,162 @@ mod tests {
         .unwrap();
     }
 
-    #[test]
-    fn a_damaged_database_goes_back_to_its_newest_backup_and_is_kept() {
-        let directory = tempfile::tempdir().unwrap();
-        let app_data_dir = directory.path();
-        let Startup::Opened { account, restored } = open(app_data_dir) else {
-            panic!("a new database needed recovery");
-        };
+    fn files(app_data_dir: &Path, prefix: &str) -> Vec<PathBuf> {
+        std::fs::read_dir(app_data_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with(prefix)
+            })
+            .collect()
+    }
+
+    fn opened(app_data_dir: &Path) -> (LocalAccount, Option<RestoredDatabase>) {
+        match open(app_data_dir) {
+            Startup::Opened { account, restored } => (account, restored),
+            Startup::NeedsRecovery(pending) => panic!("needed recovery: {:?}", pending.problem),
+        }
+    }
+
+    fn needs_recovery(app_data_dir: &Path) -> PendingRecovery {
+        match open(app_data_dir) {
+            Startup::Opened { .. } => panic!("opened"),
+            Startup::NeedsRecovery(pending) => pending,
+        }
+    }
+
+    /// A healthy database with one backup, named for the local user.
+    fn with_backup(app_data_dir: &Path) -> String {
+        let (account, restored) = opened(app_data_dir);
         assert!(restored.is_none());
         let user = account.user().unwrap().username;
         drop(account);
-        damage(app_data_dir);
+        assert_eq!(files(app_data_dir, "citadel.db.backup-").len(), 1);
+        user
+    }
 
-        let Startup::Opened { account, restored } = open(app_data_dir) else {
-            panic!("the backup wasn't restored");
-        };
-        assert!(restored.is_some());
-        assert_eq!(account.user().unwrap().username, user);
-        assert!(std::fs::read_dir(app_data_dir).unwrap().any(|entry| entry
+    fn sql(path: &Path, statement: &str) {
+        use diesel::{connection::SimpleConnection, Connection};
+        diesel::SqliteConnection::establish(path.to_str().unwrap())
             .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .starts_with("citadel.db.unusable-")));
+            .batch_execute(statement)
+            .unwrap();
+    }
+
+    #[test]
+    fn opening_takes_a_snapshot_at_most_once_a_day() {
+        let directory = tempfile::tempdir().unwrap();
+        with_backup(directory.path());
+        // Backup names are dated to the second; a second snapshot would show.
+        std::thread::sleep(Duration::from_millis(1100));
+        drop(opened(directory.path()));
+        assert_eq!(files(directory.path(), "citadel.db.backup-").len(), 1);
+    }
+
+    #[test]
+    fn a_damaged_database_goes_back_to_its_newest_backup_and_is_kept() {
+        let directory = tempfile::tempdir().unwrap();
+        let user = with_backup(directory.path());
+        damage(directory.path());
+
+        let (account, restored) = opened(directory.path());
+        assert!(restored.unwrap().0.created_at.is_some());
+        assert_eq!(account.user().unwrap().username, user);
+        assert_eq!(files(directory.path(), "citadel.db.unusable-").len(), 1);
+    }
+
+    #[test]
+    fn a_damaged_backup_gives_way_to_an_older_one() {
+        let directory = tempfile::tempdir().unwrap();
+        let user = with_backup(directory.path());
+        let good = files(directory.path(), "citadel.db.backup-").remove(0);
+        let name = good.file_name().unwrap().to_string_lossy().into_owned();
+        let (prefix, taken_at) = name.rsplit_once('-').unwrap();
+        let newer = directory.path().join(format!(
+            "{prefix}-{}",
+            taken_at.parse::<i64>().unwrap() + 60
+        ));
+        std::fs::write(&newer, b"a damaged backup, long enough for a header").unwrap();
+        damage(directory.path());
+
+        let (account, restored) = opened(directory.path());
+        assert_eq!(restored.unwrap().0.path, good.display().to_string());
+        assert_eq!(account.user().unwrap().username, user);
+    }
+
+    #[test]
+    fn a_restored_backup_that_cannot_migrate_reports_that_instead_of_damage() {
+        let directory = tempfile::tempdir().unwrap();
+        with_backup(directory.path());
+        // The backup claims an older version, but already has the newer
+        // migration's table, so migrating it fails.
+        let backup = files(directory.path(), "citadel.db.backup-").remove(0);
+        sql(
+            &backup,
+            "DELETE FROM __diesel_schema_migrations \
+             WHERE version = (SELECT MAX(version) FROM __diesel_schema_migrations);",
+        );
+        damage(directory.path());
+
+        let pending = needs_recovery(directory.path());
+        assert_eq!(pending.problem.kind, DatabaseProblemKind::MigrationFailed);
+        assert_eq!(pending.problem.steps, [Update, StartFresh, Quit]);
     }
 
     #[test]
     fn a_damaged_database_without_backups_needs_recovery() {
         let directory = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(directory.path()).unwrap();
         damage(directory.path());
-        let Startup::NeedsRecovery(pending) = open(directory.path()) else {
-            panic!("a damaged database opened");
-        };
+        let pending = needs_recovery(directory.path());
         assert_eq!(pending.problem.kind, DatabaseProblemKind::Damaged);
         assert!(pending.problem.backup.is_none());
         assert_eq!(pending.problem.steps, [StartFresh, Quit]);
+    }
+
+    #[test]
+    fn a_newer_database_can_go_back_to_a_backup_this_version_can_open() {
+        let directory = tempfile::tempdir().unwrap();
+        let user = with_backup(directory.path());
+        sql(
+            &directory.path().join(DATABASE),
+            "INSERT INTO __diesel_schema_migrations (version) VALUES ('99991231000000');",
+        );
+
+        let pending = needs_recovery(directory.path());
+        assert_eq!(pending.problem.kind, DatabaseProblemKind::NewerVersion);
+        assert!(pending.problem.backup.is_some());
+        assert_eq!(pending.problem.steps, [Update, RestoreBackup, Quit]);
+        assert_eq!(pending.run(RestoreBackup), Ok(After::Restart));
+
+        let (account, restored) = opened(directory.path());
+        assert!(restored.is_none());
+        assert_eq!(account.user().unwrap().username, user);
+        assert_eq!(files(directory.path(), "citadel.db.unusable-").len(), 1);
+    }
+
+    #[test]
+    fn starting_fresh_keeps_the_old_file_and_opens_an_empty_database() {
+        let directory = tempfile::tempdir().unwrap();
+        damage(directory.path());
+        let pending = needs_recovery(directory.path());
+        assert_eq!(pending.run(StartFresh), Ok(After::Restart));
+        drop(opened(directory.path()));
+        assert_eq!(files(directory.path(), "citadel.db.unusable-").len(), 1);
+    }
+
+    #[test]
+    fn steps_that_were_not_offered_are_refused_and_quit_exits() {
+        let directory = tempfile::tempdir().unwrap();
+        damage(directory.path());
+        let pending = needs_recovery(directory.path());
+        for step in [RestoreBackup, TryAgain, Update] {
+            assert!(pending.run(step).is_err(), "{step:?} ran");
+        }
+        assert_eq!(pending.run(Quit), Ok(After::Exit));
+        // Nothing was touched.
+        assert!(files(directory.path(), "citadel.db.unusable-").is_empty());
     }
 }
