@@ -95,7 +95,8 @@ fn test_delete_books_removes_all_records_but_leaves_files() {
 
     let dirs = lib.delete_books(&[doomed.id]).unwrap();
 
-    assert_eq!(dirs, [doomed_dir.clone()]);
+    // delete_books resolves the library root (on macOS, /var is /private/var).
+    assert_eq!(dirs, [doomed_dir.canonicalize().unwrap()]);
     for table in &tables {
         assert_eq!(rows_for_book(&lib, table, doomed.id), 0, "{table} after");
         assert_eq!(rows_for_book(&lib, table, kept.id), 1, "{table} kept");

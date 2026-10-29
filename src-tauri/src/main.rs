@@ -27,7 +27,11 @@ mod state;
 
 fn command_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
-        .events(collect_events![library::registry::LibrariesChanged])
+        .events(collect_events![
+            library::registry::LibrariesChanged,
+            app_updates::SoftwareUpdateChanged,
+            app_updates::ShowSoftwareUpdate,
+        ])
         .commands(collect_commands![
             // Library and initialization commands
             library::init_client,
@@ -84,8 +88,11 @@ fn command_builder() -> Builder<tauri::Wry> {
             metadata::commands::clb_cmd_test_metadata_provider,
             metadata::commands::clb_query_metadata_search,
             metadata::commands::clb_query_metadata_by_isbn,
+            // Software Update (CDL-51)
+            app_updates::clb_query_software_update,
             app_updates::clb_cmd_check_for_updates,
-            app_updates::clb_cmd_install_update_if_available,
+            app_updates::clb_cmd_update_later,
+            app_updates::clb_cmd_update_now,
             // OPDS sharing commands
             opds::clb_query_opds_credential_status,
             opds::clb_cmd_configure_opds_credentials,
@@ -98,6 +105,7 @@ fn command_builder() -> Builder<tauri::Wry> {
             opds::clb_query_opds_credential_secret,
             // Window commands
             menu::clb_cmd_open_settings,
+            menu::clb_cmd_open_software_update,
         ])
 }
 
@@ -130,6 +138,12 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {
             builder.mount_events(app);
+
+            // Before anything that can stop startup: the recovery screen
+            // offers "Update Citadel" too.
+            app.manage(app_updates::SoftwareUpdates::new(
+                app.package_info().version.to_string(),
+            ));
 
             // citadel.db lives in app data: the local user, its sharing
             // password and the library list (ADR 0009).
@@ -204,11 +218,25 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
+    const OPDS_EXIT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
     const RUNNING: u8 = 0;
     const STOPPING: u8 = 1;
     const EXITING: u8 = 2;
     let exit_phase = Arc::new(AtomicU8::new(RUNNING));
     app.run(move |app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            // ⌘Q on macOS reaches Exit without ExitRequested, so sharing
+            // hasn't stopped yet; give its downloads a moment to finish.
+            if exit_phase.load(Ordering::Acquire) == RUNNING {
+                if let Some(opds_service) = app_handle.try_state::<citadel_opds::OpdsService>() {
+                    let opds_service = opds_service.inner().clone();
+                    tauri::async_runtime::block_on(async move {
+                        let _ = tokio::time::timeout(OPDS_EXIT_DEADLINE, opds_service.stop()).await;
+                    });
+                }
+            }
+            app_updates::install_pending_at_exit(app_handle);
+        }
         if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
             match exit_phase.compare_exchange(
                 RUNNING,

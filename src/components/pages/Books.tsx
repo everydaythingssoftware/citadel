@@ -30,9 +30,16 @@ import {
 } from "@/lib/book-page-cache";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
+import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { usePlatform } from "@/lib/platform/context";
 import { formatSeriesIndex } from "@/lib/series";
+import {
+	type BookRouteFilters,
+	deepLinkClearsQuery,
+	hasRouteFilters,
+	routeFiltersToShelf,
+} from "@/lib/shelves";
 import {
 	useAuthors,
 	useBookCache,
@@ -51,6 +58,7 @@ import {
 	useLibraryView,
 } from "@/stores/library-view/store";
 import { createSmartShelf } from "@/stores/settings/actions";
+import { useSettings } from "@/stores/settings/store";
 import { BookCover } from "../atoms/BookCover";
 import { F7Bookmark } from "../icons/F7Bookmark";
 import { F7Pencil } from "../icons/F7Pencil";
@@ -101,15 +109,15 @@ export const Books = ({
 	// An author, series, tag or publisher link promises "those books in one
 	// click", so a text query from before the click must not keep filtering
 	// the results.
+	// The exception is arriving through a shelf saved from that very view: its
+	// query is part of the shelf and must survive.
 	useEffect(() => {
-		if (
-			author_id !== undefined ||
-			series_id !== undefined ||
-			tag_id !== undefined ||
-			publisher_id !== undefined
-		) {
-			setQuery("");
-		}
+		const route = { author_id, series_id, tag_id, publisher_id };
+		const { activeShelfId } = useLibraryView.getState();
+		const shelf = useSettings
+			.getState()
+			.smartShelves.find((candidate) => candidate.id === activeShelfId);
+		if (deepLinkClearsQuery(route, shelf?.filter)) setQuery("");
 	}, [author_id, series_id, tag_id, publisher_id, setQuery]);
 
 	const actions = useLibraryActions();
@@ -380,6 +388,7 @@ export const Books = ({
 					query={query}
 					sortOrder={sortOrder}
 					hideRead={hideRead}
+					routeFilters={{ author_id, series_id, tag_id, publisher_id }}
 				/>
 			</div>
 			<div
@@ -470,14 +479,17 @@ interface SaveAsShelfControlProps {
 	query: string;
 	sortOrder: LibraryBookSortOrderKey;
 	hideRead: boolean;
+	routeFilters: BookRouteFilters;
 }
 
 const SaveAsShelfControl = ({
 	query,
 	sortOrder,
 	hideRead,
+	routeFilters,
 }: SaveAsShelfControlProps) => {
 	const applyShelf = useLibraryView((s) => s.applyShelf);
+	const libraryId = useLibrarySelection().activeLibrary?.id;
 	const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
 
 	const [isOpen, setIsOpen] = useState(false);
@@ -491,6 +503,7 @@ const SaveAsShelfControl = ({
 	};
 
 	const summary = [
+		...(hasRouteFilters(routeFilters) ? ["this view's filter"] : []),
 		query.trim().length > 0 ? `search "${query.trim()}"` : "no search",
 		`sorted by ${SORT_LABELS[sortOrder]}`,
 		hideRead ? "hiding read books" : "showing read books",
@@ -507,6 +520,7 @@ const SaveAsShelfControl = ({
 				query,
 				sortOrder,
 				hideRead,
+				...routeFiltersToShelf(routeFilters, libraryId),
 			});
 			applyShelf(shelf);
 			close();

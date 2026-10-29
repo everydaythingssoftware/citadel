@@ -1,17 +1,18 @@
 import type { KeyboardEvent, ReactNode } from "react";
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import { F7Gear } from "@/components/icons/F7Gear";
 import { F7Wifi } from "@/components/icons/F7Wifi";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { CurrentLibraryCard } from "@/components/molecules/CurrentLibraryCard";
 import { LibraryListCard } from "@/components/molecules/LibraryListCard";
+import { SoftwareUpdateRow } from "@/components/molecules/SoftwareUpdateRow";
 import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
 import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
 import classes from "@/components/organisms/SettingsPanes.module.css";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
 import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
-import { useAppUpdates } from "@/lib/hooks/use-app-updates";
+import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
@@ -73,6 +74,24 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 		? SETTINGS_TABS
 		: ["general"];
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+
+	// The badged gear and Citadel → Check for Updates… land here; the window
+	// outlives its last close, so it may still be on another tab.
+	useEffect(() => {
+		let cancelled = false;
+		let unlisten: (() => void) | undefined;
+		void platform.updates
+			.onShowRequested(() => setActiveTab("general"))
+			.then((stop) => {
+				if (cancelled) stop();
+				else unlisten = stop;
+			});
+		return () => {
+			cancelled = true;
+			unlisten?.();
+		};
+	}, [platform]);
+
 	const tabRefs = useRef<
 		Partial<Record<SettingsTab, HTMLButtonElement | null>>
 	>({});
@@ -211,10 +230,7 @@ const GeneralTab = () => {
 
 	const platform = usePlatform();
 	const supportsAutoUpdates = platform.capabilities.supportsAutoUpdates;
-	const isCheckingForUpdates = useAppUpdates(
-		(state) => state.isCheckingForUpdates,
-	);
-	const checkForUpdatesNow = useAppUpdates((state) => state.checkForUpdatesNow);
+	const softwareUpdate = useSoftwareUpdate();
 
 	const applyTheme = useCallback(
 		(value: string) => {
@@ -260,24 +276,15 @@ const GeneralTab = () => {
 						/>
 					}
 				/>
-				<SettingsRow
-					label="Software update"
-					description={
-						supportsAutoUpdates
-							? undefined
-							: "Updates are not supported on this platform."
-					}
-					control={
-						<Button
-							size="sm"
-							variant="default"
-							disabled={!supportsAutoUpdates || isCheckingForUpdates}
-							onClick={() => void checkForUpdatesNow(platform)}
-						>
-							{isCheckingForUpdates ? "Checking…" : "Check for Updates…"}
-						</Button>
-					}
-				/>
+				{softwareUpdate && (
+					<SoftwareUpdateRow
+						state={softwareUpdate.state}
+						onCheck={softwareUpdate.check}
+						onLater={softwareUpdate.later}
+						onUpdateNow={softwareUpdate.updateNow}
+						onRestartNow={softwareUpdate.updateNow}
+					/>
+				)}
 			</div>
 		</div>
 	);

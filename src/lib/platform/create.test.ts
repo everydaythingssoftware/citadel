@@ -30,7 +30,8 @@ describe("browser Platform", () => {
 	});
 	it("rejects unsupported desktop updates without invoking IPC", async () => {
 		const platform = createWebPlatform();
+		await expect(platform.updates.state()).rejects.toThrow("unavailable");
 		await expect(platform.updates.check()).rejects.toThrow("unavailable");
-		await expect(platform.updates.install()).rejects.toThrow("unavailable");
+		await expect(platform.updates.updateNow()).rejects.toThrow("unavailable");
 	});
 });

@@ -65,14 +65,21 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbCmdRecoverDatabase",
 	],
 	"src/lib/platform/updates/tauri.ts": [
+		"clbQuerySoftwareUpdate",
 		"clbCmdCheckForUpdates",
-		"clbCmdInstallUpdateIfAvailable",
+		"clbCmdUpdateLater",
+		"clbCmdUpdateNow",
+		"clbCmdOpenSoftwareUpdate",
 	],
 };
 
 /** Generated tauri-specta events, owned like commands. */
 export const eventsByAdapter: Record<string, readonly string[]> = {
 	"src/lib/services/library-catalog/tauri.ts": ["librariesChanged"],
+	"src/lib/platform/updates/tauri.ts": [
+		"softwareUpdateChanged",
+		"showSoftwareUpdate",
+	],
 };
 
 function resolve(file: string, specifier: string): string {

@@ -1,0 +1,19 @@
+.button {
+	position: relative;
+	color: var(--ctd-ink);
+}
+
+/* Top-right, like macOS badges. */
+.badge {
+	position: absolute;
+	top: 3px;
+	right: 2px;
+}
+
+/* Punches a gap around the dot out of the gear itself, so the two read as
+ * separate shapes on any background, including the translucent sidebar.
+ * The 18px gear sits centered in the 28px button, so the dot's center
+ * (button 22px, 7px) is (17px, 2px) in the gear's own coordinates. */
+.gearCutout {
+	mask-image: radial-gradient(circle at 17px 2px, transparent 5.5px, black 6px);
+}

@@ -91,8 +91,6 @@ export const App = () => {
 			autoUpdateCheckingEnabled,
 			hasCompletedFirstLaunch,
 			setHasCompletedFirstLaunch,
-			lastNotifiedUpdateVersion,
-			setLastNotifiedUpdateVersion,
 		} = useSettings.getState();
 
 		if (!autoUpdateCheckingEnabled) return;
@@ -103,21 +101,8 @@ export const App = () => {
 			return;
 		}
 
-		safeAsyncEventHandler(async () => {
-			const updateCheckResult = await platform.updates.check();
-			if (
-				updateCheckResult.has_update &&
-				updateCheckResult.version !== lastNotifiedUpdateVersion
-			) {
-				await setLastNotifiedUpdateVersion(updateCheckResult.version);
-				toast.show({
-					id: "auto-update-available",
-					title: "Update available",
-					message: `Version ${updateCheckResult.version} is available. Open ⚙ to install.`,
-					duration: 7000,
-				});
-			}
-		})();
+		// A found update badges the sidebar gear (CDL-51).
+		safeAsyncEventHandler(platform.updates.check)();
 	}, [hydrated, platform]);
 
 	if (!hydrated) {
