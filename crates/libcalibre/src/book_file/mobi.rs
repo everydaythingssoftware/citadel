@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use chrono::NaiveDateTime;
-use mobi::{headers::Language, Mobi};
+use mobi::{
+    headers::{ExthRecord, Language},
+    Mobi,
+};
 
 use super::{non_empty, BookFileMetadata, MAX_COVER_BYTES};
 use crate::mime_type::MIMETYPE;
@@ -103,9 +106,51 @@ fn guarded<T>(read: impl FnOnce() -> Option<T>) -> Option<T> {
         .flatten()
 }
 
+/// The cover named by the EXTH cover offset (or, failing that, the thumbnail
+/// offset). Offsets count records from the first image record, which can
+/// also hold fonts, so the record must really be an image.
 fn cover(mobi: &Mobi) -> Option<Vec<u8>> {
-    let record = mobi.image_records().last()?.content;
-    (!record.is_empty() && record.len() as u64 <= MAX_COVER_BYTES).then(|| record.to_vec())
+    let records = mobi.raw_records();
+    let images = records.range(mobi.metadata.mobi.first_image_index as usize..);
+    [ExthRecord::CoverOffset, ExthRecord::ThumbOffset]
+        .into_iter()
+        .filter_map(|record| exth_u32(mobi, record))
+        .filter_map(|offset| images.get(usize::try_from(offset).ok()?))
+        .map(|record| record.content)
+        .find(|content| is_image(content) && content.len() as u64 <= MAX_COVER_BYTES)
+        .map(<[u8]>::to_vec)
+}
+
+fn exth_u32(mobi: &Mobi, record: ExthRecord) -> Option<u32> {
+    let bytes = mobi.metadata.exth_record(record)?.first()?;
+    let offset = u32::from_be_bytes(bytes.get(..4)?.try_into().ok()?);
+    // 0xFFFFFFFF marks an absent record.
+    (offset != u32::MAX).then_some(offset)
+}
+
+fn is_image(content: &[u8]) -> bool {
+    [&b"\xFF\xD8\xFF"[..], b"\x89PNG", b"GIF8"]
+        .iter()
+        .any(|magic| content.starts_with(magic))
+}
+
+const NAME_SUFFIXES: [&str; 8] = ["jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "phd"];
+
+/// MOBI files often store authors as "Last, First"; Citadel stores display
+/// names and derives the sort name itself.
+fn display_name(author: &str) -> Option<String> {
+    let author = non_empty(author)?;
+    match author.split_once(',') {
+        Some((last, first))
+            if !first.contains(',')
+                && !last.trim().is_empty()
+                && !first.trim().is_empty()
+                && !NAME_SUFFIXES.contains(&first.trim().to_lowercase().as_str()) =>
+        {
+            Some(format!("{} {}", first.trim(), last.trim()))
+        }
+        _ => Some(author),
+    }
 }
 
 pub(super) fn read_metadata(path: &Path, format: MIMETYPE) -> Option<BookFileMetadata> {
@@ -124,10 +169,11 @@ fn read_metadata_from(mobi: &Mobi, format: MIMETYPE) -> Option<BookFileMetadata>
         format,
         title: non_empty(&mobi.title()),
         author_names: mobi
-            .author()
-            .as_deref()
-            .and_then(non_empty)
+            .metadata
+            .exth_record(ExthRecord::Author)
             .into_iter()
+            .flatten()
+            .filter_map(|author| display_name(&String::from_utf8_lossy(author)))
             .collect(),
         identifier: mobi
             .isbn()
@@ -155,6 +201,36 @@ pub(super) fn cover_image_data(path: &Path) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn last_first_authors_become_display_names() {
+        assert_eq!(
+            display_name("Dinniman, Matt").as_deref(),
+            Some("Matt Dinniman")
+        );
+        assert_eq!(
+            display_name(" Pierce Brown ").as_deref(),
+            Some("Pierce Brown")
+        );
+        assert_eq!(
+            display_name("Martin Luther King, Jr.").as_deref(),
+            Some("Martin Luther King, Jr.")
+        );
+        assert_eq!(
+            display_name("Smith, John, Jane").as_deref(),
+            Some("Smith, John, Jane")
+        );
+        assert_eq!(display_name("Plato,").as_deref(), Some("Plato,"));
+        assert_eq!(display_name(" "), None);
+    }
+
+    #[test]
+    fn only_image_records_are_covers() {
+        assert!(is_image(b"\xFF\xD8\xFF\xE0jpeg"));
+        assert!(is_image(b"\x89PNG\r\n"));
+        assert!(!is_image(b"FONT\0\0"));
+        assert!(!is_image(b""));
+    }
 
     #[test]
     fn unreadable_files_have_no_metadata() {
