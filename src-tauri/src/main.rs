@@ -186,6 +186,7 @@ fn run_tauri_backend() -> std::io::Result<()> {
                         state: Some(EffectState::FollowsWindowActiveState),
                         radius: None,
                         color: None,
+                        interactive: false,
                     }) {
                         eprintln!("window effects unavailable: {err}");
                     }
