@@ -17,8 +17,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 chrono = { version = "0.4.31", features = ["serde"] }
 diesel = { version = "2.1.0", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
-epub = "2.1.1"
-mobi = "0.8.0"
 netdev = { version = "=0.45.0", default-features = false }
 citadel-core = { path = "../crates/citadel-core" }
 citadel-opds = { path = "../crates/citadel-opds" }

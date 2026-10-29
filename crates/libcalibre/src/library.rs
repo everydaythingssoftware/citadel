@@ -5,7 +5,7 @@ use diesel::{prelude::*, sql_query, OptionalExtension, RunQueryDsl, SqliteConnec
 use sanitise_file_name::sanitise;
 
 use crate::{
-    cover_image::cover_image_data_from_path,
+    book_file::cover_image_data,
     custom_columns::{self, CustomColumn, CustomColumnKind, CustomColumnSpec, CustomValue},
     entities::book_file::NewBookFile,
     operations,
@@ -426,7 +426,7 @@ impl Library {
 
         // 6. Extract cover image
         if let Some(primary_file) = book.file_paths.first() {
-            if let Ok(Some(cover_data)) = cover_image_data_from_path(primary_file) {
+            if let Some(cover_data) = cover_image_data(primary_file) {
                 let cover_path = library_root.join(&book_dir_relative).join("cover.jpg");
                 let _ = std::fs::write(&cover_path, &cover_data);
                 let _ = book_queries::update(

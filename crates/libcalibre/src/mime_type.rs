@@ -1,3 +1,4 @@
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MIMETYPE {
     EPUB,
     MOBI,
@@ -87,21 +88,6 @@ pub fn mime_type_from_extension(extension: &str) -> &'static str {
         "gif" => "image/gif",
         "webp" => "image/webp",
         _ => "application/octet-stream",
-    }
-}
-
-impl PartialEq for MIMETYPE {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (MIMETYPE::EPUB, MIMETYPE::EPUB)
-                | (MIMETYPE::MOBI, MIMETYPE::MOBI)
-                | (MIMETYPE::PDF, MIMETYPE::PDF)
-                | (MIMETYPE::KF7, MIMETYPE::KF7)
-                | (MIMETYPE::KF8, MIMETYPE::KF8)
-                | (MIMETYPE::TXT, MIMETYPE::TXT)
-                | (MIMETYPE::UNKNOWN, MIMETYPE::UNKNOWN)
-        )
     }
 }
 
