@@ -5,6 +5,12 @@
 	padding: 26px 28px 14px;
 }
 
+/* No lone last word under the title or intro. */
+.body h1,
+.body p {
+	text-wrap: balance;
+}
+
 .quit {
 	display: flex;
 	justify-content: center;

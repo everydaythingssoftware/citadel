@@ -14,7 +14,6 @@ const problem = (overrides: Partial<DatabaseProblem>): DatabaseProblem => ({
 });
 
 const meta = {
-	title: "Organisms/DatabaseRecovery",
 	component: DatabaseRecoveryCard,
 	args: {
 		problem: problem({}),
