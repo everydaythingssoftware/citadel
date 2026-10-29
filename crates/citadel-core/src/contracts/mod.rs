@@ -4,7 +4,7 @@ mod mutations;
 mod query;
 
 pub use author::NewAuthor;
-pub use mutations::{AuthorUpdate, BookUpdate};
+pub use mutations::{AuthorUpdate, BookUpdate, DeleteBooksOutcome};
 pub use query::{
     BookSortOrder, LibraryBookPage, LibraryBookQuery, LibraryPublisher, LibrarySeries, LibraryTag,
 };

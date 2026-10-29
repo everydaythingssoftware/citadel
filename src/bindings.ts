@@ -599,11 +599,11 @@ export type DatabaseProblem = { kind: DatabaseProblemKind; databasePath: string;
 steps: RecoveryStep[] }
 export type DatabaseProblemKind = "damaged" | "newerVersion" | "migrationFailed" | "migrationInterrupted" | "unreadable"
 /**
- * Result of [`clb_cmd_delete_books`]. The books are gone from the library
- * either way; `trash_failures` lists folder paths and errors for files
- * that could not be moved to the system trash.
+ * Result of deleting books. The books are gone from the library either way;
+ * `folder_failures` lists folders, relative to the library, that could not
+ * be removed, each with its error.
  */
-export type DeleteBooksOutcome = { deleted: number; trash_failures: string[] }
+export type DeleteBooksOutcome = { deleted: number; folder_failures: string[] }
 export type DetectedLibrary = { path: string; source: DetectionSource }
 /**
  * Where [`detect_calibre_library`] found its hit.
@@ -702,7 +702,11 @@ text: string | null; author_id: string | null; series_id: number | null; tag_id:
 limit: number | null; offset: number }
 export type LibraryEntry = { id: string; displayName: string; absolutePath: string }
 export type LibraryError = { code: LibraryErrorCode; message: string }
-export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "unavailable" | 
+export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | 
+/**
+ * The library is open for reading only, so writes are refused.
+ */
+"readOnly" | "unavailable" | 
 /**
  * A request body or declared size exceeds a limit.
  */

@@ -1,7 +1,7 @@
 import type { ClientOptions } from "openapi-fetch";
 import type { CoverThumbnail, LibraryBook } from "@/bindings";
 import { createCitadelHttpClient } from "@/lib/api/client";
-import type { Library } from "./types";
+import { BookDeletion, type Library } from "./types";
 
 const unsupported = async (): Promise<never> => {
 	throw new Error(
@@ -49,6 +49,7 @@ export const createHttpLibrary = (
 
 	return {
 		readOnly: true,
+		bookDeletion: BookDeletion.permanent,
 		queryBooks: async (query) => {
 			if (query.limit !== null && query.limit <= 200) {
 				const page = await unwrap(
@@ -125,8 +126,17 @@ export const createHttpLibrary = (
 		sendToDevice: unsupported,
 		updateBook: unsupported,
 		updateAuthor: unsupported,
-		deleteAuthor: unsupported,
-		deleteBooks: unsupported,
+		deleteAuthor: async (authorId) => {
+			const { error, response } = await client.DELETE(
+				"/api/authors/{author_id}",
+				{ params: { path: { author_id: authorId } } },
+			);
+			if (error) throw new Error(error.message);
+			if (!response.ok)
+				throw new Error(`Library request failed (${response.status})`);
+		},
+		deleteBooks: (bookIds) =>
+			unwrap(client.POST("/api/books/delete", { body: { book_ids: bookIds } })),
 		deleteBookIdentifier: unsupported,
 		upsertBookIdentifier: unsupported,
 		checkFileImportable: unsupported,

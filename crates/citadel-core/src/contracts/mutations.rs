@@ -64,3 +64,13 @@ impl AuthorUpdate {
         }
     }
 }
+
+/// Result of deleting books. The books are gone from the library either way;
+/// `folder_failures` lists folders, relative to the library, that could not
+/// be removed, each with its error.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, Eq, PartialEq)]
+pub struct DeleteBooksOutcome {
+    pub deleted: u32,
+    pub folder_failures: Vec<String>,
+}

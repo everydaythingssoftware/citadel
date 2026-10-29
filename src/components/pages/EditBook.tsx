@@ -30,7 +30,7 @@ import {
 } from "@/components/ui";
 import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
 import { safeAsyncEventHandler } from "@/lib/async";
-import { deleteBookDialogTitle } from "@/lib/delete-book-title";
+import { deleteBookCopy, deleteBookDialogTitle } from "@/lib/delete-book-title";
 import {
 	type CustomFieldValue,
 	buildCustomFieldValues,
@@ -46,6 +46,7 @@ import {
 } from "@/lib/languages";
 import { deepLinkForIdentifier } from "@/lib/metadata-providers/registry";
 import { formatSeriesIndex } from "@/lib/series";
+import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
 import { BookCover } from "../atoms/BookCover";
 import { MetadataSearchModal } from "../molecules/MetadataSearchModal";
 import { RichTextEditor } from "../molecules/RichTextEditor";
@@ -128,6 +129,7 @@ interface BookPageProps {
 	onSave: (bookUpdate: BookUpdate) => Promise<void>;
 	onDeleteIdentifier: (bookId: string, identifierId: number) => Promise<void>;
 	onDelete?: () => Promise<void>;
+	deletion?: TBookDeletion;
 	onReloadBooks: () => Promise<void>;
 	onUpsertIdentifier: (
 		bookId: string,
@@ -147,6 +149,7 @@ export const BookPage = ({
 	onDeleteIdentifier,
 	onReloadBooks,
 	onDelete,
+	deletion = BookDeletion.trash,
 }: BookPageProps) => {
 	return (
 		<>
@@ -160,19 +163,28 @@ export const BookPage = ({
 				onReloadBooks={onReloadBooks}
 				onUpsertIdentifier={onUpsertIdentifier}
 			/>
-			{onDelete && <DeleteBookSection title={book.title} onDelete={onDelete} />}
+			{onDelete && (
+				<DeleteBookSection
+					title={book.title}
+					deletion={deletion}
+					onDelete={onDelete}
+				/>
+			)}
 		</>
 	);
 };
 
 const DeleteBookSection = ({
 	title,
+	deletion,
 	onDelete,
 }: {
 	title: string;
+	deletion: TBookDeletion;
 	onDelete: () => Promise<void>;
 }) => {
 	const confirmation = useDeleteBookConfirmation(onDelete);
+	const copy = deleteBookCopy(deletion);
 	return (
 		<section className={styles.deleteSection} aria-label="Delete book">
 			{confirmation.error && (
@@ -193,8 +205,8 @@ const DeleteBookSection = ({
 				onOpenChange={confirmation.setOpen}
 				title={deleteBookDialogTitle(title)}
 				textAlign="left"
-				description="This book will be removed from Citadel and its files moved to the Trash. You can recover the files, then re-import the book."
-				confirmLabel="Move to Trash"
+				description={copy.description}
+				confirmLabel={copy.confirmLabel}
 				destructive
 				onConfirm={() => void confirmation.confirm()}
 			/>

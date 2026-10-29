@@ -65,6 +65,180 @@
         ]
       }
     },
+    "/api/authors/{author_id}": {
+      "delete": {
+        "description": "Delete an author with no books.",
+        "operationId": "deleteAuthor",
+        "parameters": [
+          {
+            "name": "author_id",
+            "in": "path",
+            "description": "Library author ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/books/delete": {
+      "post": {
+        "description": "Permanently delete books and their files; this can't be undone. Nothing is deleted if any ID is unknown. Folders that could not be removed are listed, relative to the library, in folder_failures.",
+        "operationId": "deleteBooks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteBooksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteBooksOutcome"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/books/query": {
       "post": {
         "description": "Query the configured library. HTTP requires an explicit limit between 0 and 200; zero returns only the total. No arbitrary library paths are accepted.",
@@ -1748,6 +1922,42 @@
         ],
         "description": "A custom-column value crossing the application boundary.\n\nMirrors `libcalibre::CustomValue`, except datetimes travel as RFC3339\nstrings and integers as `i32` (specta cannot export `i64` without bigint\nsupport)."
       },
+      "DeleteBooksOutcome": {
+        "type": "object",
+        "description": "Result of deleting books. The books are gone from the library either way;\n`folder_failures` lists folders, relative to the library, that could not\nbe removed, each with its error.",
+        "required": [
+          "deleted",
+          "folder_failures"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "folder_failures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "DeleteBooksRequest": {
+        "type": "object",
+        "required": [
+          "book_ids"
+        ],
+        "properties": {
+          "book_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "Identifier": {
         "type": "object",
         "description": "Book identifiers, such as ISBN, DOI, Google Books ID, etc.",
@@ -2023,6 +2233,7 @@
           "unauthorized",
           "rateLimited",
           "notFound",
+          "readOnly",
           "unavailable",
           "tooLarge",
           "conflict",
