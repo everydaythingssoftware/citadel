@@ -45,7 +45,7 @@
   },
   "productName": "Citadel",
   "mainBinaryName": "Citadel",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "identifier": "software.everydaythings.citadel",
   "plugins": {
     "updater": {
