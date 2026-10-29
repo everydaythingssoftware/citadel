@@ -717,11 +717,9 @@ dependencies = [
  "citadel-core",
  "citadel-opds",
  "diesel",
- "epub",
  "image",
  "libcalibre",
  "log",
- "mobi",
  "netdev",
  "quick-xml 0.38.4",
  "regex",
@@ -2797,6 +2795,7 @@ dependencies = [
  "image",
  "insta",
  "mobi",
+ "percent-encoding",
  "proptest",
  "regex",
  "rusqlite",
@@ -2807,6 +2806,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "uuid",
+ "zip 3.0.0",
 ]
 
 [[package]]
