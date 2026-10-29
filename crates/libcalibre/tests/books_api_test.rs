@@ -835,7 +835,9 @@ fn author_folder_name_is_sanitised() {
     let mut book = empty_book("Live");
     book.author_names = vec!["AC/DC".to_string()];
     let book = lib.add_book(book).unwrap();
-    let components: Vec<_> = std::path::Path::new(&book.book_dir_path).components().collect();
+    let components: Vec<_> = std::path::Path::new(&book.book_dir_path)
+        .components()
+        .collect();
     assert_eq!(components.len(), 2, "{}", book.book_dir_path);
     assert!(temp.path().join(&book.book_dir_path).is_dir());
 }
