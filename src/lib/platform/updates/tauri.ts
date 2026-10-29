@@ -1,27 +1,25 @@
+import { commands, events } from "@/bindings";
 import type { UpdatesAdapter } from "../types";
-import { commands, type UpdateCheckResult } from "@/bindings";
 
-const checkForUpdates = async (): Promise<UpdateCheckResult> => {
-	const result = await commands.clbCmdCheckForUpdates();
-
-	if (result.status === "error") {
-		throw new Error(result.error);
-	}
-
+const unwrap = <TValue>(
+	result: { status: "ok"; data: TValue } | { status: "error"; error: string },
+): TValue => {
+	if (result.status === "error") throw new Error(result.error);
 	return result.data;
 };
 
-const installUpdateIfAvailable = async (): Promise<"no-update"> => {
-	const result = await commands.clbCmdInstallUpdateIfAvailable();
-
-	if (result.status === "error") {
-		throw new Error(result.error);
-	}
-
-	return result.data as "no-update";
-};
-
 export const tauriUpdates: UpdatesAdapter = {
-	check: checkForUpdates,
-	install: installUpdateIfAvailable,
+	state: () => commands.clbQuerySoftwareUpdate(),
+	onChange: (handler) =>
+		events.softwareUpdateChanged.listen((event) => handler(event.payload)),
+	onShowRequested: (handler) =>
+		events.showSoftwareUpdate.listen(() => handler()),
+	check: async () => {
+		unwrap(await commands.clbCmdCheckForUpdates());
+	},
+	later: async () => {
+		unwrap(await commands.clbCmdUpdateLater());
+	},
+	updateNow: async () => unwrap(await commands.clbCmdUpdateNow()),
+	showInSettings: () => commands.clbCmdOpenSoftwareUpdate(),
 };

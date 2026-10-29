@@ -1,0 +1,51 @@
+/* Same metrics as a settings row (SettingsPanes.module.css .row). */
+.row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	min-height: 2.375rem;
+	padding: 0.4375rem 0.875rem;
+}
+
+.label {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4375rem;
+	min-width: 0;
+	font-size: 0.8125rem;
+	line-height: 1.35;
+	color: var(--ctd-ink);
+}
+
+.controls {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-left: auto;
+}
+
+.progress {
+	width: 9rem;
+}
+
+.enter {
+	animation: row-enter 180ms ease-out;
+}
+
+@keyframes row-enter {
+	from {
+		opacity: 0;
+		transform: translateY(2px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.enter {
+		animation: none;
+	}
+}

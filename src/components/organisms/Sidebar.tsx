@@ -1,20 +1,30 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useEffect, useState } from "react";
-import { F7Gear } from "@/components/icons/F7Gear";
+import { useEffect, useMemo, useState } from "react";
 import { F7Pencil } from "@/components/icons/F7Pencil";
 import { F7Trash } from "@/components/icons/F7Trash";
 import { TablerLogout } from "@/components/icons/TablerLogout";
-import { AlertDialog, IconButton, TextInput, Tooltip } from "@/components/ui";
+import { SettingsButton } from "@/components/molecules/SettingsButton";
+import { IconButton, TextInput, Tooltip } from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
 import { usePlatform } from "@/lib/platform/context";
-import { useAppUpdates } from "@/lib/hooks/use-app-updates";
+import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import {
 	type BrowserSessionControls,
 	useBrowserSessionControls,
 } from "@/lib/hooks/use-browser-session";
 import { useOpenSettings } from "@/lib/hooks/use-open-settings";
+import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
+import {
+	type BookRouteFilters,
+	routeFiltersFromSearch,
+	shelfInLibrary,
+	shelfLeftRoute,
+	shelfMatchesRoute,
+	shelfRouteFilters,
+} from "@/lib/shelves";
 import type { SmartShelf } from "@/lib/platform/settings/types";
+import { pendingUpdateVersion } from "@/lib/updates/software-update";
 import { LibraryState, useLibraryState } from "@/stores/library/store";
 import { useLibraryView } from "@/stores/library-view/store";
 import { deleteSmartShelf, renameSmartShelf } from "@/stores/settings/actions";
@@ -28,60 +38,55 @@ export const Sidebar = () => {
 	const { location } = useRouterState();
 	const openSettings = useOpenSettings();
 	const session = useBrowserSessionControls();
-
-	const isUpdatePromptOpen = useAppUpdates((s) => s.isUpdatePromptOpen);
-	const isInstallingUpdate = useAppUpdates((s) => s.isInstallingUpdate);
-	const closeUpdatePrompt = useAppUpdates((s) => s.closeUpdatePrompt);
-	const installAvailableUpdate = useAppUpdates((s) => s.installAvailableUpdate);
+	const softwareUpdate = useSoftwareUpdate();
+	const updateVersion = softwareUpdate
+		? pendingUpdateVersion(softwareUpdate.state.status)
+		: null;
 
 	if (state !== LibraryState.ready) {
 		return null;
 	}
 
 	return (
-		<>
-			<AlertDialog
-				open={isUpdatePromptOpen}
-				onOpenChange={(open) => {
-					// The old modal disabled escape/outside-click closes while the
-					// update was installing; keep the prompt open in that state.
-					// Read the flag from the store so the Action click (which sets
-					// it synchronously before Radix requests the close) is seen.
-					if (!open && !useAppUpdates.getState().isInstallingUpdate) {
-						closeUpdatePrompt();
-					}
-				}}
-				title="Update available"
-				description="A new Citadel release is available. Install now?"
-				confirmLabel={
-					isInstallingUpdate ? "Installing…" : "Install and restart"
-				}
-				cancelLabel="Later"
-				onConfirm={() => void installAvailableUpdate(platform)}
-			/>
-			<SidebarPure
-				currentPathname={location.pathname}
-				openSettings={openSettings}
-				session={session}
-			/>
-		</>
+		<SidebarPure
+			currentPathname={location.pathname}
+			routeFilters={routeFiltersFromSearch(location.search)}
+			openSettings={
+				updateVersion
+					? safeAsyncEventHandler(platform.updates.showInSettings)
+					: openSettings
+			}
+			updateVersion={updateVersion}
+			session={session}
+		/>
 	);
 };
 
 interface SidebarPureProps {
 	currentPathname: string;
+	/** The Books route's deep-link filters, to tell which shelf is showing. */
+	routeFilters: BookRouteFilters;
 	openSettings: () => void;
+	/** Version of a waiting Citadel update; badges the gear. */
+	updateVersion: string | null;
 	/** The signed-in browser user; null on desktop. */
 	session: BrowserSessionControls | null;
 }
 
 const SidebarPure = ({
 	currentPathname,
+	routeFilters,
 	openSettings,
+	updateVersion,
 	session,
 }: SidebarPureProps) => {
 	const platform = usePlatform();
-	const smartShelves = useSettings((s) => s.smartShelves);
+	const allShelves = useSettings((s) => s.smartShelves);
+	const libraryId = useLibrarySelection().activeLibrary?.id;
+	const smartShelves = useMemo(
+		() => allShelves.filter((shelf) => shelfInLibrary(shelf.filter, libraryId)),
+		[allShelves, libraryId],
+	);
 	const libraryCount = useSettings((s) => s.libraryPaths.length);
 	const hydrated = useSettings((s) => s.hydrated);
 	const activeShelfId = useLibraryView((s) => s.activeShelfId);
@@ -89,6 +94,8 @@ const SidebarPure = ({
 	const clearMissingActiveShelf = useLibraryView(
 		(s) => s.clearMissingActiveShelf,
 	);
+	const detachShelf = useLibraryView((s) => s.detachShelf);
+	const { author_id, series_id, tag_id, publisher_id } = routeFilters;
 
 	// activeShelfId comes from localStorage, shelves from settings.json; drop a
 	// shelf id that no longer exists once settings have hydrated.
@@ -97,6 +104,33 @@ const SidebarPure = ({
 			clearMissingActiveShelf(smartShelves.map((shelf) => shelf.id));
 		}
 	}, [hydrated, smartShelves, clearMissingActiveShelf]);
+
+	// A shelf is only "showing" while the route carries its tag/author/series/
+	// publisher filter. When the route stops matching (the filter token was
+	// removed, or the app relaunched on a bare route), release the shelf
+	// rather than label a different view with its name.
+	useEffect(() => {
+		if (!hydrated || currentPathname !== "/") return;
+		const { activeShelfId: currentId } = useLibraryView.getState();
+		const active = smartShelves.find((shelf) => shelf.id === currentId);
+		if (
+			shelfLeftRoute(
+				{ author_id, series_id, tag_id, publisher_id },
+				active?.filter,
+			)
+		) {
+			detachShelf();
+		}
+	}, [
+		hydrated,
+		currentPathname,
+		smartShelves,
+		author_id,
+		series_id,
+		tag_id,
+		publisher_id,
+		detachShelf,
+	]);
 
 	const isAllBooksActive = currentPathname === "/" && activeShelfId === null;
 
@@ -153,7 +187,11 @@ const SidebarPure = ({
 							<ShelfRow
 								key={shelf.id}
 								shelf={shelf}
-								isActive={currentPathname === "/" && activeShelfId === shelf.id}
+								isActive={
+									currentPathname === "/" &&
+									activeShelfId === shelf.id &&
+									shelfMatchesRoute(shelf.filter, routeFilters)
+								}
 							/>
 						))}
 					</div>
@@ -171,14 +209,11 @@ const SidebarPure = ({
 						</IconButton>
 					</Tooltip>
 				)}
-				<IconButton
-					aria-label="Settings"
-					className={clsx("ctd-settings-button", styles.settingsButton)}
+				<SettingsButton
+					updateVersion={updateVersion}
 					onClick={openSettings}
-				>
-					{/* F7Gear hardcodes width/height 56; size it to fit the button. */}
-					<F7Gear width={18} height={18} />
-				</IconButton>
+					className={clsx("ctd-settings-button", styles.settingsButton)}
+				/>
 			</div>
 		</div>
 	);
@@ -242,7 +277,7 @@ const ShelfRow = ({ shelf, isActive }: ShelfRowProps) => {
 				data-active={isActive || undefined}
 				onClick={() => {
 					applyShelf(shelf);
-					void navigate({ to: "/" });
+					void navigate({ to: "/", search: shelfRouteFilters(shelf.filter) });
 				}}
 			>
 				<span className={styles.shelfName}>{shelf.name}</span>

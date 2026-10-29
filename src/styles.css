@@ -64,6 +64,7 @@
 	--ctd-danger-bg-hover: oklch(from var(--pal-red) calc(l - 0.06) c h);
 	--ctd-danger-text: var(--pal-red-text);
 	--ctd-danger-border: oklch(from var(--pal-red) calc(l - 0.06) c h);
+	--ctd-update-badge: oklch(62% 0.22 27);
 	/* The last layer is a tight contact shadow so covers sit on the shelf
 	   instead of floating above it. */
 	--ctd-cover-shadow:
@@ -202,6 +203,7 @@
 	--ctd-danger-bg-hover: oklch(from var(--pal-red) calc(l - 0.07) c h);
 	--ctd-danger-text: var(--pal-red-text);
 	--ctd-danger-border: oklch(from var(--pal-red) calc(l - 0.07) c h);
+	--ctd-update-badge: oklch(62% 0.22 27);
 	--ctd-cover-shadow:
 		0 0 0 1px oklch(100% 0 0 / 0.07), 0 8px 18px oklch(0% 0 0 / 0.5),
 		0 10px 8px -8px oklch(0% 0 0 / 0.6);

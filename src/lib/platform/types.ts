@@ -2,7 +2,8 @@ import type {
 	DatabaseBackup,
 	DatabaseProblem,
 	RecoveryStep,
-	UpdateCheckResult,
+	SoftwareUpdateState,
+	UpdateNowOutcome,
 } from "@/bindings";
 import type { SettingsManager } from "./settings/types";
 
@@ -55,9 +56,20 @@ export interface WindowAdapter {
 	hideOnClose(): Promise<() => void>;
 }
 
+/** Citadel's own updates; the desktop backend owns the state (CDL-51). */
 export interface UpdatesAdapter {
-	check(): Promise<UpdateCheckResult>;
-	install(): Promise<"no-update">;
+	state(): Promise<SoftwareUpdateState>;
+	/** Every state change, in every window. */
+	onChange(handler: (state: SoftwareUpdateState) => void): Promise<() => void>;
+	/** Settings is asked to show Software Update. */
+	onShowRequested(handler: () => void): Promise<() => void>;
+	check(): Promise<void>;
+	/** Downloads now and installs at quit, where the install type allows. */
+	later(): Promise<void>;
+	/** Installs and relaunches; checks first if nothing was checked yet. */
+	updateNow(): Promise<UpdateNowOutcome>;
+	/** Opens Settings on General → Software Update. */
+	showInSettings(): Promise<void>;
 }
 
 /** citadel.db that startup couldn't open (ADR 0009). */

@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "citadel-desktop"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "axum",
  "chrono",
