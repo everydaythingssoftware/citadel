@@ -8,6 +8,7 @@ import {
 	hasRouteFilters,
 	routeFiltersFromSearch,
 	routeFiltersToShelf,
+	shelfInLibrary,
 	shelfLeftRoute,
 	shelfMatchesRoute,
 	shelfRouteFilters,
@@ -44,14 +45,17 @@ const baseFilter: SmartShelfFilter = {
 
 describe("shelf route filters", () => {
 	it("round-trips a tag view through a shelf back to route params", () => {
-		const saved = { ...baseFilter, ...routeFiltersToShelf({ tag_id: 7 }) };
+		const saved = {
+			...baseFilter,
+			...routeFiltersToShelf({ tag_id: 7 }, undefined),
+		};
 		expect(saved.tagId).toBe(7);
 		expect(shelfRouteFilters(saved)).toEqual({ tag_id: 7 });
 	});
 
 	it("round-trips author, series and publisher views too", () => {
 		const route = { author_id: "a1", series_id: 2, publisher_id: 3 };
-		const saved = { ...baseFilter, ...routeFiltersToShelf(route) };
+		const saved = { ...baseFilter, ...routeFiltersToShelf(route, undefined) };
 		expect(shelfRouteFilters(saved)).toEqual(route);
 	});
 
@@ -61,7 +65,7 @@ describe("shelf route filters", () => {
 	});
 
 	it("does not write undefined keys into the saved shelf", () => {
-		expect(Object.keys(routeFiltersToShelf({}))).toEqual([]);
+		expect(Object.keys(routeFiltersToShelf({}, "lib-a"))).toEqual([]);
 	});
 
 	it("matches only the exact filters of the shelf", () => {
@@ -123,5 +127,25 @@ describe("shelfLeftRoute", () => {
 
 	it("has nothing to flag without an active shelf", () => {
 		expect(shelfLeftRoute({ tag_id: 7 }, undefined)).toBe(false);
+	});
+});
+
+describe("shelf library scope", () => {
+	it("scopes a shelf with route filters to its library", () => {
+		expect(routeFiltersToShelf({ tag_id: 7 }, "lib-a")).toEqual({
+			tagId: 7,
+			libraryId: "lib-a",
+		});
+	});
+
+	it("leaves a shelf without route filters global", () => {
+		expect(routeFiltersToShelf({}, "lib-a")).toEqual({});
+	});
+
+	it("lists a scoped shelf only in its own library", () => {
+		const shelf = { ...baseFilter, tagId: 7, libraryId: "lib-a" };
+		expect(shelfInLibrary(shelf, "lib-a")).toBe(true);
+		expect(shelfInLibrary(shelf, "lib-b")).toBe(false);
+		expect(shelfInLibrary(baseFilter, "lib-b")).toBe(true);
 	});
 });

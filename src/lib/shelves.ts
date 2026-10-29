@@ -41,18 +41,29 @@ export const shelfRouteFilters = (
 	...(filter.publisherId !== undefined && { publisher_id: filter.publisherId }),
 });
 
-/** The deep-link filters of the current view, as shelf filter fields. */
+/**
+ * The deep-link filters of the current view, as shelf filter fields. Ids are
+ * library-local, so a shelf with any of them is scoped to `libraryId`.
+ */
 export const routeFiltersToShelf = (
 	route: BookRouteFilters,
+	libraryId: string | undefined,
 ): Pick<
 	SmartShelfFilter,
-	"authorId" | "seriesId" | "tagId" | "publisherId"
+	"authorId" | "seriesId" | "tagId" | "publisherId" | "libraryId"
 > => ({
 	...(route.author_id !== undefined && { authorId: route.author_id }),
 	...(route.series_id !== undefined && { seriesId: route.series_id }),
 	...(route.tag_id !== undefined && { tagId: route.tag_id }),
 	...(route.publisher_id !== undefined && { publisherId: route.publisher_id }),
+	...(hasRouteFilters(route) && libraryId !== undefined && { libraryId }),
 });
+
+/** Whether a shelf belongs in this library; shelves without ids are global. */
+export const shelfInLibrary = (
+	filter: SmartShelfFilter,
+	libraryId: string | undefined,
+): boolean => filter.libraryId === undefined || filter.libraryId === libraryId;
 
 /** Whether the current route shows exactly the shelf's deep-link filters. */
 export const shelfMatchesRoute = (

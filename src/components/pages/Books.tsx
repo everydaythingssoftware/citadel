@@ -30,6 +30,7 @@ import {
 } from "@/lib/book-page-cache";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
+import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { usePlatform } from "@/lib/platform/context";
 import { formatSeriesIndex } from "@/lib/series";
@@ -488,6 +489,7 @@ const SaveAsShelfControl = ({
 	routeFilters,
 }: SaveAsShelfControlProps) => {
 	const applyShelf = useLibraryView((s) => s.applyShelf);
+	const libraryId = useLibrarySelection().activeLibrary?.id;
 	const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
 
 	const [isOpen, setIsOpen] = useState(false);
@@ -518,7 +520,7 @@ const SaveAsShelfControl = ({
 				query,
 				sortOrder,
 				hideRead,
-				...routeFiltersToShelf(routeFilters),
+				...routeFiltersToShelf(routeFilters, libraryId),
 			});
 			applyShelf(shelf);
 			close();

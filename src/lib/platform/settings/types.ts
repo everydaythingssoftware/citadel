@@ -26,6 +26,11 @@ export interface SmartShelfFilter {
 	seriesId?: number;
 	tagId?: number;
 	publisherId?: number;
+	/**
+	 * Calibre UUID of the library those ids belong to; set only alongside
+	 * them. Such a shelf is listed only in that library.
+	 */
+	libraryId?: string;
 }
 
 export interface SmartShelf {
