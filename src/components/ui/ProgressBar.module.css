@@ -1,0 +1,41 @@
+.track {
+	position: relative;
+	width: 100%;
+	height: 6px;
+	overflow: hidden;
+	border-radius: var(--ctd-radius-capsule);
+	background-color: var(--ctd-surface-muted);
+}
+
+.fill {
+	height: 100%;
+	border-radius: inherit;
+	background-color: var(--ctd-accent);
+	transition: width 200ms ease;
+}
+
+.track[data-indeterminate] .fill {
+	width: 30%;
+	animation: progress-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-sweep {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(340%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fill {
+		transition: none;
+	}
+
+	.track[data-indeterminate] .fill {
+		width: 100%;
+		animation: none;
+		opacity: 0.4;
+	}
+}

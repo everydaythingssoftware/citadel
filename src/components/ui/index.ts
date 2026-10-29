@@ -15,6 +15,7 @@ export { Drawer, type DrawerProps } from "./Drawer";
 export { FormField, type FormFieldProps } from "./FormField";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { LoadingOverlay, type LoadingOverlayProps } from "./LoadingOverlay";
+export { ProgressBar, type ProgressBarProps } from "./ProgressBar";
 export { SearchField, type SearchFieldProps } from "./SearchField";
 export {
 	SegmentedControl,

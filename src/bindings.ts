@@ -360,7 +360,10 @@ async clbQueryMetadataByIsbn(provider: string, isbn: string, apiKey: string) : P
     else return { status: "error", error: e  as any };
 }
 },
-async clbCmdCheckForUpdates() : Promise<Result<UpdateCheckResult, string>> {
+async clbQuerySoftwareUpdate() : Promise<SoftwareUpdateState> {
+    return await TAURI_INVOKE("clb_query_software_update");
+},
+async clbCmdCheckForUpdates() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_check_for_updates") };
 } catch (e) {
@@ -368,9 +371,21 @@ async clbCmdCheckForUpdates() : Promise<Result<UpdateCheckResult, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async clbCmdInstallUpdateIfAvailable() : Promise<Result<string, string>> {
+async clbCmdUpdateLater() : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_install_update_if_available") };
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_update_later") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Installs the available update and relaunches. With nothing checked yet
+ * (the recovery screen), checks first.
+ */
+async clbCmdUpdateNow() : Promise<Result<UpdateNowOutcome, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_update_now") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -457,6 +472,9 @@ async clbQueryOpdsCredentialSecret() : Promise<Result<OpdsCredentialSecret | nul
 },
 async clbCmdOpenSettings() : Promise<void> {
     await TAURI_INVOKE("clb_cmd_open_settings");
+},
+async clbCmdOpenSoftwareUpdate() : Promise<void> {
+    await TAURI_INVOKE("clb_cmd_open_software_update");
 }
 }
 
@@ -464,9 +482,13 @@ async clbCmdOpenSettings() : Promise<void> {
 
 
 export const events = __makeEvents__<{
-librariesChanged: LibrariesChanged
+librariesChanged: LibrariesChanged,
+showSoftwareUpdate: ShowSoftwareUpdate,
+softwareUpdateChanged: SoftwareUpdateChanged
 }>({
-librariesChanged: "libraries-changed"
+librariesChanged: "libraries-changed",
+showSoftwareUpdate: "show-software-update",
+softwareUpdateChanged: "software-update-changed"
 })
 
 /** user-defined constants **/
@@ -738,12 +760,39 @@ export type RecoveryStep =
 "update" | "restoreBackup" | "startFresh" | "tryAgain" | "quit"
 export type RemoteFile = { url: string }
 /**
+ * Asks an open Settings window to show General → Software Update.
+ */
+export type ShowSoftwareUpdate = null
+/**
+ * The update state after any change, for every window.
+ */
+export type SoftwareUpdateChanged = SoftwareUpdateState
+export type SoftwareUpdateState = { currentVersion: string; status: SoftwareUpdateStatus; 
+/**
+ * False for .deb/.rpm installs, whose installer needs a password prompt
+ * that shouldn't appear at quit.
+ */
+canInstallOnQuit: boolean }
+export type SoftwareUpdateStatus = { kind: "idle" } | { kind: "checking" } | { kind: "upToDate" } | { kind: "available"; version: string } | { kind: "downloading"; version: string; progress: number | null } | 
+/**
+ * Downloaded and verified; installs when Citadel quits.
+ */
+{ kind: "ready"; version: string } | { kind: "checkFailed"; message: string } | { kind: "updateFailed"; version: string; message: string }
+/**
  * Best-effort cloud-sync verdict for a candidate library path. Informational
  * only — the UX warns, it never blocks. Unknown providers (Seafile, Syncthing,
  * …) report `synced: false`.
  */
 export type SyncStatus = { synced: boolean; provider: string | null }
-export type UpdateCheckResult = { has_update: boolean; version: string | null }
+export type UpdateNowOutcome = 
+/**
+ * A check found nothing to install.
+ */
+"noUpdate" | 
+/**
+ * Another check or download is already running.
+ */
+"busy"
 
 /** tauri-specta globals **/
 

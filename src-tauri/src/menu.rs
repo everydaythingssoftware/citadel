@@ -1,4 +1,9 @@
 use tauri::{window::Color, AppHandle, Manager, Runtime, Theme, WebviewUrl, WebviewWindowBuilder};
+use tauri_specta::Event;
+
+use crate::app_updates::ShowSoftwareUpdate;
+#[cfg(target_os = "macos")]
+use crate::app_updates::SoftwareUpdates;
 
 #[cfg(target_os = "macos")]
 use tauri::{
@@ -10,6 +15,8 @@ use tauri::{
 const MENU_ID_SETTINGS: &str = "settings";
 #[cfg(target_os = "macos")]
 const MENU_ID_ADD_BOOK: &str = "add-book";
+#[cfg(target_os = "macos")]
+const MENU_ID_CHECK_FOR_UPDATES: &str = "check-for-updates";
 
 /// Emitted to the main window when File > Add Book… is chosen; the frontend
 /// listens for this and starts the same flow as the toolbar + button.
@@ -37,6 +44,13 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 app,
                 Some(&format!("About {app_name}")),
                 Some(about_metadata),
+            )?,
+            &MenuItem::with_id(
+                app,
+                MENU_ID_CHECK_FOR_UPDATES,
+                "Check for Updates…",
+                true,
+                None::<&str>,
             )?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(
@@ -119,10 +133,26 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     match event.id().as_ref() {
         MENU_ID_SETTINGS => open_settings_window(app),
+        MENU_ID_CHECK_FOR_UPDATES => {
+            open_software_update(app);
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                app.state::<SoftwareUpdates>().check(&app).await;
+            });
+        }
         MENU_ID_ADD_BOOK => {
             let _ = app.emit_to("main", EVENT_MENU_ADD_BOOK, ());
         }
         _ => {}
+    }
+}
+
+/// Opens Settings on General → Software Update. A new window starts there;
+/// an open one is asked to switch.
+pub fn open_software_update<R: Runtime>(app: &AppHandle<R>) {
+    open_settings_window(app);
+    if let Err(err) = ShowSoftwareUpdate.emit_to(app, "settings") {
+        log::error!("Failed to show Software Update: {err}");
     }
 }
 
@@ -198,4 +228,10 @@ pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) {
 #[specta::specta]
 pub fn clb_cmd_open_settings(app: AppHandle) {
     open_settings_window(&app);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn clb_cmd_open_software_update(app: AppHandle) {
+    open_software_update(&app);
 }

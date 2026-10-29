@@ -30,9 +30,9 @@ export const useDatabaseRecovery = (
 			setError(null);
 			const run =
 				step === "update"
-					? platform.updates.install().then((result) => {
+					? platform.updates.updateNow().then((outcome) => {
 							// A successful install restarts the app.
-							if (result === "no-update") throw new Error(NO_UPDATE_MESSAGE);
+							if (outcome === "noUpdate") throw new Error(NO_UPDATE_MESSAGE);
 						})
 					: platform.recovery.recover(step);
 			run.catch((cause: unknown) => {
