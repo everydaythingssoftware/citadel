@@ -311,11 +311,23 @@ async fn api_auth_errors_bounds_and_schema_are_consistent() {
     assert_eq!(status, StatusCode::OK, "{count}");
     assert_eq!(count["total"], 1);
     assert_eq!(count["items"], json!([]));
+    // JSON bodies are bounded by the API, not by OPDS's catalog limit.
+    let mut padded = query(json!(0));
+    padded["text"] = json!(" ".repeat(64 * 1024));
+    let (status, _, _) = request(
+        &router,
+        "POST",
+        "/api/books/query",
+        padded.to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
     let (status, _, error) = request(
         &router,
         "POST",
         "/api/books/query",
-        "x".repeat(16 * 1024 + 1),
+        "x".repeat(1024 * 1024 + 1),
         Some(&cookie),
     )
     .await;

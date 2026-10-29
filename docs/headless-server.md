@@ -148,9 +148,14 @@ access receive 404):
 
 Errors have `{ "code": "notFound", "message": "…" }` shape, with HTTP statuses
 for invalid input (400), authentication (401), cross-origin requests (403), missing books or libraries (404), admission
-limits (429), unavailable library (503), and internal failures (500). Internal
+limits (429), oversized request bodies (413), unavailable library or a busy
+server (503), and internal failures (500). Internal
 database/filesystem diagnostics are hidden from remote callers. Responses retain
 required nullable fields; request `Option` fields may be omitted or null.
+
+API request bodies are limited to 1 MiB, and requests must be answered within
+30 seconds (downloads only need to start within it). The API shares OPDS's
+request slots; OPDS keeps its own smaller limits.
 
 Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open `publicUrl` in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 
