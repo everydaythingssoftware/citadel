@@ -122,7 +122,6 @@ impl Backoff {
 /// The signed-in user, available to handlers behind [`require_session`]; write
 /// handlers derive their `Actor` from it.
 #[derive(Clone, Debug)]
-#[allow(dead_code)] // No write routes yet (CDL-37).
 pub(super) struct SignedIn(pub User);
 
 #[derive(Serialize, utoipa::ToSchema)]

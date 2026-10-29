@@ -154,31 +154,15 @@ async fn generate(state: ApiState, id: String) -> Result<CachedThumbnail, ApiFai
         {
             return Ok(cached);
         }
-        let mut reader = ImageReader::open(asset.canonical_path())
-            .map_err(|_| missing())?
-            .with_guessed_format()
-            .map_err(|_| missing())?;
-        let mut limits = Limits::default();
-        limits.max_image_width = Some(10000);
-        limits.max_image_height = Some(10000);
-        limits.max_alloc = Some(64 * 1024 * 1024);
-        reader.limits(limits);
-        let image = reader
-            .decode()
-            .map_err(|_| missing())?
-            .resize(300, 600, FilterType::Triangle)
-            .to_rgb8();
-        let mut bytes = Vec::new();
-        JpegEncoder::new_with_quality(&mut bytes, 80)
-            .encode_image(&image)
-            .map_err(|_| missing())?;
+        let reader = ImageReader::open(asset.canonical_path()).map_err(|_| missing())?;
+        let (bytes, width, height) = resized_jpeg(reader, 300, 600).ok_or_else(missing)?;
         let cached = CachedThumbnail {
             version: version.clone(),
             descriptor: CoverThumbnail {
                 book_id: id.clone(),
                 url: format!("/api/books/{id}/thumbnail?v={version}"),
-                width: image.width(),
-                height: image.height(),
+                width,
+                height,
             },
             bytes,
         };
@@ -197,4 +181,29 @@ async fn generate(state: ApiState, id: String) -> Result<CachedThumbnail, ApiFai
     .await
     .map_err(|_| LibraryError::unavailable())?
     .map_err(Into::into)
+}
+
+/// Decodes an image (within memory and size limits) and re-encodes it as a
+/// JPEG that fits `max_width` × `max_height`. Returns the bytes and size.
+pub(super) fn resized_jpeg<R: std::io::BufRead + std::io::Seek>(
+    reader: ImageReader<R>,
+    max_width: u32,
+    max_height: u32,
+) -> Option<(Vec<u8>, u32, u32)> {
+    let mut reader = reader.with_guessed_format().ok()?;
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(10000);
+    limits.max_image_height = Some(10000);
+    limits.max_alloc = Some(64 * 1024 * 1024);
+    reader.limits(limits);
+    let image = reader
+        .decode()
+        .ok()?
+        .resize(max_width, max_height, FilterType::Triangle)
+        .to_rgb8();
+    let mut bytes = Vec::new();
+    JpegEncoder::new_with_quality(&mut bytes, 80)
+        .encode_image(&image)
+        .ok()?;
+    Some((bytes, image.width(), image.height()))
 }

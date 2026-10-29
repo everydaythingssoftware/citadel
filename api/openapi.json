@@ -1152,6 +1152,361 @@
           }
         ]
       }
+    },
+    "/api/uploads": {
+      "get": {
+        "operationId": "listUploads",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadList"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createUpload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagedUpload"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/uploads/{upload_id}": {
+      "get": {
+        "operationId": "getUpload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagedUpload"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "cancelUpload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Upload cancelled"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/uploads/{upload_id}/content": {
+      "patch": {
+        "operationId": "sendUploadChunk",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Upload-Offset",
+            "in": "header",
+            "description": "Byte offset of this chunk; must equal receivedBytes",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The next bytes of the file, at most chunkBytes",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagedUpload"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/uploads/{upload_id}/cover": {
+      "get": {
+        "operationId": "getUploadCover",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1234,6 +1589,26 @@
             "minimum": 0
           }
         }
+      },
+      "CreateUpload": {
+        "type": "object",
+        "required": [
+          "fileName",
+          "size"
+        ],
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "description": "The file's name, which decides its format by extension."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The file's total size in bytes.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "CustomColumnDef": {
         "type": "object",
@@ -1649,6 +2024,9 @@
           "rateLimited",
           "notFound",
           "unavailable",
+          "tooLarge",
+          "conflict",
+          "storageFull",
           "internal"
         ]
       },
@@ -1822,6 +2200,107 @@
         },
         "additionalProperties": false
       },
+      "StagedBook": {
+        "type": "object",
+        "description": "What the uploaded file says about itself, for the user to review.",
+        "required": [
+          "format",
+          "title",
+          "authorNames",
+          "tags"
+        ],
+        "properties": {
+          "authorNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "description": "The file's format, as its extension (`epub`, `azw3`, …)."
+          },
+          "identifier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publicationDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "publisher": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title": {
+            "type": "string",
+            "description": "The file's own title, or its name when it has none."
+          }
+        }
+      },
+      "StagedUpload": {
+        "type": "object",
+        "required": [
+          "id",
+          "fileName",
+          "size",
+          "receivedBytes"
+        ],
+        "properties": {
+          "book": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StagedBook",
+                "description": "Present once every byte has arrived and the file has been read."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receivedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "ThumbnailQuery": {
         "type": "object",
         "required": [
@@ -1836,6 +2315,32 @@
           }
         },
         "additionalProperties": false
+      },
+      "UploadList": {
+        "type": "object",
+        "required": [
+          "maxFileBytes",
+          "chunkBytes",
+          "uploads"
+        ],
+        "properties": {
+          "chunkBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "maxFileBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "uploads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StagedUpload"
+            }
+          }
+        }
       }
     },
     "securitySchemes": {

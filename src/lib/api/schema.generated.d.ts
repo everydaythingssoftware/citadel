@@ -228,6 +228,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listUploads"];
+        put?: never;
+        post: operations["createUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getUpload"];
+        put?: never;
+        post?: never;
+        delete: operations["cancelUpload"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/{upload_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["sendUploadChunk"];
+        trace?: never;
+    };
+    "/api/uploads/{upload_id}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getUploadCover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -252,6 +316,15 @@ export interface components {
             url: string;
             /** Format: int32 */
             width: number;
+        };
+        CreateUpload: {
+            /** @description The file's name, which decides its format by extension. */
+            fileName: string;
+            /**
+             * Format: int64
+             * @description The file's total size in bytes.
+             */
+            size: number;
         };
         /** @description A custom column definition, as exposed to the frontend. */
         CustomColumnDef: {
@@ -377,7 +450,7 @@ export interface components {
             message: string;
         };
         /** @enum {string} */
-        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "unavailable" | "internal";
+        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "unavailable" | "tooLarge" | "conflict" | "storageFull" | "internal";
         LibraryPublisher: {
             /** Format: int32 */
             book_count: number;
@@ -428,8 +501,39 @@ export interface components {
             password: string;
             username: string;
         };
+        /** @description What the uploaded file says about itself, for the user to review. */
+        StagedBook: {
+            authorNames: string[];
+            coverUrl?: string | null;
+            /** @description The file's format, as its extension (`epub`, `azw3`, …). */
+            format: string;
+            identifier?: string | null;
+            language?: string | null;
+            /** Format: date */
+            publicationDate?: string | null;
+            publisher?: string | null;
+            tags: string[];
+            /** @description The file's own title, or its name when it has none. */
+            title: string;
+        };
+        StagedUpload: {
+            book?: components["schemas"]["StagedBook"] | null;
+            fileName: string;
+            id: string;
+            /** Format: int64 */
+            receivedBytes: number;
+            /** Format: int64 */
+            size: number;
+        };
         ThumbnailQuery: {
             book_ids: string[];
+        };
+        UploadList: {
+            /** Format: int64 */
+            chunkBytes: number;
+            /** Format: int64 */
+            maxFileBytes: number;
+            uploads: components["schemas"]["StagedUpload"][];
         };
     };
     responses: never;
@@ -1457,6 +1561,279 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    listUploads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadList"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    createUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUpload"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagedUpload"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload ID */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagedUpload"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    cancelUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload ID */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upload cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    sendUploadChunk: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Byte offset of this chunk; must equal receivedBytes */
+                "Upload-Offset": number;
+            };
+            path: {
+                /** @description Upload ID */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description The next bytes of the file, at most chunkBytes */
+        requestBody: {
+            content: {
+                "application/octet-stream": number[];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagedUpload"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getUploadCover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload ID */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": number[];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
