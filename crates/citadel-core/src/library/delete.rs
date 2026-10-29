@@ -54,7 +54,9 @@ pub fn remove_permanently(path: &Path) -> Result<(), String> {
 
 /// Hands `dir` to `remove` only if it is still a real author/book directory
 /// inside the library: never the root, never outside it, and never through a
-/// symbolic link that appeared since the database named it. A folder that is
+/// symbolic link that appeared since the database named it. A book imported
+/// without an author sits at the library root, so a single folder is allowed
+/// when it is named like a book folder, `Title (id)`. A folder that is
 /// already gone is not an error and returns `false`.
 fn remove_book_dir(
     library_root: &Path,
@@ -68,7 +70,12 @@ fn remove_book_dir(
         .strip_prefix(&root)
         .map_err(|_| "The book folder is outside the library")?;
     let components: Vec<_> = relative.components().collect();
-    if components.len() < 2
+    let shape_is_safe = match components.as_slice() {
+        [] => false,
+        [only] => is_book_folder_name(only.as_os_str()),
+        _ => true,
+    };
+    if !shape_is_safe
         || components
             .iter()
             .any(|part| !matches!(part, Component::Normal(_)))
@@ -93,6 +100,13 @@ fn remove_book_dir(
     }
     remove(dir)?;
     Ok(true)
+}
+
+fn is_book_folder_name(name: &std::ffi::OsStr) -> bool {
+    name.to_str()
+        .and_then(|name| name.strip_suffix(')'))
+        .and_then(|name| name.rsplit_once(" ("))
+        .is_some_and(|(_, id)| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// `remove_dir` refuses non-empty directories, so this never deletes anything
@@ -171,6 +185,39 @@ mod tests {
             ))
             .is_err()
         );
+    }
+
+    #[test]
+    fn book_folder_at_the_library_root_can_be_removed() {
+        let lib = TestLibrary::new();
+        let book = lib.root().join("Repair manual (287)");
+        std::fs::create_dir(&book).unwrap();
+        let outcome = lib
+            .deleted(vec![book.clone()])
+            .remove_folders(remove_permanently);
+        assert!(
+            outcome.folder_failures.is_empty(),
+            "{:?}",
+            outcome.folder_failures
+        );
+        assert!(!book.exists());
+        assert!(lib.root().join("Author/Book").is_dir());
+    }
+
+    #[test]
+    fn root_folders_not_named_like_books_are_refused() {
+        let lib = TestLibrary::new();
+        for name in ["Author", "Notes ()", "Notes (x1)", "(12)"] {
+            let folder = lib.root().join(name);
+            std::fs::create_dir_all(&folder).unwrap();
+            assert!(
+                remove_book_dir(lib.root(), &folder, |_| panic!(
+                    "{name} must not be removed"
+                ))
+                .is_err(),
+                "accepted {name:?}"
+            );
+        }
     }
 
     #[test]
