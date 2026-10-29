@@ -218,12 +218,23 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
+    const OPDS_EXIT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
     const RUNNING: u8 = 0;
     const STOPPING: u8 = 1;
     const EXITING: u8 = 2;
     let exit_phase = Arc::new(AtomicU8::new(RUNNING));
     app.run(move |app_handle, event| {
         if let tauri::RunEvent::Exit = event {
+            // ⌘Q on macOS reaches Exit without ExitRequested, so sharing
+            // hasn't stopped yet; give its downloads a moment to finish.
+            if exit_phase.load(Ordering::Acquire) == RUNNING {
+                if let Some(opds_service) = app_handle.try_state::<citadel_opds::OpdsService>() {
+                    let opds_service = opds_service.inner().clone();
+                    tauri::async_runtime::block_on(async move {
+                        let _ = tokio::time::timeout(OPDS_EXIT_DEADLINE, opds_service.stop()).await;
+                    });
+                }
+            }
             app_updates::install_pending_at_exit(app_handle);
         }
         if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
