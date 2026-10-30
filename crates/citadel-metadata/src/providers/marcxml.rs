@@ -2,7 +2,7 @@ use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::reader::NsReader;
 
-use crate::metadata::model::{
+use crate::model::{
     normalize_genre_candidates, pick_preferred_isbn, BookMetadata, GenreCandidate, MetadataProvider,
 };
 
@@ -395,9 +395,9 @@ fn strip_trailing_punct(s: &str) -> String {
 mod tests {
     use super::*;
 
-    const LOC_GAME_OF_THRONES: &str = include_str!("fixtures/loc_9780553103540.xml");
-    const DNB_RECORD: &str = include_str!("fixtures/dnb_9783462001313.xml");
-    const K10PLUS_RECORD: &str = include_str!("fixtures/k10plus_9780553103540.xml");
+    const LOC_GAME_OF_THRONES: &str = include_str!("../../fixtures/loc_9780553103540.xml");
+    const DNB_RECORD: &str = include_str!("../../fixtures/dnb_9783462001313.xml");
+    const K10PLUS_RECORD: &str = include_str!("../../fixtures/k10plus_9780553103540.xml");
 
     #[test]
     fn parses_loc_record() {

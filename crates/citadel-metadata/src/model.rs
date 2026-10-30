@@ -8,7 +8,8 @@ use specta::Type;
 /// The metadata sources Citadel can look books up against. The serialized
 /// short form is the single id used across the Rust enum, the TS string union,
 /// and the frontend registry keys.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum MetadataProvider {
     #[serde(rename = "hardcover")]
     Hardcover,
@@ -38,6 +39,29 @@ impl std::str::FromStr for MetadataProvider {
 }
 
 impl MetadataProvider {
+    pub const ALL: [Self; 5] = [
+        Self::Hardcover,
+        Self::Loc,
+        Self::Dnb,
+        Self::K10plus,
+        Self::OpenLibrary,
+    ];
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Hardcover => "Hardcover",
+            Self::Loc => "Library of Congress",
+            Self::Dnb => "Deutsche Nationalbibliothek",
+            Self::K10plus => "K10plus",
+            Self::OpenLibrary => "Open Library",
+        }
+    }
+
+    /// Whether lookups need the user's own account key.
+    pub fn requires_key(self) -> bool {
+        self == Self::Hardcover
+    }
+
     /// The identifier label a record from this provider is stored under on a
     /// book, so several providers' ids can coexist on one book.
     pub fn identifier_label(self) -> &'static str {
@@ -59,6 +83,7 @@ impl MetadataProvider {
 /// single search call — there is no separate resolve step, so the cover-less
 /// MARC sources' subjects/publisher/language survive into the applied record.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BookMetadata {
     pub provider: MetadataProvider,
     /// Provider-native id: hardcover id (stringified), LCCN, DNB control
@@ -85,6 +110,7 @@ pub struct BookMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GenreCandidate {
     pub name: String,
     /// Stable provider field identity, such as `hardcover:genre` or
@@ -117,6 +143,7 @@ pub fn normalize_genre_candidates(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ProviderStatus {
     pub provider: MetadataProvider,
     pub is_valid: bool,
@@ -176,7 +203,7 @@ pub fn pick_preferred_isbn(isbns: &[String]) -> Option<String> {
 
 /// Canonicalize any valid ISBN to its 13-digit form so that the ISBN-10 and
 /// ISBN-13 representations of the same edition compare equal.
-fn canonical_isbn13(raw: &str) -> Option<String> {
+pub fn canonical_isbn13(raw: &str) -> Option<String> {
     let n = normalize_isbn(raw)?;
     match n.len() {
         13 => Some(n),

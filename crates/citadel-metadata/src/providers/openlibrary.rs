@@ -1,11 +1,14 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::metadata::http;
-use crate::metadata::model::{normalize_isbn, BookMetadata, MetadataProvider};
+use crate::error::MetadataError;
+use crate::http::Http;
+use crate::model::{normalize_isbn, BookMetadata, MetadataProvider};
 
-const TIMEOUT_MS: u64 = 8_000;
+pub const BASE_URL: &str = "https://openlibrary.org";
+const TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_SUBJECTS: usize = 30;
 
 // ---------------------------------------------------------------------------
@@ -83,12 +86,16 @@ struct OlSearchDoc {
 // Public entry points
 // ---------------------------------------------------------------------------
 
-pub async fn search_by_isbn(isbn: &str) -> Result<Vec<BookMetadata>, String> {
+pub async fn search_by_isbn(
+    http: &Http,
+    base_url: &str,
+    isbn: &str,
+) -> Result<Vec<BookMetadata>, MetadataError> {
     let url = format!(
-        "https://openlibrary.org/api/books?bibkeys=ISBN:{}&format=json&jscmd=data",
+        "{base_url}/api/books?bibkeys=ISBN:{}&format=json&jscmd=data",
         urlencoding::encode(isbn)
     );
-    let response: HashMap<String, OlDataBook> = http::get_json(&url, TIMEOUT_MS).await?;
+    let response: HashMap<String, OlDataBook> = http.get_json(&url, TIMEOUT).await?;
     Ok(response
         .into_values()
         .next()
@@ -96,19 +103,23 @@ pub async fn search_by_isbn(isbn: &str) -> Result<Vec<BookMetadata>, String> {
         .unwrap_or_default())
 }
 
-pub async fn search(query: &str) -> Result<Vec<BookMetadata>, String> {
+pub async fn search(
+    http: &Http,
+    base_url: &str,
+    query: &str,
+) -> Result<Vec<BookMetadata>, MetadataError> {
     let url = format!(
-        "https://openlibrary.org/search.json?q={}&limit=5&fields=key,title,subtitle,author_name,first_publish_year,isbn,cover_i,edition_key,publisher,subject",
+        "{base_url}/search.json?q={}&limit=5&fields=key,title,subtitle,author_name,first_publish_year,isbn,cover_i,edition_key,publisher,subject",
         urlencoding::encode(query)
     );
-    let response: OlSearchResponse = http::get_json(&url, TIMEOUT_MS).await?;
+    let response: OlSearchResponse = http.get_json(&url, TIMEOUT).await?;
     Ok(response.docs.into_iter().map(map_search_doc).collect())
 }
 
 /// Lightweight reachability check used by the settings "Test" button.
-pub async fn test() -> Result<(), String> {
-    let url = "https://openlibrary.org/search.json?q=test&limit=0";
-    http::get_text(url, TIMEOUT_MS).await.map(|_| ())
+pub async fn test(http: &Http, base_url: &str) -> Result<(), MetadataError> {
+    let url = format!("{base_url}/search.json?q=test&limit=0");
+    http.get_text(&url, TIMEOUT).await.map(|_| ())
 }
 
 // ---------------------------------------------------------------------------
@@ -210,4 +221,49 @@ fn dedupe_subjects(subjects: impl Iterator<Item = String>) -> Vec<String> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_fixture_maps_to_metadata() {
+        let response: OlSearchResponse =
+            serde_json::from_str(include_str!("../../fixtures/openlibrary_search_dune.json"))
+                .unwrap();
+        let books: Vec<_> = response.docs.into_iter().map(map_search_doc).collect();
+        assert_eq!(books.len(), 2);
+        let dune = &books[0];
+        assert_eq!(dune.provider_id, "OL26242482M");
+        assert_eq!(dune.isbn.as_deref(), Some("0441172717"));
+        assert_eq!(dune.release_year, Some(1965));
+        assert_eq!(dune.publisher.as_deref(), Some("Ace Books"));
+        assert_eq!(dune.subjects, ["Science fiction", "Dune (Imaginary place)"]);
+        assert_eq!(
+            dune.image_url.as_deref(),
+            Some("https://covers.openlibrary.org/b/id/11481354-M.jpg")
+        );
+        assert_eq!(books[1].provider_id, "OL893512W");
+        assert_eq!(books[1].image_url, None);
+    }
+
+    #[test]
+    fn isbn_fixture_maps_to_metadata() {
+        let response: HashMap<String, OlDataBook> = serde_json::from_str(include_str!(
+            "../../fixtures/openlibrary_isbn_9780553103540.json"
+        ))
+        .unwrap();
+        let book = map_data_book(response.into_values().next().unwrap(), "0553103547");
+        assert_eq!(book.provider_id, "OL7826547M");
+        assert_eq!(book.title, "A Game of Thrones");
+        assert_eq!(book.authors, ["George R. R. Martin"]);
+        assert_eq!(book.isbn.as_deref(), Some("9780553103540"));
+        assert_eq!(book.release_year, Some(1996));
+        assert_eq!(book.publisher.as_deref(), Some("Bantam"));
+        assert_eq!(
+            book.image_url.as_deref(),
+            Some("https://covers.openlibrary.org/b/id/8303480-L.jpg")
+        );
+    }
 }

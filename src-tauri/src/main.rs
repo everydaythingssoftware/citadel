@@ -134,6 +134,7 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
+        .manage(metadata::client())
         .invoke_handler(builder.invoke_handler())
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {

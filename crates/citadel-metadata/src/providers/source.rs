@@ -1,10 +1,12 @@
-use crate::metadata::model::MetadataProvider;
+use crate::model::MetadataProvider;
 
 /// A config-driven SRU endpoint. Adding a national library that speaks
 /// SRU/MARCXML is a new `SruEndpoint` row plus a match arm in [`endpoint`],
 /// not new code.
 pub struct SruEndpoint {
     pub provider: MetadataProvider,
+    /// The live endpoint; tests and hosts can point a client elsewhere
+    /// through [`crate::Endpoints`].
     pub base_url: &'static str,
     pub version: &'static str,
     pub record_schema: &'static str,

@@ -1,0 +1,42 @@
+{
+  "data": {
+    "search": {
+      "ids": ["312460", "1182"],
+      "results": {
+        "found": 2,
+        "hits": [
+          {
+            "document": {
+              "id": "312460",
+              "title": "Dune",
+              "slug": "dune",
+              "description": "Set on the desert planet Arrakis, Dune is the story of the boy Paul Atreides.",
+              "release_year": 1965,
+              "isbns": ["0441172717", "9780441172719"],
+              "image": {
+                "url": "https://assets.hardcover.app/edition/30405274/d41d8cd98f00b204e9800998ecf8427e.jpeg",
+                "color": "#c8a46a",
+                "width": 400,
+                "height": 600
+              },
+              "contributions": [{ "author": { "name": "Frank Herbert" } }],
+              "genres": ["Science fiction", "Fiction"]
+            }
+          },
+          {
+            "document": {
+              "id": 1182,
+              "title": "Dune Messiah",
+              "slug": "dune-messiah",
+              "release_year": 1969,
+              "isbns": [],
+              "image": {},
+              "contributions": [{ "author": { "name": "Frank Herbert" } }],
+              "genres": []
+            }
+          }
+        ]
+      }
+    }
+  }
+}
