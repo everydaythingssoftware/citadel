@@ -787,6 +787,7 @@ dependencies = [
  "citadel-core",
  "citadel-opds",
  "dirs 6.0.0",
+ "futures-util",
  "image",
  "libcalibre",
  "nix",
@@ -801,6 +802,8 @@ dependencies = [
  "urlencoding",
  "utoipa",
  "utoipa-axum",
+ "uuid",
+ "zip 3.0.0",
 ]
 
 [[package]]

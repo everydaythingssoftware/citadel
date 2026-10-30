@@ -9,6 +9,12 @@ pub enum LibraryErrorCode {
     RateLimited,
     NotFound,
     Unavailable,
+    /// A request body or declared size exceeds a limit.
+    TooLarge,
+    /// The request conflicts with the resource's current state.
+    Conflict,
+    /// The server has no room to store more.
+    StorageFull,
     Internal,
 }
 
@@ -23,6 +29,13 @@ impl LibraryError {
     pub fn invalid(message: impl Into<String>) -> Self {
         Self {
             code: LibraryErrorCode::InvalidArgument,
+            message: message.into(),
+        }
+    }
+
+    pub fn new(code: LibraryErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
             message: message.into(),
         }
     }

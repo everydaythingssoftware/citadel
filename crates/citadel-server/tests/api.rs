@@ -75,6 +75,12 @@ async fn sign_in(
 }
 
 async fn fixture() -> (tempfile::TempDir, OpdsService, Router, String, String) {
+    fixture_with(api::UploadConfig::default()).await
+}
+
+async fn fixture_with(
+    uploads: api::UploadConfig,
+) -> (tempfile::TempDir, OpdsService, Router, String, String) {
     let directory = tempfile::tempdir().unwrap();
     std::fs::copy(
         concat!(
@@ -134,7 +140,8 @@ async fn fixture() -> (tempfile::TempDir, OpdsService, Router, String, String) {
         })
         .await
         .unwrap();
-    let router = api::router(source, &service, access, None);
+    let staging = api::Staging::open(directory.path().join("state/uploads"), uploads).unwrap();
+    let router = api::router(source, &service, access, None, staging);
     let (status, cookie, _) = sign_in(&router, "reader", "secret-password").await;
     assert_eq!(status, StatusCode::OK);
     (
@@ -170,7 +177,12 @@ async fn request(
     let body = to_bytes(response.into_body(), 4 * 1024 * 1024)
         .await
         .unwrap();
-    (status, headers, serde_json::from_slice(&body).unwrap())
+    let body = if body.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&body).unwrap()
+    };
+    (status, headers, body)
 }
 
 fn query(limit: Value) -> Value {
@@ -332,7 +344,7 @@ async fn api_auth_errors_bounds_and_schema_are_consistent() {
     )
     .await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
-    assert_eq!(error["code"], "invalidArgument");
+    assert_eq!(error["code"], "tooLarge");
     service.stop().await;
 }
 
@@ -525,7 +537,12 @@ async fn browser_hosting_serves_the_frontend_publicly_and_only_falls_back_for_ht
     std::fs::write(web.join("assets/app.js"), "window.citadel = true;").unwrap();
     let source = Arc::new(CalibreCatalogSource::open(directory.path()).unwrap());
     let (_, access) = access(directory.path());
-    let router = api::router(source, &service, access, Some(&web));
+    let staging = api::Staging::open(
+        directory.path().join("state/uploads"),
+        api::UploadConfig::default(),
+    )
+    .unwrap();
+    let router = api::router(source, &service, access, Some(&web), staging);
     // The frontend is public so signed-out browsers can load the sign-in page.
     for (path, accept_html, expected, expected_body) in [
         ("/", true, 200, Some("<html>Citadel frontend</html>")),
@@ -744,4 +761,359 @@ async fn users_without_a_grant_cannot_see_the_library_and_cross_origin_sign_in_i
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert!(!response.headers().contains_key("set-cookie"));
     service.stop().await;
+}
+
+fn small_uploads() -> api::UploadConfig {
+    api::UploadConfig {
+        max_file_bytes: 1024 * 1024,
+        chunk_bytes: 4096,
+        max_staged_bytes: 2 * 1024 * 1024,
+        max_uploads_per_user: 2,
+    }
+}
+
+/// An EPUB with a title, two authors and a noisy cover, so it spans several
+/// small chunks.
+fn epub_bytes() -> Vec<u8> {
+    use std::io::Write;
+    use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+    let mut cover = image::RgbImage::new(240, 360);
+    for (x, y, pixel) in cover.enumerate_pixels_mut() {
+        *pixel = image::Rgb([(x * 7 ^ y * 13) as u8, (x * y) as u8, (y * 3) as u8]);
+    }
+    let mut cover_bytes = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cover_bytes, 95)
+        .encode_image(&cover)
+        .unwrap();
+    let mut zip = ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+    zip.start_file("mimetype", stored).unwrap();
+    zip.write_all(b"application/epub+zip").unwrap();
+    zip.start_file("META-INF/container.xml", stored).unwrap();
+    zip.write_all(br#"<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>"#).unwrap();
+    zip.start_file("content.opf", stored).unwrap();
+    zip.write_all(br#"<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:isbn:9780000000002</dc:identifier><dc:title>Uploaded Book</dc:title><dc:creator>First Author</dc:creator><dc:creator>Second Author</dc:creator><dc:language>en</dc:language></metadata><manifest><item id="text" href="text.xhtml" media-type="application/xhtml+xml"/><item id="cover" href="cover.jpg" media-type="image/jpeg" properties="cover-image"/></manifest><spine><itemref idref="text"/></spine></package>"#).unwrap();
+    zip.start_file("text.xhtml", stored).unwrap();
+    zip.write_all(b"<html xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>Text</p></body></html>")
+        .unwrap();
+    zip.start_file("cover.jpg", stored).unwrap();
+    zip.write_all(&cover_bytes).unwrap();
+    zip.finish().unwrap().into_inner()
+}
+
+async fn send_chunk(
+    router: &Router,
+    cookie: &str,
+    id: &str,
+    offset: usize,
+    bytes: Vec<u8>,
+) -> (StatusCode, Value) {
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/uploads/{id}/content"))
+                .header("cookie", cookie)
+                .header("content-type", "application/octet-stream")
+                .header("upload-offset", offset.to_string())
+                .body(Body::from(bytes))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (status, serde_json::from_slice(&body).unwrap())
+}
+
+async fn start_upload(
+    router: &Router,
+    cookie: &str,
+    name: &str,
+    size: usize,
+) -> (StatusCode, Value) {
+    let (status, _, body) = request(
+        router,
+        "POST",
+        "/api/uploads",
+        json!({"fileName": name, "size": size}).to_string(),
+        Some(cookie),
+    )
+    .await;
+    (status, body)
+}
+
+#[tokio::test]
+async fn uploads_stream_in_chunks_and_offer_metadata_and_cover_for_review() {
+    let (directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let epub = epub_bytes();
+    assert!(epub.len() > 3 * 4096, "fixture spans several chunks");
+
+    let (status, _, limits) =
+        request(&router, "GET", "/api/uploads", String::new(), Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(limits["chunkBytes"], 4096);
+    assert_eq!(limits["maxFileBytes"], 1024 * 1024);
+    assert_eq!(limits["uploads"], json!([]));
+
+    let (status, upload) =
+        start_upload(&router, &cookie, "C:\\Books\\uploaded.EPUB", epub.len()).await;
+    assert_eq!(status, StatusCode::CREATED, "{upload}");
+    assert_eq!(upload["fileName"], "uploaded.EPUB");
+    assert_eq!(upload["receivedBytes"], 0);
+    assert_eq!(upload["book"], Value::Null);
+    let id = upload["id"].as_str().unwrap().to_string();
+
+    let mut last = Value::Null;
+    for (index, chunk) in epub.chunks(4096).enumerate() {
+        let (status, body) = send_chunk(&router, &cookie, &id, index * 4096, chunk.to_vec()).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["receivedBytes"], index * 4096 + chunk.len());
+        last = body;
+    }
+    let book = &last["book"];
+    assert_eq!(book["format"], "epub");
+    assert_eq!(book["title"], "Uploaded Book");
+    assert_eq!(
+        book["authorNames"],
+        json!(["First Author", "Second Author"])
+    );
+    assert_eq!(book["identifier"], "urn:isbn:9780000000002");
+    assert_eq!(book["coverUrl"], format!("/api/uploads/{id}/cover"));
+    assert!(!last
+        .to_string()
+        .contains(directory.path().to_str().unwrap()));
+
+    let cover = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/uploads/{id}/cover"))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(cover.status(), StatusCode::OK);
+    assert_eq!(cover.headers()["content-type"], "image/jpeg");
+    let preview = to_bytes(cover.into_body(), 1024 * 1024).await.unwrap();
+    assert!(image::load_from_memory(&preview).is_ok());
+
+    let (status, done) = send_chunk(&router, &cookie, &id, epub.len(), vec![1]).await;
+    assert_eq!(
+        (status, done["code"].as_str()),
+        (StatusCode::CONFLICT, Some("conflict"))
+    );
+
+    let staged = directory.path().join(format!("state/uploads/{id}.epub"));
+    assert_eq!(std::fs::read(&staged).unwrap(), epub);
+    let (status, _, _) = request(
+        &router,
+        "DELETE",
+        &format!("/api/uploads/{id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(!staged.exists());
+    let (status, _, _) = request(
+        &router,
+        "GET",
+        &format!("/api/uploads/{id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn chunks_must_continue_at_the_offset_and_fit_the_chunk_size() {
+    let (directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let epub = epub_bytes();
+    let (_, upload) = start_upload(&router, &cookie, "book.epub", epub.len()).await;
+    let id = upload["id"].as_str().unwrap().to_string();
+
+    let (status, error) = send_chunk(&router, &cookie, &id, 4096, epub[..4096].to_vec()).await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::CONFLICT, Some("conflict"))
+    );
+    assert!(error["message"].as_str().unwrap().contains("byte 0"));
+
+    let (status, error) = send_chunk(&router, &cookie, &id, 0, epub[..4097].to_vec()).await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::PAYLOAD_TOO_LARGE, Some("tooLarge"))
+    );
+
+    // A chunk cut off partway leaves nothing behind, so it can be resent.
+    let interrupted = futures_util::stream::iter([
+        Ok::<_, std::io::Error>(epub[..2048].to_vec()),
+        Err(std::io::Error::other("connection reset")),
+    ]);
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/uploads/{id}/content"))
+                .header("cookie", &cookie)
+                .header("upload-offset", "0")
+                .body(Body::from_stream(interrupted))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let staged = directory.path().join(format!("state/uploads/{id}.epub"));
+    assert_eq!(std::fs::metadata(&staged).unwrap().len(), 0);
+    let (_, status_body, current) = request(
+        &router,
+        "GET",
+        &format!("/api/uploads/{id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(current["receivedBytes"], 0, "{status_body:?}");
+
+    let (status, body) = send_chunk(&router, &cookie, &id, 0, epub[..4096].to_vec()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["receivedBytes"], 4096);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn uploads_reject_unsupported_mislabelled_and_oversized_files() {
+    let (_directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let (status, error) = start_upload(&router, &cookie, "archive.zip", 10).await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::BAD_REQUEST, Some("invalidArgument"))
+    );
+    let (status, error) = start_upload(&router, &cookie, "huge.pdf", 1024 * 1024 + 1).await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::PAYLOAD_TOO_LARGE, Some("tooLarge"))
+    );
+    let (status, _) = start_upload(&router, &cookie, "empty.txt", 0).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A PDF named as an EPUB is refused on its first chunk and discarded.
+    let pdf = b"%PDF-1.7 not really an epub".to_vec();
+    let (_, upload) = start_upload(&router, &cookie, "book.epub", pdf.len()).await;
+    let id = upload["id"].as_str().unwrap().to_string();
+    let (status, error) = send_chunk(&router, &cookie, &id, 0, pdf).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error["message"].as_str().unwrap().contains("EPUB"));
+    let (status, _, _) = request(
+        &router,
+        "GET",
+        &format!("/api/uploads/{id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // A file without readable metadata is still offered, titled by its name.
+    let (_, upload) = start_upload(&router, &cookie, "Field Notes.pdf", 9).await;
+    let id = upload["id"].as_str().unwrap().to_string();
+    let (status, body) = send_chunk(&router, &cookie, &id, 0, b"%PDF-1.7\n".to_vec()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["book"]["title"], "Field Notes");
+    assert_eq!(body["book"]["coverUrl"], Value::Null);
+
+    // Each user may hold two uploads at once.
+    let (status, _) = start_upload(&router, &cookie, "second.txt", 5).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, error) = start_upload(&router, &cookie, "third.txt", 5).await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::INSUFFICIENT_STORAGE, Some("storageFull"))
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn staged_space_is_reserved_when_an_upload_starts() {
+    let mut uploads = small_uploads();
+    uploads.max_uploads_per_user = 10;
+    let (_directory, service, router, _, cookie) = fixture_with(uploads).await;
+    let (status, _) = start_upload(&router, &cookie, "one.pdf", 1024 * 1024).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) = start_upload(&router, &cookie, "two.pdf", 1024 * 1024).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, error) = start_upload(&router, &cookie, "three.pdf", 1).await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::INSUFFICIENT_STORAGE, Some("storageFull"))
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn uploads_belong_to_their_user_and_require_a_same_origin_session() {
+    let (directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let (_, upload) = start_upload(&router, &cookie, "mine.txt", 5).await;
+    let id = upload["id"].as_str().unwrap().to_string();
+
+    let (accounts, _) = access(directory.path());
+    let library_id = accounts.libraries().unwrap()[0].id.clone();
+    accounts.create_user("other", "other-password").unwrap();
+    accounts.grant("other", &library_id).unwrap();
+    let (_, other, _) = sign_in(&router, "other", "other-password").await;
+    let other = other.unwrap();
+    for (method, path) in [
+        ("GET", format!("/api/uploads/{id}")),
+        ("DELETE", format!("/api/uploads/{id}")),
+        ("GET", format!("/api/uploads/{id}/cover")),
+    ] {
+        let (status, _, _) = request(&router, method, &path, String::new(), Some(&other)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+    }
+    let (status, _) = send_chunk(&router, &other, &id, 0, b"hello".to_vec()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, _, list) = request(&router, "GET", "/api/uploads", String::new(), Some(&other)).await;
+    assert_eq!(list["uploads"], json!([]));
+
+    let (status, _) = send_chunk(&router, "citadel_session=nope", &id, 0, b"hello".to_vec()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/uploads/{id}/content"))
+                .header("cookie", &cookie)
+                .header("origin", "https://elsewhere.example")
+                .header("upload-offset", "0")
+                .body(Body::from("hello"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    service.stop().await;
+}
+
+#[test]
+fn opening_the_staging_area_clears_files_from_earlier_runs() {
+    let directory = tempfile::tempdir().unwrap();
+    let uploads = directory.path().join("uploads");
+    std::fs::create_dir_all(uploads.join("nested")).unwrap();
+    std::fs::write(uploads.join("0123.epub"), b"left over").unwrap();
+    api::Staging::open(uploads.clone(), api::UploadConfig::default()).unwrap();
+    assert_eq!(std::fs::read_dir(&uploads).unwrap().count(), 0);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&uploads).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+    }
 }

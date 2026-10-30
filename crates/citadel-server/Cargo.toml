@@ -9,7 +9,7 @@ description = "Headless Citadel OPDS and library HTTP server"
 [dependencies]
 axum = "0.8.9"
 citadel-core = { path = "../citadel-core", features = ["openapi"] }
-utoipa = "6"
+utoipa = { version = "6", features = ["chrono"] }
 utoipa-axum = "0.3"
 
 chrono = "0.4.31"
@@ -17,6 +17,8 @@ image = { version = "0.25.6", default-features = false, features = ["jpeg", "png
 citadel-opds = { path = "../citadel-opds" }
 libcalibre = { path = "../libcalibre" }
 dirs = "6"
+futures-util = "0.3"
+uuid = { version = "1.6.1", features = ["v4", "fast-rng"] }
 serde_json = "1"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "signal", "time", "net", "sync"] }
@@ -30,3 +32,4 @@ base64 = "0.22"
 nix = { version = "0.30", features = ["signal"] }
 reqwest = { version = "0.12", features = ["blocking"] }
 tempfile = "3.8"
+zip = { version = "3", default-features = false, features = ["deflate"] }

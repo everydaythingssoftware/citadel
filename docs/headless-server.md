@@ -148,14 +148,56 @@ access receive 404):
 
 Errors have `{ "code": "notFound", "message": "…" }` shape, with HTTP statuses
 for invalid input (400), authentication (401), cross-origin requests (403), missing books or libraries (404), admission
-limits (429), oversized request bodies (413), unavailable library or a busy
-server (503), and internal failures (500). Internal
+limits (429), conflicts with an upload's state (409), oversized request bodies
+(413), unavailable library or a busy server (503), no room for another upload
+(507), and internal failures (500). Internal
 database/filesystem diagnostics are hidden from remote callers. Responses retain
 required nullable fields; request `Option` fields may be omitted or null.
 
 API request bodies are limited to 1 MiB, and requests must be answered within
-30 seconds (downloads only need to start within it). The API shares OPDS's
-request slots; OPDS keeps its own smaller limits.
+30 seconds (downloads only need to start within it). Upload chunks are the
+exception: they stream to disk, bounded by `chunkBytes` and a 30-second idle
+timeout. The API shares OPDS's request slots; OPDS keeps its own smaller limits.
+
+### Uploads
+
+Browsers add books by uploading them in chunks. A staged upload lives in
+`<stateDirectory>/uploads` (created `0700`, emptied at startup), never inside the
+library, and is discarded after an hour without activity. Only the user who
+started an upload can see it. Upload routes:
+
+- `GET /api/uploads`: the limits (`maxFileBytes`, `chunkBytes`) and your uploads
+  in progress, so a reloaded page can resume.
+- `POST /api/uploads` with `{"fileName": "Book.epub", "size": 1234}`: starts an
+  upload. The extension must be EPUB, MOBI, AZW, AZW3, PDF or TXT.
+- `PATCH /api/uploads/{upload_id}/content` with an `Upload-Offset` header and up to
+  `chunkBytes` of raw bytes: appends the next chunk. The offset must equal
+  `receivedBytes` (409 otherwise). A chunk that fails partway is discarded, so
+  resend it from the same offset. The first chunk's content must match the file's
+  extension. The final chunk returns `book`: the title, authors and other
+  metadata read from the file, and a `coverUrl` when it has a cover.
+- `GET /api/uploads/{upload_id}`: progress, for resuming after a lost connection.
+- `GET /api/uploads/{upload_id}/cover`: a JPEG preview of the file's cover.
+- `DELETE /api/uploads/{upload_id}`: cancels the upload and deletes its file.
+
+Adding a staged upload to the library comes with remote editing (CDL-53).
+
+Limits can be tuned in an optional `[api.uploads]` table (defaults shown):
+
+```toml
+[api.uploads]
+maxFileBytes = 209715200     # 200 MiB per file
+chunkBytes = 8388608         # 8 MiB per request; 64 KiB to 64 MiB
+maxStagedBytes = 2147483648  # 2 GiB reserved across all uploads
+maxUploadsPerUser = 5
+```
+
+Starting an upload reserves its declared size, so uploads in progress can't
+exceed `maxStagedBytes`; when they would, or a user already has
+`maxUploadsPerUser` uploads, the server answers 507. Behind a reverse proxy,
+each chunk must fit the proxy's request limit: nginx's `client_max_body_size`
+defaults to 1 MB, so raise it above `chunkBytes` or lower `chunkBytes`.
+Cloudflare's Free and Pro plans accept requests up to 100 MB.
 
 Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open `publicUrl` in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 

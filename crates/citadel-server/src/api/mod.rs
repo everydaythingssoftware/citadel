@@ -29,9 +29,11 @@ use citadel_core::store::CitadelStore;
 
 mod session;
 mod thumbnails;
+mod uploads;
 pub(crate) mod web;
 
 pub use session::{PublicUrl, SESSION_COOKIE};
+pub use uploads::{Staging, UploadConfig};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -39,6 +41,8 @@ pub struct ApiConfig {
     pub listen: SocketAddr,
     pub public_url: String,
     pub web_directory: Option<std::path::PathBuf>,
+    #[serde(default)]
+    pub uploads: UploadConfig,
 }
 
 /// Who may use the API: the accounts database, the Citadel ID of the library
@@ -55,6 +59,7 @@ struct ApiState {
     access: Arc<session::Access>,
     work: Arc<Semaphore>,
     thumbnails: thumbnails::ThumbnailCache,
+    uploads: Arc<Staging>,
 }
 
 // Keep slots inside blocking tasks so timed-out HTTP requests cannot queue
@@ -105,6 +110,9 @@ impl IntoResponse for ApiFailure {
             LibraryErrorCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             LibraryErrorCode::NotFound => StatusCode::NOT_FOUND,
             LibraryErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+            LibraryErrorCode::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+            LibraryErrorCode::Conflict => StatusCode::CONFLICT,
+            LibraryErrorCode::StorageFull => StatusCode::INSUFFICIENT_STORAGE,
             LibraryErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
         if self.0.code == LibraryErrorCode::Internal {
@@ -260,10 +268,21 @@ fn routes() -> OpenApiRouter<ApiState> {
         .routes(routes!(custom_values))
         .routes(routes!(thumbnails::ensure, thumbnails::list))
         .routes(routes!(thumbnails::image))
+        .routes(routes!(uploads::list, uploads::create))
+        .routes(routes!(uploads::get, uploads::cancel))
+        .routes(routes!(uploads::cover))
+}
+
+/// Upload chunks stream to disk, so they bypass the JSON request bounds.
+fn chunk_routes() -> OpenApiRouter<ApiState> {
+    OpenApiRouter::new().routes(routes!(uploads::receive))
 }
 
 pub fn openapi() -> OpenApi {
-    let (_, mut schema) = routes().merge(session::routes()).split_for_parts();
+    let (_, mut schema) = routes()
+        .merge(chunk_routes())
+        .merge(session::routes())
+        .split_for_parts();
     // These handlers are mounted from OPDS so byte streaming, range support and
     // containment checks have one implementation across both transports.
     for (path, operation_id, content_type, extra_parameters) in [
@@ -324,7 +343,9 @@ pub fn router(
     service: &citadel_opds::OpdsService,
     access: ApiAccess,
     web_directory: Option<&std::path::Path>,
+    uploads: Arc<Staging>,
 ) -> Router {
+    uploads.spawn_sweeper();
     let state = ApiState {
         source: source.clone(),
         access: Arc::new(session::Access::new(
@@ -334,9 +355,17 @@ pub fn router(
         )),
         work: Arc::new(Semaphore::new(64)),
         thumbnails: Default::default(),
+        uploads,
     };
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes().split_for_parts();
+    let (chunks, _) = chunk_routes().split_for_parts();
+    let chunks = chunks
+        .with_state(state.clone())
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            session::require_session,
+        ));
     let assets = service.book_asset_routes(source, "/api");
     let schema = openapi();
     let library = library
@@ -361,7 +390,11 @@ pub fn router(
         None => router,
     };
     service
-        .limit_http_routes(router.layer(axum::middleware::from_fn(bound_requests)))
+        .limit_http_routes(
+            router
+                .layer(axum::middleware::from_fn(bound_requests))
+                .merge(chunks),
+        )
         .layer(axum::middleware::from_fn(normalize_errors))
 }
 
@@ -410,6 +443,8 @@ async fn normalize_errors(request: Request, next: Next) -> Response {
         StatusCode::NOT_FOUND => LibraryErrorCode::NotFound,
         StatusCode::TOO_MANY_REQUESTS => LibraryErrorCode::RateLimited,
         StatusCode::SERVICE_UNAVAILABLE => LibraryErrorCode::Unavailable,
+        StatusCode::PAYLOAD_TOO_LARGE => LibraryErrorCode::TooLarge,
+        StatusCode::CONFLICT => LibraryErrorCode::Conflict,
         status if status.is_client_error() => LibraryErrorCode::InvalidArgument,
         _ => LibraryErrorCode::Internal,
     };

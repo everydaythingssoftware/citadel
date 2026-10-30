@@ -702,7 +702,19 @@ text: string | null; author_id: string | null; series_id: number | null; tag_id:
 limit: number | null; offset: number }
 export type LibraryEntry = { id: string; displayName: string; absolutePath: string }
 export type LibraryError = { code: LibraryErrorCode; message: string }
-export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "unavailable" | "internal"
+export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "unavailable" | 
+/**
+ * A request body or declared size exceeds a limit.
+ */
+"tooLarge" | 
+/**
+ * The request conflicts with the resource's current state.
+ */
+"conflict" | 
+/**
+ * The server has no room to store more.
+ */
+"storageFull" | "internal"
 export type LibraryIdChange = { previousId: string; id: string }
 export type LibraryPublisher = { id: number; name: string; book_count: number }
 export type LibrarySeries = { id: number; name: string; book_count: number }

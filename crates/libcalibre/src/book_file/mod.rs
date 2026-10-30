@@ -76,6 +76,28 @@ pub fn cover_image_data(path: &Path) -> Option<Vec<u8>> {
     }
 }
 
+/// Bytes [`content_matches`] needs from the start of a file to decide.
+pub const CONTENT_CHECK_BYTES: usize = 1024;
+
+/// Whether `head` (the first bytes of a file, up to [`CONTENT_CHECK_BYTES`])
+/// looks like a `format` file, so a file can't be imported under a format it
+/// isn't. TXT has no signature; it only has to look like text.
+pub fn content_matches(format: MIMETYPE, head: &[u8]) -> bool {
+    match format {
+        // Strictly the first entry is a stored `mimetype`, but many EPUBs
+        // in the wild get that wrong; the reader validates the rest.
+        MIMETYPE::EPUB => head.starts_with(b"PK\x03\x04"),
+        MIMETYPE::PDF => head
+            .windows(5)
+            .take(CONTENT_CHECK_BYTES)
+            .any(|window| window == b"%PDF-"),
+        // PalmDB type and creator.
+        MIMETYPE::MOBI | MIMETYPE::KF7 | MIMETYPE::KF8 => head.get(60..68) == Some(b"BOOKMOBI"),
+        MIMETYPE::TXT => !head.contains(&0),
+        MIMETYPE::UNKNOWN => false,
+    }
+}
+
 fn non_empty(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_string())
@@ -95,6 +117,25 @@ mod tests {
             read_metadata(Path::new("/books/notes.TXT")).unwrap().format,
             MIMETYPE::TXT
         );
+    }
+
+    #[test]
+    fn content_must_match_the_format() {
+        let mut mobi = vec![0u8; 68];
+        mobi[60..68].copy_from_slice(b"BOOKMOBI");
+        assert!(content_matches(MIMETYPE::EPUB, b"PK\x03\x04mimetype"));
+        assert!(content_matches(MIMETYPE::PDF, b"\xEF\xBB\xBF%PDF-1.7"));
+        assert!(content_matches(MIMETYPE::KF8, &mobi));
+        assert!(content_matches(
+            MIMETYPE::TXT,
+            "Call me Ishmael. ✓".as_bytes()
+        ));
+
+        assert!(!content_matches(MIMETYPE::EPUB, b"%PDF-1.7"));
+        assert!(!content_matches(MIMETYPE::PDF, b"PK\x03\x04"));
+        assert!(!content_matches(MIMETYPE::MOBI, &mobi[..67]));
+        assert!(!content_matches(MIMETYPE::TXT, b"MZ\x90\x00"));
+        assert!(!content_matches(MIMETYPE::UNKNOWN, b"anything"));
     }
 
     #[test]

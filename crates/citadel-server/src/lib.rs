@@ -18,6 +18,7 @@ use libcalibre::{BookId, BookPage, CalibreError, Library, ResolvedBookAsset};
 use serde::Deserialize;
 
 const ACCOUNTS_DATABASE: &str = "citadel.db";
+const UPLOADS_DIRECTORY: &str = "uploads";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -248,6 +249,7 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
         }
         citadel_opds::network::validate_explicit_addresses(&[api.listen.ip().to_string()], true)?;
         api::PublicUrl::parse(&api.public_url)?;
+        api.uploads.validate()?;
         if let Some(directory) = &api.web_directory {
             api::web::validate(directory)?;
         }
@@ -255,15 +257,8 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// The accounts database, with this config's library registered under its
-/// Calibre library UUID.
-pub(crate) fn open_accounts(
-    config: &ServerConfig,
-    source: &CalibreCatalogSource,
-) -> Result<(CitadelStore, RegisteredLibrary), String> {
-    let library_id = source
-        .active_library_id()
-        .map_err(|error| format!("could not read the library's Calibre UUID: {error}"))?;
+/// The configured state directory (or the platform default), created if needed.
+fn state_directory(config: &ServerConfig) -> Result<PathBuf, String> {
     let state_directory = config
         .state_directory
         .clone()
@@ -275,6 +270,19 @@ pub(crate) fn open_accounts(
             state_directory.display()
         )
     })?;
+    Ok(state_directory)
+}
+
+/// The accounts database, with this config's library registered under its
+/// Calibre library UUID.
+pub(crate) fn open_accounts(
+    config: &ServerConfig,
+    source: &CalibreCatalogSource,
+) -> Result<(CitadelStore, RegisteredLibrary), String> {
+    let library_id = source
+        .active_library_id()
+        .map_err(|error| format!("could not read the library's Calibre UUID: {error}"))?;
+    let state_directory = state_directory(config)?;
     let accounts = CitadelStore::open(&state_directory.join(ACCOUNTS_DATABASE))
         .map_err(|error| error.to_string())?;
     let library = accounts
@@ -326,18 +334,31 @@ pub async fn run(config: ServerConfig, config_path: &Path) -> Result<(), String>
             .unwrap_or_else(|| "OPDS failed to start".to_string()));
     }
 
+    let config_root = &config;
     let mut api = if let Some(config) = &config.api {
         let access = api::ApiAccess {
             accounts: accounts.clone(),
             library_id: library.id.clone(),
             public_url: api::PublicUrl::parse(&config.public_url)?,
         };
-        match api::start(
-            config,
-            api::router(source, &service, access, config.web_directory.as_deref()),
-        )
-        .await
-        {
+        let staging = match api::Staging::open(
+            state_directory(&config_root)?.join(UPLOADS_DIRECTORY),
+            config.uploads.clone(),
+        ) {
+            Ok(staging) => staging,
+            Err(error) => {
+                service.stop().await;
+                return Err(error);
+            }
+        };
+        let router = api::router(
+            source,
+            &service,
+            access,
+            config.web_directory.as_deref(),
+            staging,
+        );
+        match api::start(config, router).await {
             Ok(api) => {
                 println!(
                     "citadel_server api=http://{} public_url={}",
@@ -519,6 +540,32 @@ target = "localNetworks"
         ] {
             assert!(validate_config(&toml::from_str::<ServerConfig>(&invalid).unwrap()).is_err());
         }
+        let config = toml::from_str::<ServerConfig>(&format!(
+            "{with_api}\n[api.uploads]\nmaxFileBytes = 1048576\nmaxUploadsPerUser = 2\n"
+        ))
+        .unwrap();
+        let uploads = &config.api.as_ref().unwrap().uploads;
+        assert_eq!(
+            (uploads.max_file_bytes, uploads.max_uploads_per_user),
+            (1048576, 2)
+        );
+        assert_eq!(
+            uploads.chunk_bytes,
+            api::UploadConfig::default().chunk_bytes
+        );
+        assert!(validate_config(&config).is_ok());
+        let error = validate_config(
+            &toml::from_str::<ServerConfig>(&format!(
+                "{with_api}\n[api.uploads]\nchunkBytes = 10\n"
+            ))
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert!(error.contains("chunkBytes"), "{error}");
+        assert!(toml::from_str::<ServerConfig>(&format!(
+            "{with_api}\n[api.uploads]\nmaxSize = 10\n"
+        ))
+        .is_err());
     }
 
     #[test]
