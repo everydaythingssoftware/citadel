@@ -27,11 +27,13 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::CalibreCatalogSource;
 use citadel_core::store::CitadelStore;
 
+mod metadata;
 mod session;
 mod thumbnails;
 mod uploads;
 pub(crate) mod web;
 
+pub use metadata::{Metadata, MetadataConfig};
 pub use session::{PublicUrl, SESSION_COOKIE};
 pub use uploads::{Staging, UploadConfig};
 
@@ -43,6 +45,8 @@ pub struct ApiConfig {
     pub web_directory: Option<std::path::PathBuf>,
     #[serde(default)]
     pub uploads: UploadConfig,
+    #[serde(default)]
+    pub metadata: MetadataConfig,
 }
 
 /// Who may use the API: the accounts database, the Citadel ID of the library
@@ -60,6 +64,7 @@ struct ApiState {
     work: Arc<Semaphore>,
     thumbnails: thumbnails::ThumbnailCache,
     uploads: Arc<Staging>,
+    metadata: Arc<Metadata>,
 }
 
 // Keep slots inside blocking tasks so timed-out HTTP requests cannot queue
@@ -339,6 +344,10 @@ fn routes() -> OpenApiRouter<ApiState> {
         .routes(routes!(uploads::get, uploads::cancel))
         .routes(routes!(uploads::cover))
         .routes(routes!(uploads::commit))
+        .routes(routes!(metadata::providers))
+        .routes(routes!(metadata::search))
+        .routes(routes!(metadata::by_isbn))
+        .routes(routes!(metadata::test))
 }
 
 /// Upload chunks stream to disk, so they bypass the JSON request bounds.
@@ -412,6 +421,7 @@ pub fn router(
     access: ApiAccess,
     web_directory: Option<&std::path::Path>,
     uploads: Arc<Staging>,
+    metadata: Arc<Metadata>,
 ) -> Router {
     uploads.spawn_sweeper();
     let state = ApiState {
@@ -424,6 +434,7 @@ pub fn router(
         work: Arc::new(Semaphore::new(64)),
         thumbnails: Default::default(),
         uploads,
+        metadata,
     };
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes().split_for_parts();

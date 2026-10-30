@@ -195,6 +195,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/metadata/isbn/{isbn}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Look one provider up by ISBN. No match is an empty list, not an error. */
+        get: operations["lookUpMetadataByIsbn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Metadata providers and whether the signed-in user can use each. Keyless providers are always available. */
+        get: operations["listMetadataProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/providers/{provider}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Check that the server can reach a provider, with the user's own key when it needs one. */
+        post: operations["testMetadataProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Free-text search one provider. No results is an empty list, not an error. Answers are cached briefly; uncached lookups count against a per-user rate limit. */
+        get: operations["searchMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/publishers": {
         parameters: {
             query?: never;
@@ -357,6 +425,40 @@ export interface components {
         } | {
             Remote: components["schemas"]["RemoteFile"];
         };
+        /**
+         * @description A book record from a provider. Providers return these fully populated from a
+         *     single search call — there is no separate resolve step, so the cover-less
+         *     MARC sources' subjects/publisher/language survive into the applied record.
+         */
+        BookMetadata: {
+            authors: string[];
+            description: string | null;
+            /**
+             * @description Explicit provider genre/form terms. Subject headings are never placed
+             *     here merely because they look genre-like.
+             */
+            genre_candidates: components["schemas"]["GenreCandidate"][];
+            identifier_label: string;
+            image_url: string | null;
+            isbn: string | null;
+            /** @description MARC 3-letter language code. Parsed now; applied once CDL-2 lands. */
+            language_code: string | null;
+            provider: components["schemas"]["MetadataProvider"];
+            /**
+             * @description Provider-native id: hardcover id (stringified), LCCN, DNB control
+             *     number, or Open Library OLID.
+             */
+            provider_id: string;
+            publisher: string | null;
+            /** Format: int32 */
+            release_year: number | null;
+            /** @description Hardcover deep-link slug; `None` for other providers. */
+            slug: string | null;
+            /** @description Subject headings, mapped to tag suggestions on the frontend. */
+            subjects: string[];
+            subtitle: string | null;
+            title: string;
+        };
         /** @enum {string} */
         BookSortOrder: "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc";
         /** @description The metadata the user reviewed, to add the upload to the library with. */
@@ -445,6 +547,16 @@ export interface components {
         };
         DeleteBooksRequest: {
             book_ids: string[];
+        };
+        GenreCandidate: {
+            name: string;
+            /**
+             * @description Stable provider field identity, such as `hardcover:genre` or
+             *     `marc:655`.
+             */
+            source: string;
+            /** @description Provider vocabulary or thesaurus when one is declared. */
+            vocabulary: string | null;
         };
         /** @description Book identifiers, such as ISBN, DOI, Google Books ID, etc. */
         Identifier: {
@@ -562,6 +674,27 @@ export interface components {
             kind: components["schemas"]["LocalOrRemote"];
             local_path: string | null;
             url: string;
+        };
+        /**
+         * @description The metadata sources Citadel can look books up against. The serialized
+         *     short form is the single id used across the Rust enum, the TS string union,
+         *     and the frontend registry keys.
+         * @enum {string}
+         */
+        MetadataProvider: "hardcover" | "loc" | "dnb" | "k10plus" | "openlibrary";
+        MetadataProviderInfo: {
+            /** @description Whether this user can look books up with the provider right now. */
+            available: boolean;
+            displayName: string;
+            provider: components["schemas"]["MetadataProvider"];
+            requiresKey: boolean;
+            /** @description Why not, when it isn't. */
+            unavailableReason: string | null;
+        };
+        ProviderStatus: {
+            is_valid: boolean;
+            message: string;
+            provider: components["schemas"]["MetadataProvider"];
         };
         RemoteFile: {
             url: string;
@@ -1494,6 +1627,192 @@ export interface operations {
                 };
             };
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    lookUpMetadataByIsbn: {
+        parameters: {
+            query: {
+                /** @description Provider ID, such as `openlibrary` or `loc`. */
+                provider: components["schemas"]["MetadataProvider"];
+            };
+            header?: never;
+            path: {
+                /** @description ISBN-10 or ISBN-13, hyphens allowed */
+                isbn: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookMetadata"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    listMetadataProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataProviderInfo"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    testMetadataProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider ID */
+                provider: components["schemas"]["MetadataProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderStatus"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    searchMetadata: {
+        parameters: {
+            query: {
+                /** @description Provider ID, such as `openlibrary` or `loc`. */
+                provider: components["schemas"]["MetadataProvider"];
+                /** @description Title, author or keywords. */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookMetadata"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

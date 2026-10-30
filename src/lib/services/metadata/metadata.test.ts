@@ -6,7 +6,13 @@ const ipc = vi.hoisted(() => ({
 }));
 vi.mock("@/bindings", () => ({ commands: ipc }));
 import { tauriMetadataService } from "./tauri";
-import { webMetadataService } from "./web";
+import { createWebMetadataService } from "./web";
+
+const json = (data: unknown, status = 200) =>
+	new Response(JSON.stringify(data), {
+		status,
+		headers: { "content-type": "application/json" },
+	});
 
 describe("Metadata transport", () => {
 	beforeEach(() => vi.resetAllMocks());
@@ -36,11 +42,48 @@ describe("Metadata transport", () => {
 			tauriMetadataService.byIsbn("loc", "9781234567890", ""),
 		).rejects.toThrow("provider unavailable");
 	});
-	it("does not invoke Tauri when metadata is unavailable in a browser", async () => {
-		await expect(
-			webMetadataService.search("loc", "a title", ""),
-		).rejects.toThrow("unavailable");
-		expect((await webMetadataService.test("loc", "")).ok).toBe(false);
+	it("looks up through the server in a browser, never sending a key or invoking Tauri", async () => {
+		const requests: Request[] = [];
+		const web = createWebMetadataService({
+			baseUrl: "https://citadel.test",
+			fetch: async (request) => {
+				requests.push(request);
+				const url = new URL(request.url);
+				if (url.pathname === "/api/metadata/providers")
+					return json([
+						{
+							provider: "hardcover",
+							displayName: "Hardcover",
+							requiresKey: true,
+							available: false,
+							unavailableReason: "Not set up",
+						},
+					]);
+				if (url.pathname.endsWith("/test"))
+					return json({ provider: "loc", is_valid: true, message: "ok" });
+				if (url.searchParams.get("q") === "busy")
+					return json(
+						{ code: "rateLimited", message: "Too many lookups" },
+						429,
+					);
+				return json([]);
+			},
+		});
+		expect(web.credentials).toBe("server");
+		expect(await web.search("openlibrary", "a title", "ignored")).toEqual([]);
+		expect(await web.byIsbn("loc", "9781234567890", "ignored")).toEqual([]);
+		await expect(web.search("loc", "busy", "")).rejects.toThrow(
+			"Too many lookups",
+		);
+		expect(await web.test("loc", "")).toEqual({ ok: true, message: "ok" });
+		expect(await web.availability()).toEqual([
+			{ provider: "hardcover", available: false, reason: "Not set up" },
+		]);
+		const urls = requests.map((request) => new URL(request.url));
+		expect(urls[0]?.pathname).toBe("/api/metadata/search");
+		expect(urls[0]?.searchParams.get("provider")).toBe("openlibrary");
+		expect(urls[1]?.pathname).toBe("/api/metadata/isbn/9781234567890");
+		for (const url of urls) expect(url.search).not.toContain("ignored");
 		for (const method of Object.values(ipc))
 			expect(method).not.toHaveBeenCalled();
 	});

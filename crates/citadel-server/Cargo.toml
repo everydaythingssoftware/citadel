@@ -9,6 +9,7 @@ description = "Headless Citadel OPDS and library HTTP server"
 [dependencies]
 axum = "0.8.9"
 citadel-core = { path = "../citadel-core", features = ["openapi"] }
+citadel-metadata = { path = "../citadel-metadata", features = ["openapi"] }
 utoipa = { version = "6", features = ["chrono"] }
 utoipa-axum = "0.3"
 

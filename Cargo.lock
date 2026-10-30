@@ -802,6 +802,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "citadel-core",
+ "citadel-metadata",
  "citadel-opds",
  "dirs 6.0.0",
  "futures-util",

@@ -280,6 +280,7 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
         citadel_opds::network::validate_explicit_addresses(&[api.listen.ip().to_string()], true)?;
         api::PublicUrl::parse(&api.public_url)?;
         api.uploads.validate()?;
+        api.metadata.validate()?;
         if let Some(directory) = &api.web_directory {
             api::web::validate(directory)?;
         }
@@ -383,12 +384,20 @@ pub async fn run(config: ServerConfig, config_path: &Path) -> Result<(), String>
                 return Err(error);
             }
         };
+        let metadata = match api::Metadata::new(config.metadata.clone()) {
+            Ok(metadata) => Arc::new(metadata),
+            Err(error) => {
+                service.stop().await;
+                return Err(error);
+            }
+        };
         let router = api::router(
             source,
             &service,
             access,
             config.web_directory.as_deref(),
             staging,
+            metadata,
         );
         match api::start(config, router).await {
             Ok(api) => {
