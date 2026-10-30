@@ -833,6 +833,12 @@ export interface components {
         };
         StagedUpload: {
             book?: components["schemas"]["StagedBook"] | null;
+            /**
+             * Format: date-time
+             * @description When the server discards the upload: a fixed review deadline once the
+             *     file has been read, otherwise an hour after its last chunk.
+             */
+            expiresAt: string;
             fileName: string;
             id: string;
             /** Format: int64 */
@@ -848,6 +854,11 @@ export interface components {
             chunkBytes: number;
             /** Format: int64 */
             maxFileBytes: number;
+            /**
+             * Format: int64
+             * @description How long a finished upload waits to be added or skipped.
+             */
+            reviewSeconds: number;
             uploads: components["schemas"]["StagedUpload"][];
         };
     };

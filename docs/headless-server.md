@@ -178,12 +178,12 @@ timeout. The API shares OPDS's request slots; OPDS keeps its own smaller limits.
 ### Uploads
 
 Browsers add books by uploading them in chunks. A staged upload lives in
-`<stateDirectory>/uploads` (created `0700`, emptied at startup), never inside the
-library, and is discarded after an hour without activity. Only the user who
-started an upload can see it. Upload routes:
+`<stateDirectory>/uploads` (created `0700`; files without a record are removed
+at startup), never inside the library, and expires as described below. Only the
+user who started an upload can see it. Upload routes:
 
-- `GET /api/uploads`: the limits (`maxFileBytes`, `chunkBytes`) and your uploads
-  in progress, so a reloaded page can resume.
+- `GET /api/uploads`: the limits (`maxFileBytes`, `chunkBytes`, `reviewSeconds`)
+  and your uploads, so a reloaded page can resume or review them.
 - `POST /api/uploads` with `{"fileName": "Book.epub", "size": 1234}`: starts an
   upload. The extension must be EPUB, MOBI, AZW, AZW3, PDF or TXT.
 - `PATCH /api/uploads/{upload_id}/content` with an `Upload-Offset` header and up to
@@ -212,12 +212,21 @@ Limits can be tuned in an optional `[api.uploads]` table (defaults shown):
 maxFileBytes = 209715200     # 200 MiB per file
 chunkBytes = 8388608         # 8 MiB per request; 64 KiB to 64 MiB
 maxStagedBytes = 2147483648  # 2 GiB reserved across all uploads
-maxUploadsPerUser = 5
+maxUploadsPerUser = 100
+reviewHours = 24             # how long a finished upload waits to be added
 ```
 
 Starting an upload reserves its declared size, so uploads in progress can't
 exceed `maxStagedBytes`; when they would, or a user already has
-`maxUploadsPerUser` uploads, the server answers 507. Behind a reverse proxy,
+`maxUploadsPerUser` uploads, the server answers 507.
+
+Every upload reports `expiresAt`. An unfinished upload is discarded an hour
+after its last chunk. Once a file has been read it gets a fixed deadline of
+`reviewHours` from that moment, which checking on it doesn't extend;
+`GET /api/uploads` reports the window as `reviewSeconds`. The staging
+directory keeps a small record beside each file, so uploads survive a server
+restart: finished ones stay ready to add, and unfinished ones resume from the
+bytes already on disk. Behind a reverse proxy,
 each chunk must fit the proxy's request limit: nginx's `client_max_body_size`
 defaults to 1 MB, so raise it above `chunkBytes` or lower `chunkBytes`.
 Cloudflare's Free and Pro plans accept requests up to 100 MB.
