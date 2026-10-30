@@ -634,6 +634,195 @@
           }
         ]
       },
+      "put": {
+        "description": "Set a book's cover from an uploaded image. The image is decoded within limits and stored re-encoded as JPEG.",
+        "operationId": "setBookCoverFromFile",
+        "parameters": [
+          {
+            "name": "book_id",
+            "in": "path",
+            "description": "Library book ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "A JPEG, PNG or WebP image, up to `api.metadata.maxImageBytes`",
+          "content": {
+            "image/*": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "description": "Set a book's cover from a metadata result. The server fetches the full-size image from the provider; clients never send a URL. 410 when the cover ID has expired.",
+        "operationId": "setBookCoverFromMetadata",
+        "parameters": [
+          {
+            "name": "book_id",
+            "in": "path",
+            "description": "Library book ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyCover"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
       "head": {
         "operationId": "getBookCoverHead",
         "parameters": [
@@ -1164,6 +1353,142 @@
             }
           },
           "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/covers/{cover_id}/prefetch": {
+      "post": {
+        "description": "Start fetching a chosen cover at full size so applying it is quick.",
+        "operationId": "prefetchMetadataCover",
+        "parameters": [
+          {
+            "name": "cover_id",
+            "in": "path",
+            "description": "A `cover_id` from a metadata result",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/covers/{cover_id}/preview": {
+      "get": {
+        "description": "A small JPEG of a result's cover, fetched by the server from the provider. 410 when the ID has expired; search again.",
+        "operationId": "previewMetadataCover",
+        "parameters": [
+          {
+            "name": "cover_id",
+            "in": "path",
+            "description": "A `cover_id` from a metadata result",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cover preview",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2200,6 +2525,19 @@
   },
   "components": {
     "schemas": {
+      "ApplyCover": {
+        "type": "object",
+        "required": [
+          "coverId"
+        ],
+        "properties": {
+          "coverId": {
+            "type": "string",
+            "description": "A `cover_id` from a metadata result."
+          }
+        },
+        "additionalProperties": false
+      },
       "BookCustomValue": {
         "type": "object",
         "description": "One book's value for one custom column.",
@@ -2256,7 +2594,7 @@
           "isbn",
           "release_year",
           "description",
-          "image_url",
+          "cover_id",
           "publisher",
           "subjects",
           "genre_candidates",
@@ -2269,6 +2607,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "cover_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque ID for this result's cover, for previews and applying it.\nExpires an hour after the result was last returned."
           },
           "description": {
             "type": [
@@ -2285,12 +2630,6 @@
           },
           "identifier_label": {
             "type": "string"
-          },
-          "image_url": {
-            "type": [
-              "string",
-              "null"
-            ]
           },
           "isbn": {
             "type": [

@@ -17,6 +17,7 @@ import { Button, Sheet } from "@/components/ui";
 import {
 	applyMetadataToBook,
 	type PendingMetadata,
+	refreshCoverId,
 } from "@/lib/metadata-import";
 import type { Library } from "@/lib/services/library";
 import { usePlatform } from "@/lib/platform/context";
@@ -27,6 +28,7 @@ import {
 	useLibraryStore,
 	useLibraryState,
 } from "@/stores/library/store";
+import { useResolvedProviderConfig } from "@/stores/settings/metadata-providers";
 
 interface AddBookContextValue {
 	/** Opens the native file picker and walks the import flow. */
@@ -47,6 +49,7 @@ export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 	const actions = useLibraryActions();
 	const authors = useAuthors();
 	const platform = usePlatform();
+	const getProviderConfig = useResolvedProviderConfig();
 	const activeLibrary = useLibraryStore((state) => state.library);
 	const importLibraryRef = useRef<Library | null>(null);
 
@@ -191,10 +194,12 @@ export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 						assertLibrary();
 						await actions.updateBook(...args);
 					},
-					setBookCoverFromUrl: async (...args) => {
+					setBookCoverFromMetadata: async (...args) => {
 						assertLibrary();
-						await actions.setBookCoverFromUrl(...args);
+						await actions.setBookCoverFromMetadata(...args);
 					},
+					refreshCoverId: (book) =>
+						refreshCoverId(book, getProviderConfig(book.provider)),
 				});
 			}
 			assertLibrary();

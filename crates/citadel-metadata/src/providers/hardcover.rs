@@ -197,6 +197,7 @@ fn document_to_metadata(doc: GqlBookDocument) -> BookMetadata {
         release_year: doc.release_year,
         description: doc.description,
         image_url: doc.image.and_then(|i| i.0),
+        cover_id: None,
         publisher: None,
         subjects: Vec::new(),
         genre_candidates: normalize_genre_candidates(doc.genres.into_iter().map(|name| {

@@ -52,3 +52,13 @@ pub async fn clb_query_metadata_by_isbn(
     let provider = MetadataProvider::from_str(&provider)?;
     Ok(client.by_isbn(provider, &isbn, Some(&api_key)).await?)
 }
+
+/// Fetch a chosen result's full-size cover ahead of applying it.
+#[tauri::command]
+#[specta::specta]
+pub async fn clb_cmd_prefetch_metadata_cover(
+    client: State<'_, MetadataClient>,
+    cover_id: String,
+) -> Result<(), String> {
+    Ok(client.prefetch_cover(&cover_id).await?)
+}

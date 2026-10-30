@@ -5,16 +5,18 @@
 //! `docs/adr/0010-metadata-lookup-on-the-server.md`.
 use std::{
     collections::HashMap,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
+mod covers;
 mod error;
 mod guard;
 mod http;
 pub mod model;
 mod providers;
 
+pub use covers::{CoverOptions, CoverPolicy, HostRule};
 pub use error::{MetadataError, MetadataErrorKind};
 pub use model::{BookMetadata, GenreCandidate, MetadataProvider, ProviderStatus};
 
@@ -33,6 +35,7 @@ pub struct ClientOptions {
     /// An operator contact (URL or email) appended to the User-Agent, as
     /// Open Library asks of heavy clients.
     pub contact: Option<String>,
+    pub covers: CoverOptions,
 }
 
 /// Where each provider lives. Only tests point these anywhere else.
@@ -43,6 +46,8 @@ pub struct Endpoints {
     pub loc: String,
     pub dnb: String,
     pub k10plus: String,
+    /// Which hosts each provider's cover images may come from.
+    pub covers: CoverPolicy,
 }
 
 impl Default for Endpoints {
@@ -59,6 +64,7 @@ impl Default for Endpoints {
             loc: sru(MetadataProvider::Loc),
             dnb: sru(MetadataProvider::Dnb),
             k10plus: sru(MetadataProvider::K10plus),
+            covers: CoverPolicy::default(),
         }
     }
 }
@@ -88,6 +94,7 @@ pub fn user_agent(options: &ClientOptions) -> String {
 /// behind an `Arc`; credentials are passed per call and never retained.
 pub struct MetadataClient {
     http: http::Http,
+    covers: covers::Covers,
     guards: guard::Guards,
     endpoints: Endpoints,
     misses: Mutex<HashMap<(MetadataProvider, String), Instant>>,
@@ -102,8 +109,10 @@ impl MetadataClient {
         options: ClientOptions,
         endpoints: Endpoints,
     ) -> Result<Self, MetadataError> {
+        let user_agent = user_agent(&options);
         Ok(Self {
-            http: http::Http::new(&user_agent(&options))?,
+            http: http::Http::new(&user_agent)?,
+            covers: covers::Covers::new(&user_agent, endpoints.covers.clone(), options.covers)?,
             guards: guard::Guards::new(),
             endpoints,
             misses: Mutex::default(),
@@ -122,7 +131,8 @@ impl MetadataClient {
             return Ok(Vec::new());
         }
         let credential = require_credential(provider, credential)?;
-        self.guards
+        let mut books = self
+            .guards
             .run(provider, credential, || async {
                 match provider {
                     MetadataProvider::Hardcover => {
@@ -149,7 +159,9 @@ impl MetadataClient {
                     }
                 }
             })
-            .await
+            .await?;
+        self.covers.register(&mut books);
+        Ok(books)
     }
 
     /// Look a provider up by ISBN. A clean "no match" is `Ok(vec![])`.
@@ -171,7 +183,7 @@ impl MetadataClient {
         if self.recently_missed(&miss_key, Instant::now()) {
             return Ok(Vec::new());
         }
-        let books = self
+        let mut books = self
             .guards
             .run(provider, credential, || async {
                 match provider {
@@ -204,6 +216,7 @@ impl MetadataClient {
         if books.is_empty() {
             self.note_miss(miss_key, Instant::now());
         }
+        self.covers.register(&mut books);
         Ok(books)
     }
 
@@ -247,6 +260,27 @@ impl MetadataClient {
             .await
     }
 
+    /// Refresh the cover IDs of results a host is serving from its own
+    /// cache, so they stay resolvable while shown.
+    pub fn register_covers(&self, books: &mut [BookMetadata]) {
+        self.covers.register(books);
+    }
+
+    /// A small JPEG of a result's cover, for showing beside the result.
+    pub async fn cover_preview(&self, cover_id: &str) -> Result<Arc<Vec<u8>>, MetadataError> {
+        self.covers.preview(cover_id).await
+    }
+
+    /// Start fetching a chosen cover at full size so applying it is quick.
+    pub async fn prefetch_cover(&self, cover_id: &str) -> Result<(), MetadataError> {
+        self.covers.prefetch(cover_id).await
+    }
+
+    /// The full-size cover as a re-encoded JPEG, ready to store on a book.
+    pub async fn cover_image(&self, cover_id: &str) -> Result<Arc<Vec<u8>>, MetadataError> {
+        self.covers.full(cover_id).await
+    }
+
     fn recently_missed(&self, key: &(MetadataProvider, String), now: Instant) -> bool {
         self.misses
             .lock()
@@ -268,6 +302,21 @@ impl MetadataClient {
         }
         misses.insert(key, now);
     }
+}
+
+/// Check an uploaded cover image and re-encode it as a JPEG, refusing
+/// anything over `max_bytes`, unreadable, or too large to decode safely.
+pub async fn reencode_cover(bytes: Vec<u8>, max_bytes: u64) -> Result<Vec<u8>, MetadataError> {
+    if bytes.len() as u64 > max_bytes {
+        return Err(MetadataError::new(
+            MetadataErrorKind::TooLarge,
+            format!(
+                "Cover images are limited to {} MiB.",
+                max_bytes / (1024 * 1024)
+            ),
+        ));
+    }
+    covers::reencode(bytes, None).await
 }
 
 fn sru_endpoint(provider: MetadataProvider) -> &'static source::SruEndpoint {
@@ -310,7 +359,7 @@ mod tests {
         MetadataClient::with_endpoints(
             ClientOptions {
                 version: "test".into(),
-                contact: None,
+                ..ClientOptions::default()
             },
             Endpoints {
                 openlibrary,
@@ -324,7 +373,7 @@ mod tests {
     fn user_agent_names_the_operator_contact() {
         let mut options = ClientOptions {
             version: "1.2.3".into(),
-            contact: None,
+            ..ClientOptions::default()
         };
         assert_eq!(user_agent(&options), "Citadel/1.2.3 (+metadata-lookup)");
         options.contact = Some(" admin@example.com ".into());
@@ -414,5 +463,228 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.kind, MetadataErrorKind::Upstream);
         assert!(!error.message.contains("secret"), "{}", error.message);
+    }
+
+    fn jpeg(width: u32, height: u32) -> Vec<u8> {
+        let image = image::RgbImage::from_pixel(width, height, image::Rgb([20, 90, 160]));
+        let mut bytes = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new(&mut bytes)
+            .encode_image(&image)
+            .unwrap();
+        bytes
+    }
+
+    /// A Hardcover stand-in whose results point at images on the same
+    /// loopback server, one per refusal case.
+    async fn cover_server() -> (String, Arc<AtomicUsize>) {
+        use axum::{http::header, response::IntoResponse, routing::post};
+        let image_hits = Arc::new(AtomicUsize::new(0));
+        let base = Arc::new(Mutex::new(String::new()));
+        let router = Router::new()
+            .route(
+                "/graphql",
+                post({
+                    let base = base.clone();
+                    move || {
+                        let base = base.lock().unwrap().clone();
+                        async move {
+                            let hits: Vec<_> = ["ok", "big", "html", "slow", "offsite", "hop"]
+                                .iter()
+                                .enumerate()
+                                .map(|(id, name)| serde_json::json!({"document": {
+                                    "id": id, "title": name, "image": {"url": format!("{base}/img/{name}")}
+                                }}))
+                                .collect();
+                            axum::Json(serde_json::json!({"data": {"search": {"ids": [], "results": {"hits": hits}}}}))
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/img/{name}",
+                get({
+                    let base = base.clone();
+                    move |axum::extract::Path(name): axum::extract::Path<String>,
+                          State(hits): State<Arc<AtomicUsize>>| {
+                        let base = base.lock().unwrap().clone();
+                        async move {
+                            hits.fetch_add(1, Ordering::SeqCst);
+                            match name.as_str() {
+                                "ok" | "final" => {
+                                    ([(header::CONTENT_TYPE, "image/jpeg")], jpeg(900, 1350)).into_response()
+                                }
+                                "big" => ([(header::CONTENT_TYPE, "image/jpeg")], vec![0u8; 4096]).into_response(),
+                                "html" => ([(header::CONTENT_TYPE, "text/html")], "<html>").into_response(),
+                                "slow" => {
+                                    tokio::time::sleep(Duration::from_secs(5)).await;
+                                    "late".into_response()
+                                }
+                                "offsite" => (
+                                    axum::http::StatusCode::FOUND,
+                                    [(header::LOCATION, base.replace("127.0.0.1", "localhost") + "/img/ok")],
+                                )
+                                    .into_response(),
+                                _ => (axum::http::StatusCode::FOUND, [(header::LOCATION, "/img/final")])
+                                    .into_response(),
+                            }
+                        }
+                    }
+                }),
+            )
+            .with_state(image_hits.clone());
+        let address = serve(router).await;
+        *base.lock().unwrap() = address.clone();
+        (address, image_hits)
+    }
+
+    fn cover_client(base: &str, policy: CoverPolicy) -> MetadataClient {
+        MetadataClient::with_endpoints(
+            ClientOptions {
+                version: "test".into(),
+                contact: None,
+                covers: CoverOptions {
+                    max_image_bytes: 1024 * 1024,
+                    fetch_timeout: Duration::from_millis(500),
+                    ..CoverOptions::default()
+                },
+            },
+            Endpoints {
+                hardcover: format!("{base}/graphql"),
+                covers: policy,
+                ..Endpoints::default()
+            },
+        )
+        .unwrap()
+    }
+
+    fn loopback_policy() -> CoverPolicy {
+        CoverPolicy {
+            hosts: vec![(
+                MetadataProvider::Hardcover,
+                HostRule::Exact("127.0.0.1".into()),
+            )],
+            https_only: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn covers_are_fetched_only_through_their_ids_and_within_limits() {
+        let (base, image_hits) = cover_server().await;
+        let client = cover_client(&base, loopback_policy());
+        let books = client
+            .search(MetadataProvider::Hardcover, "dune", Some("key"))
+            .await
+            .unwrap();
+        let id = |title: &str| {
+            books
+                .iter()
+                .find(|book| book.title == title)
+                .and_then(|book| book.cover_id.clone())
+                .unwrap()
+        };
+        let json = serde_json::to_string(&books).unwrap();
+        assert!(
+            !json.contains("127.0.0.1"),
+            "URLs never reach clients: {json}"
+        );
+
+        let preview = client.cover_preview(&id("ok")).await.unwrap();
+        let decoded = image::load_from_memory(&preview).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (400, 600));
+        client.cover_preview(&id("ok")).await.unwrap();
+        assert_eq!(image_hits.load(Ordering::SeqCst), 1, "preview cached");
+
+        client.prefetch_cover(&id("ok")).await.unwrap();
+        let full = client.cover_image(&id("ok")).await.unwrap();
+        let decoded = image::load_from_memory(&full).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (900, 1350));
+        assert_eq!(
+            image_hits.load(Ordering::SeqCst),
+            2,
+            "apply uses the prefetch"
+        );
+
+        let hop = client.cover_image(&id("hop")).await.unwrap();
+        assert!(
+            image::load_from_memory(&hop).is_ok(),
+            "same-host redirects are followed"
+        );
+
+        for (title, kind) in [
+            ("big", MetadataErrorKind::InvalidArgument),
+            ("html", MetadataErrorKind::Upstream),
+            ("slow", MetadataErrorKind::Upstream),
+            ("offsite", MetadataErrorKind::Upstream),
+        ] {
+            let error = client.cover_image(&id(title)).await.unwrap_err();
+            assert_eq!(error.kind, kind, "{title}: {}", error.message);
+        }
+        assert_eq!(
+            client
+                .cover_image("0123456789abcdef0123456789abcdef")
+                .await
+                .unwrap_err()
+                .kind,
+            MetadataErrorKind::Gone
+        );
+    }
+
+    #[tokio::test]
+    async fn oversized_covers_are_refused_while_downloading() {
+        let (base, _) = cover_server().await;
+        let client = MetadataClient::with_endpoints(
+            ClientOptions {
+                version: "test".into(),
+                contact: None,
+                covers: CoverOptions {
+                    max_image_bytes: 1024,
+                    ..CoverOptions::default()
+                },
+            },
+            Endpoints {
+                hardcover: format!("{base}/graphql"),
+                covers: loopback_policy(),
+                ..Endpoints::default()
+            },
+        )
+        .unwrap();
+        let books = client
+            .search(MetadataProvider::Hardcover, "dune", Some("key"))
+            .await
+            .unwrap();
+        let big = books.iter().find(|book| book.title == "big").unwrap();
+        let error = client
+            .cover_image(big.cover_id.as_deref().unwrap())
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, MetadataErrorKind::TooLarge);
+    }
+
+    #[tokio::test]
+    async fn production_policy_never_registers_plain_http_or_unknown_hosts() {
+        let (base, _) = cover_server().await;
+        let client = cover_client(&base, CoverPolicy::default());
+        let books = client
+            .search(MetadataProvider::Hardcover, "dune", Some("key"))
+            .await
+            .unwrap();
+        assert!(books.iter().all(|book| book.cover_id.is_none()));
+    }
+
+    #[tokio::test]
+    async fn uploaded_covers_are_size_checked_and_reencoded() {
+        let jpeg = reencode_cover(jpeg(10, 10), 1024 * 1024).await.unwrap();
+        assert!(image::load_from_memory(&jpeg).is_ok());
+        assert_eq!(
+            reencode_cover(vec![0; 2048], 1024).await.unwrap_err().kind,
+            MetadataErrorKind::TooLarge
+        );
+        assert_eq!(
+            reencode_cover(b"GIF89a nope".to_vec(), 1024)
+                .await
+                .unwrap_err()
+                .kind,
+            MetadataErrorKind::InvalidArgument
+        );
     }
 }

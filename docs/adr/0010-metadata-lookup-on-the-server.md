@@ -45,6 +45,42 @@ Tests never use the live network: provider parsing runs against fixtures in
 `crates/citadel-metadata/fixtures`, and client behaviour against local test
 servers through `Endpoints`.
 
+### Covers
+
+Citadel fetches every cover itself, on the desktop as on the server, so a
+webview or browser never contacts a provider host and clients never send
+Citadel a URL. The desktop used to download any URL the frontend passed, with
+no host check, size limit or timeout.
+
+- **Cover IDs**: each lookup registers its results' images in an in-memory
+  registry under `sha256(url)[..16]`, so the same image gets the same ID across
+  searches and users. Results carry `cover_id`; the URL is never serialized.
+  Entries are count-capped and expire after an hour unused; serving a cached
+  answer re-registers its covers. An unknown ID answers `410 Gone` and the UI
+  silently searches again once. A lookup table, not a signed token: the client
+  can only name IDs the server issued, and losing them on restart costs one
+  search.
+- **Fetching**: only from each provider's own image hosts
+  (`covers.openlibrary.org` and Internet Archive storage for Open Library,
+  `assets.hardcover.app` for Hardcover), HTTPS only. Redirects are followed by
+  hand, at most three, and every hop is checked against the same list.
+  Responses must be images, are capped at 15 MiB while streaming, and must
+  arrive within 15 s; at most eight fetches run at once.
+- **Decoding**: images are decoded with `image` limits (10,000 px a side,
+  64 MiB of allocation) and re-encoded as JPEG before anything keeps them.
+  Uploaded cover files go through the same step.
+- **Previews** are 600 px on the long edge, held in a 32 MiB in-memory cache
+  for 180 s, no disk. Choosing a result during import prefetches the full-size
+  image into the same cache for 60 s so applying it after the book is created
+  doesn't wait on the provider.
+- **Contract**: `setBookCoverFromUrl` is gone. Both hosts offer
+  `setBookCoverFromMetadata(bookId, coverId)` and
+  `setBookCoverFromFile(bookId, image)`. The server exposes
+  `GET /api/metadata/covers/{id}/preview`, `POST …/prefetch`,
+  `POST /api/books/{id}/cover {coverId}` and `PUT /api/books/{id}/cover` with
+  the image as the body. The desktop serves previews from a `citadel-cover://`
+  URI scheme backed by the same cache.
+
 ## Consequences
 
 - The Tauri commands are thin adapters; IPC bindings are unchanged.
@@ -52,5 +88,4 @@ servers through `Endpoints`.
   per-user token bucket and a byte-bounded answer cache in front of the shared
   client. Keyed providers' answers are cached per user.
 - Keyed providers use each user's own key, sealed in `citadel.db` (ADR 0011).
-- Centralized cover fetching builds on this crate (CDL-56) and is recorded here
-  as it lands.
+- Covers are centralized; see below.

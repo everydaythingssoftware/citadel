@@ -329,6 +329,76 @@ async fn delete_author(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ApplyCover {
+    /// A `cover_id` from a metadata result.
+    cover_id: String,
+}
+
+#[utoipa::path(post, path = "/api/books/{book_id}/cover", operation_id = "setBookCoverFromMetadata",
+    params(("book_id" = String, Path, description = "Library book ID")),
+    request_body = ApplyCover,
+    description = "Set a book's cover from a metadata result. The server fetches the full-size image from the provider; clients never send a URL. 410 when the cover ID has expired.",
+    responses((status = 204), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
+        (status = 403, body = LibraryError), (status = 404, body = LibraryError), (status = 410, body = LibraryError),
+        (status = 413, body = LibraryError), (status = 503, body = LibraryError)),
+    security(("session" = [])))]
+async fn set_cover_from_metadata(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Path(id): Path<String>,
+    request: Result<Json<ApplyCover>, JsonRejection>,
+) -> Result<StatusCode, metadata::MetadataFailure> {
+    let Json(request) = request.map_err(|_| LibraryError::invalid("Invalid cover JSON"))?;
+    if state.source.read_only() {
+        return Err(LibraryError::read_only().into());
+    }
+    let bytes = state.metadata.cover_image(&request.cover_id).await?;
+    write(state, move |service| {
+        service.set_cover(&user.actor(), &id, bytes)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(put, path = "/api/books/{book_id}/cover", operation_id = "setBookCoverFromFile",
+    params(("book_id" = String, Path, description = "Library book ID")),
+    request_body(content = Vec<u8>, content_type = "image/*", description = "A JPEG, PNG or WebP image, up to `api.metadata.maxImageBytes`"),
+    description = "Set a book's cover from an uploaded image. The image is decoded within limits and stored re-encoded as JPEG.",
+    responses((status = 204), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
+        (status = 403, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 413, body = LibraryError), (status = 503, body = LibraryError)),
+    security(("session" = [])))]
+async fn set_cover_from_file(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Path(id): Path<String>,
+    body: Body,
+) -> Result<StatusCode, metadata::MetadataFailure> {
+    if state.source.read_only() {
+        return Err(LibraryError::read_only().into());
+    }
+    let limit = usize::try_from(state.metadata.max_image_bytes()).unwrap_or(usize::MAX);
+    let bytes = match tokio::time::timeout(REQUEST_DEADLINE, to_bytes(body, limit)).await {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(_)) => {
+            return Err(LibraryError::new(
+                LibraryErrorCode::TooLarge,
+                format!("Cover images are limited to {} MiB", limit / (1024 * 1024)),
+            )
+            .into())
+        }
+        Err(_) => return Err(LibraryError::unavailable().into()),
+    };
+    let jpeg = state.metadata.reencode_upload(bytes.to_vec()).await?;
+    write(state, move |service| {
+        service.set_cover(&user.actor(), &id, jpeg)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn routes() -> OpenApiRouter<ApiState> {
     OpenApiRouter::new()
         .routes(routes!(query_books))
@@ -352,13 +422,19 @@ fn routes() -> OpenApiRouter<ApiState> {
         .routes(routes!(metadata::search))
         .routes(routes!(metadata::by_isbn))
         .routes(routes!(metadata::test))
+        .routes(routes!(metadata::cover_preview))
+        .routes(routes!(metadata::prefetch_cover))
+        .routes(routes!(set_cover_from_metadata))
         .routes(routes!(account::list))
         .routes(routes!(account::save, account::delete))
 }
 
-/// Upload chunks stream to disk, so they bypass the JSON request bounds.
+/// Upload chunks stream to disk and cover images have their own size limit,
+/// so they bypass the JSON request bounds.
 fn chunk_routes() -> OpenApiRouter<ApiState> {
-    OpenApiRouter::new().routes(routes!(uploads::receive))
+    OpenApiRouter::new()
+        .routes(routes!(uploads::receive))
+        .routes(routes!(set_cover_from_file))
 }
 
 pub fn openapi() -> OpenApi {
@@ -402,10 +478,18 @@ pub fn openapi() -> OpenApi {
         });
         let mut head = operation.clone();
         head["operationId"] = serde_json::json!(format!("{operation_id}Head"));
+        // Keep any operations the API itself defines on the same path.
+        let mut item = schema
+            .paths
+            .paths
+            .get(path)
+            .map(|item| serde_json::to_value(item).expect("OpenAPI paths serialize"))
+            .unwrap_or_else(|| serde_json::json!({}));
+        item["get"] = operation;
+        item["head"] = head;
         schema.paths.paths.insert(
             path.into(),
-            serde_json::from_value(serde_json::json!({"get":operation,"head":head}))
-                .expect("asset OpenAPI paths are valid"),
+            serde_json::from_value(item).expect("asset OpenAPI paths are valid"),
         );
     }
     schema.info.title = "Citadel library API".into();

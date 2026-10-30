@@ -44,7 +44,13 @@ export interface Library {
 		value: CustomValueDto | null,
 	): Promise<void>;
 	addBookGenres(bookId: string, genres: string[]): Promise<void>;
-	setBookCoverFromUrl(bookId: string, imageUrl: string): Promise<void>;
+	/**
+	 * Set a cover from a metadata result's `cover_id`; Citadel fetches the
+	 * image. Rejects with `CoverExpiredError` once the ID has expired.
+	 */
+	setBookCoverFromMetadata(bookId: string, coverId: string): Promise<void>;
+	/** Set a cover from an image file the user chose. */
+	setBookCoverFromFile(bookId: string, image: Blob): Promise<void>;
 	createAuthors(newAuthors: NewAuthor[]): Promise<LibraryAuthor[]>;
 	/**
 	 * One page of a filtered, sorted book query (the cover grid's data
@@ -187,3 +193,11 @@ export interface RemoteConnectionOptions {
 export type Options = {
 	libraryType: "calibre";
 } & (LocalConnectionOptions | RemoteConnectionOptions);
+
+/** A metadata result's cover ID expired; search again for a fresh one. */
+export class CoverExpiredError extends Error {
+	constructor(message = "This cover is no longer available — search again.") {
+		super(message);
+		this.name = "CoverExpiredError";
+	}
+}

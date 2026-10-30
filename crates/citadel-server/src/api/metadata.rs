@@ -10,13 +10,13 @@ use std::{
 
 use axum::{
     extract::{rejection::QueryRejection, Extension, Path, Query, State},
-    http::{header, HeaderValue},
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use citadel_core::error::{LibraryError, LibraryErrorCode};
 use citadel_metadata::{
-    BookMetadata, MetadataClient, MetadataError, MetadataErrorKind, MetadataProvider,
+    BookMetadata, CoverOptions, MetadataClient, MetadataError, MetadataErrorKind, MetadataProvider,
     ProviderStatus,
 };
 use serde::{Deserialize, Serialize};
@@ -32,13 +32,52 @@ const MAX_TRACKED_USERS: usize = 4096;
 const MAX_CONTACT_CHARS: usize = 200;
 
 /// `api.metadata` in the server config.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields, default)]
 pub struct MetadataConfig {
     /// An operator contact (URL or email) added to the User-Agent providers
     /// see, as Open Library asks of heavy clients.
     pub contact: Option<String>,
+    /// Largest cover image Citadel downloads or accepts as an upload.
+    pub max_image_bytes: u64,
+    pub fetch_timeout_secs: u64,
+    pub max_concurrent_fetches: usize,
+    pub preview: PreviewConfig,
     pub search: SearchConfig,
+}
+
+impl Default for MetadataConfig {
+    fn default() -> Self {
+        let covers = CoverOptions::default();
+        Self {
+            contact: None,
+            max_image_bytes: covers.max_image_bytes,
+            fetch_timeout_secs: covers.fetch_timeout.as_secs(),
+            max_concurrent_fetches: covers.max_concurrent_fetches,
+            preview: PreviewConfig::default(),
+            search: SearchConfig::default(),
+        }
+    }
+}
+
+/// Cover previews and chosen full-size covers share one in-memory budget.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields, default)]
+pub struct PreviewConfig {
+    pub cache_bytes: usize,
+    pub ttl_secs: u64,
+    pub long_edge_px: u32,
+}
+
+impl Default for PreviewConfig {
+    fn default() -> Self {
+        let covers = CoverOptions::default();
+        Self {
+            cache_bytes: covers.cache_bytes,
+            ttl_secs: covers.preview_ttl.as_secs(),
+            long_edge_px: covers.preview_long_edge,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -78,7 +117,36 @@ impl MetadataConfig {
         if self.search.ttl_secs > 24 * 60 * 60 {
             return Err("api.metadata.search.ttlSecs must be at most 86400 (one day)".into());
         }
+        if !(1..=64 * MIB as u64).contains(&self.max_image_bytes) {
+            return Err(
+                "api.metadata.maxImageBytes must be between 1 and 67108864 (64 MiB)".into(),
+            );
+        }
+        if !(1..=120).contains(&self.fetch_timeout_secs) {
+            return Err("api.metadata.fetchTimeoutSecs must be between 1 and 120".into());
+        }
+        if !(1..=64).contains(&self.max_concurrent_fetches) {
+            return Err("api.metadata.maxConcurrentFetches must be between 1 and 64".into());
+        }
+        if !(64..=2000).contains(&self.preview.long_edge_px) {
+            return Err("api.metadata.preview.longEdgePx must be between 64 and 2000".into());
+        }
+        if self.preview.ttl_secs > 24 * 60 * 60 {
+            return Err("api.metadata.preview.ttlSecs must be at most 86400 (one day)".into());
+        }
         Ok(())
+    }
+
+    pub(crate) fn cover_options(&self) -> CoverOptions {
+        CoverOptions {
+            max_image_bytes: self.max_image_bytes,
+            fetch_timeout: Duration::from_secs(self.fetch_timeout_secs),
+            max_concurrent_fetches: self.max_concurrent_fetches,
+            cache_bytes: self.preview.cache_bytes,
+            preview_ttl: Duration::from_secs(self.preview.ttl_secs),
+            preview_long_edge: self.preview.long_edge_px,
+            ..CoverOptions::default()
+        }
     }
 }
 
@@ -95,6 +163,7 @@ impl Metadata {
         let client = MetadataClient::new(citadel_metadata::ClientOptions {
             version: env!("CARGO_PKG_VERSION").into(),
             contact: config.contact.clone(),
+            covers: config.cover_options(),
         })
         .map_err(|error| error.message)?;
         Ok(Self::with_client(config, client))
@@ -149,6 +218,8 @@ impl Metadata {
                 .map_err(|_| unavailable())?
                 .get(&key, ttl, Instant::now())
         {
+            let mut books = books;
+            self.client.register_covers(&mut books);
             return Ok(books);
         }
         self.admit_user(&user.0.id, Instant::now())?;
@@ -187,13 +258,11 @@ impl Metadata {
             .test(provider, Some(secret))
             .await
             .map_err(|error| match error.kind {
-                MetadataErrorKind::Unauthorized => MetadataFailure(
-                    LibraryError::invalid(format!(
-                        "{} didn't accept that API key",
-                        provider.display_name()
-                    )),
-                    None,
-                ),
+                MetadataErrorKind::Unauthorized => LibraryError::invalid(format!(
+                    "{} didn't accept that API key",
+                    provider.display_name()
+                ))
+                .into(),
                 _ => error.into(),
             })
     }
@@ -327,8 +396,9 @@ impl SearchCache {
     }
 }
 
-/// A `LibraryError` plus how long to wait, sent as `Retry-After`.
-pub(super) struct MetadataFailure(LibraryError, Option<Duration>);
+/// A `LibraryError`, how long to wait (sent as `Retry-After`), and whether
+/// it is an expired cover ID, answered `410 Gone` so clients search again.
+pub(super) struct MetadataFailure(pub(super) LibraryError, Option<Duration>, bool);
 
 impl MetadataFailure {
     fn rate_limited(wait: Duration) -> Self {
@@ -341,12 +411,13 @@ impl MetadataFailure {
                 ),
             ),
             Some(wait),
+            false,
         )
     }
 }
 
 fn unavailable() -> MetadataFailure {
-    MetadataFailure(LibraryError::unavailable(), None)
+    MetadataFailure(LibraryError::unavailable(), None, false)
 }
 
 impl From<MetadataError> for MetadataFailure {
@@ -364,26 +435,32 @@ impl From<MetadataError> for MetadataFailure {
                 (LibraryErrorCode::Unavailable, Some(retry_after))
             }
             MetadataErrorKind::Upstream => (LibraryErrorCode::Unavailable, None),
+            MetadataErrorKind::Gone => (LibraryErrorCode::NotFound, None),
+            MetadataErrorKind::TooLarge => (LibraryErrorCode::TooLarge, None),
         };
-        Self(LibraryError::new(code, error.message), wait)
+        let gone = error.kind == MetadataErrorKind::Gone;
+        Self(LibraryError::new(code, error.message), wait, gone)
     }
 }
 
 impl From<LibraryError> for MetadataFailure {
     fn from(error: LibraryError) -> Self {
-        Self(error, None)
+        Self(error, None, false)
     }
 }
 
 impl From<ApiFailure> for MetadataFailure {
     fn from(failure: ApiFailure) -> Self {
-        Self(failure.0, None)
+        Self(failure.0, None, false)
     }
 }
 
 impl IntoResponse for MetadataFailure {
     fn into_response(self) -> Response {
         let mut response = ApiFailure(self.0).into_response();
+        if self.2 {
+            *response.status_mut() = StatusCode::GONE;
+        }
         if let Some(wait) = self.1 {
             let seconds = wait.as_secs_f64().ceil().max(1.0) as u64;
             response.headers_mut().insert(
@@ -547,6 +624,57 @@ pub(super) async fn test(
     }))
 }
 
+#[utoipa::path(get, path = "/api/metadata/covers/{cover_id}/preview", operation_id = "previewMetadataCover",
+    params(("cover_id" = String, Path, description = "A `cover_id` from a metadata result")),
+    description = "A small JPEG of a result's cover, fetched by the server from the provider. 410 when the ID has expired; search again.",
+    responses((status = 200, description = "Cover preview", content_type = "image/jpeg", body = Vec<u8>),
+        (status = 401, body = LibraryError), (status = 410, body = LibraryError),
+        (status = 429, body = LibraryError), (status = 503, body = LibraryError)),
+    security(("session" = [])))]
+pub(super) async fn cover_preview(
+    State(state): State<ApiState>,
+    Path(cover_id): Path<String>,
+) -> Result<Response, MetadataFailure> {
+    let bytes = state.metadata.client.cover_preview(&cover_id).await?;
+    let max_age = state.metadata.config.preview.ttl_secs;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/jpeg".to_string()),
+            (header::CACHE_CONTROL, format!("private, max-age={max_age}")),
+        ],
+        bytes.to_vec(),
+    )
+        .into_response())
+}
+
+#[utoipa::path(post, path = "/api/metadata/covers/{cover_id}/prefetch", operation_id = "prefetchMetadataCover",
+    params(("cover_id" = String, Path, description = "A `cover_id` from a metadata result")),
+    description = "Start fetching a chosen cover at full size so applying it is quick.",
+    responses((status = 204), (status = 401, body = LibraryError), (status = 410, body = LibraryError),
+        (status = 413, body = LibraryError), (status = 503, body = LibraryError)),
+    security(("session" = [])))]
+pub(super) async fn prefetch_cover(
+    State(state): State<ApiState>,
+    Path(cover_id): Path<String>,
+) -> Result<StatusCode, MetadataFailure> {
+    state.metadata.client.prefetch_cover(&cover_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+impl Metadata {
+    pub(super) async fn cover_image(&self, cover_id: &str) -> Result<Vec<u8>, MetadataFailure> {
+        Ok(self.client.cover_image(cover_id).await?.to_vec())
+    }
+
+    pub(super) async fn reencode_upload(&self, bytes: Vec<u8>) -> Result<Vec<u8>, MetadataFailure> {
+        Ok(citadel_metadata::reencode_cover(bytes, self.config.max_image_bytes).await?)
+    }
+
+    pub(super) fn max_image_bytes(&self) -> u64 {
+        self.config.max_image_bytes
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,7 +683,7 @@ mod tests {
         serde_json::from_value(serde_json::json!({
             "provider": "openlibrary", "provider_id": "OL1M", "identifier_label": "openlibrary",
             "title": title, "subtitle": null, "authors": [], "isbn": null, "release_year": null,
-            "description": null, "image_url": null, "publisher": null, "subjects": [],
+            "description": null, "cover_id": null, "publisher": null, "subjects": [],
             "genre_candidates": [], "language_code": null, "slug": null
         }))
         .unwrap()
@@ -571,6 +699,10 @@ mod tests {
             serde_json::json!({"contact": "  "}),
             serde_json::json!({"search": {"perUserPerMinute": 0}}),
             serde_json::json!({"search": {"ttlSecs": 90000}}),
+            serde_json::json!({"maxImageBytes": 0}),
+            serde_json::json!({"fetchTimeoutSecs": 0}),
+            serde_json::json!({"maxConcurrentFetches": 0}),
+            serde_json::json!({"preview": {"longEdgePx": 10}}),
         ] {
             let config: MetadataConfig = serde_json::from_value(invalid.clone()).unwrap();
             assert!(config.validate().is_err(), "{invalid}");

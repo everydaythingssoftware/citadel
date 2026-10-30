@@ -97,6 +97,10 @@ fn metadata_at(base: String, config: api::MetadataConfig) -> Arc<api::Metadata> 
         citadel_metadata::ClientOptions {
             version: "test".into(),
             contact: None,
+            covers: citadel_metadata::CoverOptions {
+                max_image_bytes: config.max_image_bytes,
+                ..Default::default()
+            },
         },
         citadel_metadata::Endpoints {
             openlibrary: base.clone(),
@@ -104,6 +108,14 @@ fn metadata_at(base: String, config: api::MetadataConfig) -> Arc<api::Metadata> 
             loc: format!("{base}/loc"),
             dnb: format!("{base}/dnb"),
             k10plus: format!("{base}/k10plus"),
+            // The stand-in serves Hardcover's images from loopback.
+            covers: citadel_metadata::CoverPolicy {
+                hosts: vec![(
+                    citadel_metadata::MetadataProvider::Hardcover,
+                    citadel_metadata::HostRule::Exact("127.0.0.1".into()),
+                )],
+                https_only: false,
+            },
         },
     )
     .unwrap();
@@ -1512,6 +1524,15 @@ async fn fake_openlibrary() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
             }),
         )
         .route("/graphql", axum::routing::post(fake_hardcover))
+        .route(
+            "/img/cover.jpg",
+            get(|| async {
+                (
+                    [("content-type", "image/jpeg")],
+                    jpeg(Rgb([200, 30, 30]), 800, 1200),
+                )
+            }),
+        )
         .with_state(hits.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -1520,12 +1541,57 @@ async fn fake_openlibrary() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
 }
 
 use axum::response::IntoResponse;
+use image::Rgb;
+
+fn jpeg(colour: Rgb<u8>, width: u32, height: u32) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new(&mut bytes)
+        .encode_image(&image::RgbImage::from_pixel(width, height, colour))
+        .unwrap();
+    bytes
+}
+
+async fn raw(
+    router: &Router,
+    method: &str,
+    path: &str,
+    body: Vec<u8>,
+    content_type: &str,
+    cookie: &str,
+) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(method)
+                .uri(path)
+                .header("content-type", content_type)
+                .header("origin", PUBLIC_URL)
+                .header("cookie", cookie)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = to_bytes(response.into_body(), 64 * 1024 * 1024)
+        .await
+        .unwrap()
+        .to_vec();
+    (status, headers, body)
+}
 
 /// Accepts only the token `good`, the way Hasura reports a bad JWT.
 async fn fake_hardcover(
     headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<Value>,
 ) -> axum::Json<Value> {
+    let host = headers
+        .get("host")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
     if headers
         .get("authorization")
         .and_then(|value| value.to_str().ok())
@@ -1540,7 +1606,8 @@ async fn fake_hardcover(
     }
     axum::Json(
         json!({"data": {"search": {"ids": ["1"], "results": {"hits": [
-            {"document": {"id": 1, "title": "Dune", "isbns": [], "contributions": [], "genres": []}}
+            {"document": {"id": 1, "title": "Dune", "isbns": [], "contributions": [], "genres": [],
+            "image": {"url": format!("http://{host}/img/cover.jpg")}}}
         ]}}}}),
     )
 }
@@ -1769,5 +1836,174 @@ async fn provider_keys_are_verified_saved_per_user_and_never_returned() {
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn covers_are_previewed_and_applied_by_id_never_by_url() {
+    let (base, _) = fake_openlibrary().await;
+    let config: api::MetadataConfig =
+        serde_json::from_value(json!({"maxImageBytes": 2 * 1024 * 1024})).unwrap();
+    let (_directory, service, router, id, cookie) = fixture_with_metadata(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+        metadata_at(base.clone(), config.clone()),
+    )
+    .await;
+    let call = |method: &str, path: &str, body: Value| {
+        let (method, path, router, cookie) = (
+            method.to_string(),
+            path.to_string(),
+            router.clone(),
+            cookie.clone(),
+        );
+        async move {
+            let body = if body.is_null() {
+                String::new()
+            } else {
+                body.to_string()
+            };
+            request(&router, &method, &path, body, Some(&cookie)).await
+        }
+    };
+    let (status, _, _) = call(
+        "PUT",
+        "/api/account/provider-credentials/hardcover",
+        json!({"secret": "good"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, _, books) = call(
+        "GET",
+        "/api/metadata/search?provider=hardcover&q=dune",
+        Value::Null,
+    )
+    .await;
+    assert!(!books.to_string().contains("127.0.0.1"), "{books}");
+    let cover_id = books[0]["cover_id"].as_str().unwrap().to_string();
+
+    let (status, headers, preview) = raw(
+        &router,
+        "GET",
+        &format!("/api/metadata/covers/{cover_id}/preview"),
+        Vec::new(),
+        "application/json",
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["content-type"], "image/jpeg");
+    assert_eq!(headers["cache-control"], "private, max-age=180");
+    let decoded = image::load_from_memory(&preview).unwrap();
+    assert_eq!((decoded.width(), decoded.height()), (400, 600));
+
+    let (status, _, _) = call(
+        "POST",
+        &format!("/api/metadata/covers/{cover_id}/prefetch"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let cover_path = format!("/api/books/{id}/cover");
+    let (status, _, before) = raw(
+        &router,
+        "GET",
+        &cover_path,
+        Vec::new(),
+        "application/json",
+        &cookie,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "GET still served by the asset route"
+    );
+    let (status, _, error) = call("POST", &cover_path, json!({"coverId": cover_id})).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{error}");
+    let (_, _, after) = raw(
+        &router,
+        "GET",
+        &cover_path,
+        Vec::new(),
+        "application/json",
+        &cookie,
+    )
+    .await;
+    assert_ne!(before, after);
+    let applied = image::load_from_memory(&after).unwrap();
+    assert_eq!((applied.width(), applied.height()), (800, 1200));
+
+    for (body, expected) in [
+        (
+            json!({"coverId": "0123456789abcdef0123456789abcdef"}),
+            StatusCode::GONE,
+        ),
+        (
+            json!({"url": "https://example.com/x.jpg"}),
+            StatusCode::BAD_REQUEST,
+        ),
+    ] {
+        let (status, _, error) = call("POST", &cover_path, body).await;
+        assert_eq!(status, expected, "{error}");
+    }
+
+    let mut png = Vec::new();
+    image::RgbImage::from_pixel(30, 40, Rgb([10, 200, 10]))
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    let (status, _, _) = raw(&router, "PUT", &cover_path, png, "image/png", &cookie).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, _, uploaded) = raw(
+        &router,
+        "GET",
+        &cover_path,
+        Vec::new(),
+        "application/json",
+        &cookie,
+    )
+    .await;
+    assert_eq!(&uploaded[..2], &[0xFF, 0xD8], "stored re-encoded as JPEG");
+    let (status, _, _) = raw(
+        &router,
+        "PUT",
+        &cover_path,
+        b"<svg/>".to_vec(),
+        "image/svg+xml",
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _, _) = raw(
+        &router,
+        "PUT",
+        &cover_path,
+        vec![0; 3 * 1024 * 1024],
+        "image/jpeg",
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    service.stop().await;
+
+    let (_directory, service, router, id, cookie) = fixture_with_metadata(
+        CalibreCatalogSource::open,
+        api::UploadConfig::default(),
+        metadata_at(base, config),
+    )
+    .await;
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        &format!("/api/books/{id}/cover"),
+        json!({"coverId": cover_id}).to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::FORBIDDEN, Some("readOnly"))
+    );
     service.stop().await;
 }

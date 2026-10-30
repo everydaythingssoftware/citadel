@@ -1,5 +1,6 @@
 import type { BookMetadata } from "@/bindings";
 import { isbnEquivalent, toIsbn13 } from "@/lib/isbn";
+import { metadataService } from "@/lib/services/metadata";
 import { getAdapter, getDescriptor } from "./registry";
 import type {
 	ProviderDescriptor,
@@ -14,6 +15,8 @@ export interface AggregatedResult {
 	alsoOn: string[];
 	/** Whether this row's ISBN matches the originating file's ISBN. */
 	isIsbnMatch: boolean;
+	/** Where to load the cover preview from, when the record has a cover. */
+	coverUrl: string | null;
 }
 
 /**
@@ -60,9 +63,9 @@ export const mergeResults = (
 		if (!top) continue;
 
 		const winner: BookMetadata = { ...top };
-		if (!winner.image_url) {
-			const peerCover = sorted.find((member) => member.image_url);
-			if (peerCover) winner.image_url = peerCover.image_url;
+		if (!winner.cover_id) {
+			const peerCover = sorted.find((member) => member.cover_id);
+			if (peerCover) winner.cover_id = peerCover.cover_id;
 		}
 		const seenGenres = new Set<string>();
 		winner.genre_candidates = sorted
@@ -87,6 +90,9 @@ export const mergeResults = (
 			book: winner,
 			alsoOn,
 			isIsbnMatch: pinIsbn ? isbnEquivalent(winner.isbn, pinIsbn) : false,
+			coverUrl: winner.cover_id
+				? metadataService.coverPreviewUrl(winner.cover_id)
+				: null,
 		});
 	}
 

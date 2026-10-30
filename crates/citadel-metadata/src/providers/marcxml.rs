@@ -229,6 +229,7 @@ fn map_record(rec: &RawRecord, provider: MetadataProvider) -> BookMetadata {
             .map(strip_trailing_punct)
             .filter(|s| !s.is_empty()),
         image_url: None,
+        cover_id: None,
         publisher: publisher(rec),
         subjects: subjects(rec),
         genre_candidates: genres(rec),

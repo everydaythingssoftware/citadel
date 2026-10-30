@@ -17,8 +17,9 @@ store retains serialized opens and shadow-switch/restore guards. New custom-fiel
 genre and cover entry points reject while the backend is diverted, reject results
 from a superseded library, and invalidate book caches only after successful
 writes. UI edit/metadata operations retain the originating library identity across
-awaits. The native cover downloader also checks the original library root under
-the backend mutex before applying the downloaded image.
+awaits. Covers are applied by metadata cover ID or uploaded image, never by URL
+(ADR 0010); the desktop checks the original library root under the backend mutex
+before applying a fetched image.
 
 Metadata-provider descriptors and aggregation are independent of the IPC
 transport. The registry delegates provider operations to Metadata; applying a
@@ -33,7 +34,8 @@ The browser LibraryCatalog connects to the serving origin’s configured library
 its HTTP Library uses generated OpenAPI bindings and exposes a read-only
 capability. Unbounded Library queries are assembled from bounded HTTP pages.
 Initial and subsequently fetched pages request thumbnails on demand. Metadata
-HTTP transport and library mutations remain subsequent work. No ordinary library
+lookups and cover previews go through the server (ADR 0010); the browser's
+remaining library mutations are subsequent work. No ordinary library
 operation gains arbitrary server filesystem discovery or administration.
 
 `bun lint:boundaries` parses TypeScript imports and command accesses. It rejects

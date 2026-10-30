@@ -50,6 +50,18 @@ export const createWebMetadataService = (
 				};
 			}
 		},
+		coverPreviewUrl: (coverId) =>
+			new URL(
+				`/api/metadata/covers/${encodeURIComponent(coverId)}/preview`,
+				options.baseUrl,
+			).toString(),
+		prefetchCover: async (coverId) => {
+			const { error } = await client.POST(
+				"/api/metadata/covers/{cover_id}/prefetch",
+				{ params: { path: { cover_id: coverId } } },
+			);
+			if (error) throw new Error(error.message);
+		},
 		availability: async () =>
 			(await unwrap(client.GET("/api/metadata/providers"))).map((info) => ({
 				provider: info.provider,

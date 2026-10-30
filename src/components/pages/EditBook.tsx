@@ -1065,6 +1065,7 @@ const EditBookForm = ({
 				pendingProviderNames={meta.pendingProviderNames}
 				onSelect={(result) => void meta.selectResult(result)}
 				onStop={meta.stopSearch}
+				onCoverError={meta.retryAfterCoverError}
 				error={meta.message?.type === "error" ? meta.message.text : null}
 			/>
 		</form>

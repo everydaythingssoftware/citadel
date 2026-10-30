@@ -37,4 +37,8 @@ export interface MetadataService {
 	): Promise<{ ok: boolean; message: string }>;
 	/** Which providers the current user can use, as far as the host knows. */
 	availability(): Promise<ProviderAvailability[]>;
+	/** Where to load a result's cover preview from; Citadel fetches it. */
+	coverPreviewUrl(coverId: string): string;
+	/** Start fetching a chosen result's full-size cover ahead of applying it. */
+	prefetchCover(coverId: string): Promise<void>;
 }

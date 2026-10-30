@@ -791,11 +791,13 @@ name = "citadel-metadata"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "image",
  "log",
  "quick-xml 0.38.4",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "specta",
  "tokio",
  "urlencoding",
@@ -2558,12 +2560,23 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "image-webp",
  "moxcms",
  "num-traits",
  "png",
  "tiff",
  "zune-core",
  "zune-jpeg",
+]
+
+[[package]]
+name = "image-webp"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3"
+dependencies = [
+ "byteorder-lite",
+ "quick-error 2.0.1",
 ]
 
 [[package]]

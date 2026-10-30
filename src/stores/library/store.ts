@@ -84,7 +84,8 @@ interface LibraryActions {
 		value: CustomValueDto | null,
 	) => Promise<void>;
 	addBookGenres: (bookId: string, genres: string[]) => Promise<void>;
-	setBookCoverFromUrl: (bookId: string, imageUrl: string) => Promise<void>;
+	setBookCoverFromMetadata: (bookId: string, coverId: string) => Promise<void>;
+	setBookCoverFromFile: (bookId: string, image: Blob) => Promise<void>;
 	listValidFileTypes: () => Promise<string[]>;
 	getImportableBookMetadata: (
 		filePath: string,
@@ -814,9 +815,14 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				),
 			addBookGenres: (id, genres) =>
 				withActiveLibrary((library) => library.addBookGenres(id, genres), true),
-			setBookCoverFromUrl: (id, url) =>
+			setBookCoverFromMetadata: (id, coverId) =>
 				withActiveLibrary(
-					(library) => library.setBookCoverFromUrl(id, url),
+					(library) => library.setBookCoverFromMetadata(id, coverId),
+					true,
+				),
+			setBookCoverFromFile: (id, image) =>
+				withActiveLibrary(
+					(library) => library.setBookCoverFromFile(id, image),
 					true,
 				),
 

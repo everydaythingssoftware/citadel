@@ -209,9 +209,24 @@ async clbCmdDeleteBookIdentifier(bookId: string, identifierId: number) : Promise
     else return { status: "error", error: e  as any };
 }
 },
-async clbCmdSetBookCoverFromUrl(bookId: string, imageUrl: string) : Promise<Result<null, string>> {
+/**
+ * Apply a cover from a metadata lookup result, by the `cover_id` the
+ * lookup returned. Citadel fetches the image itself (ADR 0010).
+ */
+async clbCmdSetBookCoverFromMetadata(bookId: string, coverId: string) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_book_cover_from_url", { bookId, imageUrl }) };
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_book_cover_from_metadata", { bookId, coverId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Apply a cover image the user chose from a file.
+ */
+async clbCmdSetBookCoverFromFile(bookId: string, bytes: number[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_book_cover_from_file", { bookId, bytes }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -355,6 +370,17 @@ async clbQueryMetadataSearch(provider: string, query: string, apiKey: string) : 
 async clbQueryMetadataByIsbn(provider: string, isbn: string, apiKey: string) : Promise<Result<BookMetadata[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_metadata_by_isbn", { provider, isbn, apiKey }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Fetch a chosen result's full-size cover ahead of applying it.
+ */
+async clbCmdPrefetchMetadataCover(coverId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_prefetch_metadata_cover", { coverId }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -513,7 +539,12 @@ export type BookMetadata = { provider: MetadataProvider;
  * Provider-native id: hardcover id (stringified), LCCN, DNB control
  * number, or Open Library OLID.
  */
-provider_id: string; identifier_label: string; title: string; subtitle: string | null; authors: string[]; isbn: string | null; release_year: number | null; description: string | null; image_url: string | null; publisher: string | null; 
+provider_id: string; identifier_label: string; title: string; subtitle: string | null; authors: string[]; isbn: string | null; release_year: number | null; description: string | null; 
+/**
+ * Opaque ID for this result's cover, for previews and applying it.
+ * Expires an hour after the result was last returned.
+ */
+cover_id: string | null; publisher: string | null; 
 /**
  * Subject headings, mapped to tag suggestions on the frontend.
  */

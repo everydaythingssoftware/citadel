@@ -20,6 +20,10 @@ pub enum MetadataErrorKind {
     Unavailable { retry_after: Duration },
     /// The provider could not be reached or answered with something unusable.
     Upstream,
+    /// A cover ID that is unknown or expired; search again for a fresh one.
+    Gone,
+    /// An image larger than Citadel accepts.
+    TooLarge,
 }
 
 impl MetadataError {
