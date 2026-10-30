@@ -1,4 +1,39 @@
 export interface paths {
+    "/api/account/provider-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The signed-in user's saved provider keys. Keys themselves are never returned. */
+        get: operations["listProviderCredentials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/provider-credentials/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Check a provider key with the provider, then save it for the signed-in user, replacing any earlier key. */
+        put: operations["saveProviderCredential"];
+        post?: never;
+        /** @description Forget the signed-in user's key for a provider. */
+        delete: operations["deleteProviderCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/authors": {
         parameters: {
             query?: never;
@@ -691,6 +726,27 @@ export interface components {
             /** @description Why not, when it isn't. */
             unavailableReason: string | null;
         };
+        ProviderCredentialInfo: {
+            /** @description The provider account the key belongs to, when the provider says. */
+            accountName: string | null;
+            /**
+             * Format: int64
+             * @description When the key was saved, in Unix seconds.
+             */
+            createdAt: number;
+            displayName: string;
+            /**
+             * @description The server can no longer read the key (its vault key changed); enter
+             *     it again.
+             */
+            needsReentry: boolean;
+            provider: components["schemas"]["MetadataProvider"];
+            /**
+             * Format: int64
+             * @description When the provider last accepted the key, in Unix seconds.
+             */
+            verifiedAt: number | null;
+        };
         ProviderStatus: {
             is_valid: boolean;
             message: string;
@@ -698,6 +754,10 @@ export interface components {
         };
         RemoteFile: {
             url: string;
+        };
+        SaveProviderCredential: {
+            /** @description The provider API key. It is checked with the provider before saving. */
+            secret: string;
         };
         SessionInfo: {
             /** @description False when the user exists but has no access to this server's library. */
@@ -755,6 +815,143 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listProviderCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredentialInfo"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    saveProviderCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A provider that needs a key */
+                provider: components["schemas"]["MetadataProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveProviderCredential"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredentialInfo"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    deleteProviderCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider ID */
+                provider: components["schemas"]["MetadataProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
     listAuthors: {
         parameters: {
             query?: never;

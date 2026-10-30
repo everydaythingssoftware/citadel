@@ -16,6 +16,7 @@ use std::{
 use diesel::{connection::SimpleConnection, prelude::*, sqlite::SqliteConnection};
 
 mod auth;
+mod credentials;
 mod libraries;
 mod migrations;
 mod recovery;
@@ -23,6 +24,7 @@ mod schema;
 mod users;
 
 pub use auth::{AppCredential, SESSION_TTL_SECONDS};
+pub use credentials::{CredentialSecret, ProviderCredential};
 pub use libraries::RegisteredLibrary;
 pub use recovery::Backup;
 pub use users::{User, UserSummary};

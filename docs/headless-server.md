@@ -61,8 +61,10 @@ their new app password from `users app-password`.
 `stateDirectory` is optional. On Unix it defaults to `$XDG_STATE_HOME/citadel`
 when XDG_STATE_HOME is absolute, otherwise `~/.local/state/citadel`. On Windows
 it defaults to the local application-data directory's `citadel` subdirectory.
-An explicit override must be absolute. It holds `citadel.db` (mode 0600 on Unix);
-back it up with the rest of the server's state.
+An explicit override must be absolute. It holds `citadel.db` (mode 0600 on Unix)
+and `secrets/credentials.key`, which seals users' provider keys inside
+`citadel.db` (ADR 0011); back them up together. Without the key file, users have
+to re-enter their provider keys.
 
 ### Library access
 
@@ -229,7 +231,17 @@ Nationalbibliothek and K10plus need no setup.
 - `GET /api/metadata/providers`: each provider and whether you can use it.
 - `GET /api/metadata/search?provider=openlibrary&q=dune`: free-text search.
 - `GET /api/metadata/isbn/{isbn}?provider=loc`: ISBN lookup.
-- `POST /api/metadata/providers/{provider}/test`: checks the server can reach it.
+- `POST /api/metadata/providers/{provider}/test`: checks the server can reach it,
+  with your own key when the provider needs one.
+
+Hardcover needs each user's own API key. Users add it under Settings → Account in
+the browser; the server checks it with Hardcover, stores it encrypted, and never
+returns it:
+
+- `GET /api/account/provider-credentials`: your saved keys' account names and dates.
+- `PUT /api/account/provider-credentials/hardcover` with `{"secret": "…"}`: checks
+  and saves a key, replacing any earlier one.
+- `DELETE /api/account/provider-credentials/hardcover`: forgets it.
 
 Every provider is limited across all users (a token bucket and a few concurrent
 requests), an upstream `429` pauses that provider for its `Retry-After`, and a

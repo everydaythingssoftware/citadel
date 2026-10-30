@@ -14,6 +14,178 @@
     "version": "1"
   },
   "paths": {
+    "/api/account/provider-credentials": {
+      "get": {
+        "description": "The signed-in user's saved provider keys. Keys themselves are never returned.",
+        "operationId": "listProviderCredentials",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderCredentialInfo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/account/provider-credentials/{provider}": {
+      "put": {
+        "description": "Check a provider key with the provider, then save it for the signed-in user, replacing any earlier key.",
+        "operationId": "saveProviderCredential",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "A provider that needs a key",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveProviderCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCredentialInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "description": "Forget the signed-in user's key for a provider.",
+        "operationId": "deleteProviderCredential",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/authors": {
       "get": {
         "operationId": "listAuthors",
@@ -2921,6 +3093,49 @@
           }
         }
       },
+      "ProviderCredentialInfo": {
+        "type": "object",
+        "required": [
+          "provider",
+          "displayName",
+          "accountName",
+          "createdAt",
+          "verifiedAt",
+          "needsReentry"
+        ],
+        "properties": {
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider account the key belongs to, when the provider says."
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the key was saved, in Unix seconds."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "needsReentry": {
+            "type": "boolean",
+            "description": "The server can no longer read the key (its vault key changed); enter\nit again."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MetadataProvider"
+          },
+          "verifiedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the provider last accepted the key, in Unix seconds."
+          }
+        }
+      },
       "ProviderStatus": {
         "type": "object",
         "required": [
@@ -2950,6 +3165,19 @@
             "type": "string"
           }
         }
+      },
+      "SaveProviderCredential": {
+        "type": "object",
+        "required": [
+          "secret"
+        ],
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "The provider API key. It is checked with the provider before saving."
+          }
+        },
+        "additionalProperties": false
       },
       "SessionInfo": {
         "type": "object",

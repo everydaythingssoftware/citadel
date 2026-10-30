@@ -192,7 +192,7 @@ fn cross_origin(access: &Access, request_method: &Method, headers: &HeaderMap) -
     })
 }
 
-async fn blocking<T: Send + 'static>(
+pub(super) async fn blocking<T: Send + 'static>(
     state: &ApiState,
     operation: impl FnOnce(&CitadelStore) -> Result<T, citadel_core::store::StoreError> + Send + 'static,
 ) -> Result<T, ApiFailure> {

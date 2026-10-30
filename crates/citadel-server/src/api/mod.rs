@@ -25,8 +25,9 @@ use utoipa::openapi::{
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::CalibreCatalogSource;
-use citadel_core::store::CitadelStore;
+use citadel_core::{store::CitadelStore, vault::Vault};
 
+mod account;
 mod metadata;
 mod session;
 mod thumbnails;
@@ -55,6 +56,8 @@ pub struct ApiAccess {
     pub accounts: Arc<CitadelStore>,
     pub library_id: String,
     pub public_url: PublicUrl,
+    /// Seals users' provider keys in `citadel.db` (ADR 0011).
+    pub secrets: Arc<Vault>,
 }
 
 #[derive(Clone)]
@@ -65,6 +68,7 @@ struct ApiState {
     thumbnails: thumbnails::ThumbnailCache,
     uploads: Arc<Staging>,
     metadata: Arc<Metadata>,
+    secrets: Arc<Vault>,
 }
 
 // Keep slots inside blocking tasks so timed-out HTTP requests cannot queue
@@ -348,6 +352,8 @@ fn routes() -> OpenApiRouter<ApiState> {
         .routes(routes!(metadata::search))
         .routes(routes!(metadata::by_isbn))
         .routes(routes!(metadata::test))
+        .routes(routes!(account::list))
+        .routes(routes!(account::save, account::delete))
 }
 
 /// Upload chunks stream to disk, so they bypass the JSON request bounds.
@@ -424,6 +430,7 @@ pub fn router(
     metadata: Arc<Metadata>,
 ) -> Router {
     uploads.spawn_sweeper();
+    let secrets = access.secrets;
     let state = ApiState {
         source: source.clone(),
         access: Arc::new(session::Access::new(
@@ -435,6 +442,7 @@ pub fn router(
         thumbnails: Default::default(),
         uploads,
         metadata,
+        secrets,
     };
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes().split_for_parts();

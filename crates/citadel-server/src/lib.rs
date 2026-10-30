@@ -322,6 +322,28 @@ pub(crate) fn open_accounts(
     Ok((accounts, library))
 }
 
+/// The vault sealing users' provider keys. Keys sealed with a lost or
+/// replaced vault key are kept but unreadable; their owners re-enter them.
+fn open_secrets(
+    config: &ServerConfig,
+    accounts: &CitadelStore,
+) -> Result<Arc<citadel_core::vault::Vault>, String> {
+    let vault = citadel_core::vault::Vault::open_or_create(&citadel_core::vault::directory(
+        &state_directory(config)?,
+    ))?;
+    match accounts.unreadable_provider_credentials(&vault) {
+        Ok(0) => {}
+        Ok(count) => eprintln!(
+            "citadel_server warning=\"{count} saved provider key(s) were sealed with a different \
+             vault key and must be entered again by their users\""
+        ),
+        Err(error) => {
+            eprintln!("citadel_server warning=\"could not check provider keys: {error}\"")
+        }
+    }
+    Ok(Arc::new(vault))
+}
+
 fn opds_users(
     accounts: &CitadelStore,
     library_id: &str,
@@ -369,10 +391,18 @@ pub async fn run(config: ServerConfig, config_path: &Path) -> Result<(), String>
 
     let config_root = &config;
     let mut api = if let Some(config) = &config.api {
+        let secrets = match open_secrets(config_root, &accounts) {
+            Ok(secrets) => secrets,
+            Err(error) => {
+                service.stop().await;
+                return Err(error);
+            }
+        };
         let access = api::ApiAccess {
             accounts: accounts.clone(),
             library_id: library.id.clone(),
             public_url: api::PublicUrl::parse(&config.public_url)?,
+            secrets,
         };
         let staging = match api::Staging::open(
             state_directory(&config_root)?.join(UPLOADS_DIRECTORY),

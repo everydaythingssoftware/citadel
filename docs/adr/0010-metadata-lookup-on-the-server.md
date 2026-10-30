@@ -48,5 +48,9 @@ servers through `Endpoints`.
 ## Consequences
 
 - The Tauri commands are thin adapters; IPC bindings are unchanged.
-- Server routes, per-user credentials and centralized cover fetching build on
-  this crate (CDL-56) and are recorded here as they land.
+- The server exposes lookups at `/api/metadata/*` to signed-in users, with a
+  per-user token bucket and a byte-bounded answer cache in front of the shared
+  client. Keyed providers' answers are cached per user.
+- Keyed providers use each user's own key, sealed in `citadel.db` (ADR 0011).
+- Centralized cover fetching builds on this crate (CDL-56) and is recorded here
+  as it lands.

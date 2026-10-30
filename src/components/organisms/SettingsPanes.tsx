@@ -2,6 +2,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import { F7Gear } from "@/components/icons/F7Gear";
+import { F7PersonCropCircleFill } from "@/components/icons/F7PersonCropCircleFill";
 import { F7Wifi } from "@/components/icons/F7Wifi";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { CurrentLibraryCard } from "@/components/molecules/CurrentLibraryCard";
@@ -9,6 +10,7 @@ import { LibraryListCard } from "@/components/molecules/LibraryListCard";
 import { SoftwareUpdateRow } from "@/components/molecules/SoftwareUpdateRow";
 import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
 import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
+import { AccountSettings } from "@/components/organisms/AccountSettings";
 import classes from "@/components/organisms/SettingsPanes.module.css";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
 import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
@@ -32,8 +34,20 @@ const SETTINGS_TABS = [
 	"library",
 	"sharing",
 	"integrations",
+	"account",
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+const DESKTOP_TABS: readonly SettingsTab[] = [
+	"general",
+	"library",
+	"sharing",
+	"integrations",
+];
+/** A browser has no local library or listener; its keys live on the server. */
+const BROWSER_TABS: readonly SettingsTab[] = providerKeysOnServer
+	? ["general", "integrations", "account"]
+	: ["general"];
 
 const TAB_META: Record<
 	SettingsTab,
@@ -55,6 +69,10 @@ const TAB_META: Record<
 		label: "Metadata",
 		icon: (className) => <F7BookFill className={className} />,
 	},
+	account: {
+		label: "Account",
+		icon: (className) => <F7PersonCropCircleFill className={className} />,
+	},
 };
 
 interface SettingsPanesProps {
@@ -75,9 +93,9 @@ interface SettingsPanesProps {
  */
 export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 	const platform = usePlatform();
-	const tabs: readonly SettingsTab[] = platform.capabilities.canPickLocalFiles
-		? SETTINGS_TABS
-		: ["general"];
+	const tabs = platform.capabilities.canPickLocalFiles
+		? DESKTOP_TABS
+		: BROWSER_TABS;
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
 	// The badged gear and Citadel → Check for Updates… land here; the window
@@ -182,7 +200,10 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 					{activeTab === "general" && <GeneralTab />}
 					{activeTab === "library" && <LibraryTab closeSettings={close} />}
 					{activeTab === "sharing" && <SharingSettings />}
-					{activeTab === "integrations" && <IntegrationsTab />}
+					{activeTab === "integrations" && (
+						<IntegrationsTab onManageKeys={() => setActiveTab("account")} />
+					)}
+					{activeTab === "account" && <AccountSettings />}
 				</div>
 			</div>
 		</div>
@@ -361,7 +382,13 @@ interface TestResult {
 	message: string;
 }
 
-const ProviderRow = ({ id }: { id: ProviderId }) => {
+interface ProviderRowProps {
+	id: ProviderId;
+	/** Where a browser manages keys the server keeps. */
+	onManageKeys: () => void;
+}
+
+const ProviderRow = ({ id, onManageKeys }: ProviderRowProps) => {
 	const descriptor = getDescriptor(id);
 	const config = useSettings((state) => state.metadataProviders.configs[id]);
 	const setProviderEnabled = useSettings((state) => state.setProviderEnabled);
@@ -453,9 +480,18 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 				<div className={classes.providerBody}>
 					<p className={classes.rowDescription}>{descriptor.blurb}</p>
 					{requiresKey && providerKeysOnServer ? (
-						<p className={classes.inlineNote} role="status">
-							{serverKeyReason ?? "Your key is kept by this Citadel server."}
-						</p>
+						<>
+							<p className={classes.inlineNote} role="status">
+								{hasKey
+									? "Your key is kept by this Citadel server."
+									: (serverKeyReason ?? "Add your key in Account settings.")}
+							</p>
+							<div className={classes.rowActions}>
+								<Button size="sm" variant="default" onClick={onManageKeys}>
+									Manage in Account settings
+								</Button>
+							</div>
+						</>
 					) : requiresKey ? (
 						<>
 							<TextInput
@@ -520,7 +556,7 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 	);
 };
 
-const IntegrationsTab = () => {
+const IntegrationsTab = ({ onManageKeys }: { onManageKeys: () => void }) => {
 	const preferenceOrder = useSettings(
 		(state) => state.metadataProviders.preferenceOrder,
 	);
@@ -543,7 +579,7 @@ const IntegrationsTab = () => {
 				</p>
 				<div className={classes.group}>
 					{preferenceOrder.map((id) => (
-						<ProviderRow key={id} id={id} />
+						<ProviderRow key={id} id={id} onManageKeys={onManageKeys} />
 					))}
 				</div>
 			</div>

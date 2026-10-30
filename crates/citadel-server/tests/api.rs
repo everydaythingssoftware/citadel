@@ -36,6 +36,9 @@ fn access(directory: &std::path::Path) -> (Arc<CitadelStore>, api::ApiAccess) {
         accounts: accounts.clone(),
         library_id: library.id,
         public_url: api::PublicUrl::parse(PUBLIC_URL).unwrap(),
+        secrets: Arc::new(
+            citadel_core::vault::Vault::open_or_create(&directory.join("state/secrets")).unwrap(),
+        ),
     };
     (accounts, access)
 }
@@ -1508,6 +1511,7 @@ async fn fake_openlibrary() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
                 axum::Json(json!({"ISBN:9780553103540": {"title": "A Game of Thrones", "key": "/books/OL7826547M"}}))
             }),
         )
+        .route("/graphql", axum::routing::post(fake_hardcover))
         .with_state(hits.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -1516,6 +1520,30 @@ async fn fake_openlibrary() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
 }
 
 use axum::response::IntoResponse;
+
+/// Accepts only the token `good`, the way Hasura reports a bad JWT.
+async fn fake_hardcover(
+    headers: axum::http::HeaderMap,
+    axum::Json(body): axum::Json<Value>,
+) -> axum::Json<Value> {
+    if headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        != Some("Bearer good")
+    {
+        return axum::Json(
+            json!({"errors": [{"message": "Could not verify JWT: JWSError", "extensions": {"code": "invalid-jwt"}}]}),
+        );
+    }
+    if body["query"].as_str().unwrap_or_default().contains("me {") {
+        return axum::Json(json!({"data": {"me": [{"id": 7, "username": "reader-hc"}]}}));
+    }
+    axum::Json(
+        json!({"data": {"search": {"ids": ["1"], "results": {"hits": [
+            {"document": {"id": 1, "title": "Dune", "isbns": [], "contributions": [], "genres": []}}
+        ]}}}}),
+    )
+}
 
 #[tokio::test]
 async fn metadata_lookups_are_signed_in_cached_and_rate_limited_per_user() {
@@ -1626,5 +1654,120 @@ async fn metadata_lookups_are_signed_in_cached_and_rate_limited_per_user() {
         .find(|provider| provider["provider"] == "loc")
         .unwrap();
     assert_eq!(loc["available"], true);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn provider_keys_are_verified_saved_per_user_and_never_returned() {
+    let (base, _) = fake_openlibrary().await;
+    let (_directory, service, router, _, cookie) = fixture_with_metadata(
+        CalibreCatalogSource::open,
+        api::UploadConfig::default(),
+        metadata_at(base, api::MetadataConfig::default()),
+    )
+    .await;
+    let call = |method: &str, path: &str, body: Value| {
+        let (method, path, router, cookie) = (
+            method.to_string(),
+            path.to_string(),
+            router.clone(),
+            cookie.clone(),
+        );
+        async move {
+            let body = if body.is_null() {
+                String::new()
+            } else {
+                body.to_string()
+            };
+            request(&router, &method, &path, body, Some(&cookie)).await
+        }
+    };
+    let hardcover = |providers: &Value| {
+        providers
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|provider| provider["provider"] == "hardcover")
+            .unwrap()
+            .clone()
+    };
+
+    let (_, _, providers) = call("GET", "/api/metadata/providers", Value::Null).await;
+    assert_eq!(hardcover(&providers)["available"], false);
+    assert!(hardcover(&providers)["unavailableReason"]
+        .as_str()
+        .unwrap()
+        .contains("Account settings"));
+    let (status, _, error) = call(
+        "GET",
+        "/api/metadata/search?provider=hardcover&q=dune",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+
+    let key_path = "/api/account/provider-credentials/hardcover";
+    let (status, _, error) = call("PUT", key_path, json!({"secret": "wrong"})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error["message"].as_str().unwrap().contains("didn't accept"));
+    let (_, _, listed) = call("GET", "/api/account/provider-credentials", Value::Null).await;
+    assert_eq!(listed, json!([]));
+
+    let (status, _, saved) = call("PUT", key_path, json!({"secret": " Bearer good "})).await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["accountName"], "reader-hc");
+    assert_eq!(saved["needsReentry"], false);
+    let (_, _, listed) = call("GET", "/api/account/provider-credentials", Value::Null).await;
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert!(!listed.to_string().contains("good"), "{listed}");
+
+    let (_, _, providers) = call("GET", "/api/metadata/providers", Value::Null).await;
+    assert_eq!(hardcover(&providers)["available"], true);
+    let (status, _, books) = call(
+        "GET",
+        "/api/metadata/search?provider=hardcover&q=dune",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{books}");
+    assert_eq!(books[0]["title"], "Dune");
+    let (status, _, tested) = call(
+        "POST",
+        "/api/metadata/providers/hardcover/test",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(tested["is_valid"], true);
+
+    let (status, _, _) = call(
+        "PUT",
+        "/api/account/provider-credentials/loc",
+        json!({"secret": "anything"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _, _) = call("DELETE", key_path, Value::Null).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _, _) = call("DELETE", key_path, Value::Null).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, _) = call(
+        "GET",
+        "/api/metadata/search?provider=hardcover&q=dune2",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _, _) = request(
+        &router,
+        "GET",
+        "/api/account/provider-credentials",
+        String::new(),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
     service.stop().await;
 }

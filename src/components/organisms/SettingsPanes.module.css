@@ -208,7 +208,8 @@
 }
 
 .inlineNote[data-tone="error"] {
-	color: var(--ctd-danger-text);
+	/* --ctd-danger-text is for text on a danger fill; this sits on the pane. */
+	color: var(--ctd-danger-border);
 }
 
 .paneNote {
@@ -267,4 +268,15 @@
 	flex-direction: column;
 	gap: 0.5rem;
 	padding: 0 0.875rem 0.75rem 2.625rem;
+}
+
+/* A provider row without a disclosure chevron or switch. */
+.providerBody[data-flush="true"] {
+	padding-left: 0.875rem;
+}
+
+.keyForm {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
 }
