@@ -11,6 +11,7 @@ export const PROVIDER_IDS = [
 	"loc",
 	"dnb",
 	"k10plus",
+	"bnf",
 	"openlibrary",
 	"hardcover",
 ] as const satisfies readonly ProviderId[];
@@ -63,6 +64,23 @@ const DESCRIPTORS: Record<ProviderId, ProviderDescriptor> = {
 				? `https://opac.k10plus.de/DB=2.1/PPNSET?PPN=${book.provider_id}`
 				: null,
 	},
+	bnf: {
+		id: "bnf",
+		displayName: "Bibliothèque nationale de France",
+		blurb:
+			"The French national library. Strong for French-language titles, with series; no account needed. Data from the BnF catalogue under the Licence Ouverte (Open Licence).",
+		capabilities: {
+			requiresKey: false,
+			hasCovers: false,
+			hasSubjects: true,
+			hasLanguage: true,
+			supportsFreeTextSearch: true,
+		},
+		deepLink: (book) =>
+			book.provider_id
+				? `https://catalogue.bnf.fr/ark:/12148/${book.provider_id}`
+				: null,
+	},
 	openlibrary: {
 		id: "openlibrary",
 		displayName: "Open Library",
@@ -109,6 +127,7 @@ const ADAPTERS: Record<ProviderId, ProviderAdapter> = {
 	loc: makeAdapter(DESCRIPTORS.loc),
 	dnb: makeAdapter(DESCRIPTORS.dnb),
 	k10plus: makeAdapter(DESCRIPTORS.k10plus),
+	bnf: makeAdapter(DESCRIPTORS.bnf),
 	openlibrary: makeAdapter(DESCRIPTORS.openlibrary),
 	hardcover: makeAdapter(DESCRIPTORS.hardcover),
 };
@@ -143,6 +162,10 @@ export const deepLinkForIdentifier = (
 			return `https://d-nb.info/${value}`;
 		case "k10plus":
 			return `https://opac.k10plus.de/DB=2.1/PPNSET?PPN=${value}`;
+		case "bnf":
+			return /^cb[0-9a-z]+$/.test(value)
+				? `https://catalogue.bnf.fr/ark:/12148/${value}`
+				: null;
 		case "openlibrary":
 			return `https://openlibrary.org/books/${value}`;
 		default:

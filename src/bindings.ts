@@ -511,7 +511,7 @@ export type BookFile = { Local: LocalFile } | { Remote: RemoteFile }
 export type BookMetadata = { provider: MetadataProvider; 
 /**
  * Provider-native id: hardcover id (stringified), LCCN, DNB control
- * number, or Open Library OLID.
+ * number, BnF ARK name, or Open Library OLID.
  */
 provider_id: string; identifier_label: string; title: string; subtitle: string | null; authors: string[]; isbn: string | null; release_year: number | null; description: string | null; image_url: string | null; publisher: string | null; 
 /**
@@ -530,7 +530,17 @@ language_code: string | null;
 /**
  * Hardcover deep-link slug; `None` for other providers.
  */
-slug: string | null }
+slug: string | null; 
+/**
+ * Narrative series (not a publisher's collection); BnF only for now.
+ */
+series: string | null; series_index: number | null; 
+/**
+ * A publisher's collection with its number (e.g. "Folio junior 899"), as
+ * distinct from a narrative series. Applied only to a Calibre custom
+ * column labelled `collection` when the library has one.
+ */
+collection: string | null }
 export type BookSortOrder = "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc"
 export type BookUpdate = { author_id_list: string[] | null; tag_list: string[] | null; title: string | null; timestamp: string | null; publication_date: string | null; is_read: boolean | null; description: string | null; 
 /**
@@ -740,7 +750,7 @@ export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: s
  * short form is the single id used across the Rust enum, the TS string union,
  * and the frontend registry keys.
  */
-export type MetadataProvider = "hardcover" | "loc" | "dnb" | "k10plus" | "openlibrary"
+export type MetadataProvider = "hardcover" | "loc" | "dnb" | "k10plus" | "bnf" | "openlibrary"
 export type NewAuthor = { name: string; sortable_name: string | null }
 /**
  * Where sharing listens. `AllInterfaces` is meant to be paired with

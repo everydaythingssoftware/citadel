@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeIsbn } from "./isbn";
+import { isbn10FromAsin, lookupIsbn, normalizeIsbn } from "./isbn";
 
 describe("normalizeIsbn", () => {
 	it("accepts a bare ISBN-13", () => {
@@ -49,5 +49,43 @@ describe("normalizeIsbn", () => {
 	it("returns undefined for an empty or whitespace-only string", () => {
 		expect(normalizeIsbn("")).toBeUndefined();
 		expect(normalizeIsbn("   ")).toBeUndefined();
+	});
+});
+
+describe("isbn10FromAsin", () => {
+	it("accepts an ASIN that is a valid ISBN-10", () => {
+		expect(isbn10FromAsin("0553103547")).toBe("0553103547");
+		expect(isbn10FromAsin("097522980x")).toBe("097522980X");
+	});
+
+	it("rejects Kindle ASINs and bad check digits", () => {
+		expect(isbn10FromAsin("B00ABC1234")).toBeUndefined();
+		expect(isbn10FromAsin("0553103548")).toBeUndefined();
+		expect(isbn10FromAsin("")).toBeUndefined();
+	});
+});
+
+describe("lookupIsbn", () => {
+	it("prefers the isbn identifier over an ASIN", () => {
+		expect(
+			lookupIsbn([
+				{ label: "asin", value: "0553103547" },
+				{ label: "isbn", value: "978-2-07-058462-8" },
+			]),
+		).toBe("9782070584628");
+	});
+
+	it("falls back to an ISBN-shaped ASIN", () => {
+		expect(
+			lookupIsbn([
+				{ label: "mobi-asin", value: "B00ABC1234" },
+				{ label: "amazon", value: "0553103547" },
+			]),
+		).toBe("0553103547");
+	});
+
+	it("returns null when nothing usable is present", () => {
+		expect(lookupIsbn([{ label: "asin", value: "B00ABC1234" }])).toBeNull();
+		expect(lookupIsbn([])).toBeNull();
 	});
 });

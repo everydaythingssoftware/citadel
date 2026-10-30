@@ -45,7 +45,7 @@ describe("migrateSettings", () => {
 			},
 		};
 		const result = migrateSettings(v1);
-		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		// K10plus added and enabled, inserted right after DNB.
 		expect(result.metadataProviders.configs.k10plus).toEqual({
 			enabled: true,
@@ -55,11 +55,46 @@ describe("migrateSettings", () => {
 			"loc",
 			"dnb",
 			"k10plus",
+			"bnf",
 			"openlibrary",
 			"hardcover",
 		]);
 		// Existing choices untouched.
 		expect(result.metadataProviders.configs.loc?.enabled).toBe(false);
+		expect(result.metadataProviders.configs.hardcover?.apiKey).toBe("kept");
+	});
+
+	it("adds the BnF to a v4 install after K10plus, preserving toggles", () => {
+		const v4: SettingsSchema = {
+			...defaultSettings,
+			settingsSchemaVersion: 4,
+			metadataProviders: {
+				preferenceOrder: ["hardcover", "dnb", "k10plus", "loc", "openlibrary"],
+				configs: {
+					loc: { enabled: true, apiKey: "" },
+					dnb: { enabled: false, apiKey: "" },
+					k10plus: { enabled: true, apiKey: "" },
+					openlibrary: { enabled: true, apiKey: "" },
+					hardcover: { enabled: true, apiKey: "kept" },
+				},
+				autoLookupOnImport: true,
+			},
+		};
+		const result = migrateSettings(v4);
+		expect(result.settingsSchemaVersion).toBe(5);
+		expect(result.metadataProviders.configs.bnf).toEqual({
+			enabled: true,
+			apiKey: "",
+		});
+		expect(result.metadataProviders.preferenceOrder).toEqual([
+			"hardcover",
+			"dnb",
+			"k10plus",
+			"bnf",
+			"loc",
+			"openlibrary",
+		]);
+		expect(result.metadataProviders.configs.dnb?.enabled).toBe(false);
 		expect(result.metadataProviders.configs.hardcover?.apiKey).toBe("kept");
 	});
 
@@ -82,7 +117,7 @@ describe("migrateSettings", () => {
 			settingsSchemaVersion: 2,
 		};
 		const result = migrateSettings(v2);
-		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		expect(result.sharing).toEqual({
 			target: "localNetworks",
 			port: 9028,
@@ -103,7 +138,7 @@ describe("migrateSettings", () => {
 			},
 		};
 		const result = migrateSettings(v3);
-		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		expect(result.sharing.port).toBe(9028);
 		expect(result.sharing.authenticationEnabled).toBe(true);
 		expect(result.sharing.username).toBe("phil");
@@ -121,7 +156,7 @@ describe("migrateSettings", () => {
 			},
 		};
 		const result = migrateSettings(chosen);
-		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		expect(result.sharing.port).toBe(54321);
 	});
 });

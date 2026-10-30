@@ -17,8 +17,18 @@ export interface AggregatedResult {
 }
 
 /**
+ * A French BnF record is the authoritative description of a French edition
+ * (series, collection, name forms), so it wins a same-ISBN group whatever the
+ * user's provider order. Other providers still rank by that order.
+ */
+const isFrenchBnfRecord = (book: BookMetadata): boolean =>
+	book.provider === "bnf" &&
+	(book.language_code === "fre" || book.language_code === "fra");
+
+/**
  * Merge results from several providers into one list. Records sharing an ISBN
- * collapse to the single highest-preference provider's WHOLE record — no
+ * collapse to the single highest-preference provider's WHOLE record (a French
+ * BnF record outranks the user's order) — no
  * field-level merge — except that a cover-less winner borrows a peer's cover
  * and explicit, provenanced genre candidates are combined. Rows matching
  * `pinIsbn` are pinned to the top.
@@ -54,7 +64,9 @@ export const mergeResults = (
 		if (!members || members.length === 0) continue;
 
 		const sorted = [...members].sort(
-			(a, b) => rank(a.provider) - rank(b.provider),
+			(a, b) =>
+				Number(isFrenchBnfRecord(b)) - Number(isFrenchBnfRecord(a)) ||
+				rank(a.provider) - rank(b.provider),
 		);
 		const top = sorted[0];
 		if (!top) continue;
@@ -63,6 +75,13 @@ export const mergeResults = (
 		if (!winner.image_url) {
 			const peerCover = sorted.find((member) => member.image_url);
 			if (peerCover) winner.image_url = peerCover.image_url;
+		}
+		if (!winner.series) {
+			const peerSeries = sorted.find((member) => member.series);
+			if (peerSeries) {
+				winner.series = peerSeries.series;
+				winner.series_index = peerSeries.series_index;
+			}
 		}
 		const seenGenres = new Set<string>();
 		winner.genre_candidates = sorted

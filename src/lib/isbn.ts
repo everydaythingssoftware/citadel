@@ -45,3 +45,43 @@ export const isbnEquivalent = (
 	const ca = toIsbn13(a);
 	return ca !== undefined && ca === toIsbn13(b);
 };
+
+/**
+ * The ISBN-10 an ASIN stands for. Amazon uses the ISBN-10 as the ASIN of most
+ * paper books; Kindle ASINs (`B0…`) and anything with a bad check digit are
+ * not ISBNs and yield undefined.
+ */
+export const isbn10FromAsin = (raw: string): string | undefined => {
+	const asin = raw.trim().toUpperCase();
+	if (!/^\d{9}[\dX]$/.test(asin)) return undefined;
+
+	let sum = 0;
+	for (let i = 0; i < 10; i += 1) {
+		const char = asin.charAt(i);
+		sum += (char === "X" ? 10 : Number(char)) * (10 - i);
+	}
+	return sum % 11 === 0 ? asin : undefined;
+};
+
+const ASIN_LABELS = ["asin", "amazon", "mobi-asin"];
+
+/**
+ * The ISBN to look a book up by: its `isbn` identifier when valid, else an
+ * ASIN that is really an ISBN-10 (paper books).
+ */
+export const lookupIsbn = (
+	identifiers: readonly { label: string; value: string }[],
+): string | null => {
+	const labelled = (labels: readonly string[]) =>
+		identifiers.filter((id) => labels.includes(id.label.toLowerCase()));
+
+	for (const id of labelled(["isbn"])) {
+		const isbn = normalizeIsbn(id.value);
+		if (isbn) return isbn;
+	}
+	for (const id of labelled(ASIN_LABELS)) {
+		const isbn = isbn10FromAsin(id.value);
+		if (isbn) return isbn;
+	}
+	return null;
+};

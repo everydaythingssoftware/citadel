@@ -179,6 +179,9 @@ fn document_to_metadata(doc: GqlBookDocument) -> BookMetadata {
         })),
         language_code: None,
         slug: doc.slug,
+        series: None,
+        series_index: None,
+        collection: None,
     }
 }
 

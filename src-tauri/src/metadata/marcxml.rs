@@ -10,14 +10,14 @@ use crate::metadata::model::{
 /// us tell the MARC `<record>` apart from the SRU envelope's `<zs:record>`.
 const MARC_NS: &[u8] = b"http://www.loc.gov/MARC21/slim";
 
-struct DataField {
-    tag: String,
-    ind2: u8,
+pub(super) struct DataField {
+    pub(super) tag: String,
+    pub(super) ind2: u8,
     subfields: Vec<(u8, String)>,
 }
 
 impl DataField {
-    fn first(&self, code: u8) -> Option<&str> {
+    pub(super) fn first(&self, code: u8) -> Option<&str> {
         self.subfields
             .iter()
             .find(|(c, _)| *c == code)
@@ -25,20 +25,23 @@ impl DataField {
     }
 }
 
-struct RawRecord {
+pub(super) struct RawRecord {
     controlfields: Vec<(String, String)>,
-    datafields: Vec<DataField>,
+    pub(super) datafields: Vec<DataField>,
 }
 
 impl RawRecord {
-    fn controlfield(&self, tag: &str) -> Option<&str> {
+    pub(super) fn controlfield(&self, tag: &str) -> Option<&str> {
         self.controlfields
             .iter()
             .find(|(t, _)| t == tag)
             .map(|(_, v)| v.as_str())
     }
 
-    fn datafields<'a>(&'a self, tag: &'a str) -> impl Iterator<Item = &'a DataField> + 'a {
+    pub(super) fn datafields<'a>(
+        &'a self,
+        tag: &'a str,
+    ) -> impl Iterator<Item = &'a DataField> + 'a {
         self.datafields.iter().filter(move |d| d.tag == tag)
     }
 }
@@ -48,14 +51,17 @@ impl RawRecord {
 /// empty vec rather than an error, so the command layer can treat it as a clean
 /// "no match".
 pub fn parse_envelope(xml: &str, provider: MetadataProvider) -> Result<Vec<BookMetadata>, String> {
-    let raw_records = read_marc_records(xml)?;
+    let raw_records = read_marc_records(xml, MARC_NS)?;
     Ok(raw_records
         .iter()
         .map(|r| map_record(r, provider))
         .collect())
 }
 
-fn read_marc_records(xml: &str) -> Result<Vec<RawRecord>, String> {
+/// Read every `<record>` in the given record namespace out of an SRU envelope.
+/// MARC21/slim and MARCXchange (UNIMARC) share this element structure; only
+/// the namespace and the meaning of the tags differ.
+pub(super) fn read_marc_records(xml: &str, record_ns: &[u8]) -> Result<Vec<RawRecord>, String> {
     let mut reader = NsReader::from_str(xml);
     let mut buf = Vec::new();
 
@@ -70,7 +76,8 @@ fn read_marc_records(xml: &str) -> Result<Vec<RawRecord>, String> {
     loop {
         match reader.read_resolved_event_into(&mut buf) {
             Ok((resolve, Event::Start(e))) => {
-                let is_marc = matches!(resolve, ResolveResult::Bound(ns) if ns.as_ref() == MARC_NS);
+                let is_marc =
+                    matches!(resolve, ResolveResult::Bound(ns) if ns.as_ref() == record_ns);
                 let local = e.local_name();
                 let name = local.as_ref();
 
@@ -126,7 +133,8 @@ fn read_marc_records(xml: &str) -> Result<Vec<RawRecord>, String> {
                 }
             }
             Ok((resolve, Event::End(e))) => {
-                let is_marc = matches!(resolve, ResolveResult::Bound(ns) if ns.as_ref() == MARC_NS);
+                let is_marc =
+                    matches!(resolve, ResolveResult::Bound(ns) if ns.as_ref() == record_ns);
                 let local = e.local_name();
                 let name = local.as_ref();
 
@@ -234,6 +242,9 @@ fn map_record(rec: &RawRecord, provider: MetadataProvider) -> BookMetadata {
         genre_candidates: genres(rec),
         language_code: language_code(rec),
         slug: None,
+        series: None,
+        series_index: None,
+        collection: None,
     }
 }
 
@@ -324,7 +335,7 @@ fn release_year(rec: &RawRecord) -> Option<i32> {
     })
 }
 
-fn extract_year(s: &str) -> Option<i32> {
+pub(super) fn extract_year(s: &str) -> Option<i32> {
     let bytes = s.as_bytes();
     bytes.windows(4).find_map(|w| {
         if w.iter().all(|b| b.is_ascii_digit()) {
@@ -383,7 +394,7 @@ fn language_code(rec: &RawRecord) -> Option<String> {
 
 /// Strip the trailing ISBD/MARC punctuation MARC fields carry (`/`, `:`, `;`,
 /// `,`, `.`) along with surrounding whitespace.
-fn strip_trailing_punct(s: &str) -> String {
+pub(super) fn strip_trailing_punct(s: &str) -> String {
     s.trim()
         .trim_end_matches([' ', '/', ':', ';', ','])
         .trim_end_matches('.')

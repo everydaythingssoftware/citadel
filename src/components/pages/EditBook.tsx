@@ -35,6 +35,7 @@ import {
 	type CustomFieldValue,
 	buildCustomFieldValues,
 	diffCustomValues,
+	COLLECTION_COLUMN_LABEL,
 	editableCustomColumns,
 	emptyFieldValue,
 } from "@/lib/custom-columns";
@@ -560,10 +561,28 @@ const EditBookForm = ({
 		isCurrentLibrary,
 	]);
 
+	const applyCollection = useCallback(
+		(collection: string) => {
+			const column = customColumns.find(
+				(customColumn) =>
+					customColumn.label === COLLECTION_COLUMN_LABEL &&
+					customColumn.datatype === "text" &&
+					!customColumn.is_multiple,
+			);
+			if (!column) return;
+			setCustomValues((previous) => ({
+				...previous,
+				[String(column.column_id)]: collection,
+			}));
+		},
+		[customColumns],
+	);
+
 	const meta = useMetadataBookActions({
 		book,
 		allAuthorNames,
 		form,
+		onCollection: applyCollection,
 		onUpsertIdentifier,
 		onCreateAuthor: createAuthor,
 		onReloadBooks,

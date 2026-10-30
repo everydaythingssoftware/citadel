@@ -14,7 +14,10 @@ pub async fn clb_cmd_test_metadata_provider(
 
     let result = match provider {
         MetadataProvider::Hardcover => hardcover::test(api_key.trim()).await,
-        MetadataProvider::Loc | MetadataProvider::Dnb | MetadataProvider::K10plus => {
+        MetadataProvider::Loc
+        | MetadataProvider::Dnb
+        | MetadataProvider::K10plus
+        | MetadataProvider::Bnf => {
             let endpoint = source::endpoint(provider).ok_or("Provider not available")?;
             sru::search(endpoint, "test", None).await.map(|_| ())
         }
@@ -54,7 +57,10 @@ pub async fn clb_query_metadata_search(
             let key = require_key(&api_key)?;
             hardcover::search(key, query).await
         }
-        MetadataProvider::Loc | MetadataProvider::Dnb | MetadataProvider::K10plus => {
+        MetadataProvider::Loc
+        | MetadataProvider::Dnb
+        | MetadataProvider::K10plus
+        | MetadataProvider::Bnf => {
             let endpoint = source::endpoint(provider).ok_or("Provider not available")?;
             sru::search(endpoint, query, None).await
         }
@@ -81,7 +87,10 @@ pub async fn clb_query_metadata_by_isbn(
             let key = require_key(&api_key)?;
             hardcover::search_by_isbn(key, isbn).await
         }
-        MetadataProvider::Loc | MetadataProvider::Dnb | MetadataProvider::K10plus => {
+        MetadataProvider::Loc
+        | MetadataProvider::Dnb
+        | MetadataProvider::K10plus
+        | MetadataProvider::Bnf => {
             let endpoint = source::endpoint(provider).ok_or("Provider not available")?;
             sru::search(endpoint, "", Some(isbn)).await
         }
