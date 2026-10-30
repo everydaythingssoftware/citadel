@@ -1,19 +1,19 @@
-//! Read-only JSON API. Contracts and application behavior live in citadel-core;
+//! JSON library API. Contracts and application behavior live in citadel-core;
 //! browsers authenticate with a Citadel session cookie (see `session`).
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     body::{to_bytes, Body},
-    extract::{rejection::JsonRejection, Path, Request, State},
+    extract::{rejection::JsonRejection, Extension, Path, Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json, Router,
 };
 use citadel_core::{
-    contracts::{LibraryBookPage, LibraryBookQuery},
+    contracts::{DeleteBooksOutcome, LibraryBookPage, LibraryBookQuery},
     error::{LibraryError, LibraryErrorCode},
-    library::LibraryService,
+    library::{remove_permanently, LibraryService},
     HttpUrlBuilder, LibraryBook,
 };
 use serde::{Deserialize, Serialize};
@@ -74,6 +74,18 @@ async fn run<T: Send + 'static>(
     .await
 }
 
+// Writes are refused up front on a read-only library rather than left for
+// SQLite to reject as an internal error.
+async fn write<T: Send + 'static>(
+    state: ApiState,
+    operation: impl FnOnce(&mut LibraryService<'_>) -> Result<T, LibraryError> + Send + 'static,
+) -> Result<T, ApiFailure> {
+    if state.source.read_only() {
+        return Err(LibraryError::read_only().into());
+    }
+    run(state, operation).await
+}
+
 async fn run_library<T: Send + 'static>(
     state: ApiState,
     operation: impl FnOnce(&mut libcalibre::Library) -> Result<T, LibraryError> + Send + 'static,
@@ -109,6 +121,7 @@ impl IntoResponse for ApiFailure {
             LibraryErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
             LibraryErrorCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             LibraryErrorCode::NotFound => StatusCode::NOT_FOUND,
+            LibraryErrorCode::ReadOnly => StatusCode::FORBIDDEN,
             LibraryErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
             LibraryErrorCode::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             LibraryErrorCode::Conflict => StatusCode::CONFLICT,
@@ -181,11 +194,12 @@ async fn library_descriptor(
     State(state): State<ApiState>,
 ) -> Result<Json<LibraryDescriptor>, ApiFailure> {
     let id = state.access.library_id.clone();
-    run_library(state.clone(), |library| Ok(library.library_uuid()?)).await?;
+    let read_only = state.source.read_only();
+    run_library(state, |library| Ok(library.library_uuid()?)).await?;
     Ok(Json(LibraryDescriptor {
         id,
         name: "Citadel Library".into(),
-        read_only: state.source.read_only(),
+        read_only,
     }))
 }
 
@@ -255,10 +269,63 @@ async fn custom_values(
     ))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+struct DeleteBooksRequest {
+    book_ids: Vec<String>,
+}
+
+#[utoipa::path(post, path = "/api/books/delete", operation_id = "deleteBooks",
+    request_body = DeleteBooksRequest,
+    description = "Permanently delete books and their files; this can't be undone. Nothing is deleted if any ID is unknown. Folders that could not be removed are listed, relative to the library, in folder_failures.",
+    responses((status = 200, body = DeleteBooksOutcome), (status = 400, body = LibraryError),
+        (status = 401, body = LibraryError), (status = 403, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 429, body = LibraryError), (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
+    security(("session" = [])))]
+async fn delete_books(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    request: Result<Json<DeleteBooksRequest>, JsonRejection>,
+) -> Result<Json<DeleteBooksOutcome>, ApiFailure> {
+    let Json(request) = request.map_err(|_| LibraryError::invalid("Invalid delete books JSON"))?;
+    let deleted = write(state, move |service| {
+        service.delete_books(&user.actor(), &request.book_ids)
+    })
+    .await?;
+    let outcome = tokio::task::spawn_blocking(move || deleted.remove_folders(remove_permanently))
+        .await
+        .map_err(|_| LibraryError::unavailable())?;
+    for failure in &outcome.folder_failures {
+        eprintln!("citadel_server warning=\"could not delete book folder: {failure}\"");
+    }
+    Ok(Json(outcome))
+}
+
+#[utoipa::path(delete, path = "/api/authors/{author_id}", operation_id = "deleteAuthor",
+    params(("author_id" = String, Path, description = "Library author ID")),
+    description = "Delete an author with no books.",
+    responses((status = 204), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
+        (status = 403, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
+    security(("session" = [])))]
+async fn delete_author(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiFailure> {
+    write(state, move |service| {
+        service.delete_author(&user.actor(), &id)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn routes() -> OpenApiRouter<ApiState> {
     OpenApiRouter::new()
         .routes(routes!(query_books))
         .routes(routes!(get_book))
+        .routes(routes!(delete_books))
+        .routes(routes!(delete_author))
         .routes(routes!(library_descriptor))
         .routes(routes!(authors))
         .routes(routes!(series))

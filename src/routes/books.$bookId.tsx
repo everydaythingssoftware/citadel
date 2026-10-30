@@ -7,9 +7,11 @@ import { type CSSProperties, useCallback, useState } from "react";
 import type { BookUpdate, NewAuthor } from "@/bindings";
 import { BookPage } from "@/components/pages/EditBook";
 import { Button, Spinner } from "@/components/ui";
+import { deleteBookCopy } from "@/lib/delete-book-title";
 import { tagListChanged } from "@/lib/domain/tag";
 import { useEditBookData } from "@/lib/hooks/use-edit-book-data";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
+import { BookDeletion } from "@/lib/services/library";
 import {
 	LibraryState,
 	useAuthors,
@@ -29,6 +31,9 @@ const EditBookRoute = () => {
 	const { bookId } = useParams({ from: "/books/$bookId" });
 	const state = useLibraryState();
 	const readOnly = useLibraryStore((state) => state.library?.readOnly === true);
+	const deletion = useLibraryStore(
+		(state) => state.library?.bookDeletion ?? BookDeletion.trash,
+	);
 	const actions = useLibraryActions();
 	const navigate = useNavigate();
 	const [deleteFailures, setDeleteFailures] = useState<string[]>([]);
@@ -119,8 +124,8 @@ const EditBookRoute = () => {
 
 	const onDelete = useCallback(async () => {
 		const outcome = await actions.deleteBooks([bookId]);
-		if (outcome.trash_failures.length > 0) {
-			setDeleteFailures(outcome.trash_failures);
+		if (outcome.folder_failures.length > 0) {
+			setDeleteFailures(outcome.folder_failures);
 			return;
 		}
 		await navigate({ to: "/", replace: true });
@@ -140,15 +145,12 @@ const EditBookRoute = () => {
 	}
 
 	if (deleteFailures.length > 0) {
+		const copy = deleteBookCopy(deletion);
 		return (
 			<div style={{ padding: 24, maxWidth: 640 }}>
 				<div role="alert">
-					<h2>Book removed, files not moved to Trash</h2>
-					<p>
-						The book was removed from your library, but its files could not be
-						moved to the Trash. The files remain at the locations below. You can
-						move them manually or re-import them.
-					</p>
+					<h2>{copy.failureTitle}</h2>
+					<p>{copy.failureDescription}</p>
 					<ul style={{ overflowWrap: "anywhere" }}>
 						{deleteFailures.map((failure) => (
 							<li key={failure}>{failure}</li>
@@ -189,6 +191,7 @@ const EditBookRoute = () => {
 			onCreateAuthor={onCreateAuthor}
 			onSave={onSave}
 			onDelete={onDelete}
+			deletion={deletion}
 			onUpsertIdentifier={onUpsertIdentifier}
 			onDeleteIdentifier={onDeleteIdentifier}
 			onReloadBooks={onReloadBooks}

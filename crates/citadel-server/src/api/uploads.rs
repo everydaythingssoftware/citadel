@@ -548,8 +548,8 @@ impl Drop for Committing {
     params(("upload_id" = String, Path, description = "Upload ID")),
     request_body = CommitUpload,
     responses((status = 201, body = citadel_core::LibraryBook), (status = 400, body = LibraryError),
-        (status = 401, body = LibraryError), (status = 404, body = LibraryError),
-        (status = 409, body = LibraryError)),
+        (status = 401, body = LibraryError), (status = 403, body = LibraryError),
+        (status = 404, body = LibraryError), (status = 409, body = LibraryError)),
     security(("session" = [])))]
 pub(super) async fn commit(
     State(state): State<ApiState>,
@@ -573,10 +573,7 @@ pub(super) async fn commit(
             ));
         }
         if state.source.read_only() {
-            return Err(failure(
-                LibraryErrorCode::Conflict,
-                "This library is open read-only",
-            ));
+            return Err(LibraryError::read_only().into());
         }
         upload.busy = true;
         Ok((
@@ -610,7 +607,7 @@ pub(super) async fn commit(
         identifiers,
         file_paths: vec![path],
     };
-    let book = super::run(state.clone(), move |service| {
+    let book = super::write(state.clone(), move |service| {
         let id = service.create_book(&actor, book)?;
         service.get_book(&id)
     })

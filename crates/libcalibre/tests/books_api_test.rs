@@ -845,3 +845,38 @@ fn test_books_returns_read_state() {
     assert!(b1.is_read);
     assert!(!b2.is_read);
 }
+
+#[test]
+fn book_without_an_author_is_filed_under_unknown() {
+    let (temp, mut lib) = setup_with_library();
+    let mut book = empty_book("Repair manual");
+    book.author_names = vec!["  ".to_string()];
+    let book = lib.add_book(book).unwrap();
+
+    let names: Vec<_> = book
+        .authors
+        .iter()
+        .map(|author| author.name.as_str())
+        .collect();
+    assert_eq!(names, ["Unknown"]);
+    let folder =
+        std::path::Path::new("Unknown").join(format!("Repair manual ({})", book.id.as_i32()));
+    assert_eq!(std::path::Path::new(&book.book_dir_path), folder);
+    assert!(temp.path().join(&folder).is_dir());
+
+    let folders = lib.delete_books(&[book.id]).unwrap();
+    assert_eq!(folders, [temp.path().canonicalize().unwrap().join(folder)]);
+}
+
+#[test]
+fn author_folder_name_is_sanitised() {
+    let (temp, mut lib) = setup_with_library();
+    let mut book = empty_book("Live");
+    book.author_names = vec!["AC/DC".to_string()];
+    let book = lib.add_book(book).unwrap();
+    let components: Vec<_> = std::path::Path::new(&book.book_dir_path)
+        .components()
+        .collect();
+    assert_eq!(components.len(), 2, "{}", book.book_dir_path);
+    assert!(temp.path().join(&book.book_dir_path).is_dir());
+}

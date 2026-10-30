@@ -51,7 +51,7 @@ const fakeLibrary = () => {
 		updateBook: vi.fn(async () => undefined),
 		deleteBooks: vi.fn(async (ids: string[]) => ({
 			deleted: ids.length,
-			trash_failures: [] as string[],
+			folder_failures: [] as string[],
 		})),
 	};
 	return { fake, library: fake as unknown as Library };
@@ -165,11 +165,11 @@ describe("deleteBooks", () => {
 		const failure = "/library/Author/Book: Permission denied";
 		a.fake.deleteBooks.mockResolvedValueOnce({
 			deleted: 1,
-			trash_failures: [failure],
+			folder_failures: [failure],
 		});
 		const before = useLibraryStore.getState().bookCache.generation;
 		const result = await useLibraryStore.getState().actions.deleteBooks(["1"]);
-		expect(result).toEqual({ deleted: 1, trash_failures: [failure] });
+		expect(result).toEqual({ deleted: 1, folder_failures: [failure] });
 		expect(useLibraryStore.getState().bookCache.generation).toBeGreaterThan(
 			before,
 		);
@@ -189,7 +189,7 @@ describe("deleteBooks", () => {
 		const outcome = await useLibraryStore.getState().actions.deleteBooks(["1"]);
 
 		expect(a.fake.deleteBooks).toHaveBeenCalledWith(["1"]);
-		expect(outcome).toEqual({ deleted: 1, trash_failures: [] });
+		expect(outcome).toEqual({ deleted: 1, folder_failures: [] });
 		expect([...useLibraryStore.getState().coverThumbs.keys()]).toEqual(["2"]);
 		expect(useLibraryStore.getState().bookCache.generation).toBeGreaterThan(
 			generationBefore,

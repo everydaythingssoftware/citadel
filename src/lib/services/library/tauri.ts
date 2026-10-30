@@ -6,7 +6,7 @@ import {
 	type LibraryBookQuery,
 	type NewAuthor,
 } from "@/bindings";
-import type { Library } from "./types";
+import { BookDeletion, type Library } from "./types";
 
 const unwrap = <T>(
 	result: { status: "ok"; data: T } | { status: "error"; error: string },
@@ -33,6 +33,7 @@ export const createTauriLibrary = (): Library => {
 
 	return {
 		readOnly: false,
+		bookDeletion: BookDeletion.trash,
 		listCustomColumns: async () =>
 			unwrap(await commands.clbQueryListCustomColumns()),
 		getCustomValuesForBook: async (id) =>

@@ -63,43 +63,47 @@ pub struct CalibreCatalogSource {
 }
 
 impl CalibreCatalogSource {
-    /// Opens the library for writing, or read-only when it can't be written
-    /// (for example, a read-only file or folder).
+    /// Opens the library for queries only; it is never changed.
     pub fn open(library_path: &Path) -> Result<Self, String> {
-        let database = database_path(library_path)?;
-        match Library::new(database.clone()) {
-            Ok(library) => Ok(Self {
-                library: Mutex::new(library),
-                read_only: false,
-            }),
-            Err(error) => {
-                eprintln!("citadel_server library=read-only reason={error}");
-                Self::open_read_only(library_path)
-            }
-        }
+        Self::open_with(library_path, Library::open_read_only, true)
     }
 
-    /// Opens the library for queries only; it is never changed.
-    pub fn open_read_only(library_path: &Path) -> Result<Self, String> {
-        let library = Library::open_read_only(database_path(library_path)?)
-            .map_err(|error| format!("could not open libraryPath: {error}"))?;
+    /// Opens the library for writing. Only one program should write to a
+    /// library at a time; nothing enforces that.
+    pub fn open_writable(library_path: &Path) -> Result<Self, String> {
+        Self::open_with(library_path, Library::new, false)
+    }
+
+    /// Opens the library for writing, or read-only (logging why) when it
+    /// can't be written, for example a read-only file or folder.
+    pub fn open_preferring_writes(library_path: &Path) -> Result<Self, String> {
+        Self::open_writable(library_path).or_else(|error| {
+            eprintln!("citadel_server library=read-only reason={error}");
+            Self::open(library_path)
+        })
+    }
+
+    fn open_with(
+        library_path: &Path,
+        open: impl FnOnce(libcalibre::util::ValidDbPath) -> Result<Library, CalibreError>,
+        read_only: bool,
+    ) -> Result<Self, String> {
+        let library_path = library_path
+            .to_str()
+            .ok_or_else(|| "libraryPath must be valid UTF-8".to_string())?;
+        let database = libcalibre::util::get_db_path(library_path)
+            .ok_or_else(|| format!("libraryPath is not a Calibre library: {library_path}"))?;
+        let library =
+            open(database).map_err(|error| format!("could not open libraryPath: {error}"))?;
         Ok(Self {
             library: Mutex::new(library),
-            read_only: true,
+            read_only,
         })
     }
 
     pub fn read_only(&self) -> bool {
         self.read_only
     }
-}
-
-fn database_path(library_path: &Path) -> Result<libcalibre::util::ValidDbPath, String> {
-    let library_path = library_path
-        .to_str()
-        .ok_or_else(|| "libraryPath must be valid UTF-8".to_string())?;
-    libcalibre::util::get_db_path(library_path)
-        .ok_or_else(|| format!("libraryPath is not a Calibre library: {library_path}"))
 }
 
 impl CatalogSource for CalibreCatalogSource {
@@ -334,7 +338,9 @@ fn opds_users(
 
 pub async fn run(config: ServerConfig, config_path: &Path) -> Result<(), String> {
     validate_config(&config)?;
-    let source = Arc::new(CalibreCatalogSource::open(&config.library_path)?);
+    let source = Arc::new(CalibreCatalogSource::open_preferring_writes(
+        &config.library_path,
+    )?);
     let (accounts, library) = open_accounts(&config, &source)?;
     let accounts = Arc::new(accounts);
     let users = opds_users(&accounts, &library.id)?;

@@ -8,6 +8,8 @@ pub enum LibraryErrorCode {
     Unauthorized,
     RateLimited,
     NotFound,
+    /// The library is open for reading only, so writes are refused.
+    ReadOnly,
     Unavailable,
     /// A request body or declared size exceeds a limit.
     TooLarge,
@@ -37,6 +39,13 @@ impl LibraryError {
         Self {
             code,
             message: message.into(),
+        }
+    }
+
+    pub fn read_only() -> Self {
+        Self {
+            code: LibraryErrorCode::ReadOnly,
+            message: "This library is read-only".into(),
         }
     }
 

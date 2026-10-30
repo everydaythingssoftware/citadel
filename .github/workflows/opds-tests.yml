@@ -23,11 +23,13 @@ jobs:
         with:
           prefix-key: opds-runtime
           workspaces: "."
+      # Calibre's annotations table has FTS5 triggers, so deleting a book
+      # needs an SQLite built with FTS5.
       - name: Install SQLite on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          vcpkg install sqlite3:x64-windows-static-md
+          vcpkg install "sqlite3[core,json1,fts5]:x64-windows-static-md"
           "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
           "VCPKGRS_TRIPLET=x64-windows-static-md" >> $env:GITHUB_ENV
       - name: Install SQLite on Linux

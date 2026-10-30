@@ -3,7 +3,6 @@ use crate::state::CitadelState;
 use serde::Serialize;
 
 pub mod command;
-mod delete_books;
 pub mod onboarding;
 pub mod query;
 pub mod registry;

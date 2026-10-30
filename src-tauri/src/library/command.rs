@@ -5,7 +5,9 @@ use crate::imports::ImportableBookMetadata;
 use crate::libs::cover_thumbs::{self, CoverThumbnail};
 use crate::state::CitadelState;
 use citadel_core::{
-    contracts::{custom_columns::CustomValueDto, AuthorUpdate, BookUpdate, NewAuthor},
+    contracts::{
+        custom_columns::CustomValueDto, AuthorUpdate, BookUpdate, DeleteBooksOutcome, NewAuthor,
+    },
     Actor, LibraryAuthor,
 };
 
@@ -345,15 +347,6 @@ pub fn clb_cmd_delete_author(
         .map_err(|error| error.to_string())
 }
 
-/// Result of [`clb_cmd_delete_books`]. The books are gone from the library
-/// either way; `trash_failures` lists folder paths and errors for files
-/// that could not be moved to the system trash.
-#[derive(serde::Serialize, specta::Type)]
-pub struct DeleteBooksOutcome {
-    pub deleted: u32,
-    pub trash_failures: Vec<String>,
-}
-
 /// Delete books from the library. The database rows go first, in one
 /// transaction (nothing is deleted if any id is unknown); each book's folder
 /// is then moved to the system trash rather than erased, so it can be
@@ -363,47 +356,18 @@ pub struct DeleteBooksOutcome {
 #[specta::specta]
 pub fn clb_cmd_delete_books(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     book_ids: Vec<String>,
 ) -> Result<DeleteBooksOutcome, String> {
-    let ids = book_ids
-        .iter()
-        .map(|raw| {
-            raw.parse::<i32>()
-                .map(libcalibre::BookId::from)
-                .map_err(|e| format!("Invalid book id '{raw}': {e}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let (library_root, dirs) = state
-        .with_library(|lib| -> Result<_, libcalibre::CalibreError> {
-            let root = std::path::Path::new(lib.library_path()).canonicalize()?;
-            let dirs = lib.delete_books(&ids)?;
-            Ok((root, dirs))
-        })?
-        .map_err(|e| e.to_string())?;
-
-    let trash_failures = dirs
-        .iter()
-        .filter_map(|dir| {
-            match super::delete_books::trash_book_dir(&library_root, dir, |path| {
-                move_to_trash(path).map_err(|error| error.to_string())
-            }) {
-                Ok(true) => {
-                    remove_empty_author_dir(&library_root, dir);
-                    None
-                }
-                Ok(false) => None,
-                Err(e) => {
-                    log::warn!("Failed to move {} to the trash: {e}", dir.display());
-                    Some(format!("{}: {e}", dir.display()))
-                }
-            }
-        })
-        .collect();
-
-    Ok(DeleteBooksOutcome {
-        deleted: u32::try_from(dirs.len()).unwrap_or(u32::MAX),
-        trash_failures,
-    })
+    let deleted = state
+        .with_library_service(|service| service.delete_books(&account.actor(), &book_ids))
+        .map_err(|error| error.to_string())?;
+    let outcome =
+        deleted.remove_folders(|path| move_to_trash(path).map_err(|error| error.to_string()));
+    for failure in &outcome.folder_failures {
+        log::warn!("Failed to move a book folder to the trash: {failure}");
+    }
+    Ok(outcome)
 }
 
 /// Moves `path` to the system trash. On macOS this uses `NSFileManager`
@@ -421,19 +385,6 @@ fn move_to_trash(path: &std::path::Path) -> Result<(), trash::Error> {
     {
         trash::delete(path)
     }
-}
-
-/// Removes `book_dir`'s parent (the author folder) if it is now empty and
-/// sits inside the library. `remove_dir` refuses non-empty directories, so
-/// this never deletes anything but an empty folder.
-fn remove_empty_author_dir(library_root: &std::path::Path, book_dir: &std::path::Path) {
-    let Some(author_dir) = book_dir.parent() else {
-        return;
-    };
-    if author_dir == library_root || !author_dir.starts_with(library_root) {
-        return;
-    }
-    let _ = std::fs::remove_dir(author_dir);
 }
 
 #[tauri::command]
