@@ -64,6 +64,19 @@ it defaults to the local application-data directory's `citadel` subdirectory.
 An explicit override must be absolute. It holds `citadel.db` (mode 0600 on Unix);
 back it up with the rest of the server's state.
 
+### Library access
+
+The server opens `libraryPath` for writing, as the desktop app does. Opening it
+switches the database to SQLite's WAL journal and installs Citadel's triggers.
+If the library can't be opened for writing (for example, a read-only file or
+folder), the server logs `library=read-only` with the reason and serves it
+read-only: browsing and OPDS work, and writes answer 403 `readOnly`.
+
+Only one program should write to a library at a time. Running Calibre desktop,
+the Citadel desktop app or another server against the same library while this
+server writes is unsupported: SQLite keeps each change intact, but the others'
+caches won't see Citadel's changes, and edits made elsewhere aren't tracked.
+
 The process logs lifecycle state and every concrete OPDS URL. It remains in the
 foreground until SIGINT or SIGTERM, then gracefully closes its listeners.
 The localNetworks and allInterfaces targets use the desktop IPv4/IPv6 policy.
@@ -139,9 +152,10 @@ access receive 404):
   `limit` between 0 and 200. Zero returns only the count. Desktop retains its
   existing unbounded-query behavior.
 - `GET /api/books/{book_id}`: one book, using the existing numeric string ID.
-- `GET /api/library`: the library's Calibre UUID, display name, and read-only capability; no server filesystem path.
+- `GET /api/library`: the library's Calibre UUID, display name, and whether it is open read-only; no server filesystem path.
 - `GET /api/authors`, `/api/series`, `/api/tags`, `/api/publishers`: browse facets and counts.
 - `GET /api/custom-columns` and `/api/books/{book_id}/custom-values`: custom-field definitions and values.
+- `POST /api/books/delete` (`{"book_ids": ["1"]}`) and `DELETE /api/authors/{author_id}`: permanently delete books (and their files) or an author with no books. Read-only libraries answer 403 `readOnly`.
 - `GET /api/books/{book_id}/cover` and `/api/books/{book_id}/files/{format}/{filename}`: protected assets, including range and HEAD requests for downloads.
 - `POST /api/covers/thumbnails`: thumbnail descriptors for at most 200 book IDs (`{"book_ids":["1"]}`). `GET` returns the bounded in-memory index; image URLs generate thumbnails on demand.
 - `GET /api/openapi.json`: generated OpenAPI 3.1 contract.
@@ -180,7 +194,14 @@ started an upload can see it. Upload routes:
 - `GET /api/uploads/{upload_id}/cover`: a JPEG preview of the file's cover.
 - `DELETE /api/uploads/{upload_id}`: cancels the upload and deletes its file.
 
-Adding a staged upload to the library comes with remote editing (CDL-53).
+- `POST /api/uploads/{upload_id}/commit` with the reviewed metadata
+  (`{"title": "…", "authorNames": […], "identifier": "…", "publisher": "…",
+  "language": "en", "tags": […], "publicationDate": "2021-03-04"}`; only `title`
+  is required): adds the finished upload to the library with the cover from
+  its file, records the signed-in user as the one who added it, and deletes the
+  staged copy. Answers 201 with the new book, or 409 when the upload isn't
+  finished or is busy, and 403 `readOnly` when the library is open read-only. An identifier is kept
+  when it is an ISBN.
 
 Limits can be tuned in an optional `[api.uploads]` table (defaults shown):
 
@@ -201,8 +222,8 @@ Cloudflare's Free and Pro plans accept requests up to 100 MB.
 
 Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open `publicUrl` in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 
-Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. Editing and imports are hidden for this read-only connection. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
+Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. Editing and imports are still hidden in the browser until it gains those screens; the upload API above is ready for them. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
 
 For frontend development, set `publicUrl` to the Vite origin (`http://localhost:1420`) and run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 
-This listener opens the library read-only. OPDS acquisition routes remain available. Mutations, uploads, metadata-provider calls, and server setup through the browser remain follow-up work (CDL-37/CDL-39). Until web setup lands, configure the library using the server configuration described above.
+OPDS acquisition routes remain available. Editing book metadata, metadata-provider lookups and setting up a library through the browser remain follow-up work (CDL-57, CDL-56, CDL-39). Until web setup lands, configure the library using the server configuration described above.

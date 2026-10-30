@@ -1256,3 +1256,194 @@ fn opening_the_staging_area_clears_files_from_earlier_runs() {
         assert_eq!(mode & 0o777, 0o700);
     }
 }
+
+async fn upload_whole(router: &Router, cookie: &str, name: &str, bytes: &[u8]) -> Value {
+    let (status, upload) = start_upload(router, cookie, name, bytes.len()).await;
+    assert_eq!(status, StatusCode::CREATED, "{upload}");
+    let id = upload["id"].as_str().unwrap().to_string();
+    let mut last = upload;
+    for (index, chunk) in bytes.chunks(4096).enumerate() {
+        let (status, body) = send_chunk(router, cookie, &id, index * 4096, chunk.to_vec()).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        last = body;
+    }
+    last
+}
+
+#[tokio::test]
+async fn committing_an_upload_adds_it_to_the_library_with_the_reviewed_metadata() {
+    let (directory, service, router, _, cookie) =
+        fixture_opened(CalibreCatalogSource::open_writable, small_uploads()).await;
+    let staged = upload_whole(&router, &cookie, "uploaded.epub", &epub_bytes()).await;
+    let id = staged["id"].as_str().unwrap().to_string();
+
+    let commit = json!({
+        "title": "  Reviewed Title ",
+        "authorNames": ["First Author", " ", "Third Author"],
+        "identifier": "urn:isbn:978-0-00-000000-2",
+        "publisher": "Small Press",
+        "language": "en",
+        "tags": ["Fiction", ""],
+        "publicationDate": "2021-03-04"
+    });
+    let (status, _, book) = request(
+        &router,
+        "POST",
+        &format!("/api/uploads/{id}/commit"),
+        commit.to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{book}");
+    assert_eq!(book["title"], "Reviewed Title");
+    let authors: Vec<&str> = book["author_list"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|author| author["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(authors, ["First Author", "Third Author"]);
+    assert!(book.to_string().contains("9780000000002"), "{book}");
+    let (_, _, publishers) = request(
+        &router,
+        "GET",
+        "/api/publishers",
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert!(
+        publishers.to_string().contains("Small Press"),
+        "{publishers}"
+    );
+    assert!(!book
+        .to_string()
+        .contains(directory.path().to_str().unwrap()));
+
+    // The library now holds the file and its cover; staging is empty.
+    let book_id = book["id"].as_str().unwrap();
+    let (status, _, fetched) = request(
+        &router,
+        "GET",
+        &format!("/api/books/{book_id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{fetched}");
+    assert!(
+        fetched.to_string().contains("/files/EPUB/")
+            || fetched.to_string().contains("/files/epub/"),
+        "{fetched}"
+    );
+    let cover = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/books/{book_id}/cover"))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(cover.status(), StatusCode::OK);
+    assert_eq!(
+        std::fs::read_dir(directory.path().join("state/uploads"))
+            .unwrap()
+            .count(),
+        0
+    );
+    let (status, _, _) = request(
+        &router,
+        "GET",
+        &format!("/api/uploads/{id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn commits_need_a_finished_upload_a_title_its_owner_and_a_writable_library() {
+    let (directory, service, router, _, cookie) =
+        fixture_opened(CalibreCatalogSource::open_writable, small_uploads()).await;
+    let epub = epub_bytes();
+    let (_, upload) = start_upload(&router, &cookie, "partial.epub", epub.len()).await;
+    let partial = upload["id"].as_str().unwrap().to_string();
+    let commit = |title: &str| json!({"title": title}).to_string();
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        &format!("/api/uploads/{partial}/commit"),
+        commit("Book"),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::CONFLICT, Some("conflict"))
+    );
+
+    let staged = upload_whole(&router, &cookie, "whole.epub", &epub).await;
+    let id = staged["id"].as_str().unwrap().to_string();
+    let (status, _, _) = request(
+        &router,
+        "POST",
+        &format!("/api/uploads/{id}/commit"),
+        commit("  "),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (accounts, _) = access(directory.path());
+    let library_id = accounts.libraries().unwrap()[0].id.clone();
+    accounts.create_user("other", "other-password").unwrap();
+    accounts.grant("other", &library_id).unwrap();
+    let (_, other, _) = sign_in(&router, "other", "other-password").await;
+    let (status, _, _) = request(
+        &router,
+        "POST",
+        &format!("/api/uploads/{id}/commit"),
+        commit("Book"),
+        other.as_deref(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // A failed commit leaves the upload in place to try again.
+    let (status, _, book) = request(
+        &router,
+        "POST",
+        &format!("/api/uploads/{id}/commit"),
+        commit("Book"),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{book}");
+    service.stop().await;
+
+    let (_directory, service, router, _, cookie) =
+        fixture_opened(CalibreCatalogSource::open, small_uploads()).await;
+    let (_, _, library) =
+        request(&router, "GET", "/api/library", String::new(), Some(&cookie)).await;
+    assert_eq!(library["readOnly"], true);
+    let staged = upload_whole(&router, &cookie, "whole.epub", &epub).await;
+    let id = staged["id"].as_str().unwrap().to_string();
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        &format!("/api/uploads/{id}/commit"),
+        commit("Book"),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::FORBIDDEN, Some("readOnly"))
+    );
+    service.stop().await;
+}

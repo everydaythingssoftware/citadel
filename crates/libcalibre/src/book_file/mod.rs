@@ -98,6 +98,35 @@ pub fn content_matches(format: MIMETYPE, head: &[u8]) -> bool {
     }
 }
 
+/// The ISBN-10 or ISBN-13 in a book file's identifier (`urn:isbn:` and
+/// `ISBN:` prefixes, hyphens and spaces allowed), or `None` when the
+/// identifier isn't an ISBN.
+pub fn isbn(identifier: &str) -> Option<String> {
+    let identifier = identifier.trim();
+    let lower = identifier.to_ascii_lowercase();
+    let bare = ["urn:isbn:", "isbn:"]
+        .iter()
+        .find_map(|prefix| {
+            lower
+                .starts_with(prefix)
+                .then(|| &identifier[prefix.len()..])
+        })
+        .unwrap_or(identifier);
+    let digits: Vec<char> = bare
+        .chars()
+        .filter(|c| !matches!(c, '-' | ' '))
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    let valid = match digits.as_slice() {
+        [body @ .., check] if digits.len() == 10 => {
+            body.iter().all(char::is_ascii_digit) && (check.is_ascii_digit() || *check == 'X')
+        }
+        all if all.len() == 13 => all.iter().all(char::is_ascii_digit),
+        _ => false,
+    };
+    valid.then(|| digits.into_iter().collect())
+}
+
 fn non_empty(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_string())
@@ -136,6 +165,19 @@ mod tests {
         assert!(!content_matches(MIMETYPE::MOBI, &mobi[..67]));
         assert!(!content_matches(MIMETYPE::TXT, b"MZ\x90\x00"));
         assert!(!content_matches(MIMETYPE::UNKNOWN, b"anything"));
+    }
+
+    #[test]
+    fn isbns_are_normalized_and_other_identifiers_dropped() {
+        assert_eq!(
+            isbn("urn:isbn:978-0-14-044913-6").as_deref(),
+            Some("9780140449136")
+        );
+        assert_eq!(isbn("ISBN:0 14 044913 X").as_deref(), Some("014044913X"));
+        assert_eq!(isbn("9780140449136").as_deref(), Some("9780140449136"));
+        assert_eq!(isbn("urn:uuid:5b1f3c1e-0000-4000-8000-000000000000"), None);
+        assert_eq!(isbn("97801404491"), None);
+        assert_eq!(isbn("ISBN:é123456789"), None);
     }
 
     #[test]

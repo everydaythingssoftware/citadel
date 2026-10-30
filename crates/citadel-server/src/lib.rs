@@ -63,6 +63,7 @@ pub struct CalibreCatalogSource {
 }
 
 impl CalibreCatalogSource {
+    /// Opens the library for queries only; it is never changed.
     pub fn open(library_path: &Path) -> Result<Self, String> {
         Self::open_with(library_path, Library::open_read_only, true)
     }
@@ -71,6 +72,15 @@ impl CalibreCatalogSource {
     /// library at a time; nothing enforces that.
     pub fn open_writable(library_path: &Path) -> Result<Self, String> {
         Self::open_with(library_path, Library::new, false)
+    }
+
+    /// Opens the library for writing, or read-only (logging why) when it
+    /// can't be written, for example a read-only file or folder.
+    pub fn open_preferring_writes(library_path: &Path) -> Result<Self, String> {
+        Self::open_writable(library_path).or_else(|error| {
+            eprintln!("citadel_server library=read-only reason={error}");
+            Self::open(library_path)
+        })
     }
 
     fn open_with(
@@ -328,7 +338,9 @@ fn opds_users(
 
 pub async fn run(config: ServerConfig, config_path: &Path) -> Result<(), String> {
     validate_config(&config)?;
-    let source = Arc::new(CalibreCatalogSource::open(&config.library_path)?);
+    let source = Arc::new(CalibreCatalogSource::open_preferring_writes(
+        &config.library_path,
+    )?);
     let (accounts, library) = open_accounts(&config, &source)?;
     let accounts = Arc::new(accounts);
     let users = opds_users(&accounts, &library.id)?;

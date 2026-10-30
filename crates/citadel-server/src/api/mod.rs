@@ -338,6 +338,7 @@ fn routes() -> OpenApiRouter<ApiState> {
         .routes(routes!(uploads::list, uploads::create))
         .routes(routes!(uploads::get, uploads::cancel))
         .routes(routes!(uploads::cover))
+        .routes(routes!(uploads::commit))
 }
 
 /// Upload chunks stream to disk, so they bypass the JSON request bounds.
