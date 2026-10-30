@@ -19,6 +19,7 @@ chrono = { version = "0.4.31", features = ["serde"] }
 diesel = { version = "2.1.0", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
 netdev = { version = "=0.45.0", default-features = false }
 citadel-core = { path = "../crates/citadel-core" }
+citadel-metadata = { path = "../crates/citadel-metadata" }
 citadel-opds = { path = "../crates/citadel-opds" }
 libcalibre = { path = "../crates/libcalibre" }
 log = "0.4"

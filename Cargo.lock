@@ -715,6 +715,7 @@ dependencies = [
  "axum",
  "chrono",
  "citadel-core",
+ "citadel-metadata",
  "citadel-opds",
  "diesel",
  "image",
@@ -747,6 +748,22 @@ dependencies = [
  "urlencoding",
  "uuid",
  "zip 0.6.6",
+]
+
+[[package]]
+name = "citadel-metadata"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "log",
+ "quick-xml 0.38.4",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "specta",
+ "tokio",
+ "urlencoding",
+ "utoipa",
 ]
 
 [[package]]

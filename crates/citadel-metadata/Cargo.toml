@@ -1,0 +1,28 @@
+[package]
+name = "citadel-metadata"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+# Book-metadata providers shared by the desktop and the server: lookups,
+# their DTOs, and the limits that keep many users behind one client polite.
+# Async and network-bound, so it stays out of the synchronous citadel-core.
+
+[features]
+openapi = ["dep:utoipa"]
+
+[dependencies]
+log = "0.4"
+quick-xml = "0.38"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1"
+# Pinned to src-tauri's specta so the `Type` derive emits identical bindings.
+specta = { version = "=2.0.0-rc.22", features = ["derive"] }
+tokio = { version = "1.52.3", features = ["sync", "time"] }
+urlencoding = "2.1.3"
+utoipa = { version = "6", optional = true }
+
+[dev-dependencies]
+axum = "0.8.9"
+tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }

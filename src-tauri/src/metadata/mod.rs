@@ -1,13 +1,11 @@
-//! Book-metadata providers. Hardcover (GraphQL), Library of Congress and the
-//! Deutsche Nationalbibliothek (SRU/MARCXML), and Open Library (JSON-REST) all
-//! return the unified [`model::BookMetadata`] from a single search call.
+//! Tauri adapters for the shared `citadel-metadata` providers.
 
 pub mod commands;
-pub mod model;
 
-mod hardcover;
-mod http;
-mod marcxml;
-mod openlibrary;
-mod source;
-mod sru;
+pub fn client() -> citadel_metadata::MetadataClient {
+    citadel_metadata::MetadataClient::new(citadel_metadata::ClientOptions {
+        version: env!("CARGO_PKG_VERSION").into(),
+        contact: None,
+    })
+    .expect("metadata HTTP client builds")
+}

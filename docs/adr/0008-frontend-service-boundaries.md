@@ -22,7 +22,9 @@ the backend mutex before applying the downloaded image.
 
 Metadata-provider descriptors and aggregation are independent of the IPC
 transport. The registry delegates provider operations to Metadata; applying a
-result uses Library actions. A provider cannot directly mutate a book.
+result uses Library actions. A provider cannot directly mutate a book. The
+providers themselves live in `crates/citadel-metadata`, shared by the desktop
+and the server (ADR 0010).
 
 Host detection is isolated in Platform adapter selection. Browser adapters never
 invoke native commands: local library discovery yields no candidate, unsupported
