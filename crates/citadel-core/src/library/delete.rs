@@ -125,23 +125,29 @@ fn remove_empty_author_dir(library_root: &Path, book_dir: &Path) {
 mod tests {
     use super::*;
 
-    struct TestLibrary(tempfile::TempDir, PathBuf);
+    struct TestLibrary {
+        _directory: tempfile::TempDir,
+        root: PathBuf,
+    }
     impl TestLibrary {
         fn new() -> Self {
             let directory = tempfile::tempdir().unwrap();
             let root = directory.path().canonicalize().unwrap();
             std::fs::create_dir_all(root.join("Author/Book")).unwrap();
-            Self(directory, root)
+            Self {
+                _directory: directory,
+                root,
+            }
         }
         fn root(&self) -> &Path {
-            &self.1
+            &self.root
         }
         fn book(&self) -> PathBuf {
-            self.1.join("Author/Book")
+            self.root.join("Author/Book")
         }
         fn deleted(&self, folders: Vec<PathBuf>) -> DeletedBooks {
             DeletedBooks {
-                library_root: self.1.clone(),
+                library_root: self.root.clone(),
                 folders,
             }
         }
