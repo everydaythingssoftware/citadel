@@ -260,6 +260,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads/{upload_id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["commitUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads/{upload_id}/content": {
         parameters: {
             query?: never;
@@ -309,6 +325,21 @@ export interface components {
         };
         /** @enum {string} */
         BookSortOrder: "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc";
+        /** @description The metadata the user reviewed, to add the upload to the library with. */
+        CommitUpload: {
+            authorNames?: string[];
+            /**
+             * @description Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`
+             *     prefixes are accepted); other identifiers are ignored.
+             */
+            identifier?: string | null;
+            language?: string | null;
+            /** Format: date */
+            publicationDate?: string | null;
+            publisher?: string | null;
+            tags?: string[];
+            title: string;
+        };
         CoverThumbnail: {
             book_id: string;
             /** Format: int32 */
@@ -1708,6 +1739,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    commitUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload ID */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommitUpload"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryBook"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
             };
             401: {
                 headers: {

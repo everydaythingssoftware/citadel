@@ -359,6 +359,30 @@ impl Library {
             )?;
         }
 
+        if let Some(publisher) = book.publisher.as_deref().map(str::trim) {
+            if !publisher.is_empty() {
+                crate::queries::publishers::set_for_book(
+                    &mut self.conn,
+                    BookId(book_row.id),
+                    publisher,
+                )?;
+            }
+        }
+
+        if let Some(comments) = book.comments.as_ref().filter(|c| !c.trim().is_empty()) {
+            crate::queries::book_descriptions::create(
+                &mut self.conn,
+                BookId(book_row.id),
+                comments.clone(),
+            )?;
+        }
+
+        let mut identifiers: Vec<_> = book.identifiers.iter().collect();
+        identifiers.sort();
+        for (label, value) in identifiers {
+            self.upsert_book_identifier(BookId(book_row.id), label.clone(), value.clone(), None)?;
+        }
+
         // 4. Create directories
         let primary_author = created_authors
             .first()

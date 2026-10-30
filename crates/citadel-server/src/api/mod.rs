@@ -181,11 +181,11 @@ async fn library_descriptor(
     State(state): State<ApiState>,
 ) -> Result<Json<LibraryDescriptor>, ApiFailure> {
     let id = state.access.library_id.clone();
-    run_library(state, |library| Ok(library.library_uuid()?)).await?;
+    run_library(state.clone(), |library| Ok(library.library_uuid()?)).await?;
     Ok(Json(LibraryDescriptor {
         id,
         name: "Citadel Library".into(),
-        read_only: true,
+        read_only: state.source.read_only(),
     }))
 }
 
@@ -271,6 +271,7 @@ fn routes() -> OpenApiRouter<ApiState> {
         .routes(routes!(uploads::list, uploads::create))
         .routes(routes!(uploads::get, uploads::cancel))
         .routes(routes!(uploads::cover))
+        .routes(routes!(uploads::commit))
 }
 
 /// Upload chunks stream to disk, so they bypass the JSON request bounds.

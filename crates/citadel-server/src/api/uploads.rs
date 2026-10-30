@@ -95,8 +95,9 @@ struct Upload {
     size: u64,
     received: u64,
     last_active: Instant,
-    /// A chunk is being written; at most one at a time.
-    receiving: bool,
+    /// A chunk is being written or the upload is being added to the
+    /// library; one thing at a time.
+    busy: bool,
     book: Option<StagedBook>,
 }
 
@@ -209,9 +210,8 @@ impl Staging {
             let Ok(mut uploads) = self.uploads.lock() else {
                 return;
             };
-            uploads.retain(|_, upload| {
-                upload.receiving || now.duration_since(upload.last_active) < EXPIRY
-            });
+            uploads
+                .retain(|_, upload| upload.busy || now.duration_since(upload.last_active) < EXPIRY);
             uploads.keys().cloned().collect()
         };
         let Ok(entries) = std::fs::read_dir(&self.directory) else {
@@ -404,7 +404,7 @@ pub(super) async fn create(
         size: input.size,
         received: 0,
         last_active: (staging.now)(),
-        receiving: false,
+        busy: false,
         book: None,
     };
     let view = upload.view(&id);
@@ -450,7 +450,7 @@ pub(super) async fn cancel(
             .get(&id)
             .filter(|upload| owner.owns(upload))
             .ok_or_else(not_found)?;
-        if upload.receiving {
+        if upload.busy {
             return Err(failure(
                 LibraryErrorCode::Conflict,
                 "A chunk is still being received",
@@ -497,6 +497,131 @@ pub(super) async fn cover(
         .into_response())
 }
 
+/// The metadata the user reviewed, to add the upload to the library with.
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct CommitUpload {
+    title: String,
+    #[serde(default)]
+    author_names: Vec<String>,
+    /// Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`
+    /// prefixes are accepted); other identifiers are ignored.
+    identifier: Option<String>,
+    publisher: Option<String>,
+    language: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    publication_date: Option<NaiveDate>,
+}
+
+fn trimmed(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn trimmed_list(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .filter_map(|value| trimmed(Some(value)))
+        .collect()
+}
+
+/// Releases an upload claimed for adding to the library, unless it was added.
+struct Committing {
+    staging: Arc<Staging>,
+    id: String,
+}
+
+impl Drop for Committing {
+    fn drop(&mut self) {
+        if let Ok(mut uploads) = self.staging.uploads.lock() {
+            if let Some(upload) = uploads.get_mut(&self.id) {
+                upload.busy = false;
+                upload.last_active = (self.staging.now)();
+            }
+        }
+    }
+}
+
+#[utoipa::path(post, path = "/api/uploads/{upload_id}/commit", operation_id = "commitUpload",
+    params(("upload_id" = String, Path, description = "Upload ID")),
+    request_body = CommitUpload,
+    responses((status = 201, body = citadel_core::LibraryBook), (status = 400, body = LibraryError),
+        (status = 401, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 409, body = LibraryError)),
+    security(("session" = [])))]
+pub(super) async fn commit(
+    State(state): State<ApiState>,
+    Extension(user): Extension<SignedIn>,
+    Path(id): Path<String>,
+    input: Result<Json<CommitUpload>, JsonRejection>,
+) -> Result<(StatusCode, Json<citadel_core::LibraryBook>), ApiFailure> {
+    let Json(input) = input.map_err(|_| LibraryError::invalid("Invalid book JSON"))?;
+    let title =
+        trimmed(Some(input.title)).ok_or_else(|| LibraryError::invalid("A book needs a title"))?;
+    let staging = state.uploads.clone();
+    let owner = Owner::new(&state, &user);
+    let (path, extension) = staging.with_upload(&id, &owner, |upload| {
+        if upload.busy {
+            return Err(failure(LibraryErrorCode::Conflict, "The upload is busy"));
+        }
+        if upload.book.is_none() {
+            return Err(failure(
+                LibraryErrorCode::Conflict,
+                "The upload hasn't finished",
+            ));
+        }
+        if state.source.read_only() {
+            return Err(failure(
+                LibraryErrorCode::Conflict,
+                "This library is open read-only",
+            ));
+        }
+        upload.busy = true;
+        Ok((
+            staging.book_path(&id, &upload.extension),
+            upload.extension.clone(),
+        ))
+    })?;
+    let claim = Committing {
+        staging: staging.clone(),
+        id: id.clone(),
+    };
+
+    let actor = user.0.actor();
+    let identifiers = trimmed(input.identifier)
+        .as_deref()
+        .and_then(book_file::isbn)
+        .map(|isbn| HashMap::from([("isbn".to_string(), isbn)]))
+        .unwrap_or_default();
+    let tags = trimmed_list(input.tags);
+    let book = libcalibre::BookAdd {
+        title,
+        author_names: trimmed_list(input.author_names),
+        tags: (!tags.is_empty()).then_some(tags),
+        series: None,
+        series_index: None,
+        publisher: trimmed(input.publisher),
+        publication_date: input.publication_date,
+        rating: None,
+        comments: None,
+        language: trimmed(input.language),
+        identifiers,
+        file_paths: vec![path],
+    };
+    let book = super::run(state.clone(), move |service| {
+        let id = service.create_book(&actor, book)?;
+        service.get_book(&id)
+    })
+    .await?;
+
+    // The library holds its own copy now.
+    drop(claim);
+    discard(&staging, &id, &extension);
+    Ok((StatusCode::CREATED, Json(book)))
+}
+
 /// Ends a chunk transfer. If the chunk didn't complete (an error, or the
 /// client went away and the handler was dropped), the file is cut back to
 /// where the chunk began so the client can resend it.
@@ -517,7 +642,7 @@ impl Drop for Receiving {
         }
         if let Ok(mut uploads) = self.staging.uploads.lock() {
             if let Some(upload) = uploads.get_mut(&self.id) {
-                upload.receiving = false;
+                upload.busy = false;
                 upload.last_active = (self.staging.now)();
                 if let Some(received) = self.received {
                     upload.received = received;
@@ -551,7 +676,7 @@ pub(super) async fn receive(
     let staging = state.uploads.clone();
     let owner = Owner::new(&state, &user);
     let (size, format, extension, file_name) = staging.with_upload(&id, &owner, |upload| {
-        if upload.receiving {
+        if upload.busy {
             return Err(failure(
                 LibraryErrorCode::Conflict,
                 "A chunk is already being received",
@@ -569,7 +694,7 @@ pub(super) async fn receive(
                 format!("The next chunk starts at byte {}", upload.received),
             ));
         }
-        upload.receiving = true;
+        upload.busy = true;
         Ok((
             upload.size,
             upload.format,
@@ -766,7 +891,7 @@ mod tests {
 
     use super::*;
 
-    fn upload(last_active: Instant, receiving: bool) -> Upload {
+    fn upload(last_active: Instant, busy: bool) -> Upload {
         Upload {
             user_id: "user".into(),
             library_id: "library".into(),
@@ -776,7 +901,7 @@ mod tests {
             size: 4,
             received: 0,
             last_active,
-            receiving,
+            busy,
             book: None,
         }
     }
@@ -796,9 +921,9 @@ mod tests {
         {
             let mut uploads = staging.uploads.lock().unwrap();
             uploads.insert("idle".into(), upload(start, false));
-            uploads.insert("receiving".into(), upload(start, true));
+            uploads.insert("busy".into(), upload(start, true));
         }
-        for name in ["idle.txt", "idle.cover.jpg", "receiving.txt", "stray.txt"] {
+        for name in ["idle.txt", "idle.cover.jpg", "busy.txt", "stray.txt"] {
             std::fs::write(staging.directory.join(name), b"data").unwrap();
         }
 
@@ -814,8 +939,8 @@ mod tests {
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
             .collect();
         left.sort();
-        assert_eq!(left, ["receiving.txt"]);
-        assert!(staging.uploads.lock().unwrap().contains_key("receiving"));
+        assert_eq!(left, ["busy.txt"]);
+        assert!(staging.uploads.lock().unwrap().contains_key("busy"));
         assert!(!staging.uploads.lock().unwrap().contains_key("idle"));
     }
 

@@ -57,6 +57,45 @@ fn test_add_book() {
 }
 
 #[test]
+fn test_add_book_saves_publisher_comments_and_identifiers() {
+    let (_temp, mut lib) = setup_with_library();
+    let mut first = empty_book("First");
+    first.publisher = Some("  Small Press ".into());
+    first.comments = Some("<p>A description.</p>".into());
+    first.identifiers = HashMap::from([
+        ("isbn".to_string(), "9780000000002".to_string()),
+        ("goodreads".to_string(), "42".to_string()),
+    ]);
+    let first = lib.add_book(first).unwrap();
+    let mut identifiers: Vec<_> = first
+        .identifiers
+        .iter()
+        .map(|identifier| (identifier.label.as_str(), identifier.value.as_str()))
+        .collect();
+    identifiers.sort();
+    assert_eq!(
+        identifiers,
+        [("goodreads", "42"), ("isbn", "9780000000002")]
+    );
+    assert_eq!(first.description.as_deref(), Some("<p>A description.</p>"));
+
+    // Publishers match case-insensitively, as in Calibre.
+    let mut second = empty_book("Second");
+    second.publisher = Some("small press".into());
+    lib.add_book(second).unwrap();
+    let mut blank = empty_book("Blank");
+    blank.publisher = Some(" ".into());
+    blank.comments = Some(" ".into());
+    let blank = lib.add_book(blank).unwrap();
+    assert_eq!(blank.description, None);
+
+    let publishers = lib.list_publishers().unwrap();
+    assert_eq!(publishers.len(), 1);
+    assert_eq!(publishers[0].name, "Small Press");
+    assert_eq!(publishers[0].book_count, 2);
+}
+
+#[test]
 fn test_add_book_canonicalizes_and_persists_language() {
     let (_temp, mut lib) = setup_with_library();
 

@@ -41,3 +41,42 @@ pub(crate) fn list_with_book_counts(
         })
         .collect())
 }
+
+/// Links the book to the named publisher, creating it if needed (matched
+/// case-insensitively, as Calibre does) and replacing any earlier link:
+/// Calibre allows one publisher per book.
+pub(crate) fn set_for_book(
+    conn: &mut SqliteConnection,
+    book_id: crate::BookId,
+    name: &str,
+) -> Result<(), CalibreError> {
+    use crate::schema::{books_publishers_link, publishers};
+
+    let existing = publishers::table
+        .filter(
+            diesel::dsl::sql::<diesel::sql_types::Bool>("name = ")
+                .bind::<Text, _>(name)
+                .sql(" COLLATE NOCASE"),
+        )
+        .select(publishers::id)
+        .first::<i32>(conn)
+        .optional()?;
+    let publisher_id = match existing {
+        Some(id) => id,
+        None => diesel::insert_into(publishers::table)
+            .values(publishers::name.eq(name))
+            .returning(publishers::id)
+            .get_result(conn)?,
+    };
+    diesel::delete(
+        books_publishers_link::table.filter(books_publishers_link::book.eq(book_id.as_i32())),
+    )
+    .execute(conn)?;
+    diesel::insert_into(books_publishers_link::table)
+        .values((
+            books_publishers_link::book.eq(book_id.as_i32()),
+            books_publishers_link::publisher.eq(publisher_id),
+        ))
+        .execute(conn)?;
+    Ok(())
+}

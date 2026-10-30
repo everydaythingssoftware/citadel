@@ -59,21 +59,47 @@ pub enum Invocation {
 
 pub struct CalibreCatalogSource {
     library: Mutex<Library>,
+    read_only: bool,
 }
 
 impl CalibreCatalogSource {
+    /// Opens the library for writing, or read-only when it can't be written
+    /// (for example, a read-only file or folder).
     pub fn open(library_path: &Path) -> Result<Self, String> {
-        let library_path = library_path
-            .to_str()
-            .ok_or_else(|| "libraryPath must be valid UTF-8".to_string())?;
-        let database = libcalibre::util::get_db_path(library_path)
-            .ok_or_else(|| format!("libraryPath is not a Calibre library: {library_path}"))?;
-        let library = Library::open_read_only(database)
+        let database = database_path(library_path)?;
+        match Library::new(database.clone()) {
+            Ok(library) => Ok(Self {
+                library: Mutex::new(library),
+                read_only: false,
+            }),
+            Err(error) => {
+                eprintln!("citadel_server library=read-only reason={error}");
+                Self::open_read_only(library_path)
+            }
+        }
+    }
+
+    /// Opens the library for queries only; it is never changed.
+    pub fn open_read_only(library_path: &Path) -> Result<Self, String> {
+        let library = Library::open_read_only(database_path(library_path)?)
             .map_err(|error| format!("could not open libraryPath: {error}"))?;
         Ok(Self {
             library: Mutex::new(library),
+            read_only: true,
         })
     }
+
+    pub fn read_only(&self) -> bool {
+        self.read_only
+    }
+}
+
+fn database_path(library_path: &Path) -> Result<libcalibre::util::ValidDbPath, String> {
+    let library_path = library_path
+        .to_str()
+        .ok_or_else(|| "libraryPath must be valid UTF-8".to_string())?;
+    libcalibre::util::get_db_path(library_path)
+        .ok_or_else(|| format!("libraryPath is not a Calibre library: {library_path}"))
 }
 
 impl CatalogSource for CalibreCatalogSource {
