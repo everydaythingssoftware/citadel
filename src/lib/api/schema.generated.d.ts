@@ -125,8 +125,10 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getBookCover"];
-        put?: never;
-        post?: never;
+        /** @description Set a book's cover from an uploaded image. The image is decoded within limits and stored re-encoded as JPEG. */
+        put: operations["setBookCoverFromFile"];
+        /** @description Set a book's cover from a metadata result. The server fetches the full-size image from the provider; clients never send a URL. 410 when the cover ID has expired. */
+        post: operations["setBookCoverFromMetadata"];
         delete?: never;
         options?: never;
         head: operations["getBookCoverHead"];
@@ -222,6 +224,40 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getLibrary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/covers/{cover_id}/prefetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Start fetching a chosen cover at full size so applying it is quick. */
+        post: operations["prefetchMetadataCover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/covers/{cover_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A small JPEG of a result's cover, fetched by the server from the provider. 410 when the ID has expired; search again. */
+        get: operations["previewMetadataCover"];
         put?: never;
         post?: never;
         delete?: never;
@@ -449,6 +485,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ApplyCover: {
+            /** @description A `cover_id` from a metadata result. */
+            coverId: string;
+        };
         /** @description One book's value for one custom column. */
         BookCustomValue: {
             /** Format: int32 */
@@ -467,6 +507,11 @@ export interface components {
          */
         BookMetadata: {
             authors: string[];
+            /**
+             * @description Opaque ID for this result's cover, for previews and applying it.
+             *     Expires an hour after the result was last returned.
+             */
+            cover_id: string | null;
             description: string | null;
             /**
              * @description Explicit provider genre/form terms. Subject headings are never placed
@@ -474,7 +519,6 @@ export interface components {
              */
             genre_candidates: components["schemas"]["GenreCandidate"][];
             identifier_label: string;
-            image_url: string | null;
             isbn: string | null;
             /** @description MARC 3-letter language code. Parsed now; applied once CDL-2 lands. */
             language_code: string | null;
@@ -1347,6 +1391,159 @@ export interface operations {
             };
         };
     };
+    setBookCoverFromFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Library book ID */
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description A JPEG, PNG or WebP image, up to `api.metadata.maxImageBytes` */
+        requestBody: {
+            content: {
+                "image/*": number[];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    setBookCoverFromMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Library book ID */
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyCover"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
     getBookCoverHead: {
         parameters: {
             query?: never;
@@ -1824,6 +2021,113 @@ export interface operations {
                 };
             };
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    prefetchMetadataCover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A `cover_id` from a metadata result */
+                cover_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    previewMetadataCover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A `cover_id` from a metadata result */
+                cover_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cover preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": number[];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

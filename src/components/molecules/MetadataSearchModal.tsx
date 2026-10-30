@@ -19,6 +19,8 @@ export interface MetadataSearchModalProps {
 	onSelect: (result: AggregatedResult) => void;
 	/** Stops in-flight provider searches. */
 	onStop?: () => void;
+	/** A cover preview failed to load, e.g. because its ID expired. */
+	onCoverError?: () => void;
 	/** When set, rendered as an error notice above the results area. */
 	error?: string | null;
 	width?: number;
@@ -41,6 +43,7 @@ export const MetadataSearchModal = ({
 	pendingProviderNames,
 	onSelect,
 	onStop,
+	onCoverError,
 	error = null,
 	width = 780,
 }: MetadataSearchModalProps) => (
@@ -92,11 +95,12 @@ export const MetadataSearchModal = ({
 							className={styles.searchResult}
 							onClick={() => onSelect(result)}
 						>
-							{result.book.image_url ? (
+							{result.coverUrl ? (
 								<img
-									src={result.book.image_url}
+									src={result.coverUrl}
 									alt={result.book.title}
 									className={styles.searchResultCover}
+									onError={onCoverError}
 								/>
 							) : (
 								<span className={styles.coverPlaceholder} aria-hidden>

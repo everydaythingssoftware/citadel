@@ -41,7 +41,10 @@ const fakeLibrary = () => {
 			async (_id: string, _column: number, _value: unknown) => undefined,
 		),
 		addBookGenres: vi.fn(async (_id: string, _genres: string[]) => undefined),
-		setBookCoverFromUrl: vi.fn(async (_id: string, _url: string) => undefined),
+		setBookCoverFromMetadata: vi.fn(
+			async (_id: string, _coverId: string) => undefined,
+		),
+		setBookCoverFromFile: vi.fn(async (_id: string, _image: Blob) => undefined),
 		queryBooks: vi.fn(async () => ({ items: [], total: 250 })),
 		listAuthors: vi.fn(async () => []),
 		listSeries: vi.fn(async () => []),
@@ -212,7 +215,7 @@ describe("selected-library custom fields, genres and covers", () => {
 			() => actions.getCustomValuesForBook("1"),
 			() => actions.setCustomValue("1", 1, null),
 			() => actions.addBookGenres("1", ["Fantasy"]),
-			() => actions.setBookCoverFromUrl("1", "https://example.test/cover.jpg"),
+			() => actions.setBookCoverFromMetadata("1", "cover-1"),
 		])
 			await expect(operation()).rejects.toThrow("switch is in progress");
 		for (const method of [
@@ -220,7 +223,7 @@ describe("selected-library custom fields, genres and covers", () => {
 			a.fake.getCustomValuesForBook,
 			a.fake.setCustomValue,
 			a.fake.addBookGenres,
-			a.fake.setBookCoverFromUrl,
+			a.fake.setBookCoverFromMetadata,
 		])
 			expect(method).not.toHaveBeenCalled();
 		openB.resolve(fakeLibrary().library);
@@ -232,7 +235,7 @@ describe("selected-library custom fields, genres and covers", () => {
 		for (const operation of [
 			() => actions.setCustomValue("1", 1, null),
 			() => actions.addBookGenres("1", ["Fantasy"]),
-			() => actions.setBookCoverFromUrl("1", "https://example.test/cover.jpg"),
+			() => actions.setBookCoverFromMetadata("1", "cover-1"),
 		]) {
 			const generation = useLibraryStore.getState().bookCache.generation;
 			await operation();
@@ -252,13 +255,10 @@ describe("selected-library custom fields, genres and covers", () => {
 		const fields = deferred<[]>();
 		const cover = deferred<undefined>();
 		a.fake.getCustomValuesForBook.mockReturnValueOnce(fields.promise);
-		a.fake.setBookCoverFromUrl.mockReturnValueOnce(cover.promise);
+		a.fake.setBookCoverFromMetadata.mockReturnValueOnce(cover.promise);
 		const { actions } = useLibraryStore.getState();
 		const read = actions.getCustomValuesForBook("1");
-		const write = actions.setBookCoverFromUrl(
-			"1",
-			"https://example.test/cover.jpg",
-		);
+		const write = actions.setBookCoverFromMetadata("1", "cover-1");
 		const b = fakeLibrary();
 		initClient.mockResolvedValueOnce(b.library);
 		await actions.initialize(PATH_B);
@@ -268,7 +268,7 @@ describe("selected-library custom fields, genres and covers", () => {
 		await expect(read).rejects.toThrow("Library changed");
 		await expect(write).rejects.toThrow("Library changed");
 		expect(useLibraryStore.getState().bookCache.generation).toBe(generation);
-		expect(b.fake.setBookCoverFromUrl).not.toHaveBeenCalled();
+		expect(b.fake.setBookCoverFromMetadata).not.toHaveBeenCalled();
 	});
 });
 

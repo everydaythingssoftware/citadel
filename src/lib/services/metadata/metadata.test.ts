@@ -84,6 +84,9 @@ describe("Metadata transport", () => {
 		expect(urls[0]?.searchParams.get("provider")).toBe("openlibrary");
 		expect(urls[1]?.pathname).toBe("/api/metadata/isbn/9781234567890");
 		for (const url of urls) expect(url.search).not.toContain("ignored");
+		expect(web.coverPreviewUrl("abc/def")).toBe(
+			"https://citadel.test/api/metadata/covers/abc%2Fdef/preview",
+		);
 		for (const method of Object.values(ipc))
 			expect(method).not.toHaveBeenCalled();
 	});

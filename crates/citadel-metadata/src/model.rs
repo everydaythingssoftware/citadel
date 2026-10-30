@@ -107,8 +107,14 @@ pub struct BookMetadata {
     pub release_year: Option<i32>,
     #[cfg_attr(feature = "openapi", schema(required = true))]
     pub description: Option<String>,
-    #[cfg_attr(feature = "openapi", schema(required = true))]
+    /// The provider's image URL. Never serialized: clients name covers by
+    /// `cover_id` and Citadel fetches them itself.
+    #[serde(skip)]
     pub image_url: Option<String>,
+    /// Opaque ID for this result's cover, for previews and applying it.
+    /// Expires an hour after the result was last returned.
+    #[cfg_attr(feature = "openapi", schema(required = true))]
+    pub cover_id: Option<String>,
     #[cfg_attr(feature = "openapi", schema(required = true))]
     pub publisher: Option<String>,
     /// Subject headings, mapped to tag suggestions on the frontend.

@@ -155,6 +155,7 @@ fn map_data_book(book: OlDataBook, queried_isbn: &str) -> BookMetadata {
         release_year: book.publish_date.as_deref().and_then(extract_year),
         description: None,
         image_url,
+        cover_id: None,
         publisher: book.publishers.into_iter().next().map(|p| p.name),
         subjects: dedupe_subjects(book.subjects.into_iter().map(|s| s.name)),
         genre_candidates: Vec::new(),
@@ -173,7 +174,7 @@ fn map_search_doc(doc: OlSearchDoc) -> BookMetadata {
 
     let image_url = doc
         .cover_i
-        .map(|id| format!("https://covers.openlibrary.org/b/id/{id}-M.jpg"));
+        .map(|id| format!("https://covers.openlibrary.org/b/id/{id}-L.jpg"));
 
     BookMetadata {
         provider: MetadataProvider::OpenLibrary,
@@ -186,6 +187,7 @@ fn map_search_doc(doc: OlSearchDoc) -> BookMetadata {
         release_year: doc.first_publish_year,
         description: None,
         image_url,
+        cover_id: None,
         publisher: doc.publisher.into_iter().next(),
         subjects: dedupe_subjects(doc.subject.into_iter()),
         genre_candidates: Vec::new(),
@@ -242,7 +244,7 @@ mod tests {
         assert_eq!(dune.subjects, ["Science fiction", "Dune (Imaginary place)"]);
         assert_eq!(
             dune.image_url.as_deref(),
-            Some("https://covers.openlibrary.org/b/id/11481354-M.jpg")
+            Some("https://covers.openlibrary.org/b/id/11481354-L.jpg")
         );
         assert_eq!(books[1].provider_id, "OL893512W");
         assert_eq!(books[1].image_url, None);

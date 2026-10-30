@@ -6,7 +6,7 @@ import {
 	type LibraryBookQuery,
 	type NewAuthor,
 } from "@/bindings";
-import { BookDeletion, type Library } from "./types";
+import { BookDeletion, CoverExpiredError, type Library } from "./types";
 
 const unwrap = <T>(
 	result: { status: "ok"; data: T } | { status: "error"; error: string },
@@ -44,8 +44,18 @@ export const createTauriLibrary = (): Library => {
 		addBookGenres: async (id, genres) => {
 			unwrap(await commands.clbCmdAddBookGenres(id, genres));
 		},
-		setBookCoverFromUrl: async (id, url) => {
-			unwrap(await commands.clbCmdSetBookCoverFromUrl(id, url));
+		setBookCoverFromMetadata: async (id, coverId) => {
+			const result = await commands.clbCmdSetBookCoverFromMetadata(id, coverId);
+			if (
+				result.status === "error" &&
+				result.error === new CoverExpiredError().message
+			)
+				throw new CoverExpiredError();
+			unwrap(result);
+		},
+		setBookCoverFromFile: async (id, image) => {
+			const bytes = Array.from(new Uint8Array(await image.arrayBuffer()));
+			unwrap(await commands.clbCmdSetBookCoverFromFile(id, bytes));
 		},
 		createAuthors: async (authorList: NewAuthor[]) => {
 			const results = await commands.clbCmdCreateAuthors(authorList);

@@ -243,6 +243,18 @@ returns it:
   and saves a key, replacing any earlier one.
 - `DELETE /api/account/provider-credentials/hardcover`: forgets it.
 
+Results name covers by an opaque `cover_id`, never a URL. The server fetches cover
+images itself, only from the provider's own image hosts over HTTPS, and decodes and
+re-encodes them before keeping them:
+
+- `GET /api/metadata/covers/{cover_id}/preview`: a 600 px JPEG, cached briefly in memory.
+- `POST /api/metadata/covers/{cover_id}/prefetch`: fetches the full-size image ahead of applying it.
+- `POST /api/books/{book_id}/cover` with `{"coverId": "…"}`: sets a book's cover from a result.
+- `PUT /api/books/{book_id}/cover` with a JPEG, PNG or WebP body: sets it from an image file.
+
+Cover IDs expire an hour after a lookup last returned them; the server then answers
+410 and the client searches again.
+
 Every provider is limited across all users (a token bucket and a few concurrent
 requests), an upstream `429` pauses that provider for its `Retry-After`, and a
 provider that fails five times in a row is skipped for a minute. Answers are
@@ -253,6 +265,14 @@ answer 429 with `Retry-After` when it runs out. Tune them in an optional
 ```toml
 [api.metadata]
 # contact = "admin@example.com"   # added to the User-Agent providers see
+maxImageBytes = 15728640   # 15 MiB per cover download or upload
+fetchTimeoutSecs = 15
+maxConcurrentFetches = 8
+
+[api.metadata.preview]
+cacheBytes = 33554432      # 32 MiB for previews and chosen covers
+ttlSecs = 180
+longEdgePx = 600
 
 [api.metadata.search]
 cacheBytes = 8388608     # 8 MiB of cached answers

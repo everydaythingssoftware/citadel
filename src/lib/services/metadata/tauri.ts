@@ -1,5 +1,6 @@
 import type { MetadataProvider } from "@/bindings";
 import { commands } from "@/bindings";
+import { appSchemeUrl } from "@/lib/platform/runtime";
 import { CREDENTIAL_HOME, type MetadataService } from "./types";
 const PROVIDERS: MetadataProvider[] = [
 	"loc",
@@ -29,4 +30,9 @@ export const tauriMetadataService: MetadataService = {
 	// Keys live in local settings, which decide availability on the desktop.
 	availability: async () =>
 		PROVIDERS.map((provider) => ({ provider, available: true, reason: null })),
+	// Served by the `citadel-cover` URI scheme from the shared cover cache.
+	coverPreviewUrl: (coverId) => appSchemeUrl("citadel-cover", coverId),
+	prefetchCover: async (coverId) => {
+		unwrap(await commands.clbCmdPrefetchMetadataCover(coverId));
+	},
 };

@@ -69,7 +69,8 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::command::clb_cmd_update_book,
             library::command::clb_cmd_upsert_book_identifier,
             library::command::clb_cmd_delete_book_identifier,
-            library::command::clb_cmd_set_book_cover_from_url,
+            library::command::clb_cmd_set_book_cover_from_metadata,
+            library::command::clb_cmd_set_book_cover_from_file,
             library::command::clb_cmd_ensure_cover_thumbnails,
             library::command::clb_cmd_warm_cover_thumbnails,
             library::query::clb_query_list_cover_thumbnails,
@@ -88,6 +89,7 @@ fn command_builder() -> Builder<tauri::Wry> {
             metadata::commands::clb_cmd_test_metadata_provider,
             metadata::commands::clb_query_metadata_search,
             metadata::commands::clb_query_metadata_by_isbn,
+            metadata::commands::clb_cmd_prefetch_metadata_cover,
             // Software Update (CDL-51)
             app_updates::clb_query_software_update,
             app_updates::clb_cmd_check_for_updates,
@@ -135,6 +137,10 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .manage(metadata::client())
+        .register_asynchronous_uri_scheme_protocol(
+            metadata::COVER_SCHEME,
+            metadata::serve_cover_preview,
+        )
         .invoke_handler(builder.invoke_handler())
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {

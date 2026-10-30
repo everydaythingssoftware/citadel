@@ -15,7 +15,7 @@ const book = (
 	isbn: null,
 	release_year: null,
 	description: null,
-	image_url: null,
+	cover_id: null,
 	publisher: null,
 	subjects: [],
 	genre_candidates: [],
@@ -57,17 +57,18 @@ describe("mergeResults", () => {
 	it("backfills a missing cover from a deduped peer", () => {
 		const results = mergeResults(
 			[
-				book("loc", { isbn: "9780553103540", image_url: null }),
+				book("loc", { isbn: "9780553103540", cover_id: null }),
 				book("openlibrary", {
 					isbn: "9780553103540",
-					image_url: "https://covers/x.jpg",
+					cover_id: "cover-x",
 				}),
 			],
 			ORDER,
 			null,
 		);
 		expect(results[0]?.book.provider).toBe("loc");
-		expect(results[0]?.book.image_url).toBe("https://covers/x.jpg");
+		expect(results[0]?.book.cover_id).toBe("cover-x");
+		expect(results[0]?.coverUrl).toContain("cover-x");
 	});
 
 	it("does not splice non-cover fields across providers", () => {

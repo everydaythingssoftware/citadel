@@ -1,7 +1,7 @@
 import type { ClientOptions } from "openapi-fetch";
 import type { CoverThumbnail, LibraryBook } from "@/bindings";
 import { createCitadelHttpClient } from "@/lib/api/client";
-import { BookDeletion, type Library } from "./types";
+import { BookDeletion, CoverExpiredError, type Library } from "./types";
 
 const unsupported = async (): Promise<never> => {
 	throw new Error(
@@ -121,7 +121,33 @@ export const createHttpLibrary = (
 		getDefaultFilePathForBook: () => undefined,
 		setCustomValue: unsupported,
 		addBookGenres: unsupported,
-		setBookCoverFromUrl: unsupported,
+		setBookCoverFromMetadata: async (bookId, coverId) => {
+			const { error, response } = await client.POST(
+				"/api/books/{book_id}/cover",
+				{
+					params: { path: { book_id: bookId } },
+					body: { coverId },
+				},
+			);
+			if (response.status === 410) throw new CoverExpiredError(error?.message);
+			if (error) throw new Error(error.message);
+			if (!response.ok)
+				throw new Error(`Library request failed (${response.status})`);
+		},
+		setBookCoverFromFile: async (bookId, image) => {
+			const { error, response } = await client.PUT(
+				"/api/books/{book_id}/cover",
+				{
+					params: { path: { book_id: bookId } },
+					body: image as unknown as number[],
+					bodySerializer: (body) => body as unknown as Blob,
+					headers: { "content-type": image.type || "application/octet-stream" },
+				},
+			);
+			if (error) throw new Error(error.message);
+			if (!response.ok)
+				throw new Error(`Library request failed (${response.status})`);
+		},
 		createAuthors: unsupported,
 		sendToDevice: unsupported,
 		updateBook: unsupported,
