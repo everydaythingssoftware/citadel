@@ -19,7 +19,12 @@ import type { ProviderId } from "@/lib/metadata-providers/types";
 import { none, some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
 import { applyColorScheme } from "@/lib/theme-manager";
-import { useAnySourceEnabled } from "@/stores/settings/metadata-providers";
+import {
+	providerKeysOnServer,
+	useAnySourceEnabled,
+	useProviderKeyAvailable,
+	useServerKeyReason,
+} from "@/stores/settings/metadata-providers";
 import { useSettings } from "@/stores/settings/store";
 
 const SETTINGS_TABS = [
@@ -366,7 +371,8 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 	const enabled = config?.enabled ?? false;
 	const requiresKey = descriptor.capabilities.requiresKey;
 	const savedKey = config?.apiKey ?? "";
-	const hasKey = savedKey.trim().length > 0;
+	const hasKey = useProviderKeyAvailable()(id);
+	const serverKeyReason = useServerKeyReason(id);
 
 	const [expanded, setExpanded] = useState(false);
 	const [apiKeyInput, setApiKeyInput] = useState(savedKey);
@@ -376,7 +382,9 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 	const status = requiresKey
 		? hasKey
 			? "Key saved"
-			: "Add a key"
+			: providerKeysOnServer
+				? "Not set up"
+				: "Add a key"
 		: "No key needed";
 
 	const handleTest = useCallback(async () => {
@@ -444,7 +452,11 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 			{expanded && (
 				<div className={classes.providerBody}>
 					<p className={classes.rowDescription}>{descriptor.blurb}</p>
-					{requiresKey ? (
+					{requiresKey && providerKeysOnServer ? (
+						<p className={classes.inlineNote} role="status">
+							{serverKeyReason ?? "Your key is kept by this Citadel server."}
+						</p>
+					) : requiresKey ? (
 						<>
 							<TextInput
 								className={classes.keyInput}

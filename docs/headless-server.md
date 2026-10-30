@@ -220,10 +220,38 @@ each chunk must fit the proxy's request limit: nginx's `client_max_body_size`
 defaults to 1 MB, so raise it above `chunkBytes` or lower `chunkBytes`.
 Cloudflare's Free and Pro plans accept requests up to 100 MB.
 
+### Metadata lookups
+
+Signed-in users can look books up through the server, which calls the providers
+on their behalf (ADR 0010). Open Library, the Library of Congress, the Deutsche
+Nationalbibliothek and K10plus need no setup.
+
+- `GET /api/metadata/providers`: each provider and whether you can use it.
+- `GET /api/metadata/search?provider=openlibrary&q=dune`: free-text search.
+- `GET /api/metadata/isbn/{isbn}?provider=loc`: ISBN lookup.
+- `POST /api/metadata/providers/{provider}/test`: checks the server can reach it.
+
+Every provider is limited across all users (a token bucket and a few concurrent
+requests), an upstream `429` pauses that provider for its `Retry-After`, and a
+provider that fails five times in a row is skipped for a minute. Answers are
+cached briefly in memory; uncached lookups count against a per-user limit and
+answer 429 with `Retry-After` when it runs out. Tune them in an optional
+`[api.metadata]` table (defaults shown):
+
+```toml
+[api.metadata]
+# contact = "admin@example.com"   # added to the User-Agent providers see
+
+[api.metadata.search]
+cacheBytes = 8388608     # 8 MiB of cached answers
+ttlSecs = 600            # how long an answer is reused
+perUserPerMinute = 30
+```
+
 Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open `publicUrl` in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 
 Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. Editing and imports are still hidden in the browser until it gains those screens; the upload API above is ready for them. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
 
 For frontend development, set `publicUrl` to the Vite origin (`http://localhost:1420`) and run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 
-OPDS acquisition routes remain available. Editing book metadata, metadata-provider lookups and setting up a library through the browser remain follow-up work (CDL-57, CDL-56, CDL-39). Until web setup lands, configure the library using the server configuration described above.
+OPDS acquisition routes remain available. Editing book metadata and setting up a library through the browser remain follow-up work (CDL-57, CDL-39). Until web setup lands, configure the library using the server configuration described above.

@@ -91,12 +91,18 @@ pub struct BookMetadata {
     pub provider_id: String,
     pub identifier_label: String,
     pub title: String,
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub subtitle: Option<String>,
     pub authors: Vec<String>,
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub isbn: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub release_year: Option<i32>,
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub description: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub image_url: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub publisher: Option<String>,
     /// Subject headings, mapped to tag suggestions on the frontend.
     pub subjects: Vec<String>,
@@ -104,8 +110,10 @@ pub struct BookMetadata {
     /// here merely because they look genre-like.
     pub genre_candidates: Vec<GenreCandidate>,
     /// MARC 3-letter language code. Parsed now; applied once CDL-2 lands.
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub language_code: Option<String>,
     /// Hardcover deep-link slug; `None` for other providers.
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub slug: Option<String>,
 }
 
@@ -117,6 +125,7 @@ pub struct GenreCandidate {
     /// `marc:655`.
     pub source: String,
     /// Provider vocabulary or thesaurus when one is declared.
+    #[cfg_attr(feature = "openapi", schema(required = true))]
     pub vocabulary: Option<String>,
 }
 

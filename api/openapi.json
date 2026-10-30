@@ -1017,6 +1017,262 @@
         ]
       }
     },
+    "/api/metadata/isbn/{isbn}": {
+      "get": {
+        "description": "Look one provider up by ISBN. No match is an empty list, not an error.",
+        "operationId": "lookUpMetadataByIsbn",
+        "parameters": [
+          {
+            "name": "isbn",
+            "in": "path",
+            "description": "ISBN-10 or ISBN-13, hyphens allowed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Provider ID, such as `openlibrary` or `loc`.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookMetadata"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/providers": {
+      "get": {
+        "description": "Metadata providers and whether the signed-in user can use each. Keyless providers are always available.",
+        "operationId": "listMetadataProviders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MetadataProviderInfo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/providers/{provider}/test": {
+      "post": {
+        "description": "Check that the server can reach a provider, with the user's own key when it needs one.",
+        "operationId": "testMetadataProvider",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/search": {
+      "get": {
+        "description": "Free-text search one provider. No results is an empty list, not an error. Answers are cached briefly; uncached lookups count against a per-user rate limit.",
+        "operationId": "searchMetadata",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Provider ID, such as `openlibrary` or `loc`.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Title, author or keywords.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookMetadata"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/publishers": {
       "get": {
         "operationId": "listPublishers",
@@ -1815,6 +2071,113 @@
           }
         ]
       },
+      "BookMetadata": {
+        "type": "object",
+        "description": "A book record from a provider. Providers return these fully populated from a\nsingle search call — there is no separate resolve step, so the cover-less\nMARC sources' subjects/publisher/language survive into the applied record.",
+        "required": [
+          "provider",
+          "provider_id",
+          "identifier_label",
+          "title",
+          "subtitle",
+          "authors",
+          "isbn",
+          "release_year",
+          "description",
+          "image_url",
+          "publisher",
+          "subjects",
+          "genre_candidates",
+          "language_code",
+          "slug"
+        ],
+        "properties": {
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "genre_candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GenreCandidate"
+            },
+            "description": "Explicit provider genre/form terms. Subject headings are never placed\nhere merely because they look genre-like."
+          },
+          "identifier_label": {
+            "type": "string"
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isbn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MARC 3-letter language code. Parsed now; applied once CDL-2 lands."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MetadataProvider"
+          },
+          "provider_id": {
+            "type": "string",
+            "description": "Provider-native id: hardcover id (stringified), LCCN, DNB control\nnumber, or Open Library OLID."
+          },
+          "publisher": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release_year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hardcover deep-link slug; `None` for other providers."
+          },
+          "subjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subject headings, mapped to tag suggestions on the frontend."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
       "BookSortOrder": {
         "type": "string",
         "enum": [
@@ -2095,6 +2458,30 @@
           }
         },
         "additionalProperties": false
+      },
+      "GenreCandidate": {
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "vocabulary"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "Stable provider field identity, such as `hardcover:genre` or\n`marc:655`."
+          },
+          "vocabulary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider vocabulary or thesaurus when one is declared."
+          }
+        }
       },
       "Identifier": {
         "type": "object",
@@ -2488,6 +2875,68 @@
           },
           "url": {
             "type": "string"
+          }
+        }
+      },
+      "MetadataProvider": {
+        "type": "string",
+        "description": "The metadata sources Citadel can look books up against. The serialized\nshort form is the single id used across the Rust enum, the TS string union,\nand the frontend registry keys.",
+        "enum": [
+          "hardcover",
+          "loc",
+          "dnb",
+          "k10plus",
+          "openlibrary"
+        ]
+      },
+      "MetadataProviderInfo": {
+        "type": "object",
+        "required": [
+          "provider",
+          "displayName",
+          "requiresKey",
+          "available",
+          "unavailableReason"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether this user can look books up with the provider right now."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MetadataProvider"
+          },
+          "requiresKey": {
+            "type": "boolean"
+          },
+          "unavailableReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why not, when it isn't."
+          }
+        }
+      },
+      "ProviderStatus": {
+        "type": "object",
+        "required": [
+          "provider",
+          "is_valid",
+          "message"
+        ],
+        "properties": {
+          "is_valid": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MetadataProvider"
           }
         }
       },

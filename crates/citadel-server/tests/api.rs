@@ -84,9 +84,40 @@ async fn fixture_with(
     fixture_opened(CalibreCatalogSource::open, uploads).await
 }
 
+/// No provider is reachable unless a test stands one up locally.
+fn metadata() -> Arc<api::Metadata> {
+    metadata_at("http://127.0.0.1:9".into(), api::MetadataConfig::default())
+}
+
+fn metadata_at(base: String, config: api::MetadataConfig) -> Arc<api::Metadata> {
+    let client = citadel_metadata::MetadataClient::with_endpoints(
+        citadel_metadata::ClientOptions {
+            version: "test".into(),
+            contact: None,
+        },
+        citadel_metadata::Endpoints {
+            openlibrary: base.clone(),
+            hardcover: format!("{base}/graphql"),
+            loc: format!("{base}/loc"),
+            dnb: format!("{base}/dnb"),
+            k10plus: format!("{base}/k10plus"),
+        },
+    )
+    .unwrap();
+    Arc::new(api::Metadata::with_client(config, client))
+}
+
 async fn fixture_opened(
     open: fn(&std::path::Path) -> Result<CalibreCatalogSource, String>,
     uploads: api::UploadConfig,
+) -> (tempfile::TempDir, OpdsService, Router, String, String) {
+    fixture_with_metadata(open, uploads, metadata()).await
+}
+
+async fn fixture_with_metadata(
+    open: fn(&std::path::Path) -> Result<CalibreCatalogSource, String>,
+    uploads: api::UploadConfig,
+    metadata: Arc<api::Metadata>,
 ) -> (tempfile::TempDir, OpdsService, Router, String, String) {
     let directory = tempfile::tempdir().unwrap();
     std::fs::copy(
@@ -148,7 +179,7 @@ async fn fixture_opened(
         .await
         .unwrap();
     let staging = api::Staging::open(directory.path().join("state/uploads"), uploads).unwrap();
-    let router = api::router(source, &service, access, None, staging);
+    let router = api::router(source, &service, access, None, staging, metadata);
     let (status, cookie, _) = sign_in(&router, "reader", "secret-password").await;
     assert_eq!(status, StatusCode::OK);
     (
@@ -549,7 +580,7 @@ async fn browser_hosting_serves_the_frontend_publicly_and_only_falls_back_for_ht
         api::UploadConfig::default(),
     )
     .unwrap();
-    let router = api::router(source, &service, access, Some(&web), staging);
+    let router = api::router(source, &service, access, Some(&web), staging, metadata());
     // The frontend is public so signed-out browsers can load the sign-in page.
     for (path, accept_html, expected, expected_body) in [
         ("/", true, 200, Some("<html>Citadel frontend</html>")),
@@ -1445,5 +1476,155 @@ async fn commits_need_a_finished_upload_a_title_its_owner_and_a_writable_library
         (status, error["code"].as_str()),
         (StatusCode::FORBIDDEN, Some("readOnly"))
     );
+    service.stop().await;
+}
+
+/// Stands in for Open Library, counting the requests that reach it.
+async fn fake_openlibrary() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    use axum::{extract::State, routing::get};
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let router = axum::Router::new()
+        .route(
+            "/search.json",
+            get(
+                |State(hits): State<Arc<std::sync::atomic::AtomicUsize>>,
+                 axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
+                    hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if query.unwrap_or_default().contains("q=broken") {
+                        return (StatusCode::BAD_GATEWAY, "upstream down").into_response();
+                    }
+                    axum::Json(json!({"docs": [{
+                        "key": "/works/OL893415W", "title": "Dune", "author_name": ["Frank Herbert"],
+                        "first_publish_year": 1965, "cover_i": 11481354, "edition_key": ["OL26242482M"]
+                    }]}))
+                    .into_response()
+                },
+            ),
+        )
+        .route(
+            "/api/books",
+            get(|State(hits): State<Arc<std::sync::atomic::AtomicUsize>>| async move {
+                hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                axum::Json(json!({"ISBN:9780553103540": {"title": "A Game of Thrones", "key": "/books/OL7826547M"}}))
+            }),
+        )
+        .with_state(hits.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, router).await });
+    (format!("http://{address}"), hits)
+}
+
+use axum::response::IntoResponse;
+
+#[tokio::test]
+async fn metadata_lookups_are_signed_in_cached_and_rate_limited_per_user() {
+    let (base, hits) = fake_openlibrary().await;
+    let config: api::MetadataConfig =
+        serde_json::from_value(json!({"search": {"perUserPerMinute": 3}})).unwrap();
+    let (_directory, service, router, _, cookie) = fixture_with_metadata(
+        CalibreCatalogSource::open,
+        api::UploadConfig::default(),
+        metadata_at(base, config),
+    )
+    .await;
+    let get = |path: &str, cookie: Option<&str>| {
+        let path = path.to_string();
+        let cookie = cookie.map(String::from);
+        let router = router.clone();
+        async move { request(&router, "GET", &path, String::new(), cookie.as_deref()).await }
+    };
+
+    let (status, _, _) = get("/api/metadata/search?provider=openlibrary&q=dune", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, _, books) = get(
+        "/api/metadata/search?provider=openlibrary&q=dune",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{books}");
+    assert_eq!(books[0]["title"], "Dune");
+    assert_eq!(books[0]["provider"], "openlibrary");
+    let (_, _, again) = get(
+        "/api/metadata/search?provider=openlibrary&q=%20DUNE%20",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(again, books);
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "cached");
+
+    let (status, _, books) = get(
+        "/api/metadata/isbn/0-553-10354-7?provider=openlibrary",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{books}");
+    assert_eq!(books[0]["isbn"], "0553103547");
+
+    for (path, expected) in [
+        (
+            "/api/metadata/search?provider=nope&q=dune",
+            StatusCode::BAD_REQUEST,
+        ),
+        ("/api/metadata/search?q=dune", StatusCode::BAD_REQUEST),
+        (
+            "/api/metadata/isbn/not-an-isbn?provider=loc",
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            "/api/metadata/search?provider=hardcover&q=dune",
+            StatusCode::BAD_REQUEST,
+        ),
+    ] {
+        let (status, _, error) = get(path, Some(&cookie)).await;
+        assert_eq!(status, expected, "{path}: {error}");
+        assert_eq!(error["code"], "invalidArgument");
+    }
+
+    let (status, _, error) = get(
+        "/api/metadata/search?provider=openlibrary&q=broken",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(!error["message"].as_str().unwrap().contains("127.0.0.1"));
+
+    let (status, headers, error) = get(
+        "/api/metadata/search?provider=openlibrary&q=fourth",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{error}");
+    assert_eq!(error["code"], "rateLimited");
+    assert_eq!(headers["retry-after"], "20");
+    let (status, _, _) = get(
+        "/api/metadata/search?provider=openlibrary&q=dune",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "cached answers don't spend the limit"
+    );
+
+    let (status, _, providers) = get("/api/metadata/providers", Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    let hardcover = providers
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|provider| provider["provider"] == "hardcover")
+        .unwrap();
+    assert_eq!(hardcover["requiresKey"], true);
+    assert_eq!(hardcover["available"], false);
+    let loc = providers
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|provider| provider["provider"] == "loc")
+        .unwrap();
+    assert_eq!(loc["available"], true);
     service.stop().await;
 }
