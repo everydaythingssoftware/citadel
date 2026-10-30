@@ -21,7 +21,11 @@ use citadel_metadata::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{session::SignedIn, ApiFailure, ApiState};
+use super::{
+    session::{blocking, SignedIn},
+    ApiFailure, ApiState,
+};
+use citadel_core::store::CredentialSecret;
 
 const MIB: usize = 1024 * 1024;
 const MAX_TRACKED_USERS: usize = 4096;
@@ -131,11 +135,12 @@ impl Metadata {
 
     async fn lookup(
         &self,
+        state: &ApiState,
         user: &SignedIn,
         provider: MetadataProvider,
         lookup: Lookup,
     ) -> Result<Vec<BookMetadata>, MetadataFailure> {
-        let credential = self.credential(user, provider)?;
+        let credential = credential(state, user, provider).await?;
         let key = lookup.cache_key(provider, &user.0.id);
         let ttl = Duration::from_secs(self.config.search.ttl_secs);
         if let Some(books) =
@@ -169,28 +174,57 @@ impl Metadata {
         Ok(books)
     }
 
-    /// The user's own credential for a keyed provider.
-    fn credential(
+    /// Check a key with the provider before it is saved; returns the
+    /// provider account's name when it reports one.
+    pub(super) async fn verify(
         &self,
-        _user: &SignedIn,
+        user: &SignedIn,
         provider: MetadataProvider,
+        secret: &str,
     ) -> Result<Option<String>, MetadataFailure> {
-        if provider.requires_key() {
-            return Err(MetadataFailure(
-                LibraryError::invalid(format!(
-                    "{} isn't available through the server yet",
-                    provider.display_name()
-                )),
-                None,
-            ));
-        }
-        Ok(None)
+        self.admit_user(&user.0.id, Instant::now())?;
+        self.client
+            .test(provider, Some(secret))
+            .await
+            .map_err(|error| match error.kind {
+                MetadataErrorKind::Unauthorized => MetadataFailure(
+                    LibraryError::invalid(format!(
+                        "{} didn't accept that API key",
+                        provider.display_name()
+                    )),
+                    None,
+                ),
+                _ => error.into(),
+            })
     }
+}
 
-    fn available(&self, user: &SignedIn, provider: MetadataProvider) -> Result<(), String> {
-        self.credential(user, provider)
-            .map(|_| ())
-            .map_err(|failure| failure.0.message)
+/// The user's own sealed key for a keyed provider, opened for this request.
+async fn credential(
+    state: &ApiState,
+    user: &SignedIn,
+    provider: MetadataProvider,
+) -> Result<Option<String>, MetadataFailure> {
+    if !provider.requires_key() {
+        return Ok(None);
+    }
+    let name = provider.display_name();
+    let user_id = user.0.id.clone();
+    let vault = state.secrets.clone();
+    let secret = blocking(state, move |accounts| {
+        accounts.provider_credential_secret(&vault, &user_id, provider.id())
+    })
+    .await?;
+    match secret {
+        Some(CredentialSecret::Available(secret)) => Ok(Some(secret)),
+        Some(CredentialSecret::NeedsReentry) => Err(LibraryError::invalid(format!(
+            "Your {name} API key needs to be entered again in Account settings"
+        ))
+        .into()),
+        None => Err(LibraryError::invalid(format!(
+            "Add your {name} API key in Account settings to search {name}"
+        ))
+        .into()),
     }
 }
 
@@ -230,7 +264,7 @@ impl Lookup {
                 citadel_metadata::model::canonical_isbn13(isbn).unwrap_or_else(|| isbn.clone()),
             ),
         };
-        format!("{}\0{kind}\0{owner}\0{value}", provider.identifier_label())
+        format!("{}\0{kind}\0{owner}\0{value}", provider.id())
     }
 }
 
@@ -341,6 +375,12 @@ impl From<LibraryError> for MetadataFailure {
     }
 }
 
+impl From<ApiFailure> for MetadataFailure {
+    fn from(failure: ApiFailure) -> Self {
+        Self(failure.0, None)
+    }
+}
+
 impl IntoResponse for MetadataFailure {
     fn into_response(self) -> Response {
         let mut response = ApiFailure(self.0).into_response();
@@ -400,21 +440,18 @@ pub(super) async fn providers(
     State(state): State<ApiState>,
     Extension(user): Extension<SignedIn>,
 ) -> Json<Vec<MetadataProviderInfo>> {
-    Json(
-        MetadataProvider::ALL
-            .into_iter()
-            .map(|provider| {
-                let available = state.metadata.available(&user, provider);
-                MetadataProviderInfo {
-                    provider,
-                    display_name: provider.display_name().into(),
-                    requires_key: provider.requires_key(),
-                    available: available.is_ok(),
-                    unavailable_reason: available.err(),
-                }
-            })
-            .collect(),
-    )
+    let mut providers = Vec::new();
+    for provider in MetadataProvider::ALL {
+        let available = credential(&state, &user, provider).await;
+        providers.push(MetadataProviderInfo {
+            provider,
+            display_name: provider.display_name().into(),
+            requires_key: provider.requires_key(),
+            available: available.is_ok(),
+            unavailable_reason: available.err().map(|failure| failure.0.message),
+        });
+    }
+    Json(providers)
 }
 
 #[utoipa::path(get, path = "/api/metadata/search", operation_id = "searchMetadata",
@@ -441,7 +478,12 @@ pub(super) async fn search(
     Ok(Json(
         state
             .metadata
-            .lookup(&user, params.provider, Lookup::Search(query.to_string()))
+            .lookup(
+                &state,
+                &user,
+                params.provider,
+                Lookup::Search(query.to_string()),
+            )
             .await?,
     ))
 }
@@ -464,7 +506,7 @@ pub(super) async fn by_isbn(
     Ok(Json(
         state
             .metadata
-            .lookup(&user, params.provider, Lookup::Isbn(isbn))
+            .lookup(&state, &user, params.provider, Lookup::Isbn(isbn))
             .await?,
     ))
 }
@@ -481,22 +523,28 @@ pub(super) async fn test(
     Path(provider): Path<MetadataProvider>,
 ) -> Result<Json<ProviderStatus>, MetadataFailure> {
     let metadata = &state.metadata;
-    let credential = metadata.credential(&user, provider)?;
+    let credential = credential(&state, &user, provider).await?;
     metadata.admit_user(&user.0.id, Instant::now())?;
-    Ok(Json(
-        match metadata.client.test(provider, credential.as_deref()).await {
-            Ok(_) => ProviderStatus {
-                provider,
-                is_valid: true,
-                message: "Connection successful".into(),
-            },
-            Err(error) => ProviderStatus {
-                provider,
-                is_valid: false,
-                message: error.message,
-            },
+    let result = metadata.client.test(provider, credential.as_deref()).await;
+    if result.is_ok() && credential.is_some() {
+        let user_id = user.0.id.clone();
+        blocking(&state, move |accounts| {
+            accounts.mark_provider_credential_verified(&user_id, provider.id())
+        })
+        .await?;
+    }
+    Ok(Json(match result {
+        Ok(_) => ProviderStatus {
+            provider,
+            is_valid: true,
+            message: "Connection successful".into(),
         },
-    ))
+        Err(error) => ProviderStatus {
+            provider,
+            is_valid: false,
+            message: error.message,
+        },
+    }))
 }
 
 #[cfg(test)]

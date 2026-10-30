@@ -27,14 +27,10 @@ impl std::str::FromStr for MetadataProvider {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, String> {
-        match s {
-            "hardcover" => Ok(Self::Hardcover),
-            "loc" => Ok(Self::Loc),
-            "dnb" => Ok(Self::Dnb),
-            "k10plus" => Ok(Self::K10plus),
-            "openlibrary" => Ok(Self::OpenLibrary),
-            other => Err(format!("unknown metadata provider: {other}")),
-        }
+        Self::ALL
+            .into_iter()
+            .find(|provider| provider.id() == s)
+            .ok_or_else(|| format!("unknown metadata provider: {s}"))
     }
 }
 
@@ -46,6 +42,17 @@ impl MetadataProvider {
         Self::K10plus,
         Self::OpenLibrary,
     ];
+
+    /// The serialized ID, as hosts store it.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Hardcover => "hardcover",
+            Self::Loc => "loc",
+            Self::Dnb => "dnb",
+            Self::K10plus => "k10plus",
+            Self::OpenLibrary => "openlibrary",
+        }
+    }
 
     pub fn display_name(self) -> &'static str {
         match self {
