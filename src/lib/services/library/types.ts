@@ -17,6 +17,7 @@ import type {
 	LibraryTag,
 	NewAuthor,
 } from "@/bindings";
+import type { components } from "@/lib/api/schema.generated";
 
 export const DeviceType = {
 	externalDrive: "EXTERNAL_DRIVE",
@@ -33,9 +34,79 @@ export interface FileType {
 	mimetype: string;
 }
 
+/** A file being uploaded to, or waiting in, the server's staging area. */
+export type StagedUpload = components["schemas"]["StagedUpload"];
+/** What the server read from an uploaded file, for review. */
+export type StagedBook = components["schemas"]["StagedBook"];
+/** The reviewed metadata a staged upload is added to the library with. */
+export type ReviewedBook = components["schemas"]["CommitUpload"];
+
+export interface UploadLimits {
+	maxFileBytes: number;
+	chunkBytes: number;
+	/** How long a finished upload waits to be added or skipped. */
+	reviewSeconds: number;
+}
+
+export const UploadFailure = {
+	/** The connection dropped or timed out; the chunk can be resent. */
+	network: "network",
+	aborted: "aborted",
+	/** The server's offset moved on; resume from its `receivedBytes`. */
+	conflict: "conflict",
+	unauthorized: "unauthorized",
+	notFound: "notFound",
+	tooLarge: "tooLarge",
+	storageFull: "storageFull",
+	invalid: "invalid",
+	readOnly: "readOnly",
+	server: "server",
+} as const;
+export type TUploadFailure = (typeof UploadFailure)[keyof typeof UploadFailure];
+
+export class UploadError extends Error {
+	constructor(
+		readonly failure: TUploadFailure,
+		message: string,
+	) {
+		super(message);
+		this.name = "UploadError";
+	}
+}
+
+export interface UploadChunk {
+	uploadId: string;
+	offset: number;
+	body: Blob;
+	signal?: AbortSignal;
+	onProgress?: (sentBytes: number) => void;
+	onSent?: () => void;
+}
+
+/**
+ * Adding books by uploading them to a Citadel server. Failures reject with an
+ * {@link UploadError} so callers can tell a retryable network blip from a
+ * refusal.
+ */
+export interface BookUploads {
+	list(): Promise<{ limits: UploadLimits; uploads: StagedUpload[] }>;
+	create(file: { name: string; size: number }): Promise<StagedUpload>;
+	status(uploadId: string): Promise<StagedUpload>;
+	sendChunk(chunk: UploadChunk): Promise<StagedUpload>;
+	/** Absolute URL of the cover preview, for a book with `coverUrl`. */
+	coverUrl(uploadId: string): string;
+	commit(uploadId: string, book: ReviewedBook): Promise<LibraryBook>;
+	cancel(uploadId: string): Promise<void>;
+}
+
 export interface Library {
 	readonly readOnly: boolean;
 	readonly bookDeletion: TBookDeletion;
+	/**
+	 * Present when new books can be uploaded to this library: a server
+	 * library opened for writing.
+	 */
+	readonly uploads?: BookUploads;
 	listCustomColumns(): Promise<CustomColumnDef[]>;
 	getCustomValuesForBook(bookId: string): Promise<BookCustomValue[]>;
 	setCustomValue(

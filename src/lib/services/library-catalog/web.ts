@@ -25,7 +25,7 @@ export const webLibraryCatalog: LibraryCatalog = {
 			throw new Error(
 				error?.message ?? `Could not connect to Citadel (${response.status})`,
 			);
-		return createHttpLibrary(clientOptions);
+		return createHttpLibrary(clientOptions, { writable: !data.readOnly });
 	},
 	create: unavailable,
 	isValid: async () => false,

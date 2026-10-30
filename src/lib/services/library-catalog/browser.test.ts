@@ -24,6 +24,17 @@ afterEach(() => {
 });
 
 describe("browser library catalog", () => {
+	it("offers uploads when the server opened its library for writing", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				json({ id: "configured-library", name: "Library", readOnly: false }),
+			),
+		);
+		const library = await webLibraryCatalog.open(remote());
+		expect(library.uploads).toBeDefined();
+	});
+
 	it("checks the configured library before returning a read-only HTTP connection", async () => {
 		const requests: Request[] = [];
 		vi.stubGlobal(
@@ -48,6 +59,7 @@ describe("browser library catalog", () => {
 		expect(requests[0]?.url).toBe("https://citadel.test/api/library");
 		expect(requests[0]?.credentials).toBe("same-origin");
 		expect(library.readOnly).toBe(true);
+		expect(library.uploads).toBeUndefined();
 		expect(await library.listAuthors()).toEqual([
 			{
 				id: "1",
