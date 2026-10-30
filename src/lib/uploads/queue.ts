@@ -57,11 +57,20 @@ export const emptyQueue: QueueState = { items: [] };
 export type QueueAction =
 	| { type: "limits"; limits: UploadLimits }
 	| { type: "filesAdded"; items: QueueItem[] }
-	| { type: "restored"; uploads: StagedUpload[]; coverUrl: (id: string) => string }
+	| {
+			type: "restored";
+			uploads: StagedUpload[];
+			coverUrl: (id: string) => string;
+	  }
 	| { type: "started"; key: string; upload: StagedUpload }
 	| { type: "progressed"; key: string; sentBytes: number }
 	| { type: "sent"; key: string }
-	| { type: "received"; key: string; upload: StagedUpload; coverUrl: (id: string) => string }
+	| {
+			type: "received";
+			key: string;
+			upload: StagedUpload;
+			coverUrl: (id: string) => string;
+	  }
 	| {
 			type: "failed";
 			key: string;
@@ -99,7 +108,8 @@ export const rejectionFor = (
 	file: { name: string; size: number },
 	limits: UploadLimits | undefined,
 ): string | undefined => {
-	if (!BOOK_EXTENSIONS.includes(extensionOf(file.name))) return RejectReason.notABook;
+	if (!BOOK_EXTENSIONS.includes(extensionOf(file.name)))
+		return RejectReason.notABook;
 	if (file.size === 0) return RejectReason.empty;
 	if (limits && file.size > limits.maxFileBytes) return RejectReason.tooLarge;
 	return undefined;
@@ -153,7 +163,10 @@ const update = (
 	items: state.items.map((item) => (item.key === key ? change(item) : item)),
 });
 
-export const queueReducer = (state: QueueState, action: QueueAction): QueueState => {
+export const queueReducer = (
+	state: QueueState,
+	action: QueueAction,
+): QueueState => {
 	switch (action.type) {
 		case "limits":
 			return { ...state, limits: action.limits };
@@ -191,7 +204,13 @@ export const queueReducer = (state: QueueState, action: QueueAction): QueueState
 		case "progressed":
 			return update(state, action.key, (item) =>
 				item.phase === UploadPhase.uploading
-					? { ...item, sentBytes: Math.max(item.sentBytes, Math.min(item.size, action.sentBytes)) }
+					? {
+							...item,
+							sentBytes: Math.max(
+								item.sentBytes,
+								Math.min(item.size, action.sentBytes),
+							),
+						}
 					: item,
 			);
 		case "sent":
@@ -234,7 +253,10 @@ export const queueReducer = (state: QueueState, action: QueueAction): QueueState
 			);
 		case "paused":
 			return {
-				...update(state, action.key, (item) => ({ ...item, phase: UploadPhase.waiting })),
+				...update(state, action.key, (item) => ({
+					...item,
+					phase: UploadPhase.waiting,
+				})),
 				paused: action.message,
 			};
 		case "resumed":
@@ -246,7 +268,10 @@ export const queueReducer = (state: QueueState, action: QueueAction): QueueState
 				message: undefined,
 			}));
 		case "added":
-			return update(state, action.key, (item) => ({ ...item, phase: UploadPhase.added }));
+			return update(state, action.key, (item) => ({
+				...item,
+				phase: UploadPhase.added,
+			}));
 		case "addFailed":
 			return update(state, action.key, (item) => ({
 				...item,
@@ -254,7 +279,10 @@ export const queueReducer = (state: QueueState, action: QueueAction): QueueState
 				message: action.message,
 			}));
 		case "removed":
-			return { ...state, items: state.items.filter((item) => item.key !== action.key) };
+			return {
+				...state,
+				items: state.items.filter((item) => item.key !== action.key),
+			};
 		case "cleared":
 			return { ...state, items: [], paused: undefined };
 	}
@@ -269,13 +297,17 @@ export const isActive = (item: QueueItem): boolean =>
 
 /** The next file to send: one at a time, and only while there's room. */
 export const nextToUpload = (state: QueueState): QueueItem | undefined =>
-	state.paused || state.items.some((item) => item.phase === UploadPhase.uploading)
+	state.paused ||
+	state.items.some((item) => item.phase === UploadPhase.uploading)
 		? undefined
-		: state.items.find((item) => item.phase === UploadPhase.waiting && item.file);
+		: state.items.find(
+				(item) => item.phase === UploadPhase.waiting && item.file,
+			);
 
 export const readyItems = (state: QueueState): QueueItem[] =>
 	state.items.filter(
-		(item) => item.phase === UploadPhase.ready || item.phase === UploadPhase.adding,
+		(item) =>
+			item.phase === UploadPhase.ready || item.phase === UploadPhase.adding,
 	);
 
 /** Items still shown in the queue: added books leave once acknowledged. */

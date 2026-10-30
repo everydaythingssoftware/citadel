@@ -1,0 +1,131 @@
+@property --drop-halo-angle {
+	syntax: "<angle>";
+	inherits: false;
+	initial-value: 0deg;
+}
+
+.overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 120;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 36px;
+	background: oklch(21% 0.004 270 / 0.28);
+	backdrop-filter: blur(14px) saturate(1.2);
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	transition:
+		opacity 160ms ease,
+		visibility 0s linear 160ms;
+}
+
+.contained {
+	position: absolute;
+	z-index: 1;
+}
+
+.visible {
+	opacity: 1;
+	visibility: visible;
+	transition: opacity 160ms ease;
+}
+
+/* A hairline round the window with one warm light sweeping along it. */
+.halo {
+	position: absolute;
+	inset: 10px;
+	border-radius: 18px;
+	padding: 3px;
+	background:
+		conic-gradient(
+			from var(--drop-halo-angle),
+			transparent 0deg,
+			oklch(80% 0.1 80 / 0) 250deg,
+			oklch(80% 0.1 80 / 0.9) 335deg,
+			oklch(97% 0.03 85) 358deg,
+			transparent 360deg
+		),
+		linear-gradient(oklch(97% 0.01 85 / 0.4), oklch(97% 0.01 85 / 0.4));
+	-webkit-mask:
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask:
+		linear-gradient(#000 0 0) content-box exclude,
+		linear-gradient(#000 0 0);
+	animation: drop-halo-spin 6s linear infinite;
+}
+
+.glow {
+	filter: blur(14px);
+	padding: 8px;
+	animation:
+		drop-halo-spin 6s linear infinite,
+		drop-halo-pulse 2.4s ease-in-out infinite;
+}
+
+.copy {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	text-align: center;
+	color: oklch(99% 0.003 90);
+	text-shadow: 0 1px 2px oklch(0% 0 0 / 0.3);
+}
+
+.title {
+	margin: 0;
+	font-family: var(--ctd-font-serif);
+	font-size: 30px;
+	line-height: 1.15;
+}
+
+.hint {
+	margin: 0;
+	font-size: 14px;
+	opacity: 0.85;
+}
+
+@keyframes drop-halo-spin {
+	to {
+		--drop-halo-angle: 360deg;
+	}
+}
+
+@keyframes drop-halo-pulse {
+	0%,
+	100% {
+		opacity: 0.55;
+	}
+	50% {
+		opacity: 0.9;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.halo,
+	.glow {
+		animation: none;
+	}
+
+	.overlay,
+	.visible {
+		transition: none;
+	}
+}
+
+@media (max-width: 36em) {
+	.overlay {
+		gap: 24px;
+	}
+
+	.title {
+		font-size: 24px;
+	}
+}

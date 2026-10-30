@@ -47,7 +47,12 @@ export const useUploadsStore = create<UploadsState & UploadsActions>()(
 			connected = uploads;
 			get().runner?.dispose();
 			if (!uploads) {
-				set({ queue: emptyQueue, runner: null, sheetOpen: false, reviewKey: null });
+				set({
+					queue: emptyQueue,
+					runner: null,
+					sheetOpen: false,
+					reviewKey: null,
+				});
 				return;
 			}
 			const runner = createUploadRunner({

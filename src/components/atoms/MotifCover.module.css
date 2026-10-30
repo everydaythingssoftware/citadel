@@ -1,0 +1,27 @@
+.cover {
+	position: relative;
+	overflow: hidden;
+	aspect-ratio: 2 / 3;
+	border-radius: 4px;
+	box-sizing: border-box;
+}
+
+.shape {
+	position: absolute;
+	box-sizing: border-box;
+}
+
+.content {
+	position: absolute;
+	inset: auto 0 0 0;
+	padding: 0.3rem 0.3rem 0.4rem calc(0.3rem + 6px);
+	z-index: 1;
+}
+
+.spine {
+	position: absolute;
+	inset: 0;
+	background: var(--ctd-cover-spine-bg);
+	pointer-events: none;
+	z-index: 2;
+}

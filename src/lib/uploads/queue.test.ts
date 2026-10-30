@@ -58,11 +58,19 @@ describe("upload queue", () => {
 	it("rejects files that aren't books, are empty, or exceed the limit", () => {
 		expect(rejectionFor({ name: "a.EPUB", size: 10 }, limits)).toBeUndefined();
 		expect(rejectionFor({ name: "a.azw3", size: 100 }, limits)).toBeUndefined();
-		expect(rejectionFor({ name: "a.docx", size: 10 }, limits)).toBe(RejectReason.notABook);
-		expect(rejectionFor({ name: "a.pdf", size: 0 }, limits)).toBe(RejectReason.empty);
-		expect(rejectionFor({ name: "a.pdf", size: 101 }, limits)).toBe(RejectReason.tooLarge);
+		expect(rejectionFor({ name: "a.docx", size: 10 }, limits)).toBe(
+			RejectReason.notABook,
+		);
+		expect(rejectionFor({ name: "a.pdf", size: 0 }, limits)).toBe(
+			RejectReason.empty,
+		);
+		expect(rejectionFor({ name: "a.pdf", size: 101 }, limits)).toBe(
+			RejectReason.tooLarge,
+		);
 		// Without limits yet, the server enforces the size.
-		expect(rejectionFor({ name: "a.pdf", size: 10_000 }, undefined)).toBeUndefined();
+		expect(
+			rejectionFor({ name: "a.pdf", size: 10_000 }, undefined),
+		).toBeUndefined();
 	});
 
 	it("queues picked files, rejected ones included", () => {
@@ -78,23 +86,42 @@ describe("upload queue", () => {
 	});
 
 	it("walks a file from waiting to added", () => {
-		const [item] = itemsForFiles([new File(["0123456789"], "Book.epub")], limits, keys());
+		const [item] = itemsForFiles(
+			[new File(["0123456789"], "Book.epub")],
+			limits,
+			keys(),
+		);
 		if (!item) throw new Error("no item");
 		let state = reduce(emptyQueue, { type: "filesAdded", items: [item] });
 		expect(nextToUpload(state)?.key).toBe("k1");
 		state = reduce(
 			state,
-			{ type: "started", key: "k1", upload: staged({ book: null, receivedBytes: 0, size: 10 }) },
+			{
+				type: "started",
+				key: "k1",
+				upload: staged({ book: null, receivedBytes: 0, size: 10 }),
+			},
 			{ type: "progressed", key: "k1", sentBytes: 4 },
 			{ type: "progressed", key: "k1", sentBytes: 3 },
 		);
-		expect(state.items[0]).toMatchObject({ phase: UploadPhase.uploading, sentBytes: 4 });
+		expect(state.items[0]).toMatchObject({
+			phase: UploadPhase.uploading,
+			sentBytes: 4,
+		});
 		expect(nextToUpload(state)).toBeUndefined();
 		expect(isSending(state)).toBe(true);
 		state = reduce(state, { type: "sent", key: "k1" });
-		expect(state.items[0]).toMatchObject({ phase: UploadPhase.reading, sentBytes: 10 });
+		expect(state.items[0]).toMatchObject({
+			phase: UploadPhase.reading,
+			sentBytes: 10,
+		});
 		expect(isSending(state)).toBe(false);
-		state = reduce(state, { type: "received", key: "k1", upload: staged(), coverUrl });
+		state = reduce(state, {
+			type: "received",
+			key: "k1",
+			upload: staged(),
+			coverUrl,
+		});
 		expect(state.items[0]).toMatchObject({
 			phase: UploadPhase.ready,
 			name: "Moby-Dick; or, The Whale",
@@ -102,26 +129,47 @@ describe("upload queue", () => {
 			expiresAt: "2026-10-31T12:00:00Z",
 		});
 		expect(readyItems(state)).toHaveLength(1);
-		state = reduce(state, { type: "adding", key: "k1" }, { type: "added", key: "k1" });
+		state = reduce(
+			state,
+			{ type: "adding", key: "k1" },
+			{ type: "added", key: "k1" },
+		);
 		expect(visibleItems(state)).toEqual([]);
 	});
 
 	it("restores finished uploads it doesn't already have", () => {
 		const state = reduce(
 			emptyQueue,
-			{ type: "restored", uploads: [staged(), staged({ id: "s2", book: null })], coverUrl },
+			{
+				type: "restored",
+				uploads: [staged(), staged({ id: "s2", book: null })],
+				coverUrl,
+			},
 			{ type: "restored", uploads: [staged()], coverUrl },
 		);
 		expect(state.items).toHaveLength(1);
-		expect(state.items[0]).toMatchObject({ uploadId: "s1", phase: UploadPhase.ready });
+		expect(state.items[0]).toMatchObject({
+			uploadId: "s1",
+			phase: UploadPhase.ready,
+		});
 		expect(state.items[0]?.file).toBeUndefined();
 	});
 
 	it("only retries failed uploads it still has the file for", () => {
-		const restored = reduce(emptyQueue, { type: "restored", uploads: [staged()], coverUrl });
+		const restored = reduce(emptyQueue, {
+			type: "restored",
+			uploads: [staged()],
+			coverUrl,
+		});
 		const key = restored.items[0]?.key ?? "";
-		const failed = reduce(restored, { type: "failed", key, message: "dropped" });
-		expect(reduce(failed, { type: "retried", key }).items[0]?.phase).toBe(UploadPhase.failed);
+		const failed = reduce(restored, {
+			type: "failed",
+			key,
+			message: "dropped",
+		});
+		expect(reduce(failed, { type: "retried", key }).items[0]?.phase).toBe(
+			UploadPhase.failed,
+		);
 	});
 
 	it("forgets a lost upload so a retry starts over", () => {
@@ -130,7 +178,11 @@ describe("upload queue", () => {
 		const state = reduce(
 			emptyQueue,
 			{ type: "filesAdded", items: [item] },
-			{ type: "started", key: "k1", upload: staged({ book: null, receivedBytes: 2, size: 3 }) },
+			{
+				type: "started",
+				key: "k1",
+				upload: staged({ book: null, receivedBytes: 2, size: 3 }),
+			},
 			{ type: "failed", key: "k1", message: "expired", forget: true },
 			{ type: "retried", key: "k1" },
 		);
@@ -162,11 +214,25 @@ describe("upload queue", () => {
 		const state = reduce(
 			emptyQueue,
 			{ type: "filesAdded", items },
-			{ type: "started", key: "k1", upload: staged({ book: null, receivedBytes: 0, size: 10 }) },
+			{
+				type: "started",
+				key: "k1",
+				upload: staged({ book: null, receivedBytes: 0, size: 10 }),
+			},
 			{ type: "progressed", key: "k1", sentBytes: 5 },
 		);
-		expect(summarize(state)).toEqual({ active: 2, ready: 0, progress: 0.25, settled: false });
-		expect(summarize(emptyQueue)).toEqual({ active: 0, ready: 0, progress: 1, settled: true });
+		expect(summarize(state)).toEqual({
+			active: 2,
+			ready: 0,
+			progress: 0.25,
+			settled: false,
+		});
+		expect(summarize(emptyQueue)).toEqual({
+			active: 0,
+			ready: 0,
+			progress: 1,
+			settled: true,
+		});
 	});
 
 	it("turns a staged book into the metadata it's added with", () => {

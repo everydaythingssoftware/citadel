@@ -3,7 +3,8 @@ import { countdown, describeDeadline, shortRemaining } from "./countdown";
 
 const HOUR = 60 * 60 * 1000;
 const now = new Date(2026, 9, 30, 15, 0);
-const at = (hours: number) => new Date(now.getTime() + hours * HOUR).toISOString();
+const at = (hours: number) =>
+	new Date(now.getTime() + hours * HOUR).toISOString();
 
 describe("review countdown", () => {
 	it("drains from the whole window to nothing", () => {
@@ -37,9 +38,9 @@ describe("review countdown", () => {
 		expect(describeDeadline(new Date(2026, 9, 31, 9, 5), now, "en-CA")).toMatch(
 			/tomorrow$/,
 		);
-		expect(describeDeadline(new Date(2026, 10, 6, 11, 0), now, "en-CA")).toMatch(
-			/on Fri/,
-		);
+		expect(
+			describeDeadline(new Date(2026, 10, 6, 11, 0), now, "en-CA"),
+		).toMatch(/on Fri/);
 		expect(countdown(at(2), now, 24 * 3600, "en-CA").description).toMatch(
 			/^Add or skip by .* today, or it'll be discarded$/,
 		);

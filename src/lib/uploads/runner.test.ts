@@ -16,7 +16,8 @@ const file = (name: string, text: string) => new File([text], name);
 /** Waits until queued promise chains (fake timers aside) have settled. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const until = async (condition: () => boolean) => {
-	for (let attempt = 0; attempt < 200 && !condition(); attempt++) await settle();
+	for (let attempt = 0; attempt < 200 && !condition(); attempt++)
+		await settle();
 	expect(condition()).toBe(true);
 };
 
@@ -71,13 +72,20 @@ describe("upload runner", () => {
 	it("uploads files one at a time in chunks and readies them for review", async () => {
 		const queue = setup();
 		await queue.runner.restore();
-		queue.runner.addFiles([file("One.epub", "abcdefghij"), file("Two.epub", "klmno")]);
-		await until(() => queue.phases().every((phase) => phase === UploadPhase.ready));
+		queue.runner.addFiles([
+			file("One.epub", "abcdefghij"),
+			file("Two.epub", "klmno"),
+		]);
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
 		const [one, two] = queue.state().items;
 		expect(one).toMatchObject({ name: "One (read)", sentBytes: 10 });
 		expect(two).toMatchObject({ name: "Two (read)", sentBytes: 5 });
 		// Three chunks of four bytes for the first file, two for the second.
-		expect(queue.fake.calls.filter((call) => call === "sendChunk")).toHaveLength(5);
+		expect(
+			queue.fake.calls.filter((call) => call === "sendChunk"),
+		).toHaveLength(5);
 		expect(queue.actions).toContain("sent");
 	});
 
@@ -91,7 +99,9 @@ describe("upload runner", () => {
 		await until(() => queue.phases()[1] !== UploadPhase.waiting);
 		expect(queue.phases()[0]).toBe(UploadPhase.reading);
 		release();
-		await until(() => queue.phases().every((phase) => phase === UploadPhase.ready));
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
 	});
 
 	it("rejects files that can't be uploaded before sending anything", async () => {
@@ -121,13 +131,21 @@ describe("upload runner", () => {
 		queue.runner.addFiles([file("One.epub", "abcdefgh")]);
 		await until(() => queue.phases()[0] === UploadPhase.ready);
 		expect(queue.sleeps).toEqual([1000, 2000]);
-		expect(queue.fake.calls.filter((call) => call === "status")).toHaveLength(2);
+		expect(queue.fake.calls.filter((call) => call === "status")).toHaveLength(
+			2,
+		);
 	});
 
 	it("gives up after repeated failures and retries on request", async () => {
 		const queue = setup();
 		const dropped = () => new UploadError(UploadFailure.network, "dropped");
-		queue.fake.failNext("sendChunk", dropped(), dropped(), dropped(), dropped());
+		queue.fake.failNext(
+			"sendChunk",
+			dropped(),
+			dropped(),
+			dropped(),
+			dropped(),
+		);
 		queue.runner.addFiles([file("One.epub", "abcd")]);
 		await until(() => queue.phases()[0] === UploadPhase.failed);
 		expect(queue.sleeps).toEqual([1000, 2000, 4000]);
@@ -138,7 +156,10 @@ describe("upload runner", () => {
 
 	it("picks up from the server's offset after a conflict without waiting", async () => {
 		const queue = setup();
-		queue.fake.failNext("sendChunk", new UploadError(UploadFailure.conflict, "moved"));
+		queue.fake.failNext(
+			"sendChunk",
+			new UploadError(UploadFailure.conflict, "moved"),
+		);
 		queue.runner.addFiles([file("One.epub", "abcd")]);
 		await until(() => queue.phases()[0] === UploadPhase.ready);
 		expect(queue.sleeps).toEqual([]);
@@ -148,10 +169,16 @@ describe("upload runner", () => {
 		const queue = setup();
 		const dropped = () => new UploadError(UploadFailure.network, "dropped");
 		queue.fake.failNext("sendChunk", dropped());
-		queue.fake.failNext("status", new UploadError(UploadFailure.notFound, "gone"));
+		queue.fake.failNext(
+			"status",
+			new UploadError(UploadFailure.notFound, "gone"),
+		);
 		queue.runner.addFiles([file("One.epub", "abcd")]);
 		await until(() => queue.phases()[0] === UploadPhase.failed);
-		expect(queue.state().items[0]).toMatchObject({ uploadId: undefined, sentBytes: 0 });
+		expect(queue.state().items[0]).toMatchObject({
+			uploadId: undefined,
+			sentBytes: 0,
+		});
 		queue.runner.retry(queue.state().items[0]?.key ?? "");
 		await until(() => queue.phases()[0] === UploadPhase.ready);
 	});
@@ -164,7 +191,9 @@ describe("upload runner", () => {
 		);
 		queue.runner.addFiles([file("One.epub", "abcd")]);
 		await until(() => queue.phases()[0] === UploadPhase.rejected);
-		expect(queue.state().items[0]?.message).toBe("This isn't a valid EPUB file");
+		expect(queue.state().items[0]?.message).toBe(
+			"This isn't a valid EPUB file",
+		);
 	});
 
 	it("pauses when the server is full and carries on once a book is added", async () => {
@@ -183,7 +212,10 @@ describe("upload runner", () => {
 		queue.runner.addFiles([file("One.epub", "abcd")]);
 		await until(() => queue.phases()[0] === UploadPhase.ready);
 		const key = queue.state().items[0]?.key ?? "";
-		queue.fake.failNext("commit", new UploadError(UploadFailure.readOnly, "read-only"));
+		queue.fake.failNext(
+			"commit",
+			new UploadError(UploadFailure.readOnly, "read-only"),
+		);
 		expect(await queue.runner.add(key, { title: "Edited" })).toBe(false);
 		expect(queue.state().items[0]).toMatchObject({
 			phase: UploadPhase.ready,
@@ -198,7 +230,9 @@ describe("upload runner", () => {
 	it("adds every ready book with the metadata read from its file", async () => {
 		const queue = setup();
 		queue.runner.addFiles([file("One.epub", "abcd"), file("Two.epub", "efgh")]);
-		await until(() => queue.phases().every((phase) => phase === UploadPhase.ready));
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
 		await queue.runner.addAllReady();
 		expect(queue.fake.committed.map(({ book }) => book.title)).toEqual([
 			"One (read)",

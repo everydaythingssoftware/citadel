@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReviewedBook } from "@/lib/services/library";
 import type { QueueItem } from "@/lib/uploads/queue";
-import { formForBook, type ReviewForm, reviewedFromForm } from "@/lib/uploads/review";
+import {
+	formForBook,
+	type ReviewForm,
+	reviewedFromForm,
+} from "@/lib/uploads/review";
 import { useKeymap } from "./use-keymap";
 
 export const DeckTransition = {
@@ -10,7 +14,8 @@ export const DeckTransition = {
 	added: "added",
 	skipped: "skipped",
 } as const;
-export type TDeckTransition = (typeof DeckTransition)[keyof typeof DeckTransition];
+export type TDeckTransition =
+	(typeof DeckTransition)[keyof typeof DeckTransition];
 
 /** How long a card takes to leave; matches the CSS animations. */
 export const LEAVE_MS = 420;
@@ -69,7 +74,10 @@ export const useReviewDeck = ({
 	);
 	const current = ready[index];
 	const form = useMemo(
-		() => (current ? (drafts[current.key] ?? formForBook(current.book)) : formForBook(undefined)),
+		() =>
+			current
+				? (drafts[current.key] ?? formForBook(current.book))
+				: formForBook(undefined),
 		[current, drafts],
 	);
 
@@ -89,7 +97,11 @@ export const useReviewDeck = ({
 		(step: 1 | -1) => {
 			const target = ready[index + step];
 			if (!current || !target) return;
-			animate(current, form, step === 1 ? DeckTransition.forward : DeckTransition.back);
+			animate(
+				current,
+				form,
+				step === 1 ? DeckTransition.forward : DeckTransition.back,
+			);
 			setReviewKey(target.key);
 		},
 		[ready, index, current, form, animate, setReviewKey],

@@ -18,7 +18,10 @@ const staged = {
 };
 
 const library = (fetch: (request: Request) => Promise<Response>) =>
-	createHttpLibrary({ baseUrl: "https://citadel.test", fetch }, { writable: true });
+	createHttpLibrary(
+		{ baseUrl: "https://citadel.test", fetch },
+		{ writable: true },
+	);
 
 const uploadsOf = (fetch: (request: Request) => Promise<Response>) => {
 	const uploads = library(fetch).uploads;
@@ -69,7 +72,9 @@ afterEach(() => {
 describe("HTTP uploads", () => {
 	it("is offered only for a library the server opened for writing", () => {
 		const fetch = async () => json({});
-		expect(createHttpLibrary({ baseUrl: "https://citadel.test", fetch }).uploads).toBeUndefined();
+		expect(
+			createHttpLibrary({ baseUrl: "https://citadel.test", fetch }).uploads,
+		).toBeUndefined();
 		expect(library(fetch).uploads).toBeDefined();
 		expect(library(fetch).readOnly).toBe(true);
 	});
@@ -93,13 +98,20 @@ describe("HTTP uploads", () => {
 			limits: { maxFileBytes: 100, chunkBytes: 10, reviewSeconds: 86400 },
 			uploads: [staged],
 		});
-		expect(await uploads.create({ name: "Book.epub", size: 6 })).toEqual(staged);
-		expect(await requests[1]?.json()).toEqual({ fileName: "Book.epub", size: 6 });
+		expect(await uploads.create({ name: "Book.epub", size: 6 })).toEqual(
+			staged,
+		);
+		expect(await requests[1]?.json()).toEqual({
+			fileName: "Book.epub",
+			size: 6,
+		});
 		expect(await uploads.status("abc")).toEqual(staged);
 		expect(requests[2]?.url).toBe("https://citadel.test/api/uploads/abc");
 		await uploads.cancel("abc");
 		expect(requests[3]?.method).toBe("DELETE");
-		expect(uploads.coverUrl("abc")).toBe("https://citadel.test/api/uploads/abc/cover");
+		expect(uploads.coverUrl("abc")).toBe(
+			"https://citadel.test/api/uploads/abc/cover",
+		);
 	});
 
 	it("treats cancelling an upload that's already gone as done", async () => {
@@ -122,7 +134,11 @@ describe("HTTP uploads", () => {
 					tag_list: [],
 					sortable_title: null,
 					file_list: [],
-					cover_image: { kind: "Remote", local_path: null, url: "/api/books/9/cover" },
+					cover_image: {
+						kind: "Remote",
+						local_path: null,
+						url: "/api/books/9/cover",
+					},
 					identifier_list: [],
 					description: null,
 					is_read: false,
@@ -133,14 +149,21 @@ describe("HTTP uploads", () => {
 				201,
 			);
 		});
-		const book = await uploads.commit("abc", { title: "Reviewed", authorNames: ["A"] });
+		const book = await uploads.commit("abc", {
+			title: "Reviewed",
+			authorNames: ["A"],
+		});
 		expect(body).toEqual({ title: "Reviewed", authorNames: ["A"] });
-		expect(book.cover_image?.url).toBe("https://citadel.test/api/books/9/cover");
+		expect(book.cover_image?.url).toBe(
+			"https://citadel.test/api/books/9/cover",
+		);
 	});
 
 	it("maps refusals to upload failures callers can act on", async () => {
 		const failing = (status: number, code: string) =>
-			uploadsOf(async () => json({ code, message: `${code} happened` }, status));
+			uploadsOf(async () =>
+				json({ code, message: `${code} happened` }, status),
+			);
 		const cases = [
 			[409, "conflict", UploadFailure.conflict],
 			[413, "tooLarge", UploadFailure.tooLarge],
@@ -151,9 +174,9 @@ describe("HTTP uploads", () => {
 			[503, "unavailable", UploadFailure.network],
 		] as const;
 		for (const [status, code, failure] of cases) {
-			await expect(failing(status, code).create({ name: "a.epub", size: 1 })).rejects.toEqual(
-				new UploadError(failure, `${code} happened`),
-			);
+			await expect(
+				failing(status, code).create({ name: "a.epub", size: 1 }),
+			).rejects.toEqual(new UploadError(failure, `${code} happened`));
 		}
 		const unreachable = uploadsOf(async () => {
 			throw new TypeError("Failed to fetch");
@@ -166,14 +189,20 @@ describe("HTTP uploads", () => {
 	it("sends chunks with their offset and maps chunk failures", async () => {
 		const sent = stubRequests([
 			{ status: 200, body: { ...staged, receivedBytes: 6 } },
-			{ status: 409, body: { code: "conflict", message: "The next chunk starts at byte 6" } },
+			{
+				status: 409,
+				body: { code: "conflict", message: "The next chunk starts at byte 6" },
+			},
 		]);
 		const uploads = uploadsOf(async () => json({}));
 		const chunk = { uploadId: "a b", offset: 0, body: new Blob(["abcdef"]) };
 		expect((await uploads.sendChunk(chunk)).receivedBytes).toBe(6);
 		expect(sent[0]).toEqual({
 			url: "https://citadel.test/api/uploads/a%20b/content",
-			headers: { "Upload-Offset": "0", "Content-Type": "application/octet-stream" },
+			headers: {
+				"Upload-Offset": "0",
+				"Content-Type": "application/octet-stream",
+			},
 		});
 		await expect(uploads.sendChunk(chunk)).rejects.toMatchObject({
 			failure: UploadFailure.conflict,

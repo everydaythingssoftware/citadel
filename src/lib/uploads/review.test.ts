@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { canAddForm, formForBook, isValidDate, reviewedFromForm } from "./review";
+import {
+	canAddForm,
+	formForBook,
+	isValidDate,
+	reviewedFromForm,
+} from "./review";
 
 describe("review form", () => {
 	it("starts from what the file says", () => {
@@ -53,7 +58,9 @@ describe("review form", () => {
 		const form = formForBook(undefined);
 		expect(canAddForm(form)).toBe(false);
 		expect(canAddForm({ ...form, title: "A" })).toBe(true);
-		expect(canAddForm({ ...form, title: "A", publicationDate: "1854-13-45" })).toBe(false);
+		expect(
+			canAddForm({ ...form, title: "A", publicationDate: "1854-13-45" }),
+		).toBe(false);
 		expect(isValidDate("1854-08-09")).toBe(true);
 		expect(isValidDate("Aug 1854")).toBe(false);
 	});

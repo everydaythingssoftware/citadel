@@ -1,0 +1,87 @@
+.card {
+	display: grid;
+	grid-template-columns: 120px minmax(0, 1fr);
+	gap: 20px;
+	align-items: start;
+	background: var(--ctd-surface);
+}
+
+.cover {
+	display: flex;
+	justify-content: center;
+}
+
+.coverImage {
+	width: 120px;
+	aspect-ratio: 2 / 3;
+	border-radius: 4px;
+	object-fit: cover;
+	box-shadow: var(--ctd-cover-shadow);
+}
+
+.fields {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.more {
+	border-top: 1px solid var(--ctd-border);
+	padding-top: 8px;
+}
+
+.summary {
+	cursor: pointer;
+	font-size: 13px;
+	color: var(--ctd-ink-soft);
+	min-height: 28px;
+	display: flex;
+	align-items: center;
+}
+
+.moreFields {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding-top: 8px;
+}
+
+.pair {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+	gap: 12px;
+}
+
+.error {
+	margin: 0;
+	font-size: 12px;
+	color: color-mix(in oklch, var(--ctd-danger-bg) 88%, var(--ctd-ink));
+}
+
+/* Phones: the cover leads, then a plain labelled form with large fields. */
+@media (max-width: 36em) {
+	.card {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 16px;
+	}
+
+	.coverImage {
+		width: 160px;
+	}
+
+	.fields :global(input) {
+		min-height: 48px;
+		font-size: 17px;
+	}
+
+	.summary {
+		min-height: 48px;
+		font-size: 16px;
+		color: var(--ctd-ink);
+	}
+
+	.pair {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}

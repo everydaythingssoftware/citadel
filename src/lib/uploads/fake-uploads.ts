@@ -25,7 +25,11 @@ export interface FakeUploadsOptions {
 	maxUploads?: number;
 	/** Delay before each chunk's response, after its bytes are "sent". */
 	readDelay?: () => Promise<void>;
+	/** Delay while each chunk's bytes go out, reporting progress halfway. */
+	chunkDelay?: () => Promise<void>;
 	now?: () => Date;
+	/** Whether read books report a cover (stories have no image to serve). */
+	withCovers?: boolean;
 }
 
 /**
@@ -36,7 +40,9 @@ export const createFakeUploads = ({
 	limits,
 	maxUploads = 100,
 	readDelay,
+	chunkDelay,
 	now = () => new Date(),
+	withCovers = true,
 }: FakeUploadsOptions = {}) => {
 	const staged = new Map<string, FakeUpload>();
 	const committed: { uploadId: string; book: ReviewedBook }[] = [];
@@ -57,7 +63,8 @@ export const createFakeUploads = ({
 	};
 	const find = (id: string) => {
 		const upload = staged.get(id);
-		if (!upload) throw new UploadError(UploadFailure.notFound, "Upload not found");
+		if (!upload)
+			throw new UploadError(UploadFailure.notFound, "Upload not found");
 		return upload;
 	};
 	const view = (upload: FakeUpload): StagedUpload => ({
@@ -76,7 +83,7 @@ export const createFakeUploads = ({
 					language: "en",
 					tags: [],
 					publicationDate: null,
-					coverUrl: `/api/uploads/${upload.id}/cover`,
+					coverUrl: withCovers ? `/api/uploads/${upload.id}/cover` : null,
 				}
 			: null,
 	});
@@ -110,15 +117,29 @@ export const createFakeUploads = ({
 			fail("status");
 			return view(find(uploadId));
 		},
-		sendChunk: async ({ uploadId, offset, body, onProgress, onSent, signal }) => {
+		sendChunk: async ({
+			uploadId,
+			offset,
+			body,
+			onProgress,
+			onSent,
+			signal,
+		}) => {
 			fail("sendChunk");
-			if (signal?.aborted) throw new UploadError(UploadFailure.aborted, "Upload stopped");
+			if (signal?.aborted)
+				throw new UploadError(UploadFailure.aborted, "Upload stopped");
 			const upload = find(uploadId);
 			if (offset !== upload.received)
 				throw new UploadError(
 					UploadFailure.conflict,
 					`The next chunk starts at byte ${upload.received}`,
 				);
+			if (chunkDelay) {
+				onProgress?.(Math.floor(body.size / 2));
+				await chunkDelay();
+				if (signal?.aborted)
+					throw new UploadError(UploadFailure.aborted, "Upload stopped");
+			}
 			onProgress?.(body.size);
 			upload.received += body.size;
 			if (upload.received === upload.size) {
@@ -129,12 +150,16 @@ export const createFakeUploads = ({
 			}
 			return view(upload);
 		},
-		coverUrl: (uploadId) => `https://citadel.test/api/uploads/${uploadId}/cover`,
+		coverUrl: (uploadId) =>
+			`https://citadel.test/api/uploads/${uploadId}/cover`,
 		commit: async (uploadId, book) => {
 			fail("commit");
 			const upload = find(uploadId);
 			if (!upload.ready)
-				throw new UploadError(UploadFailure.conflict, "The upload hasn't finished");
+				throw new UploadError(
+					UploadFailure.conflict,
+					"The upload hasn't finished",
+				);
 			staged.delete(uploadId);
 			committed.push({ uploadId, book });
 			return { id: String(committed.length), title: book.title } as LibraryBook;

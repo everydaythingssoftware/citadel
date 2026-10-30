@@ -91,7 +91,10 @@ describe("sendUploadChunk", () => {
 
 	it("passes on the server's refusal", async () => {
 		const { xhr, response } = start();
-		xhr.respond(409, { code: "conflict", message: "The next chunk starts at byte 2" });
+		xhr.respond(409, {
+			code: "conflict",
+			message: "The next chunk starts at byte 2",
+		});
 		expect(await response).toEqual({
 			kind: "rejected",
 			status: 409,
@@ -104,7 +107,11 @@ describe("sendUploadChunk", () => {
 		xhr.status = 502;
 		xhr.responseText = "<html>Bad gateway</html>";
 		xhr.onload?.();
-		expect(await response).toEqual({ kind: "rejected", status: 502, error: null });
+		expect(await response).toEqual({
+			kind: "rejected",
+			status: 502,
+			error: null,
+		});
 	});
 
 	it("reports lost connections and timeouts as network failures", async () => {

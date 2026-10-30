@@ -1,0 +1,61 @@
+.fan {
+	position: relative;
+	width: calc(var(--fan-size) * 2.05);
+	height: calc(var(--fan-size) * 1.72);
+}
+
+.book {
+	position: absolute;
+	left: 50%;
+	bottom: 0;
+	width: calc(var(--fan-size) * 0.94);
+	aspect-ratio: 2 / 3;
+	margin-left: calc(var(--fan-size) * -0.47);
+	border-radius: 4px;
+	overflow: hidden;
+	box-shadow:
+		0 2px 4px oklch(0% 0 0 / 0.2),
+		0 18px 40px oklch(0% 0 0 / 0.3);
+	transform-origin: 50% 100%;
+}
+
+.left {
+	transform: translateX(calc(var(--fan-size) * -0.58)) rotate(-12deg);
+}
+
+.right {
+	transform: translateX(calc(var(--fan-size) * 0.58)) rotate(12deg);
+}
+
+.front {
+	bottom: calc(var(--fan-size) * 0.06);
+	width: var(--fan-size);
+	margin-left: calc(var(--fan-size) * -0.5);
+	box-shadow:
+		0 2px 4px oklch(0% 0 0 / 0.2),
+		0 24px 48px oklch(0% 0 0 / 0.35);
+}
+
+.painting {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	mix-blend-mode: luminosity;
+	opacity: 0.58;
+}
+
+.motif {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	border-radius: 0;
+}
+
+.spine {
+	position: absolute;
+	inset: 0;
+	background: var(--ctd-cover-spine-bg);
+}

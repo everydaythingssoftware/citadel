@@ -22,6 +22,9 @@
 	--pal-accent-text: oklch(97.5% 0.003 90);
 	--pal-red: oklch(52% 0.18 25);
 	--pal-red-text: oklch(98% 0.005 25);
+	/* Brass: the one warm accent, kept for time and drop-target cues. */
+	--pal-brass: oklch(56% 0.11 75);
+	--pal-brass-light: oklch(84% 0.09 82);
 
 	--ctd-bg: var(--pal-mantle);
 	--ctd-bg-deep: var(--pal-crust);
@@ -60,6 +63,8 @@
 	--ctd-control-disabled-bg: oklch(from var(--pal-mantle) l c h / 0.9);
 	--ctd-control-disabled-border: oklch(from var(--pal-text) l c h / 0.12);
 	--ctd-control-disabled-text: oklch(from var(--pal-subtext) l c h / 0.6);
+	--ctd-brass: var(--pal-brass);
+	--ctd-brass-light: var(--pal-brass-light);
 	--ctd-danger-bg: var(--pal-red);
 	--ctd-danger-bg-hover: oklch(from var(--pal-red) calc(l - 0.06) c h);
 	--ctd-danger-text: var(--pal-red-text);
@@ -154,6 +159,8 @@
 	--pal-accent-text: oklch(20% 0.004 270);
 	--pal-red: oklch(55% 0.18 25);
 	--pal-red-text: oklch(98% 0.005 25);
+	--pal-brass: oklch(78% 0.11 80);
+	--pal-brass-light: oklch(86% 0.08 82);
 
 	--ctd-bg: var(--pal-mantle);
 	--ctd-bg-deep: var(--pal-crust);

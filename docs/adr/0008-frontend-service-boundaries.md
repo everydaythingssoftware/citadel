@@ -33,10 +33,17 @@ operations fail explicitly, and native window/menu lifecycle methods are inert.
 The browser LibraryCatalog connects to the serving origin’s configured library;
 its HTTP Library uses generated OpenAPI bindings and exposes a read-only
 capability. Unbounded Library queries are assembled from bounded HTTP pages.
-Initial and subsequently fetched pages request thumbnails on demand. Metadata
-lookups and cover previews go through the server (ADR 0010); the browser's
-remaining library mutations are subsequent work. No ordinary library
-operation gains arbitrary server filesystem discovery or administration.
+Initial and subsequently fetched pages request thumbnails on demand. When the
+server opened its library for writing, the HTTP Library also carries an
+`uploads` capability (the Library boundary's "import commit" over HTTP): upload
+chunks go through a typed XMLHttpRequest helper in `src/lib/api` for progress
+events, everything else through the generated client. The upload queue is a pure
+reducer in `src/lib/uploads` driven by a runner, held in a zustand store, and
+reached by components only through hooks. Choosing files in the page is a
+Platform dialog (`chooseFiles`). Metadata lookups and cover previews go through
+the server (ADR 0010); the browser's remaining library mutations are subsequent
+work. No ordinary library operation gains arbitrary server filesystem discovery
+or administration.
 
 `bun lint:boundaries` parses TypeScript imports and command accesses. It rejects
 runtime bindings/native imports outside adapters, direct consumption of private

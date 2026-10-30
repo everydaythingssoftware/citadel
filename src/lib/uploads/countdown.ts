@@ -43,7 +43,8 @@ export const describeDeadline = (
 
 export const shortRemaining = (remainingMs: number): string => {
 	if (remainingMs <= 0) return "Time's up";
-	if (remainingMs < HOUR) return `${Math.max(1, Math.ceil(remainingMs / MINUTE))} min left`;
+	if (remainingMs < HOUR)
+		return `${Math.max(1, Math.ceil(remainingMs / MINUTE))} min left`;
 	if (remainingMs < 2 * DAY) return `${Math.floor(remainingMs / HOUR)} h left`;
 	return `${Math.floor(remainingMs / DAY)} days left`;
 };

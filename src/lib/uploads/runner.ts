@@ -97,26 +97,41 @@ export const createUploadRunner = ({
 		if (!file) return sent();
 		const controller = new AbortController();
 		controllers.set(item.key, controller);
-		const stillWanted = () => !controller.signal.aborted && current(item.key) !== undefined;
+		const stillWanted = () =>
+			!controller.signal.aborted && current(item.key) !== undefined;
 		const chunkBytes = getState().limits?.chunkBytes ?? DEFAULT_CHUNK_BYTES;
 		let attempts = 0;
 		let upload: StagedUpload;
 
 		/** Handles a failure: the upload to carry on from, or undefined to stop. */
-		const recover = async (error: unknown): Promise<StagedUpload | undefined> => {
-			if (!stillWanted() || failureOf(error) === UploadFailure.aborted) return undefined;
+		const recover = async (
+			error: unknown,
+		): Promise<StagedUpload | undefined> => {
+			if (!stillWanted() || failureOf(error) === UploadFailure.aborted)
+				return undefined;
 			const failure = failureOf(error);
 			if (failure === UploadFailure.storageFull && !item.uploadId) {
 				dispatch({ type: "paused", key: item.key, message: PAUSED_MESSAGE });
 				return undefined;
 			}
-			if (failure === UploadFailure.invalid || failure === UploadFailure.tooLarge) {
-				dispatch({ type: "rejected", key: item.key, message: messageFor(error) });
+			if (
+				failure === UploadFailure.invalid ||
+				failure === UploadFailure.tooLarge
+			) {
+				dispatch({
+					type: "rejected",
+					key: item.key,
+					message: messageFor(error),
+				});
 				return undefined;
 			}
-			if ((retryable(error) || failure === UploadFailure.conflict) && attempts < MAX_RETRIES) {
+			if (
+				(retryable(error) || failure === UploadFailure.conflict) &&
+				attempts < MAX_RETRIES
+			) {
 				attempts += 1;
-				if (failure !== UploadFailure.conflict) await sleep(1000 * 2 ** (attempts - 1));
+				if (failure !== UploadFailure.conflict)
+					await sleep(1000 * 2 ** (attempts - 1));
 				const uploadId = current(item.key)?.uploadId;
 				if (!stillWanted() || !uploadId) return undefined;
 				try {
@@ -159,7 +174,11 @@ export const createUploadRunner = ({
 						body: file.slice(offset, end),
 						signal: controller.signal,
 						onProgress: (bytes) =>
-							dispatch({ type: "progressed", key: item.key, sentBytes: offset + bytes }),
+							dispatch({
+								type: "progressed",
+								key: item.key,
+								sentBytes: offset + bytes,
+							}),
 						onSent: last
 							? () => {
 									dispatch({ type: "sent", key: item.key });
@@ -261,7 +280,10 @@ export const createUploadRunner = ({
 		},
 		addFiles: (files) => {
 			if (files.length === 0) return;
-			dispatch({ type: "filesAdded", items: itemsForFiles(files, getState().limits) });
+			dispatch({
+				type: "filesAdded",
+				items: itemsForFiles(files, getState().limits),
+			});
 			void pump();
 		},
 		retry: (key) => {
@@ -279,7 +301,8 @@ export const createUploadRunner = ({
 		add,
 		addAllReady: async () => {
 			for (const item of readyItems(getState())) {
-				if (item.book && item.phase === "ready") await add(item.key, reviewedFromStaged(item.book));
+				if (item.book && item.phase === "ready")
+					await add(item.key, reviewedFromStaged(item.book));
 			}
 		},
 		dispose: () => {

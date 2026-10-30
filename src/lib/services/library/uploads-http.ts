@@ -97,7 +97,10 @@ export const createHttpUploads = (
 				case "aborted":
 					throw new UploadError(UploadFailure.aborted, "Upload stopped");
 				case "network":
-					throw new UploadError(UploadFailure.network, "The connection dropped");
+					throw new UploadError(
+						UploadFailure.network,
+						"The connection dropped",
+					);
 				case "rejected":
 					throw refusal(response.status, response.error);
 			}
@@ -122,7 +125,10 @@ export const createHttpUploads = (
 					path(uploadId),
 				));
 			} catch {
-				throw new UploadError(UploadFailure.network, "Couldn't reach the server");
+				throw new UploadError(
+					UploadFailure.network,
+					"Couldn't reach the server",
+				);
 			}
 			// Already gone (expired, or removed in another tab) is cancelled enough.
 			if (response.status === 404) return;
