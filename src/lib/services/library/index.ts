@@ -1,2 +1,2 @@
-export type { Library, Options } from "./types";
-export { DeviceType } from "./types";
+export type { Library, Options, TBookDeletion } from "./types";
+export { BookDeletion, DeviceType } from "./types";

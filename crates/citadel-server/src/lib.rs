@@ -59,20 +59,40 @@ pub enum Invocation {
 
 pub struct CalibreCatalogSource {
     library: Mutex<Library>,
+    read_only: bool,
 }
 
 impl CalibreCatalogSource {
     pub fn open(library_path: &Path) -> Result<Self, String> {
+        Self::open_with(library_path, Library::open_read_only, true)
+    }
+
+    /// Opens the library for writing. Only one program should write to a
+    /// library at a time; nothing enforces that.
+    pub fn open_writable(library_path: &Path) -> Result<Self, String> {
+        Self::open_with(library_path, Library::new, false)
+    }
+
+    fn open_with(
+        library_path: &Path,
+        open: impl FnOnce(libcalibre::util::ValidDbPath) -> Result<Library, CalibreError>,
+        read_only: bool,
+    ) -> Result<Self, String> {
         let library_path = library_path
             .to_str()
             .ok_or_else(|| "libraryPath must be valid UTF-8".to_string())?;
         let database = libcalibre::util::get_db_path(library_path)
             .ok_or_else(|| format!("libraryPath is not a Calibre library: {library_path}"))?;
-        let library = Library::open_read_only(database)
-            .map_err(|error| format!("could not open libraryPath: {error}"))?;
+        let library =
+            open(database).map_err(|error| format!("could not open libraryPath: {error}"))?;
         Ok(Self {
             library: Mutex::new(library),
+            read_only,
         })
+    }
+
+    pub fn read_only(&self) -> bool {
+        self.read_only
     }
 }
 

@@ -22,6 +22,12 @@ export const DeviceType = {
 	externalDrive: "EXTERNAL_DRIVE",
 } as const;
 export type TDeviceType = (typeof DeviceType)[keyof typeof DeviceType];
+/** How a library disposes of a deleted book's files. */
+export const BookDeletion = {
+	trash: "trash",
+	permanent: "permanent",
+} as const;
+export type TBookDeletion = (typeof BookDeletion)[keyof typeof BookDeletion];
 export interface FileType {
 	extension: string;
 	mimetype: string;
@@ -29,6 +35,7 @@ export interface FileType {
 
 export interface Library {
 	readonly readOnly: boolean;
+	readonly bookDeletion: TBookDeletion;
 	listCustomColumns(): Promise<CustomColumnDef[]>;
 	getCustomValuesForBook(bookId: string): Promise<BookCustomValue[]>;
 	setCustomValue(

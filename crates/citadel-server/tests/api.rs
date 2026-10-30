@@ -81,6 +81,13 @@ async fn fixture() -> (tempfile::TempDir, OpdsService, Router, String, String) {
 async fn fixture_with(
     uploads: api::UploadConfig,
 ) -> (tempfile::TempDir, OpdsService, Router, String, String) {
+    fixture_opened(CalibreCatalogSource::open, uploads).await
+}
+
+async fn fixture_opened(
+    open: fn(&std::path::Path) -> Result<CalibreCatalogSource, String>,
+    uploads: api::UploadConfig,
+) -> (tempfile::TempDir, OpdsService, Router, String, String) {
     let directory = tempfile::tempdir().unwrap();
     std::fs::copy(
         concat!(
@@ -117,7 +124,7 @@ async fn fixture_with(
         .unwrap();
     library.set_book_cover(book.id, cover_bytes).unwrap();
     drop(library);
-    let source = Arc::new(CalibreCatalogSource::open(directory.path()).unwrap());
+    let source = Arc::new(open(directory.path()).unwrap());
     let (_, access) = access(directory.path());
     let service = OpdsService::with_ephemeral_credentials(
         source.clone(),
@@ -577,6 +584,138 @@ async fn browser_hosting_serves_the_frontend_publicly_and_only_falls_back_for_ht
             asset_request(&router, "GET", "/outside.db", None, Some(&cookie)).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
+    service.stop().await;
+}
+
+fn book_count(directory: &std::path::Path) -> usize {
+    let database = libcalibre::util::get_db_path(directory.to_str().unwrap()).unwrap();
+    Library::open_read_only(database)
+        .unwrap()
+        .books()
+        .unwrap()
+        .len()
+}
+
+#[tokio::test]
+async fn read_only_library_refuses_deletes_and_keeps_every_byte() {
+    let (directory, service, router, id, cookie) = fixture().await;
+    let database_path = directory.path().join("metadata.db");
+    let before = std::fs::read(&database_path).unwrap();
+    let (status, _, library) =
+        request(&router, "GET", "/api/library", String::new(), Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(library["readOnly"], true);
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        "/api/books/delete",
+        json!({"book_ids": [id]}).to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(error["code"], "readOnly");
+    let (status, _, error) = request(
+        &router,
+        "DELETE",
+        "/api/authors/1",
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(error["code"], "readOnly");
+    assert_eq!(std::fs::read(database_path).unwrap(), before);
+    assert!(directory.path().join("Test Author").is_dir());
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn writable_library_deletes_books_and_their_folders_permanently() {
+    let (directory, service, router, id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let (status, _, library) =
+        request(&router, "GET", "/api/library", String::new(), Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(library["readOnly"], false);
+    let author_dir = directory.path().join("Test Author");
+    assert!(author_dir.is_dir());
+
+    let (status, _, _) = request(
+        &router,
+        "POST",
+        "/api/books/delete",
+        json!({"book_ids": [id]}).to_string(),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let cross_origin = Request::builder()
+        .method("POST")
+        .uri("/api/books/delete")
+        .header("content-type", "application/json")
+        .header("origin", "https://elsewhere.example.com")
+        .header("cookie", &cookie)
+        .body(Body::from(json!({"book_ids": [id]}).to_string()))
+        .unwrap();
+    let response = router.clone().oneshot(cross_origin).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        "/api/books/delete",
+        json!({"book_ids": [id, "999999"]}).to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{error}");
+    assert_eq!(book_count(directory.path()), 1);
+    assert!(author_dir.is_dir());
+
+    let (status, _, authors) =
+        request(&router, "GET", "/api/authors", String::new(), Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    let author_id = authors[0]["id"].as_str().unwrap().to_string();
+    let (status, _, error) = request(
+        &router,
+        "DELETE",
+        &format!("/api/authors/{author_id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+
+    let (status, _, outcome) = request(
+        &router,
+        "POST",
+        "/api/books/delete",
+        json!({"book_ids": [id]}).to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{outcome}");
+    assert_eq!(outcome, json!({"deleted": 1, "folder_failures": []}));
+    assert_eq!(book_count(directory.path()), 0);
+    assert!(!author_dir.exists());
+    assert!(!directory.path().join(".caltrash").exists());
+
+    let (status, _, body) = request(
+        &router,
+        "DELETE",
+        &format!("/api/authors/{author_id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (_, _, authors) =
+        request(&router, "GET", "/api/authors", String::new(), Some(&cookie)).await;
+    assert_eq!(authors, json!([]));
     service.stop().await;
 }
 
