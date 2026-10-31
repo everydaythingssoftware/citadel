@@ -1,4 +1,6 @@
 .indicator {
+	position: relative;
+	overflow: hidden;
 	white-space: nowrap;
 }
 
@@ -6,8 +8,69 @@
 	font-variant-numeric: tabular-nums;
 }
 
+.glyph {
+	flex: none;
+	font-size: 14px;
+	color: var(--ctd-ink-soft);
+}
+
+.dot {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: var(--ctd-radius-capsule);
+	background: var(--ctd-brass);
+}
+
+/* The bottom edge drains from right to left as the deadline nears. */
+.indicator[data-variant="underline"]::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	bottom: 0;
+	height: 2px;
+	width: calc(var(--remaining) * 100%);
+	background: color-mix(in oklch, var(--ctd-ink) 45%, transparent);
+	transition: width 400ms ease;
+}
+
+/* The background empties from right to left as the deadline nears. */
+.indicator[data-variant="fill"] {
+	background-image: linear-gradient(
+		to right,
+		color-mix(in oklch, var(--ctd-brass) 22%, transparent)
+			calc(var(--remaining) * 100%),
+		transparent 0
+	);
+}
+
+/* The last stretch: whatever marks the time turns brass. */
+.indicator[data-urgent] .glyph {
+	color: var(--ctd-brass);
+}
+
+.indicator[data-urgent]::after {
+	background: var(--ctd-brass);
+}
+
+.indicator[data-urgent] .dot {
+	animation: indicator-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes indicator-pulse {
+	50% {
+		opacity: 0.45;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.indicator[data-urgent] .dot {
+		animation: none;
+	}
+}
+
 @media (max-width: 36em) {
-	.label {
+	.label:not(.labelAlways) {
 		/* Icon only on phones; the label stays for screen readers. */
 		position: absolute;
 		width: 1px;

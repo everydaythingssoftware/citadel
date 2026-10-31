@@ -15,13 +15,8 @@ export const BookUploads = () => {
 	if (!enabled) return null;
 	return (
 		<>
-			{/* With the sheet open, the sheet itself shows it takes the drop. */}
-			<DropOverlay visible={dragging && !sheet.open} fan={devFlag("dropFan")} />
-			<UploadSheet
-				{...sheet}
-				dragging={dragging}
-				motion={devFlag("addedMotion")}
-			/>
+			<DropOverlay visible={dragging} fan={devFlag("dropFan")} />
+			<UploadSheet {...sheet} motion={devFlag("addedMotion")} />
 		</>
 	);
 };
@@ -33,7 +28,7 @@ export const UploadToolbarStatus = () => {
 		<UploadIndicator
 			summary={summary}
 			countdown={soonest}
-			hourglass={devFlag("hourglass")}
+			variant={devFlag("reviewIndicator")}
 			onOpen={open}
 		/>
 	);

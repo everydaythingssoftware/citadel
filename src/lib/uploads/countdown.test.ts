@@ -42,7 +42,7 @@ describe("review countdown", () => {
 			describeDeadline(new Date(2026, 10, 6, 11, 0), now, "en-CA"),
 		).toMatch(/on Fri/);
 		expect(countdown(at(2), now, 24 * 3600, "en-CA").description).toMatch(
-			/^Review by .* today$/,
+			/^Drafts kept until .* today$/,
 		);
 	});
 

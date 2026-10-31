@@ -9,8 +9,19 @@ export const DEV_FLAGS = {
 	placeholderCovers: ["paintings", "patterns"],
 	/** The drop overlay's fan: "paintings" (default), "motifs" or "plain". */
 	dropFan: ["paintings", "motifs", "plain"],
-	/** Review countdown: "timer" (default), "sand", "ring" or "bar". */
-	hourglass: ["timer", "sand", "ring", "bar"],
+	/** How the toolbar shows books waiting for review; "drafts" by default. */
+	reviewIndicator: [
+		"drafts",
+		"tray",
+		"books",
+		"dot",
+		"calendar",
+		"underline",
+		"fill",
+		"text",
+		"timer",
+		"sand",
+	],
 	/** How an added book leaves the review card: "deal" (default), "shelve" or "lift". */
 	addedMotion: ["deal", "shelve", "lift"],
 } as const;

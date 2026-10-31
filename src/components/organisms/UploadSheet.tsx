@@ -1,7 +1,6 @@
 import clsx from "clsx";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRef } from "react";
-import { DropHalo } from "@/components/atoms/DropHalo";
 import { PlusGlyph, UploadGlyph } from "@/components/icons/UploadGlyphs";
 import { UploadQueueRow } from "@/components/molecules/UploadQueueRow";
 import {
@@ -12,7 +11,11 @@ import { Button, DialogCloseButton, IconButton } from "@/components/ui";
 import { ignorePopoverInteractOutside } from "@/components/ui/popover-interop";
 import { useFollowNewest } from "@/lib/hooks/use-follow-newest";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
-import type { QueueItem, QueueSummary } from "@/lib/uploads/queue";
+import {
+	type QueueItem,
+	type QueueSummary,
+	UploadPhase,
+} from "@/lib/uploads/queue";
 import styles from "./UploadSheet.module.css";
 
 export interface UploadSheetProps {
@@ -22,8 +25,6 @@ export interface UploadSheetProps {
 	summary: QueueSummary;
 	/** Why the queue is holding back, e.g. the server is full. */
 	paused?: string;
-	/** Books are being dragged over the window: the sheet takes the drop. */
-	dragging?: boolean;
 	/** Review one book at a time instead of showing the whole queue. */
 	reviewing: boolean;
 	deck: ReviewDeck;
@@ -49,7 +50,6 @@ export const UploadSheet = ({
 	items,
 	summary,
 	paused,
-	dragging = false,
 	reviewing,
 	deck,
 	motion,
@@ -64,7 +64,8 @@ export const UploadSheet = ({
 	onCancelAll,
 }: UploadSheetProps) => {
 	const bodyRef = useRef<HTMLDivElement>(null);
-	useFollowNewest(bodyRef, reviewing ? 0 : items.length, dragging);
+	const firstReady = items.find((item) => item.phase === UploadPhase.ready);
+	useFollowNewest(bodyRef, reviewing ? 0 : items.length);
 	return (
 		<Dialog.Root open={open} onOpenChange={onOpenChange}>
 			<Dialog.Portal>
@@ -74,9 +75,7 @@ export const UploadSheet = ({
 					aria-describedby={undefined}
 					onPointerDownOutside={ignorePopoverInteractOutside}
 					onInteractOutside={ignorePopoverInteractOutside}
-					data-dragging={dragging || undefined}
 				>
-					{dragging && <DropHalo inset={-7} radius={19} />}
 					{/* Phones get an iOS navigation bar: Done, the title, and +. */}
 					<div
 						className={styles.header}
@@ -149,14 +148,10 @@ export const UploadSheet = ({
 											onClick={onChooseFiles}
 										>
 											<PlusGlyph className={styles.plus} />
-											{dragging ? (
-												<span>Drop to Upload</span>
-											) : (
-												<span>
-													Drop more books here or{" "}
-													<span className={styles.link}>choose files</span>
-												</span>
-											)}
+											<span>
+												Drop more books here or{" "}
+												<span className={styles.link}>choose files</span>
+											</span>
 										</button>
 										<button
 											type="button"
@@ -170,9 +165,7 @@ export const UploadSheet = ({
 									<div className={styles.empty}>
 										<UploadGlyph className={styles.emptyGlyph} />
 										<p className={styles.emptyTitle}>
-											{dragging
-												? "Drop to Upload"
-												: "Add books to your library"}
+											Add books to your library
 										</p>
 										<p className={styles.emptyHint}>
 											<span className={styles.wideOnly}>
@@ -201,16 +194,22 @@ export const UploadSheet = ({
 							<Button className={styles.cancelAll} onClick={onCancelAll}>
 								Cancel All
 							</Button>
+							<span className={styles.spacer} />
+							{/* Reviewing first is the way in; adding everything as the
+							    files describe it is the shortcut. */}
+							<Button disabled={firstReady === undefined} onClick={onAddAll}>
+								Add All
+							</Button>
 							<Button
 								variant="primary"
-								disabled={summary.ready === 0}
-								onClick={onAddAll}
+								disabled={firstReady === undefined}
+								onClick={() => firstReady && onReview(firstReady.key)}
 							>
 								{summary.ready === 0
-									? "Add Ready Books"
+									? "Review Books"
 									: summary.ready === 1
-										? "Add 1 Ready Book"
-										: `Add ${summary.ready} Ready Books`}
+										? "Review 1 Book"
+										: `Review ${summary.ready} Books`}
 							</Button>
 						</div>
 					)}
@@ -218,7 +217,7 @@ export const UploadSheet = ({
 						{summary.active > 0
 							? `Uploading ${summary.active} ${summary.active === 1 ? "book" : "books"}`
 							: summary.ready > 0
-								? `${summary.ready} ready to add`
+								? `${summary.ready} ready to review`
 								: ""}
 					</p>
 				</Dialog.Content>

@@ -9,7 +9,7 @@ side by side (`bun run storybook`).
 | --- | --- | --- |
 | `citadel:placeholderCovers` | `paintings`, `patterns` | Books without a cover: Citadel's paintings or generated motif covers |
 | `citadel:dropFan` | `paintings`, `motifs`, `plain` | The fan of books on the drag-and-drop overlay |
-| `citadel:hourglass` | `timer`, `sand`, `ring`, `bar` | How the toolbar's review indicator shows the time left |
+| `citadel:reviewIndicator` | `drafts`, `tray`, `books`, `dot`, `calendar`, `underline`, `fill`, `text`, `timer`, `sand` | How the toolbar shows books waiting for review |
 | `citadel:addedMotion` | `deal`, `shelve`, `lift` | How a reviewed book leaves the card when added |
 
 ```js
