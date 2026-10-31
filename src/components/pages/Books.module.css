@@ -263,3 +263,16 @@
 	outline: none;
 	box-shadow: var(--ctd-focus-shadow);
 }
+
+/* Phones: search gets its own row; sort, unread and shelf share the next. */
+@media (max-width: 36em) {
+	.scopeBar {
+		flex-wrap: wrap;
+		gap: 8px 12px;
+	}
+
+	.searchWrap {
+		flex-basis: 100%;
+		max-width: none;
+	}
+}
