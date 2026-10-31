@@ -37,6 +37,15 @@ describe("placeList", () => {
 		expect(placement?.maxHeight).toBe(700 - 540 - 4 - 8);
 	});
 
+	it("goes above when asked and there's room, else below", () => {
+		expect(placeList(field(300), screen, { preferAbove: true })?.above).toBe(
+			true,
+		);
+		expect(placeList(field(40), screen, { preferAbove: true })?.above).toBe(
+			false,
+		);
+	});
+
 	it("shows nothing rather than a sliver, or for a field out of view", () => {
 		expect(placeList(field(20), { top: 0, bottom: 110 })).toBeUndefined();
 		expect(placeList(field(900), screen)).toBeUndefined();

@@ -232,14 +232,13 @@
  */
 @media (max-width: 36em) {
 	.content {
+		/* The whole screen. With the keyboard up, iOS itself pans the page to
+		   keep the focused field in view; resizing to follow it fought that. */
 		inset: 0;
-		top: 0;
-		left: 0;
+		height: auto;
 		transform: none;
 		width: 100%;
 		max-height: none;
-		/* Pinned to all four edges, so it is exactly the visible viewport. */
-		height: auto;
 		border: 0;
 		border-radius: 0;
 		font-size: 17px;
