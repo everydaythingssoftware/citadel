@@ -80,12 +80,16 @@ export const CoverCarousel = ({
 				{slides(items, departing).map(({ item, position }) =>
 					position === undefined ? (
 						// The same element as the cover it was, so the row doesn't jump.
+						// The last book's cover stays put while the review closes.
 						<button
 							key={item.key}
 							type="button"
 							tabIndex={-1}
-							className={clsx(styles.slide, styles.departing)}
-							data-exit={departing?.exit}
+							className={clsx(
+								styles.slide,
+								departing?.last ? styles.current : styles.departing,
+							)}
+							data-exit={departing?.last ? undefined : departing?.exit}
 							aria-hidden="true"
 						>
 							<Cover item={item} />

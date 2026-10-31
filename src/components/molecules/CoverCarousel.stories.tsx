@@ -37,7 +37,7 @@ const Live = ({ motion }: { motion: TAddedMotion }) => {
 	const remove = (exit: DepartingCover["exit"]) => {
 		const item = books[index];
 		if (!item) return;
-		setDeparting({ item, index, exit });
+		setDeparting({ item, index, exit, last: books.length === 1 });
 		setBooks((current) => current.filter((book) => book.key !== item.key));
 		setIndex((current) => (current < books.length - 1 ? current : current - 1));
 		setTimeout(() => setDeparting(undefined), LEAVE_MS);

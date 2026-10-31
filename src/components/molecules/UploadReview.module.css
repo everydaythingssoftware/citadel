@@ -63,6 +63,9 @@
 	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
+	/* More Details overflowing mustn't narrow the fields or shift the covers. */
+	scrollbar-gutter: stable both-edges;
+	scrollbar-width: thin;
 	overscroll-behavior: contain;
 	padding: 0 20px 16px;
 	-webkit-overflow-scrolling: touch;
@@ -76,9 +79,9 @@
 .dots {
 	display: flex;
 	justify-content: center;
-	flex-wrap: wrap;
 	gap: 8px;
-	padding: 4px 0 18px;
+	height: 7px;
+	padding: 4px 0 16px;
 }
 
 .dot {

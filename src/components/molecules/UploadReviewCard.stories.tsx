@@ -50,9 +50,13 @@ type Story = StoryObj<typeof UploadReviewCard>;
 /** Static: prefilled from the file (language named, ISBN hyphenated). */
 export const Prefilled: Story = {};
 
+/** Static: the optional fields showing. */
+export const DetailsOpen: Story = { args: { detailsOpen: true } };
+
 /** Static: problems shown after leaving each field. */
 export const WithProblems: Story = {
 	args: {
+		detailsOpen: true,
 		form: {
 			...FORM,
 			title: "",
@@ -75,6 +79,7 @@ export const AddFailed: Story = {
 const Editable = (args: ComponentProps<typeof UploadReviewCard>) => {
 	const [form, setForm] = useState<ReviewForm>(args.form);
 	const [touched, setTouched] = useState<ReviewField[]>([]);
+	const [detailsOpen, setDetailsOpen] = useState(false);
 	const errors = Object.fromEntries(
 		touched
 			.map((field) => [field, fieldProblem(form, field)])
@@ -86,6 +91,8 @@ const Editable = (args: ComponentProps<typeof UploadReviewCard>) => {
 				{...args}
 				form={form}
 				errors={errors}
+				detailsOpen={detailsOpen}
+				onToggleDetails={() => setDetailsOpen((open) => !open)}
 				onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
 				onLeaveField={(field) => {
 					setForm((current) => ({ ...current, ...tidyField(current, field) }));
@@ -101,6 +108,7 @@ const Editable = (args: ComponentProps<typeof UploadReviewCard>) => {
 
 /**
  * Interactive: errors appear only once you leave a field; an ISBN gets its
- * hyphens when you leave it; Language and Tags suggest as you type.
+ * hyphens when you leave it; Language and Tags suggest as you type; More
+ * Details unfolds and folds away.
  */
 export const Editing: Story = { render: (args) => <Editable {...args} /> };

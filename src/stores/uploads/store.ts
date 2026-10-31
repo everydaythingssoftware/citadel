@@ -68,7 +68,11 @@ export const useUploadsStore = create<UploadsState & UploadsActions>()(
 			set((state) => ({ queue: queueReducer(state.queue, action) })),
 		addFiles: (files) => {
 			get().runner?.addFiles(files);
-			if (files.length > 0) set({ sheetOpen: true });
+			if (files.length === 0) return;
+			// Reopening starts from the queue; an open sheet stays where it is.
+			set((state) =>
+				state.sheetOpen ? state : { sheetOpen: true, reviewKey: null },
+			);
 		},
 		retry: (key) => get().runner?.retry(key),
 		remove: async (key) => {
@@ -78,8 +82,13 @@ export const useUploadsStore = create<UploadsState & UploadsActions>()(
 		addAllReady: async () => {
 			await get().runner?.addAllReady();
 		},
-		openSheet: () => set({ sheetOpen: true }),
-		closeSheet: () => set({ sheetOpen: false, reviewKey: null }),
+		openSheet: () =>
+			set((state) =>
+				state.sheetOpen ? state : { sheetOpen: true, reviewKey: null },
+			),
+		// What was on screen stays while the sheet animates away; the next
+		// open starts from the queue.
+		closeSheet: () => set({ sheetOpen: false }),
 		review: (key) => set({ reviewKey: key }),
 	}),
 );
