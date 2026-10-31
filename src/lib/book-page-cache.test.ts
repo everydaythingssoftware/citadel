@@ -10,6 +10,7 @@ import {
 	emptyBookCache,
 	invalidateBookCache,
 	pagesCoveringRange,
+	pagesToFetch,
 	serializeBookFilter,
 	sparseBookItems,
 	toBookQuery,
@@ -203,15 +204,19 @@ describe("applyBookPage / generation invalidation", () => {
 			total: 5,
 		});
 		expect(next).toBe(invalidated);
-		expect(next.pages.size).toBe(0);
+		expect(next.stale.has(0)).toBe(true);
 	});
 
-	it("invalidation clears pages but keeps the key and total", () => {
-		const cache = invalidateBookCache(loaded());
+	it("invalidation keeps pages on screen as stale, with the key and total", () => {
+		const before = loaded();
+		const cache = invalidateBookCache(before);
 		expect(cache.key).toBe("a");
 		expect(cache.generation).toBe(2);
 		expect(cache.total).toBe(5);
-		expect(cache.pages.size).toBe(0);
+		expect(cache.pages).toBe(before.pages);
+		expect([...cache.stale]).toEqual([...before.pages.keys()]);
+		expect(pagesToFetch(cache, [0, 1])).toEqual([0, 1]);
+		expect(pagesToFetch(before, [0, 1])).toEqual([1]);
 	});
 
 	it("accepts pages fetched under the post-invalidation generation", () => {
@@ -225,6 +230,7 @@ describe("applyBookPage / generation invalidation", () => {
 		});
 		expect(next.total).toBe(4);
 		expect(next.pages.get(0)?.[0]?.id).toBe("fresh");
+		expect(next.stale.has(0)).toBe(false);
 	});
 });
 
