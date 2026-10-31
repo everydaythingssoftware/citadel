@@ -13,6 +13,8 @@
 	);
 	position: relative;
 	container-type: inline-size;
+	/* The row stretching past its ends mustn't widen the page. */
+	overflow-x: clip;
 }
 
 /* A snapping row; side padding lets the first and last covers centre. */

@@ -13,6 +13,13 @@
 	gap: 8px;
 	padding: 10px 20px 6px;
 	flex: none;
+	position: relative;
+	z-index: 1;
+	transition: box-shadow 160ms ease;
+}
+
+.header[data-scrolled] {
+	box-shadow: 0 6px 10px -8px oklch(0% 0 0 / 0.35);
 }
 
 .back {

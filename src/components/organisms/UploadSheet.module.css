@@ -83,6 +83,8 @@
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+	/* The review scrolls inside; no gutter to inset its edges. */
+	scrollbar-gutter: auto;
 	padding: 0;
 }
 
