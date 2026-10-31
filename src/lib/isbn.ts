@@ -1,3 +1,5 @@
+import { parse as parseIsbn } from "isbn3";
+
 export const normalizeIsbn = (raw: string): string | undefined => {
 	const trimmed = raw.trim();
 	if (!trimmed) return undefined;
@@ -44,4 +46,34 @@ export const isbnEquivalent = (
 	if (!a || !b) return false;
 	const ca = toIsbn13(a);
 	return ca !== undefined && ca === toIsbn13(b);
+};
+
+/** Strips an `urn:isbn:` or `ISBN:` prefix; ISBNs in files often carry one. */
+const withoutIsbnPrefix = (raw: string): string =>
+	raw
+		.trim()
+		.replace(/^urn:isbn:/i, "")
+		.replace(/^isbn(-1[03])?:?\s*/i, "")
+		.trim();
+
+/**
+ * An ISBN-10 or ISBN-13 hyphenated by the ISBN agency's registration ranges
+ * (e.g. `978-0-14-143951-8`), or undefined when the value isn't a valid ISBN
+ * (wrong length, a failed check digit, or an unassigned range).
+ */
+export const formatIsbn = (raw: string): string | undefined => {
+	const parsed = parseIsbn(withoutIsbnPrefix(raw));
+	if (!parsed) return undefined;
+	return parsed.isIsbn13 ? parsed.isbn13h : parsed.isbn10h;
+};
+
+/** Why a typed ISBN can't be stored, or undefined when it's valid or empty. */
+export const isbnProblem = (raw: string): string | undefined => {
+	const value = withoutIsbnPrefix(raw);
+	if (value === "") return undefined;
+	if (formatIsbn(value)) return undefined;
+	const digits = value.replace(/[^0-9xX]/g, "");
+	return digits.length === 10 || digits.length === 13
+		? "This ISBN's check digit doesn't match"
+		: "An ISBN has 10 or 13 digits";
 };

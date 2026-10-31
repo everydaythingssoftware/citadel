@@ -1,0 +1,192 @@
+/* Header, a scrolling middle, and actions that never scroll away. */
+.review {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+.header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 20px 6px;
+	flex: none;
+}
+
+.back {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 28px;
+	padding: 0 4px;
+	border: 0;
+	border-radius: var(--ctd-radius-control);
+	background: transparent;
+	font: inherit;
+	font-size: 13px;
+	color: var(--ctd-ink-soft);
+	cursor: pointer;
+}
+
+.back:hover {
+	color: var(--ctd-ink);
+}
+
+.back:focus-visible,
+.done:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.backNarrow,
+.done {
+	display: none;
+}
+
+.pager {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.position {
+	min-width: 56px;
+	text-align: center;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	color: var(--ctd-ink-soft);
+	white-space: nowrap;
+}
+
+.scroll {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 0 20px 16px;
+	-webkit-overflow-scrolling: touch;
+}
+
+/* The covers run edge to edge so neighbours peek in from the sides. */
+.scroll > :first-child {
+	margin: 0 -20px;
+}
+
+.dots {
+	display: flex;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 4px 0 18px;
+}
+
+.dot {
+	width: 7px;
+	height: 7px;
+	border-radius: var(--ctd-radius-capsule);
+	background: color-mix(in oklch, var(--ctd-ink) 22%, transparent);
+	transition: background-color 160ms ease;
+}
+
+.dotCurrent {
+	background: var(--ctd-ink);
+}
+
+.footer {
+	flex: none;
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	padding: 12px 20px 16px;
+	border-top: 1px solid var(--ctd-border);
+	background: var(--ctd-surface);
+}
+
+/* Touch screens: every control is at least 44 × 44 pt (Apple HIG). */
+@media (pointer: coarse) {
+	.back,
+	.pager :global(button),
+	.footer :global(button) {
+		min-width: 44px;
+		min-height: 44px;
+	}
+}
+
+/* Phones: the review's bar is the navigation bar (‹ Uploads, where you are,
+   Done); covers are swiped, so the arrows go; actions sit in thumb reach. */
+@media (max-width: 36em) {
+	.header {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		min-height: 52px;
+		padding: env(safe-area-inset-top) 8px 0;
+		border-bottom: 1px solid var(--ctd-border);
+	}
+
+	.back {
+		justify-self: start;
+		min-height: 44px;
+		padding: 0 8px 0 2px;
+		font-size: 17px;
+		color: var(--ctd-link);
+	}
+
+	.backWide {
+		display: none;
+	}
+
+	.backNarrow {
+		display: inline;
+	}
+
+	.pager :global(button) {
+		display: none;
+	}
+
+	.position {
+		font-size: 17px;
+		font-weight: 600;
+		color: var(--ctd-ink);
+	}
+
+	.done {
+		display: inline-flex;
+		align-items: center;
+		justify-self: end;
+		min-width: 44px;
+		min-height: 44px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: var(--ctd-radius-control);
+		background: transparent;
+		font: inherit;
+		font-size: 17px;
+		font-weight: 600;
+		color: var(--ctd-link);
+		cursor: pointer;
+	}
+
+	.scroll {
+		padding: 12px 16px 24px;
+	}
+
+	.scroll > :first-child {
+		margin: 0 -16px;
+	}
+
+	.footer {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+		gap: 10px;
+		padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+	}
+
+	.footer :global(button) {
+		min-height: 50px;
+		border-radius: 14px;
+		font-size: 17px;
+		font-weight: 600;
+	}
+}

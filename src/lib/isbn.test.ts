@@ -51,3 +51,25 @@ describe("normalizeIsbn", () => {
 		expect(normalizeIsbn("   ")).toBeUndefined();
 	});
 });
+
+describe("formatIsbn and isbnProblem", () => {
+	it("hyphenates valid ISBN-10s and ISBN-13s by registration range", async () => {
+		const { formatIsbn } = await import("./isbn");
+		expect(formatIsbn("9780141439518")).toBe("978-0-14-143951-8");
+		expect(formatIsbn("0141439513")).toBe("0-14-143951-3");
+		expect(formatIsbn("urn:isbn:978-1-234-56789-7")).toBe("978-1-234-56789-7");
+		expect(formatIsbn("ISBN 0-14-143951-3")).toBe("0-14-143951-3");
+		expect(formatIsbn("9780141439519")).toBeUndefined();
+		expect(formatIsbn("")).toBeUndefined();
+	});
+
+	it("explains what's wrong with a typed ISBN", async () => {
+		const { isbnProblem } = await import("./isbn");
+		expect(isbnProblem("")).toBeUndefined();
+		expect(isbnProblem("978-0-14-143951-8")).toBeUndefined();
+		expect(isbnProblem("9780141439519")).toBe(
+			"This ISBN's check digit doesn't match",
+		);
+		expect(isbnProblem("97801")).toBe("An ISBN has 10 or 13 digits");
+	});
+});

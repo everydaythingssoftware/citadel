@@ -954,6 +954,7 @@ fn small_uploads() -> api::UploadConfig {
         chunk_bytes: 4096,
         max_staged_bytes: 2 * 1024 * 1024,
         max_uploads_per_user: 2,
+        review_hours: 24,
     }
 }
 
@@ -1409,6 +1410,61 @@ async fn committing_an_upload_adds_it_to_the_library_with_the_reviewed_metadata(
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn finished_uploads_wait_a_review_window_and_survive_a_restart() {
+    let (directory, service, router, _, cookie) =
+        fixture_opened(CalibreCatalogSource::open_writable, small_uploads()).await;
+    let staged = upload_whole(&router, &cookie, "uploaded.epub", &epub_bytes()).await;
+    let id = staged["id"].as_str().unwrap().to_string();
+    let expires_at = chrono::DateTime::parse_from_rfc3339(staged["expiresAt"].as_str().unwrap())
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let window = expires_at - chrono::Utc::now();
+    assert!(
+        window > chrono::Duration::hours(24) - chrono::Duration::minutes(1)
+            && window <= chrono::Duration::hours(24),
+        "{window}"
+    );
+    let (status, _, list) =
+        request(&router, "GET", "/api/uploads", String::new(), Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["reviewSeconds"], 24 * 60 * 60);
+
+    // A new staging area over the same directory stands in for a restart.
+    let source = Arc::new(CalibreCatalogSource::open_writable(directory.path()).unwrap());
+    let (_, access) = access(directory.path());
+    let staging =
+        api::Staging::open(directory.path().join("state/uploads"), small_uploads()).unwrap();
+    let restarted = api::router(source, &service, access, None, staging, metadata());
+    let (status, _, restored) = request(
+        &restarted,
+        "GET",
+        &format!("/api/uploads/{id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{restored}");
+    assert_eq!(restored["book"]["title"], "Uploaded Book");
+    assert_eq!(restored["expiresAt"], staged["expiresAt"]);
+    let (status, _, book) = request(
+        &restarted,
+        "POST",
+        &format!("/api/uploads/{id}/commit"),
+        json!({"title": "Uploaded Book"}).to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{book}");
+    assert_eq!(
+        std::fs::read_dir(directory.path().join("state/uploads"))
+            .unwrap()
+            .count(),
+        0
+    );
     service.stop().await;
 }
 

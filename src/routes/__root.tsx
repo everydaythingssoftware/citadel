@@ -7,6 +7,10 @@ import clsx from "clsx";
 import { useState } from "react";
 import { F7SidebarLeft } from "@/components/icons/F7SidebarLeft";
 import { AddBookButton, AddBookProvider } from "@/components/organisms/AddBook";
+import {
+	BookUploads,
+	UploadToolbarStatus,
+} from "@/components/organisms/BookUploads";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton } from "@/components/ui";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
@@ -57,6 +61,7 @@ const Root = () => {
 							<F7SidebarLeft title="Toggle sidebar" />
 						</IconButton>
 						<AddBookButton />
+						<UploadToolbarStatus />
 					</div>
 				</header>
 
@@ -81,6 +86,7 @@ const Root = () => {
 					</main>
 				</div>
 			</div>
+			<BookUploads />
 		</AddBookProvider>
 	);
 };

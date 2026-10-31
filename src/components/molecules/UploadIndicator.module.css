@@ -1,0 +1,48 @@
+.indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 10px;
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-capsule);
+	background: var(--ctd-control-bg);
+	color: var(--ctd-ink);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.indicator:hover {
+	background: var(--ctd-control-bg-strong);
+}
+
+.indicator:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.indicator[data-urgent] {
+	border-color: var(--ctd-brass);
+}
+
+.label {
+	font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 36em) {
+	.indicator {
+		height: 32px;
+	}
+
+	.label {
+		/* Icon only on phones; the label stays for screen readers. */
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+}

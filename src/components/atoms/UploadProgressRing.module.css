@@ -1,0 +1,51 @@
+.ring {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	color: var(--ctd-accent);
+}
+
+.button {
+	min-width: 28px;
+	min-height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--ctd-radius-capsule);
+	background: transparent;
+	cursor: pointer;
+}
+
+.button:hover {
+	background: var(--ctd-nav-hover-bg);
+}
+
+.button:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.track {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2.4;
+	opacity: 0.15;
+}
+
+.arc {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2.4;
+	stroke-linecap: round;
+	transition: stroke-dasharray 200ms linear;
+}
+
+.stop {
+	fill: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.arc {
+		transition: none;
+	}
+}

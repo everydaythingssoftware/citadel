@@ -3634,7 +3634,8 @@
           "id",
           "fileName",
           "size",
-          "receivedBytes"
+          "receivedBytes",
+          "expiresAt"
         ],
         "properties": {
           "book": {
@@ -3647,6 +3648,11 @@
                 "type": "null"
               }
             ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the server discards the upload: a fixed review deadline once the\nfile has been read, otherwise an hour after its last chunk."
           },
           "fileName": {
             "type": "string"
@@ -3686,6 +3692,7 @@
         "required": [
           "maxFileBytes",
           "chunkBytes",
+          "reviewSeconds",
           "uploads"
         ],
         "properties": {
@@ -3697,6 +3704,12 @@
           "maxFileBytes": {
             "type": "integer",
             "format": "int64",
+            "minimum": 0
+          },
+          "reviewSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How long a finished upload waits to be added or skipped.",
             "minimum": 0
           },
           "uploads": {

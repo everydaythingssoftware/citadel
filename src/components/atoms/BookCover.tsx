@@ -2,6 +2,7 @@ import { type HTMLAttributes, useState } from "react";
 import type { CoverThumbnail, LibraryBook } from "@/bindings";
 import { formatAuthorList } from "@/lib/authors";
 import { resolveCoverLoad } from "@/lib/cover-load";
+import { devFlag } from "@/lib/dev-flags";
 import { selectByStringHash } from "@/lib/hash-string";
 import { shortenToChars } from "$lib/domain/book";
 
@@ -10,6 +11,7 @@ import img2Url from "../../assets/2.jpg";
 import img3Url from "../../assets/3.jpg";
 import img4Url from "../../assets/4.jpg";
 import img5Url from "../../assets/5.jpg";
+import { MotifCover } from "./MotifCover";
 
 type LibraryBookWithCoverImage = LibraryBook & {
 	cover_image: NonNullable<LibraryBook["cover_image"]>;
@@ -149,15 +151,19 @@ const BookCoverUsingImage = ({
 	);
 };
 
+export type PlaceholderStyle = "paintings" | "patterns";
+
 const BookCoverWithPlaceholder = ({
 	book,
 	disableFade,
 	fluid,
+	placeholder = devFlag("placeholderCovers"),
 	...props
 }: {
 	book: LibraryBook;
 	disableFade: boolean;
 	fluid: boolean;
+	placeholder?: PlaceholderStyle;
 } & HTMLAttributes<HTMLDivElement>) => {
 	const [isHovering, setIsHovering] = useState(false);
 
@@ -202,16 +208,30 @@ const BookCoverWithPlaceholder = ({
 					position: "relative",
 				}}
 			>
-				<img
-					alt="App-provided placeholder cover."
-					src={imgUrl}
-					style={{
-						width: "inherit",
-						height: "inherit",
-						gridArea: "overlap",
-						filter: "brightness(0.7)",
-					}}
-				/>
+				{placeholder === "patterns" ? (
+					<MotifCover
+						seed={book.title}
+						spine={false}
+						style={{
+							width: "inherit",
+							height: "inherit",
+							gridArea: "overlap",
+							borderRadius: 0,
+							aspectRatio: "auto",
+						}}
+					/>
+				) : (
+					<img
+						alt="App-provided placeholder cover."
+						src={imgUrl}
+						style={{
+							width: "inherit",
+							height: "inherit",
+							gridArea: "overlap",
+							filter: "brightness(0.7)",
+						}}
+					/>
+				)}
 				<div
 					style={{
 						height: "100%",
@@ -271,10 +291,16 @@ export const BookCover = ({
 	disableFade = false,
 	fluid = false,
 	thumb,
+	placeholder,
 	...props
 }: {
 	book: LibraryBook;
 	disableFade?: boolean;
+	/**
+	 * Art for books without a cover; defaults to the `placeholderCovers`
+	 * developer flag while the choice is open.
+	 */
+	placeholder?: PlaceholderStyle;
 	/**
 	 * Size to the parent (width ≤ 100%, height ≤ ~230px, aspect ratio kept)
 	 * instead of the fixed 133px column used in the details drawer.
@@ -308,6 +334,7 @@ export const BookCover = ({
 			book={book}
 			disableFade={disableFade}
 			fluid={fluid}
+			placeholder={placeholder}
 			{...props}
 		/>
 	);

@@ -1,0 +1,141 @@
+.row {
+	position: relative;
+	display: grid;
+	grid-template-columns: 36px minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: center;
+	min-height: 54px;
+	padding: 9px 0;
+	border-bottom: 1px solid color-mix(in oklch, var(--ctd-ink) 10%, transparent);
+	list-style: none;
+}
+
+.row:last-child {
+	border-bottom: 0;
+}
+
+.thumb {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 54px;
+	box-sizing: border-box;
+	border-radius: 2px;
+	object-fit: cover;
+	font-size: 20px;
+}
+
+.pending {
+	border: 1px dashed color-mix(in oklch, var(--ctd-ink) 30%, transparent);
+}
+
+.problem {
+	color: var(--ctd-danger-bg);
+}
+
+.text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.name {
+	font-weight: 500;
+	color: var(--ctd-ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.subtitle {
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.danger {
+	color: color-mix(in oklch, var(--ctd-danger-bg) 88%, var(--ctd-ink));
+	white-space: normal;
+}
+
+.trailing {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.countdown {
+	display: inline-flex;
+	align-items: center;
+	padding: 4px;
+}
+
+.chevron {
+	display: none;
+}
+
+/* Touch screens: every control is at least 44 × 44 pt (Apple HIG). */
+@media (pointer: coarse), (max-width: 36em) {
+	.trailing button {
+		min-width: 44px;
+		min-height: 44px;
+	}
+
+	.trailing {
+		gap: 4px;
+	}
+}
+
+@media (max-width: 36em) {
+	.row {
+		grid-template-columns: 40px minmax(0, 1fr) auto;
+		min-height: 72px;
+		font-size: 15px;
+	}
+
+	.thumb {
+		width: 40px;
+		height: 60px;
+	}
+
+	.subtitle {
+		font-size: 13px;
+	}
+
+	/* The whole row is the review target, ending in a disclosure chevron. */
+	.review {
+		position: static;
+		border: 0;
+		background: transparent;
+		box-shadow: none;
+		padding: 0;
+		color: var(--ctd-ink-soft);
+		font-size: 17px;
+	}
+
+	.review::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+	}
+
+	.review:active::after {
+		background: var(--ctd-nav-hover-bg);
+	}
+
+	.reviewLabel {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+
+	.chevron {
+		display: block;
+	}
+}
