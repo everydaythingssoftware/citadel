@@ -156,10 +156,11 @@
 }
 
 .footer {
+	flex: none;
 	display: flex;
 	justify-content: flex-end;
 	gap: 8px;
-	padding-top: 16px;
+	padding: 12px 20px 16px;
 }
 
 .live {
@@ -278,7 +279,8 @@
 	.body {
 		display: flex;
 		flex-direction: column;
-		padding: 0 16px;
+		padding: 0 16px 16px;
+		overscroll-behavior-y: contain;
 	}
 
 	.bodyReview {
@@ -341,9 +343,6 @@
 	}
 
 	.footer {
-		position: sticky;
-		bottom: 0;
-		margin: auto -16px 0;
 		padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
 		border-top: 1px solid var(--ctd-border);
 		background: var(--ctd-surface);

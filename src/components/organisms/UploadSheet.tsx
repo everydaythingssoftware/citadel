@@ -175,27 +175,28 @@ export const UploadSheet = ({
 									</Button>
 								</div>
 							)}
-							{items.length > 0 && (
-								<div className={styles.footer}>
-									<Button className={styles.cancelAll} onClick={onCancelAll}>
-										Cancel All
-									</Button>
-									<Button
-										variant="primary"
-										disabled={summary.ready === 0}
-										onClick={onAddAll}
-									>
-										{summary.ready === 0
-											? "Add Ready Books"
-											: summary.ready === 1
-												? "Add 1 Ready Book"
-												: `Add ${summary.ready} Ready Books`}
-									</Button>
-								</div>
-							)}
 						</>
 					)}
 				</div>
+				{/* Outside the scrolling list, so the list can bounce without it. */}
+				{!reviewing && items.length > 0 && (
+					<div className={styles.footer}>
+						<Button className={styles.cancelAll} onClick={onCancelAll}>
+							Cancel All
+						</Button>
+						<Button
+							variant="primary"
+							disabled={summary.ready === 0}
+							onClick={onAddAll}
+						>
+							{summary.ready === 0
+								? "Add Ready Books"
+								: summary.ready === 1
+									? "Add 1 Ready Book"
+									: `Add ${summary.ready} Ready Books`}
+						</Button>
+					</div>
+				)}
 				<p className={styles.live} aria-live="polite">
 					{summary.active > 0
 						? `Uploading ${summary.active} ${summary.active === 1 ? "book" : "books"}`
