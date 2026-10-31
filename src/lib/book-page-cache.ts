@@ -128,6 +128,8 @@ export interface PagedBookCache {
 	total: number | null;
 	/** Sparse page-index → fetched books. */
 	pages: ReadonlyMap<number, LibraryBook[]>;
+	/** Pages still shown from before an invalidation, waiting to refetch. */
+	stale: ReadonlySet<number>;
 }
 
 export const emptyBookCache = (
@@ -138,6 +140,7 @@ export const emptyBookCache = (
 	generation,
 	total: null,
 	pages: new Map(),
+	stale: new Set(),
 });
 
 /**
@@ -151,16 +154,26 @@ export const cacheForKey = (
 	cache.key === key ? cache : emptyBookCache(key, cache.generation + 1);
 
 /**
- * Drops every fetched page and bumps the generation (cancelling in-flight
- * fetches), keeping the key and the last known total so the grid keeps its
- * height while visible pages refetch lazily. Used after mutations.
+ * Marks every fetched page stale and bumps the generation (cancelling
+ * in-flight fetches). Stale pages stay on screen until their refetch lands,
+ * so the grid neither blanks nor changes height after a mutation.
  */
 export const invalidateBookCache = (cache: PagedBookCache): PagedBookCache => ({
 	key: cache.key,
 	generation: cache.generation + 1,
 	total: cache.total,
-	pages: new Map(),
+	pages: cache.pages,
+	stale: new Set(cache.pages.keys()),
 });
+
+/** Pages of `wanted` that need fetching: never fetched, or stale. */
+export const pagesToFetch = (
+	cache: PagedBookCache,
+	wanted: number[],
+): number[] =>
+	wanted.filter(
+		(pageIndex) => !cache.pages.has(pageIndex) || cache.stale.has(pageIndex),
+	);
 
 export interface FetchedBookPage {
 	key: string;
@@ -183,7 +196,9 @@ export const applyBookPage = (
 	}
 	const pages = new Map(cache.pages);
 	pages.set(fetched.pageIndex, fetched.items);
-	return { ...cache, total: fetched.total, pages };
+	const stale = new Set(cache.stale);
+	stale.delete(fetched.pageIndex);
+	return { ...cache, total: fetched.total, pages, stale };
 };
 
 /**

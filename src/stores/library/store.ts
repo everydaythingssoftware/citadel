@@ -3,10 +3,10 @@ import { create } from "zustand";
 import type {
 	AuthorUpdate,
 	BookCustomValue,
-	CustomColumnDef,
-	CustomValueDto,
 	BookUpdate,
 	CoverThumbnail,
+	CustomColumnDef,
+	CustomValueDto,
 	DeleteBooksOutcome,
 	ImportableBookMetadata,
 	LibraryAuthor,
@@ -29,6 +29,7 @@ import {
 	invalidateBookCache,
 	type PagedBookCache,
 	pagesCoveringRange,
+	pagesToFetch,
 	serializeBookFilter,
 	toBookQuery,
 } from "@/lib/book-page-cache";
@@ -572,9 +573,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 					bookFilter.seriesId !== null
 						? [0]
 						: pagesCoveringRange(start, end, BOOK_PAGE_SIZE, bookCache.total);
-				const missing = wantedPages.filter(
-					(pageIndex) => !bookCache.pages.has(pageIndex),
-				);
+				const missing = pagesToFetch(bookCache, wantedPages);
 				if (missing.length === 0) return;
 
 				await Promise.all(
@@ -719,6 +718,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 						generation: get().bookCache.generation + 1,
 						total: firstPage.value?.total ?? null,
 						pages: shadowPages,
+						stale: new Set(),
 					};
 					const cache = cacheForKey(shadowCache, get().bookCache.key);
 					set({
