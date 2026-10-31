@@ -269,8 +269,18 @@ body {
 	background: transparent;
 }
 
+/* The visible viewport: on iOS Safari 100vh is taller than the screen
+   behind the browser's toolbars, which let the page scroll the toolbar away. */
 #root {
-	height: 100vh;
+	height: 100dvh;
+}
+
+/* iOS zooms into any field with text under 16px and doesn't zoom back out. */
+@media (pointer: coarse) {
+	/* :root lifts this above single-class component rules. */
+	:root :is(input, textarea, select) {
+		font-size: max(16px, 1em);
+	}
 }
 
 * {

@@ -14,9 +14,12 @@ import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
 import classes from "./root.module.css";
 
 const Root = () => {
-	const [mobileOpened, setMobileOpened] = useState(false);
+	// The phone sidebar belongs to the page it was opened on: going anywhere
+	// closes it.
+	const [mobileOpenedOn, setMobileOpenedOn] = useState<string | null>(null);
 	const [desktopOpened, setDesktopOpened] = useState(true);
 	const { location } = useRouterState();
+	const mobileOpened = mobileOpenedOn === location.href;
 	useNativeThemeSync();
 	// Self-disables in the settings window (/settings pathname check inside).
 	useAppKeymap();
@@ -40,7 +43,9 @@ const Root = () => {
 						<IconButton
 							aria-label="Toggle sidebar"
 							className={clsx(classes.sidebarToggle, classes.mobileOnly)}
-							onClick={() => setMobileOpened((open) => !open)}
+							onClick={() =>
+								setMobileOpenedOn(mobileOpened ? null : location.href)
+							}
 						>
 							<F7SidebarLeft title="Toggle sidebar" />
 						</IconButton>
@@ -59,6 +64,15 @@ const Root = () => {
 					<nav className={classes.nav}>
 						<Sidebar />
 					</nav>
+					{mobileOpened && (
+						<button
+							type="button"
+							tabIndex={-1}
+							aria-label="Close sidebar"
+							className={classes.scrim}
+							onClick={() => setMobileOpenedOn(null)}
+						/>
+					)}
 
 					<main className={classes.main}>
 						<div className={classes.content}>
