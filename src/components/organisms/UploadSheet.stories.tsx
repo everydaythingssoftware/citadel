@@ -10,8 +10,10 @@ import { useFileDrag } from "@/lib/hooks/use-file-drag";
 import { useNow } from "@/lib/hooks/use-now";
 import { type ReviewDeck, useReviewDeck } from "@/lib/hooks/use-review-deck";
 import { countdown } from "@/lib/uploads/countdown";
+import { createWebPlatform } from "@/lib/platform/create";
 import { createFakeUploads } from "@/lib/uploads/fake-uploads";
 import {
+	BOOK_EXTENSIONS,
 	type QueueItem,
 	readyItems,
 	summarize,
@@ -113,7 +115,7 @@ const sampleFiles = (round: number) =>
 		["Pride and Prejudice.mobi", 400_000],
 		["Walden.azw3", 600_000],
 		["Middlemarch.epub", 1_200_000],
-		["A Very Large Atlas.pdf", 3_000_000],
+		["A Very Large Atlas.pdf", 21 * 1024 * 1024],
 		["Shopping list.docx", 1_000],
 	].map(
 		([name, size]) =>
@@ -131,11 +133,11 @@ const LiveQueue = (args: UploadSheetProps) => {
 		() =>
 			createFakeUploads({
 				limits: {
-					chunkBytes: 200_000,
-					maxFileBytes: 2_000_000,
+					chunkBytes: 256 * 1024,
+					maxFileBytes: 20 * 1024 * 1024,
 					reviewSeconds: 120,
 				},
-				chunkDelay: pause(250),
+				chunkDelay: pause(150),
 				readDelay: pause(1200),
 				withCovers: false,
 			}),
@@ -147,6 +149,11 @@ const LiveQueue = (args: UploadSheetProps) => {
 	const reviewKey = store((state) => state.reviewKey);
 	const [round, setRound] = useState(0);
 	const clock = useNow(1000);
+	const platform = useMemo(createWebPlatform, []);
+	const chooseFiles = () =>
+		void platform.dialogs
+			.chooseFiles({ extensions: BOOK_EXTENSIONS, multiple: true })
+			.then((files) => store.getState().addFiles(files));
 
 	useEffect(() => {
 		store.getState().connect(fake.uploads, noop);
@@ -202,6 +209,7 @@ const LiveQueue = (args: UploadSheetProps) => {
 				>
 					Add Sample Books
 				</Button>
+				<Button onClick={chooseFiles}>Choose Books…</Button>
 				<Button onClick={() => store.getState().openSheet()}>Open Sheet</Button>
 				<UploadIndicator
 					summary={summary}
@@ -227,10 +235,7 @@ const LiveQueue = (args: UploadSheetProps) => {
 				countdownFor={countdownFor}
 				reviewing={reviewKey !== null && ready.length > 0}
 				deck={deck}
-				onChooseFiles={() => {
-					store.getState().addFiles(sampleFiles(round));
-					setRound((value) => value + 1);
-				}}
+				onChooseFiles={chooseFiles}
 				onReview={(key) => store.getState().review(key)}
 				onBackToQueue={() => store.getState().review(null)}
 				onRetry={(key) => store.getState().retry(key)}
