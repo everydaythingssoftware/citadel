@@ -7,7 +7,12 @@ import {
 	type TAddedMotion,
 	UploadReview,
 } from "@/components/molecules/UploadReview";
-import { Button, DialogCloseButton, IconButton } from "@/components/ui";
+import {
+	Button,
+	DialogCloseButton,
+	HoldButton,
+	IconButton,
+} from "@/components/ui";
 import { ignorePopoverInteractOutside } from "@/components/ui/popover-interop";
 import { useFollowNewest } from "@/lib/hooks/use-follow-newest";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
@@ -153,13 +158,12 @@ export const UploadSheet = ({
 												<span className={styles.link}>choose files</span>
 											</span>
 										</button>
-										<button
-											type="button"
+										<HoldButton
 											className={styles.cancelRow}
-											onClick={onCancelAll}
-										>
-											Cancel All Uploads
-										</button>
+											label="Cancel All Uploads"
+											hint="Hold to cancel all uploads"
+											onConfirm={onCancelAll}
+										/>
 									</>
 								) : (
 									<div className={styles.empty}>
@@ -191,9 +195,13 @@ export const UploadSheet = ({
 					{/* Outside the scrolling list, so the list can bounce without it. */}
 					{!reviewing && items.length > 0 && (
 						<div className={styles.footer}>
-							<Button className={styles.cancelAll} onClick={onCancelAll}>
-								Cancel All
-							</Button>
+							{/* Held, not clicked: it throws away everything uploaded. */}
+							<HoldButton
+								className={styles.cancelAll}
+								label="Cancel All"
+								hint="Hold to cancel all uploads"
+								onConfirm={onCancelAll}
+							/>
 							<span className={styles.spacer} />
 							{/* Reviewing first is the way in; adding everything as the
 							    files describe it is the shortcut. */}

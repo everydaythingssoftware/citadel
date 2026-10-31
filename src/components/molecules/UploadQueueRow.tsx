@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { MotifCover } from "@/components/atoms/MotifCover";
+import { StagedCover } from "@/components/atoms/StagedCover";
 import { UploadProgressRing } from "@/components/atoms/UploadProgressRing";
 import {
 	AlertGlyph,
@@ -47,10 +47,12 @@ const Thumbnail = ({ item }: { item: QueueItem }) => {
 			</span>
 		);
 	if (item.book)
-		return item.coverUrl ? (
-			<img className={styles.thumb} src={item.coverUrl} alt="" />
-		) : (
-			<MotifCover className={styles.thumb} seed={item.book.title} />
+		return (
+			<StagedCover
+				className={styles.thumb}
+				coverUrl={item.coverUrl}
+				seed={item.book.title}
+			/>
 		);
 	return <span className={clsx(styles.thumb, styles.pending)} />;
 };

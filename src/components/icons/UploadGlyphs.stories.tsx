@@ -1,29 +1,22 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import {
 	AlertGlyph,
-	BooksGlyph,
-	CalendarGlyph,
+	BookDownloadGlyph,
+	BookSparkleGlyph,
 	ChevronLeftGlyph,
 	ChevronRightGlyph,
-	DraftsGlyph,
 	PlusGlyph,
-	TrayGlyph,
 	UploadGlyph,
 	XmarkGlyph,
 } from "./UploadGlyphs";
 
-/** The calendar shows a day; the 7th stands in for any. */
-const CalendarSeventh = () => <CalendarGlyph day={7} />;
-
 const GLYPHS = {
 	AlertGlyph,
-	BooksGlyph,
-	CalendarGlyph: CalendarSeventh,
+	BookDownloadGlyph,
+	BookSparkleGlyph,
 	ChevronLeftGlyph,
 	ChevronRightGlyph,
-	DraftsGlyph,
 	PlusGlyph,
-	TrayGlyph,
 	UploadGlyph,
 	XmarkGlyph,
 };

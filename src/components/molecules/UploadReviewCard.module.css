@@ -8,7 +8,6 @@
 .more {
 	border-top: 1px solid var(--ctd-border);
 	padding-top: 4px;
-	container-type: inline-size;
 }
 
 /* Closed: a full-width row, like a settings cell, saying what's inside. */
@@ -43,18 +42,31 @@
 	white-space: nowrap;
 }
 
-.disclosureHint {
+/*
+ * The hint shows whole or not at all: an empty first item fills the line,
+ * so a hint too long for what's left wraps onto a second line, which the
+ * box's one-line height clips away.
+ */
+.disclosureHintBox {
 	flex: 1;
-	white-space: nowrap;
-	text-align: right;
-	color: var(--disclosure-soft);
+	min-width: 0;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	height: 1.4em;
+	line-height: 1.4em;
+	overflow: hidden;
 }
 
-/* The hint shows whole or not at all. */
-@container (width < 360px) {
-	.disclosureHint {
-		display: none;
-	}
+.disclosureHintBox::before {
+	content: "";
+	flex: 1 0 0;
+	height: 1.4em;
+}
+
+.disclosureHint {
+	white-space: nowrap;
+	color: var(--disclosure-soft);
 }
 
 .disclosureChevron {
@@ -160,10 +172,5 @@
 	.disclosure {
 		min-height: 48px;
 		font-size: 17px;
-	}
-
-	/* Phones: just the label and chevron. */
-	.disclosureHint {
-		display: none;
 	}
 }

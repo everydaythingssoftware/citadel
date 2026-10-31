@@ -1,0 +1,7 @@
+.spine {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: var(--ctd-cover-spine-bg);
+	pointer-events: none;
+}

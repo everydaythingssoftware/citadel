@@ -1,8 +1,10 @@
+import { ViewportDebug } from "@/components/atoms/ViewportDebug";
 import { DropOverlay } from "@/components/molecules/DropOverlay";
 import { UploadIndicator } from "@/components/molecules/UploadIndicator";
 import { devFlag } from "@/lib/dev-flags";
 import { useUploadController } from "@/lib/hooks/use-upload-controller";
 import { useUploadStatus } from "@/lib/hooks/use-upload-status";
+import { useVisibleViewport } from "@/lib/hooks/use-visible-viewport";
 import { UploadSheet } from "./UploadSheet";
 
 /**
@@ -17,6 +19,7 @@ export const BookUploads = () => {
 		<>
 			<DropOverlay visible={dragging} fan={devFlag("dropFan")} />
 			<UploadSheet {...sheet} motion={devFlag("addedMotion")} />
+			{devFlag("viewportDebug") === "on" && <LiveViewportDebug />}
 		</>
 	);
 };
@@ -30,6 +33,24 @@ export const UploadToolbarStatus = () => {
 			countdown={soonest}
 			variant={devFlag("reviewIndicator")}
 			onOpen={open}
+		/>
+	);
+};
+
+/** The viewport readout, live (citadel:viewportDebug). */
+const LiveViewportDebug = () => {
+	const viewport = useVisibleViewport();
+	const active = document.activeElement;
+	return (
+		<ViewportDebug
+			viewport={viewport}
+			innerHeight={window.innerHeight}
+			screenHeight={window.screen.height}
+			focused={
+				active
+					? `${active.tagName.toLowerCase()}${active.getAttribute("type") ? `[${active.getAttribute("type")}]` : ""}`
+					: "none"
+			}
 		/>
 	);
 };

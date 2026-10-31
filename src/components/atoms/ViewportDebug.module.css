@@ -1,0 +1,16 @@
+.debug {
+	position: fixed;
+	top: calc(env(safe-area-inset-top) + 4px);
+	left: 4px;
+	z-index: 1000;
+	margin: 0;
+	padding: 6px 8px;
+	border-radius: 6px;
+	background: oklch(0% 0 0 / 0.75);
+	color: oklch(100% 0 0);
+	font:
+		11px / 1.4 ui-monospace,
+		monospace;
+	white-space: pre;
+	pointer-events: none;
+}

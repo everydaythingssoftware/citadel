@@ -1,0 +1,12 @@
+.cover {
+	position: relative;
+	display: block;
+	overflow: hidden;
+}
+
+.image {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}

@@ -72,11 +72,28 @@
 	border-top: 1px solid var(--ctd-border);
 }
 
+/* A 56×84 slot; the cover keeps its shape inside it, and the spine hugs
+   the cover rather than the slot. */
 .searchResultCover {
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	width: 56px;
 	height: 84px;
-	object-fit: contain;
 	flex-shrink: 0;
+}
+
+.coverArt {
+	position: relative;
+	display: block;
+	overflow: hidden;
+	border-radius: 2px;
+}
+
+.coverArt img {
+	display: block;
+	max-width: 56px;
+	max-height: 84px;
 }
 
 /* A neutral well for results from cover-less sources, so rows stay aligned and

@@ -70,8 +70,10 @@ export const UploadReviewCard = ({
 						{detailsOpen ? "More details" : "Add more details"}
 					</span>
 					{!detailsOpen && (
-						<span className={styles.disclosureHint}>
-							Publisher, language, tags, ISBN
+						<span className={styles.disclosureHintBox}>
+							<span className={styles.disclosureHint}>
+								Publisher, language, tags, ISBN
+							</span>
 						</span>
 					)}
 					<ChevronDownGlyph className={styles.disclosureChevron} />
