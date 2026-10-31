@@ -15,10 +15,11 @@ export const BookUploads = () => {
 	if (!enabled) return null;
 	return (
 		<>
-			<DropOverlay visible={dragging} fan={devFlag("dropFan")} />
+			{/* With the sheet open, the sheet itself shows it takes the drop. */}
+			<DropOverlay visible={dragging && !sheet.open} fan={devFlag("dropFan")} />
 			<UploadSheet
 				{...sheet}
-				hourglass={devFlag("hourglass")}
+				dragging={dragging}
 				motion={devFlag("addedMotion")}
 			/>
 		</>

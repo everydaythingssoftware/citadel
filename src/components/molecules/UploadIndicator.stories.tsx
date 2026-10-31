@@ -11,7 +11,7 @@ const meta: Meta<typeof UploadIndicator> = {
 	component: UploadIndicator,
 	args: {
 		summary: { active: 2, ready: 1, progress: 0.4, settled: false },
-		hourglass: HourglassStyle.sand,
+		hourglass: HourglassStyle.timer,
 		onOpen: () => console.log("open"),
 	},
 	argTypes: {

@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { toast } from "@/components/ui";
-import { countdown } from "@/lib/uploads/countdown";
-import {
-	type QueueItem,
-	readyItems,
-	summarize,
-	UploadPhase,
-	visibleItems,
-} from "@/lib/uploads/queue";
+import { readyItems, summarize, visibleItems } from "@/lib/uploads/queue";
 import {
 	LibraryState,
 	useAuthors,
@@ -20,7 +12,6 @@ import { useUploadsStore } from "@/stores/uploads/store";
 import { useBookUploads } from "./use-book-uploads";
 import { useChooseBookFiles } from "./use-choose-book-files";
 import { useFileDrag } from "./use-file-drag";
-import { useNow } from "./use-now";
 import { LEAVE_MS, useReviewDeck } from "./use-review-deck";
 
 /**
@@ -39,7 +30,7 @@ const settleAfterReview = () => {
 
 /**
  * Everything the upload overlay, sheet and toolbar status need: the queue,
- * dropping and choosing files, review paging and the countdown clock.
+ * dropping and choosing files, and review paging.
  */
 export const useUploadController = () => {
 	useBookUploads();
@@ -54,7 +45,6 @@ export const useUploadController = () => {
 	const authors = useAuthors();
 	const tags = useTags();
 	const libraryActions = useLibraryActions();
-	const now = useNow();
 	const chooseFiles = useChooseBookFiles();
 
 	const dragging = useFileDrag({
@@ -65,15 +55,6 @@ export const useUploadController = () => {
 	const items = useMemo(() => visibleItems(queue), [queue]);
 	const ready = useMemo(() => readyItems(queue), [queue]);
 	const summary = useMemo(() => summarize(queue), [queue]);
-	const reviewSeconds = queue.limits?.reviewSeconds ?? 24 * 60 * 60;
-
-	const countdownFor = useCallback(
-		(item: QueueItem) =>
-			item.phase === UploadPhase.ready && item.expiresAt
-				? countdown(item.expiresAt, now, reviewSeconds)
-				: undefined,
-		[now, reviewSeconds],
-	);
 	// Stays true while the last book's cover leaves; settling then ends it.
 	const reviewing = reviewKey !== null;
 	const deck = useReviewDeck({
@@ -82,14 +63,7 @@ export const useUploadController = () => {
 		setReviewKey: (key) => useUploadsStore.getState().review(key),
 		onAdd: async (key, book) => {
 			const added = await useUploadsStore.getState().add(key, book);
-			if (added) {
-				toast.show({
-					title: "Added to Library",
-					message: book.title,
-					duration: 2500,
-				});
-				settleAfterReview();
-			}
+			if (added) settleAfterReview();
 			return added;
 		},
 		onSkip: async (key) => {
@@ -115,13 +89,7 @@ export const useUploadController = () => {
 		const count = readyItems(useUploadsStore.getState().queue).length;
 		await useUploadsStore.getState().addAllReady();
 		const added = count - readyItems(useUploadsStore.getState().queue).length;
-		if (added > 0) {
-			toast.show({
-				title: "Added to Library",
-				message: added === 1 ? "1 book" : `${added} books`,
-			});
-			settleAfterReview();
-		}
+		if (added > 0) settleAfterReview();
 	}, []);
 
 	return {
@@ -136,7 +104,6 @@ export const useUploadController = () => {
 			items,
 			summary,
 			paused: queue.paused,
-			countdownFor,
 			reviewing,
 			deck,
 			authorSuggestions: authors.map((author) => author.name),

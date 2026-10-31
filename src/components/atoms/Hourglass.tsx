@@ -3,6 +3,8 @@ import { useId } from "react";
 import styles from "./Hourglass.module.css";
 
 export const HourglassStyle = {
+	/** A kitchen-timer dial whose wedge winds down clockwise. */
+	timer: "timer",
 	/** An hourglass whose sand drains from the top bulb into the bottom. */
 	sand: "sand",
 	/** A ring that empties clockwise. */
@@ -76,6 +78,31 @@ const Sand = ({ fraction }: { fraction: number }) => {
 	);
 };
 
+/** The wedge of a dial from 12 o'clock, clockwise, for `fraction` of a turn. */
+const wedge = (fraction: number, radius: number): string => {
+	const angle = fraction * 2 * Math.PI;
+	const x = 12 + radius * Math.sin(angle);
+	const y = 12 - radius * Math.cos(angle);
+	const large = fraction > 0.5 ? 1 : 0;
+	return `M12 12V${12 - radius}A${radius} ${radius} 0 ${large} 1 ${x.toFixed(3)} ${y.toFixed(3)}Z`;
+};
+
+const Timer = ({ fraction }: { fraction: number }) => (
+	<svg viewBox="0 0 24 24" aria-hidden="true">
+		<circle className={styles.dial} cx="12" cy="13" r="9.5" />
+		<path className={styles.knob} d="M10 1.75h4" />
+		<g transform="translate(0 1)">
+			{fraction >= 0.999 ? (
+				<circle className={styles.wedge} cx="12" cy="12" r="6.5" />
+			) : (
+				fraction > 0 && (
+					<path className={styles.wedge} d={wedge(fraction, 6.5)} />
+				)
+			)}
+		</g>
+	</svg>
+);
+
 const Ring = ({ fraction }: { fraction: number }) => {
 	const circumference = 2 * Math.PI * 9;
 	return (
@@ -97,7 +124,7 @@ const Ring = ({ fraction }: { fraction: number }) => {
 export const Hourglass = ({
 	fraction,
 	urgent = false,
-	variant = HourglassStyle.sand,
+	variant = HourglassStyle.timer,
 	size = 18,
 	label,
 	className,
@@ -122,6 +149,7 @@ export const Hourglass = ({
 						}
 			}
 		>
+			{variant === HourglassStyle.timer && <Timer fraction={value} />}
 			{variant === HourglassStyle.sand && <Sand fraction={value} />}
 			{variant === HourglassStyle.ring && <Ring fraction={value} />}
 			{variant === HourglassStyle.bar && (

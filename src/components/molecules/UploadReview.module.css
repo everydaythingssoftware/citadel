@@ -27,7 +27,6 @@
 	font: inherit;
 	font-size: 13px;
 	color: var(--ctd-ink-soft);
-	cursor: pointer;
 }
 
 .back:hover {
@@ -165,7 +164,6 @@
 		font-size: 17px;
 		font-weight: 600;
 		color: var(--ctd-link);
-		cursor: pointer;
 	}
 
 	.scroll {

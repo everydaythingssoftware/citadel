@@ -1,4 +1,4 @@
-/** The last part of the review window, when the hourglass asks for attention. */
+/** The last part of the review window, when the countdown asks for attention. */
 export const URGENT_FRACTION = 0.25;
 
 export interface Countdown {
@@ -9,7 +9,7 @@ export interface Countdown {
 	expired: boolean;
 	/** "23 h left", "40 min left". */
 	short: string;
-	/** "Add or skip by 3:40 pm tomorrow, or it'll be discarded". */
+	/** "Review by 3:40 pm tomorrow". */
 	description: string;
 }
 
@@ -68,7 +68,7 @@ export const countdown = (
 		expired,
 		short: shortRemaining(remainingMs),
 		description: expired
-			? "This upload has expired and will be discarded"
-			: `Add or skip by ${describeDeadline(deadline, now, locale)}, or it'll be discarded`,
+			? "Time's up for reviewing"
+			: `Review by ${describeDeadline(deadline, now, locale)}`,
 	};
 };

@@ -29,6 +29,22 @@
 	opacity: 0.55;
 }
 
+.dial {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+}
+
+.knob {
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linecap: round;
+}
+
+.wedge {
+	fill: currentColor;
+}
+
 .track {
 	fill: none;
 	stroke: currentColor;

@@ -1,0 +1,66 @@
+@property --drop-halo-angle {
+	syntax: "<angle>";
+	inherits: false;
+	initial-value: 0deg;
+}
+
+.frame {
+	position: absolute;
+	pointer-events: none;
+}
+
+.halo {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	padding: 3px;
+	background:
+		conic-gradient(
+			from var(--drop-halo-angle),
+			transparent 0deg,
+			oklch(80% 0.1 80 / 0) 250deg,
+			oklch(80% 0.1 80 / 0.9) 335deg,
+			oklch(97% 0.03 85) 358deg,
+			transparent 360deg
+		),
+		linear-gradient(oklch(97% 0.01 85 / 0.4), oklch(97% 0.01 85 / 0.4));
+	-webkit-mask:
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask:
+		linear-gradient(#000 0 0) content-box exclude,
+		linear-gradient(#000 0 0);
+	animation: drop-halo-spin 6s linear infinite;
+}
+
+.glow {
+	filter: blur(14px);
+	padding: 8px;
+	animation:
+		drop-halo-spin 6s linear infinite,
+		drop-halo-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes drop-halo-spin {
+	to {
+		--drop-halo-angle: 360deg;
+	}
+}
+
+@keyframes drop-halo-pulse {
+	0%,
+	100% {
+		opacity: 0.55;
+	}
+	50% {
+		opacity: 0.9;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.halo,
+	.glow {
+		animation: none;
+	}
+}
