@@ -1,6 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useMemo, useState } from "react";
-import { HourglassStyle } from "@/components/atoms/Hourglass";
+import {
+	HourglassStyle,
+	type THourglassStyle,
+} from "@/components/atoms/Hourglass";
 import { CoverFanStyle } from "@/components/molecules/CoverFan";
 import { DropOverlay } from "@/components/molecules/DropOverlay";
 import { UploadIndicator } from "@/components/molecules/UploadIndicator";
@@ -29,18 +32,17 @@ const QUEUE = sampleQueue(now);
 
 const noop = () => {};
 
-const meta: Meta<typeof UploadSheet> = {
+/** The sheet's props, plus the toolbar indicator's countdown style. */
+type SheetStoryArgs = UploadSheetProps & { hourglass?: THourglassStyle };
+
+const meta: Meta<SheetStoryArgs> = {
 	component: UploadSheet,
 	args: {
 		open: true,
 		onOpenChange: noop,
 		items: QUEUE,
 		summary: summarize({ items: QUEUE }),
-		countdownFor: (item) =>
-			item.phase === UploadPhase.ready && item.expiresAt
-				? countdown(item.expiresAt, now, 24 * 3600)
-				: undefined,
-		hourglass: HourglassStyle.sand,
+		hourglass: HourglassStyle.timer,
 		reviewing: false,
 		deck: staticDeck(QUEUE),
 		motion: AddedMotion.deal,
@@ -63,7 +65,7 @@ const meta: Meta<typeof UploadSheet> = {
 };
 
 export default meta;
-type Story = StoryObj<typeof UploadSheet>;
+type Story = StoryObj<SheetStoryArgs>;
 
 /** Static: a queue with every kind of row. Resize to phone width for the full-screen layout. */
 export const Queue: Story = {};
@@ -77,6 +79,9 @@ export const Empty: Story = {
 export const Paused: Story = {
 	args: { paused: "Add or skip some books to keep uploading." },
 };
+
+/** Static: books dragged over the window while the sheet is open. */
+export const Dragging: Story = { args: { dragging: true } };
 
 /** Static: reviewing the first ready book. */
 export const Reviewing: Story = { args: { reviewing: true } };
@@ -102,7 +107,7 @@ const sampleFiles = (round: number) =>
 const pause = (ms: number) => () =>
 	new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const LiveQueue = (args: UploadSheetProps) => {
+const LiveQueue = ({ hourglass, ...args }: SheetStoryArgs) => {
 	const fake = useMemo(
 		() =>
 			createFakeUploads({
@@ -188,7 +193,7 @@ const LiveQueue = (args: UploadSheetProps) => {
 				<UploadIndicator
 					summary={summary}
 					countdown={soonest}
-					hourglass={args.hourglass}
+					hourglass={hourglass}
 					onOpen={() => store.getState().openSheet()}
 				/>
 				<span style={{ fontSize: 12 }}>
@@ -196,7 +201,7 @@ const LiveQueue = (args: UploadSheetProps) => {
 					minutes.
 				</span>
 			</div>
-			<DropOverlay visible={dragging} fan={CoverFanStyle.paintings} />
+			<DropOverlay visible={dragging && !open} fan={CoverFanStyle.paintings} />
 			<UploadSheet
 				{...args}
 				open={open}
@@ -206,7 +211,7 @@ const LiveQueue = (args: UploadSheetProps) => {
 				items={visibleItems(queue)}
 				summary={summary}
 				paused={queue.paused}
-				countdownFor={countdownFor}
+				dragging={dragging}
 				reviewing={reviewKey !== null && ready.length > 0}
 				deck={deck}
 				onChooseFiles={chooseFiles}

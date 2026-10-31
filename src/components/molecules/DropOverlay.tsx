@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { DropHalo } from "@/components/atoms/DropHalo";
 import { CoverFan, type TCoverFanStyle } from "./CoverFan";
 import styles from "./DropOverlay.module.css";
 
@@ -10,8 +11,8 @@ export interface DropOverlayProps {
 }
 
 /**
- * Covers the window while books are dragged over it: the library frosts over,
- * a brass light sweeps the edge to say the whole window takes the drop, and a
+ * Covers the window while books are dragged over it: the library goes behind
+ * acrylic glass, a brass light sweeps the edge to say the whole window takes the drop, and a
  * fan of books sits in the middle.
  */
 export const DropOverlay = ({
@@ -27,8 +28,7 @@ export const DropOverlay = ({
 		)}
 		aria-hidden={!visible}
 	>
-		<div className={clsx(styles.halo, styles.glow)} />
-		<div className={styles.halo} />
+		<DropHalo />
 		<CoverFan variant={fan} size={128} />
 		<div className={styles.copy}>
 			<p className={styles.title}>Add to Library</p>

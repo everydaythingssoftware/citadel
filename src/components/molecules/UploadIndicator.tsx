@@ -1,5 +1,6 @@
 import { Hourglass, type THourglassStyle } from "@/components/atoms/Hourglass";
 import { UploadProgressRing } from "@/components/atoms/UploadProgressRing";
+import { Button, Tooltip } from "@/components/ui";
 import type { Countdown } from "@/lib/uploads/countdown";
 import type { QueueSummary } from "@/lib/uploads/queue";
 import styles from "./UploadIndicator.module.css";
@@ -12,7 +13,11 @@ export interface UploadIndicatorProps {
 	onOpen: () => void;
 }
 
-/** Toolbar status for uploads carrying on while the sheet is closed. */
+/**
+ * Toolbar status for uploads carrying on while the sheet is closed: a
+ * toolbar button like Add Book, showing upload progress or, once books wait
+ * for review, how long is left to review them.
+ */
 export const UploadIndicator = ({
 	summary,
 	countdown,
@@ -20,36 +25,38 @@ export const UploadIndicator = ({
 	onOpen,
 }: UploadIndicatorProps) => {
 	if (summary.active === 0 && summary.ready === 0) return null;
-	const label =
-		summary.active > 0
-			? `Uploading ${summary.active} ${summary.active === 1 ? "book" : "books"}`
-			: `${summary.ready} to review`;
-	return (
-		<button
-			type="button"
+	const uploading = summary.active > 0;
+	const label = uploading
+		? `Uploading ${summary.active} ${summary.active === 1 ? "book" : "books"}`
+		: `${summary.ready} to review`;
+	const deadline = !uploading ? countdown : undefined;
+	const button = (
+		<Button
+			size="sm"
 			className={styles.indicator}
 			onClick={onOpen}
-			aria-label={
-				countdown && summary.active === 0
-					? `${label}. ${countdown.description}`
-					: label
-			}
-			data-urgent={(summary.active === 0 && countdown?.urgent) || undefined}
+			aria-label={deadline ? `${label}. ${deadline.description}` : label}
+			data-urgent={deadline?.urgent || undefined}
 		>
-			{summary.active > 0 ? (
-				<UploadProgressRing progress={summary.progress} size={16} />
+			{uploading ? (
+				<UploadProgressRing progress={summary.progress} size={13} />
 			) : (
-				countdown && (
+				deadline && (
 					<Hourglass
 						variant={hourglass}
-						fraction={countdown.fraction}
-						urgent={countdown.urgent}
-						size={16}
-						label={countdown.description}
+						fraction={deadline.fraction}
+						urgent={deadline.urgent}
+						size={13}
+						label={deadline.description}
 					/>
 				)
 			)}
 			<span className={styles.label}>{label}</span>
-		</button>
+		</Button>
+	);
+	return deadline ? (
+		<Tooltip label={deadline.description}>{button}</Tooltip>
+	) : (
+		button
 	);
 };

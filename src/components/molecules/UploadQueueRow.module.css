@@ -68,12 +68,6 @@
 	gap: 8px;
 }
 
-.countdown {
-	display: inline-flex;
-	align-items: center;
-	padding: 4px;
-}
-
 .chevron {
 	display: none;
 }

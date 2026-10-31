@@ -9,6 +9,10 @@
 	animation: upload-sheet-fade-in 180ms ease-out;
 }
 
+.overlay[data-state="closed"] {
+	animation: upload-sheet-fade-out 160ms ease-in forwards;
+}
+
 /* A detached sheet below the toolbar, like Sheet, sized for the queue. */
 .content {
 	position: fixed;
@@ -18,7 +22,7 @@
 	display: flex;
 	flex-direction: column;
 	width: min(520px, calc(100vw - 32px));
-	max-height: calc(100vh - 64px - 24px);
+	max-height: min(560px, calc(100vh - 64px - 48px));
 	background-color: var(--ctd-surface);
 	border: var(--ctd-control-border-width) solid var(--ctd-border);
 	border-radius: var(--ctd-radius-panel);
@@ -29,6 +33,10 @@
 
 .content[data-state="open"] {
 	animation: upload-sheet-in 180ms ease-out;
+}
+
+.content[data-state="closed"] {
+	animation: upload-sheet-out 160ms ease-in forwards;
 }
 
 .header {
@@ -64,6 +72,9 @@
 	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
+	/* A scrollbar appearing mustn't narrow the rows. */
+	scrollbar-gutter: stable both-edges;
+	scrollbar-width: thin;
 	padding: 4px 20px 16px;
 }
 
@@ -93,19 +104,35 @@
 	gap: 6px;
 	width: 100%;
 	margin-top: 12px;
-	padding: 18px 14px;
-	border: 1.5px dashed color-mix(in oklch, var(--ctd-ink) 25%, transparent);
+	padding: var(--drop-padding, 18px) 14px;
+	border: 1.5px dashed
+		var(--drop-border, color-mix(in oklch, var(--ctd-ink) 25%, transparent));
 	border-radius: 8px;
-	background: transparent;
+	background: var(--drop-bg, transparent);
 	font: inherit;
-	font-size: 13px;
-	color: var(--ctd-ink-soft);
-	cursor: pointer;
+	font-size: var(--drop-size, 13px);
+	font-weight: var(--drop-weight, normal);
+	color: var(--drop-ink, var(--ctd-ink-soft));
+	/* Colours only: the drop area's size changes at once, so scrolling to
+	   it lands on its final height. */
+	transition:
+		background-color 180ms ease,
+		border-color 180ms ease;
 }
 
 .dropzone:hover {
 	border-color: var(--ctd-brass);
 	color: var(--ctd-ink);
+}
+
+/* Dragging books over the open sheet: the drop area grows to meet them. */
+.content[data-dragging] {
+	--drop-border: var(--ctd-brass);
+	--drop-bg: color-mix(in oklch, var(--ctd-brass) 10%, transparent);
+	--drop-ink: var(--ctd-ink);
+	--drop-padding: 40px;
+	--drop-size: 15px;
+	--drop-weight: 500;
 }
 
 .dropzone:focus-visible,
@@ -133,8 +160,10 @@
 	gap: 6px;
 	margin-top: 12px;
 	padding: 28px 20px;
-	border: 1.5px dashed color-mix(in oklch, var(--ctd-ink) 25%, transparent);
+	border: 1.5px dashed
+		var(--drop-border, color-mix(in oklch, var(--ctd-ink) 25%, transparent));
 	border-radius: 8px;
+	background: var(--drop-bg, transparent);
 	text-align: center;
 }
 
@@ -178,6 +207,12 @@
 	}
 }
 
+@keyframes upload-sheet-fade-out {
+	to {
+		opacity: 0;
+	}
+}
+
 @keyframes upload-sheet-in {
 	from {
 		transform: translate(-50%, -10px);
@@ -185,10 +220,10 @@
 	}
 }
 
-@media (prefers-reduced-motion: reduce) {
-	.overlay[data-state="open"],
-	.content[data-state="open"] {
-		animation: none;
+@keyframes upload-sheet-out {
+	to {
+		transform: translate(-50%, -6px);
+		opacity: 0;
 	}
 }
 
@@ -225,6 +260,11 @@
 		animation: upload-sheet-rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
+	/* One motion out: the page slides back down. */
+	.content[data-state="closed"] {
+		animation: upload-sheet-sink 240ms cubic-bezier(0.4, 0, 1, 1) forwards;
+	}
+
 	.header {
 		display: grid;
 		grid-template-columns: 1fr auto 1fr;
@@ -252,7 +292,6 @@
 		font-size: 17px;
 		font-weight: 600;
 		color: var(--ctd-link);
-		cursor: pointer;
 	}
 
 	.title {
@@ -302,7 +341,6 @@
 		font: inherit;
 		font-size: 17px;
 		color: color-mix(in oklch, var(--ctd-danger-bg) 88%, var(--ctd-ink));
-		cursor: pointer;
 	}
 
 	.empty {
@@ -366,5 +404,19 @@
 		from {
 			transform: translateY(100%);
 		}
+	}
+
+	@keyframes upload-sheet-sink {
+		to {
+			transform: translateY(100%);
+		}
+	}
+}
+
+/* Last, so it also wins over the phone layout's motion. */
+@media (prefers-reduced-motion: reduce) {
+	.overlay[data-state],
+	.content[data-state] {
+		animation: none;
 	}
 }

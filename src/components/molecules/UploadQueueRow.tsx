@@ -1,5 +1,4 @@
 import clsx from "clsx";
-import { Hourglass, type THourglassStyle } from "@/components/atoms/Hourglass";
 import { MotifCover } from "@/components/atoms/MotifCover";
 import { UploadProgressRing } from "@/components/atoms/UploadProgressRing";
 import {
@@ -7,16 +6,12 @@ import {
 	ChevronRightGlyph,
 	XmarkGlyph,
 } from "@/components/icons/UploadGlyphs";
-import { Button, IconButton, Spinner, Tooltip } from "@/components/ui";
-import type { Countdown } from "@/lib/uploads/countdown";
+import { Button, IconButton, Spinner } from "@/components/ui";
 import { type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import styles from "./UploadQueueRow.module.css";
 
 export interface UploadQueueRowProps {
 	item: QueueItem;
-	/** How long a ready book has left to be added. */
-	countdown?: Countdown;
-	hourglass?: THourglassStyle;
 	onReview?: () => void;
 	onRetry?: () => void;
 	onRemove?: () => void;
@@ -63,8 +58,6 @@ const Thumbnail = ({ item }: { item: QueueItem }) => {
 /** One file in the upload queue, with what's happening to it and what you can do. */
 export const UploadQueueRow = ({
 	item,
-	countdown,
-	hourglass,
 	onReview,
 	onRetry,
 	onRemove,
@@ -95,31 +88,17 @@ export const UploadQueueRow = ({
 					<Spinner size={18} aria-label={subtitle(item)} />
 				)}
 				{item.phase === UploadPhase.ready && (
-					<>
-						{countdown && (
-							<Tooltip label={countdown.description}>
-								<span className={styles.countdown}>
-									<Hourglass
-										variant={hourglass}
-										fraction={countdown.fraction}
-										urgent={countdown.urgent}
-										label={countdown.description}
-									/>
-								</span>
-							</Tooltip>
-						)}
-						{/* On phones the whole row taps through to review (the
-						    button stretches over it) and shows a chevron instead. */}
-						<Button
-							size="sm"
-							className={styles.review}
-							onClick={onReview}
-							aria-label={`Review ${item.name}`}
-						>
-							<span className={styles.reviewLabel}>Review</span>
-							<ChevronRightGlyph className={styles.chevron} />
-						</Button>
-					</>
+					// On phones the whole row taps through to review (the button
+					// stretches over it) and shows a chevron instead.
+					<Button
+						size="sm"
+						className={styles.review}
+						onClick={onReview}
+						aria-label={`Review ${item.name}`}
+					>
+						<span className={styles.reviewLabel}>Review</span>
+						<ChevronRightGlyph className={styles.chevron} />
+					</Button>
 				)}
 				{item.phase === UploadPhase.failed && item.file && (
 					<Button size="sm" onClick={onRetry}>
