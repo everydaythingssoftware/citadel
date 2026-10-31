@@ -26,6 +26,8 @@ export interface UploadReviewProps {
 	authorSuggestions?: string[];
 	/** Back to the whole queue. */
 	onBack: () => void;
+	/** Closes the sheet; shown on phones, where this bar is the navigation bar. */
+	onDone?: () => void;
 }
 
 /** Reviews ready books one card at a time: page between them, then add or skip. */
@@ -34,6 +36,7 @@ export const UploadReview = ({
 	motion = AddedMotion.deal,
 	authorSuggestions,
 	onBack,
+	onDone,
 }: UploadReviewProps) => {
 	const { current, leaving, entered } = deck;
 	const adding = current?.phase === UploadPhase.adding;
@@ -42,7 +45,8 @@ export const UploadReview = ({
 			<header className={styles.header}>
 				<button type="button" className={styles.back} onClick={onBack}>
 					<ChevronLeftGlyph />
-					All uploads
+					<span className={styles.backWide}>All uploads</span>
+					<span className={styles.backNarrow}>Uploads</span>
 				</button>
 				<nav className={styles.pager} aria-label="Ready books">
 					<IconButton
@@ -65,9 +69,14 @@ export const UploadReview = ({
 						<ChevronRightGlyph />
 					</IconButton>
 				</nav>
+				{onDone && (
+					<button type="button" className={styles.done} onClick={onDone}>
+						Done
+					</button>
+				)}
 			</header>
 
-			<div className={styles.stage} data-motion={motion}>
+			<div className={styles.stage} data-motion={motion} {...deck.swipe}>
 				{leaving && (
 					<div
 						key={`leaving-${leaving.item.key}`}

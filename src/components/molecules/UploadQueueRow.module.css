@@ -1,4 +1,5 @@
 .row {
+	position: relative;
 	display: grid;
 	grid-template-columns: 36px minmax(0, 1fr) auto;
 	gap: 12px;
@@ -73,6 +74,22 @@
 	padding: 4px;
 }
 
+.chevron {
+	display: none;
+}
+
+/* Touch screens: every control is at least 44 × 44 pt (Apple HIG). */
+@media (pointer: coarse), (max-width: 36em) {
+	.trailing button {
+		min-width: 44px;
+		min-height: 44px;
+	}
+
+	.trailing {
+		gap: 4px;
+	}
+}
+
 @media (max-width: 36em) {
 	.row {
 		grid-template-columns: 40px minmax(0, 1fr) auto;
@@ -87,5 +104,38 @@
 
 	.subtitle {
 		font-size: 13px;
+	}
+
+	/* The whole row is the review target, ending in a disclosure chevron. */
+	.review {
+		position: static;
+		border: 0;
+		background: transparent;
+		box-shadow: none;
+		padding: 0;
+		color: var(--ctd-ink-soft);
+		font-size: 17px;
+	}
+
+	.review::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+	}
+
+	.review:active::after {
+		background: var(--ctd-nav-hover-bg);
+	}
+
+	.reviewLabel {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+
+	.chevron {
+		display: block;
 	}
 }

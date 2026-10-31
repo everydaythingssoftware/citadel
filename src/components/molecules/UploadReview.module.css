@@ -180,8 +180,20 @@
 	}
 }
 
-.peek {
+.peek,
+.done,
+.backNarrow {
 	display: none;
+}
+
+/* Touch screens: every control is at least 44 × 44 pt (Apple HIG). */
+@media (pointer: coarse) {
+	.back,
+	.pager :global(button),
+	.footer :global(button) {
+		min-width: 44px;
+		min-height: 44px;
+	}
 }
 
 .dots {
@@ -221,19 +233,62 @@
 		flex: 1;
 	}
 
+	/* The review's bar is the phone's navigation bar: back, where you are, Done. */
 	.header {
-		padding-bottom: 8px;
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		min-height: 52px;
+		margin: 0 -16px 8px;
+		padding: env(safe-area-inset-top) 8px 0;
+		border-bottom: 1px solid var(--ctd-border);
 	}
 
 	.back {
+		justify-self: start;
 		min-height: 44px;
-		font-size: 15px;
+		padding: 0 8px 0 2px;
+		font-size: 17px;
+		color: var(--ctd-link);
+	}
+
+	.backWide {
+		display: none;
+	}
+
+	.backNarrow {
+		display: inline;
+	}
+
+	/* Swipe and the page dots replace the arrows. */
+	.pager :global(button) {
+		display: none;
+	}
+
+	.position {
+		font-size: 17px;
+		font-weight: 600;
 		color: var(--ctd-ink);
 	}
 
-	.pager :global(button) {
+	.done {
+		display: inline-flex;
+		align-items: center;
+		justify-self: end;
 		min-width: 44px;
 		min-height: 44px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: var(--ctd-radius-control);
+		background: transparent;
+		font: inherit;
+		font-size: 17px;
+		font-weight: 600;
+		color: var(--ctd-link);
+		cursor: pointer;
+	}
+
+	.stage {
+		touch-action: pan-y;
 	}
 
 	.peek {
@@ -273,15 +328,16 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
 		gap: 10px;
-		margin: auto -16px -16px;
-		padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+		margin: auto -16px 0;
+		padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
 		border-top: 1px solid var(--ctd-border);
 		background: var(--ctd-surface);
 	}
 
 	.footer :global(button) {
-		min-height: 52px;
-		font-size: 16px;
+		min-height: 50px;
+		border-radius: 14px;
+		font-size: 17px;
 		font-weight: 600;
 	}
 }

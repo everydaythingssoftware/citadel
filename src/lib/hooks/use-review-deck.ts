@@ -7,6 +7,7 @@ import {
 	reviewedFromForm,
 } from "@/lib/uploads/review";
 import { useKeymap } from "./use-keymap";
+import { type SwipeHandlers, useSwipe } from "./use-swipe";
 
 export const DeckTransition = {
 	forward: "forward",
@@ -42,6 +43,8 @@ export interface ReviewDeck {
 	next: () => void;
 	add: () => Promise<void>;
 	skip: () => Promise<void>;
+	/** Spread on the card area: swipe left for the next book, right for the previous. */
+	swipe: SwipeHandlers;
 }
 
 /**
@@ -142,6 +145,11 @@ export const useReviewDeck = ({
 			: [],
 	);
 
+	const swipe = useSwipe({
+		onSwipeLeft: () => go(1),
+		onSwipeRight: () => go(-1),
+	});
+
 	return {
 		current,
 		index,
@@ -159,5 +167,6 @@ export const useReviewDeck = ({
 		next: () => go(1),
 		add,
 		skip,
+		swipe,
 	};
 };

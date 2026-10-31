@@ -43,6 +43,11 @@ const staticDeck = (items: QueueItem[]): ReviewDeck => {
 		next: () => {},
 		add: async () => {},
 		skip: async () => {},
+		swipe: {
+			onPointerDown: () => {},
+			onPointerUp: () => {},
+			onPointerCancel: () => {},
+		},
 	};
 };
 

@@ -2,7 +2,11 @@ import clsx from "clsx";
 import { Hourglass, type THourglassStyle } from "@/components/atoms/Hourglass";
 import { MotifCover } from "@/components/atoms/MotifCover";
 import { UploadProgressRing } from "@/components/atoms/UploadProgressRing";
-import { AlertGlyph, XmarkGlyph } from "@/components/icons/UploadGlyphs";
+import {
+	AlertGlyph,
+	ChevronRightGlyph,
+	XmarkGlyph,
+} from "@/components/icons/UploadGlyphs";
 import { Button, IconButton, Spinner, Tooltip } from "@/components/ui";
 import type { Countdown } from "@/lib/uploads/countdown";
 import { type QueueItem, UploadPhase } from "@/lib/uploads/queue";
@@ -104,8 +108,16 @@ export const UploadQueueRow = ({
 								</span>
 							</Tooltip>
 						)}
-						<Button size="sm" onClick={onReview}>
-							Review
+						{/* On phones the whole row taps through to review (the
+						    button stretches over it) and shows a chevron instead. */}
+						<Button
+							size="sm"
+							className={styles.review}
+							onClick={onReview}
+							aria-label={`Review ${item.name}`}
+						>
+							<span className={styles.reviewLabel}>Review</span>
+							<ChevronRightGlyph className={styles.chevron} />
 						</Button>
 					</>
 				)}

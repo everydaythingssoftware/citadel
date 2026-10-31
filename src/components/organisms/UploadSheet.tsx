@@ -1,12 +1,12 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import type { THourglassStyle } from "@/components/atoms/Hourglass";
-import { PlusGlyph } from "@/components/icons/UploadGlyphs";
+import { PlusGlyph, UploadGlyph } from "@/components/icons/UploadGlyphs";
 import { UploadQueueRow } from "@/components/molecules/UploadQueueRow";
 import {
 	type TAddedMotion,
 	UploadReview,
 } from "@/components/molecules/UploadReview";
-import { Button, DialogCloseButton } from "@/components/ui";
+import { Button, DialogCloseButton, IconButton } from "@/components/ui";
 import { ignorePopoverInteractOutside } from "@/components/ui/popover-interop";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
 import type { Countdown } from "@/lib/uploads/countdown";
@@ -69,7 +69,13 @@ export const UploadSheet = ({
 				onPointerDownOutside={ignorePopoverInteractOutside}
 				onInteractOutside={ignorePopoverInteractOutside}
 			>
-				<div className={styles.header}>
+				{/* Phones get an iOS navigation bar: Done, the title, and +. */}
+				<div className={styles.header} data-reviewing={reviewing || undefined}>
+					<Dialog.Close asChild>
+						<button type="button" className={styles.done}>
+							Done
+						</button>
+					</Dialog.Close>
 					<Dialog.Title className={styles.title}>
 						{reviewing ? "Review Book" : "Add Books"}
 					</Dialog.Title>
@@ -77,6 +83,15 @@ export const UploadSheet = ({
 						<span className={styles.status}>
 							{summary.ready} of {items.length} ready
 						</span>
+					)}
+					{!reviewing && items.length > 0 && (
+						<IconButton
+							className={styles.addMore}
+							aria-label="Choose more books"
+							onClick={onChooseFiles}
+						>
+							<PlusGlyph />
+						</IconButton>
 					)}
 					<Dialog.Close asChild>
 						<DialogCloseButton className={styles.close} />
@@ -89,6 +104,7 @@ export const UploadSheet = ({
 							motion={motion}
 							authorSuggestions={authorSuggestions}
 							onBack={onBackToQueue}
+							onDone={() => onOpenChange(false)}
 						/>
 					) : (
 						<>
@@ -112,23 +128,54 @@ export const UploadSheet = ({
 									{paused}
 								</p>
 							)}
-							<button
-								type="button"
-								className={styles.dropzone}
-								onClick={onChooseFiles}
-							>
-								<PlusGlyph className={styles.plus} />
-								<span className={styles.dropzoneWide}>
-									{items.length > 0
-										? "Drop more books here or "
-										: "Drop books here or "}
-									<span className={styles.link}>choose files</span>
-								</span>
-								<span className={styles.dropzoneNarrow}>Choose Books</span>
-							</button>
+							{items.length > 0 ? (
+								<>
+									<button
+										type="button"
+										className={styles.dropzone}
+										onClick={onChooseFiles}
+									>
+										<PlusGlyph className={styles.plus} />
+										<span>
+											Drop more books here or{" "}
+											<span className={styles.link}>choose files</span>
+										</span>
+									</button>
+									<button
+										type="button"
+										className={styles.cancelRow}
+										onClick={onCancelAll}
+									>
+										Cancel All Uploads
+									</button>
+								</>
+							) : (
+								<div className={styles.empty}>
+									<UploadGlyph className={styles.emptyGlyph} />
+									<p className={styles.emptyTitle}>Add books to your library</p>
+									<p className={styles.emptyHint}>
+										<span className={styles.wideOnly}>
+											Drop books anywhere on the window, or choose them from
+											your files.
+										</span>
+										<span className={styles.narrowOnly}>
+											Choose books from your files to upload them.
+										</span>
+									</p>
+									<Button
+										variant="primary"
+										className={styles.choose}
+										onClick={onChooseFiles}
+									>
+										Choose Books
+									</Button>
+								</div>
+							)}
 							{items.length > 0 && (
 								<div className={styles.footer}>
-									<Button onClick={onCancelAll}>Cancel All</Button>
+									<Button className={styles.cancelAll} onClick={onCancelAll}>
+										Cancel All
+									</Button>
 									<Button
 										variant="primary"
 										disabled={summary.ready === 0}

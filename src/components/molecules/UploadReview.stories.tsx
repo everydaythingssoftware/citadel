@@ -145,6 +145,11 @@ export const LastBook: Story = {
 						next: () => {},
 						add: async () => {},
 						skip: async () => {},
+						swipe: {
+							onPointerDown: () => {},
+							onPointerUp: () => {},
+							onPointerCancel: () => {},
+						},
 					}}
 				/>
 			</div>

@@ -155,3 +155,26 @@
 	font-size: 12px;
 	color: var(--ctd-danger-bg);
 }
+
+/* Touch screens: larger tokens, and a remove button whose hit area reaches
+   44 × 44 pt (Apple HIG) without changing how it looks. */
+@media (pointer: coarse) {
+	.token {
+		height: 28px;
+		padding: 0 8px 0 10px;
+		gap: 6px;
+		font-size: 15px;
+	}
+
+	.tokenRemove {
+		position: relative;
+		width: 18px;
+		height: 18px;
+	}
+
+	.tokenRemove::after {
+		content: "";
+		position: absolute;
+		inset: -13px;
+	}
+}
