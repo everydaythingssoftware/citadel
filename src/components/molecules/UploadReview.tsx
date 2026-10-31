@@ -5,10 +5,13 @@ import {
 	ChevronRightGlyph,
 } from "@/components/icons/UploadGlyphs";
 import { Button, IconButton } from "@/components/ui";
+import { devFlag } from "@/lib/dev-flags";
+import { useMediaQuery } from "@/lib/hooks/use-media-query";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
 import { useScrolled } from "@/lib/hooks/use-scrolled";
 import { UploadPhase } from "@/lib/uploads/queue";
 import { AddedMotion, CoverCarousel, type TAddedMotion } from "./CoverCarousel";
+import { CoverRow } from "./CoverRow";
 import styles from "./UploadReview.module.css";
 import { UploadReviewCard } from "./UploadReviewCard";
 
@@ -44,6 +47,29 @@ export const UploadReview = ({
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const scrolled = useScrolled(scrollRef);
 	const busy = current?.phase === UploadPhase.adding || deck.leaving;
+	// With a mouse or trackpad, the row moves with Cover Flow's physics;
+	// touch screens scroll natively, unless the flag asks for the physics.
+	const finePointer = useMediaQuery("(pointer: fine)");
+	const physics = finePointer || devFlag("touchCovers") === "physics";
+	const actions = (
+		<>
+			<Button
+				size="md"
+				disabled={!current || busy}
+				onClick={() => void deck.skip()}
+			>
+				Skip
+			</Button>
+			<Button
+				size="md"
+				variant="primary"
+				disabled={!current || busy || deck.form.title.trim() === ""}
+				onClick={() => void deck.add()}
+			>
+				{current?.phase === UploadPhase.adding ? "Adding…" : "Add to Library"}
+			</Button>
+		</>
+	);
 	return (
 		<section className={styles.review} aria-label="Review book">
 			{/* Lifts off the form once the form scrolls under it. */}
@@ -82,13 +108,23 @@ export const UploadReview = ({
 			</header>
 
 			<div ref={scrollRef} className={styles.scroll}>
-				<CoverCarousel
-					items={deck.items}
-					index={deck.index}
-					departing={deck.departing}
-					motion={motion}
-					onSelect={deck.select}
-				/>
+				{physics ? (
+					<CoverRow
+						items={deck.items}
+						index={deck.index}
+						departing={deck.departing}
+						motion={motion}
+						onSelect={deck.select}
+					/>
+				) : (
+					<CoverCarousel
+						items={deck.items}
+						index={deck.index}
+						departing={deck.departing}
+						motion={motion}
+						onSelect={deck.select}
+					/>
+				)}
 				{/* Always there, so the card below doesn't move up as books go. */}
 				<div className={styles.dots} aria-hidden="true">
 					{deck.count > 1 &&
@@ -118,25 +154,12 @@ export const UploadReview = ({
 						tagSuggestions={tagSuggestions}
 					/>
 				)}
+				{/* Phones: the actions end the form, so nothing appears, goes or
+				    resizes when a field brings up the keyboard. */}
+				<div className={styles.formActions}>{actions}</div>
 			</div>
 
-			<footer className={styles.footer}>
-				<Button
-					size="md"
-					disabled={!current || busy}
-					onClick={() => void deck.skip()}
-				>
-					Skip
-				</Button>
-				<Button
-					size="md"
-					variant="primary"
-					disabled={!current || busy || deck.form.title.trim() === ""}
-					onClick={() => void deck.add()}
-				>
-					{current?.phase === UploadPhase.adding ? "Adding…" : "Add to Library"}
-				</Button>
-			</footer>
+			<footer className={styles.footer}>{actions}</footer>
 		</section>
 	);
 };

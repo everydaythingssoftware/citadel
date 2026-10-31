@@ -1,0 +1,122 @@
+/* As tall as a cover, clipping the covers beyond the edges. */
+.row {
+	position: relative;
+	height: calc(var(--cover-width) * 1.5 + 20px);
+	overflow: hidden;
+	/* Vertical swipes still scroll the review; sideways ones move the covers. */
+	touch-action: pan-y;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* Covers are placed from the middle by transforms, set every frame;
+   neighbours shrink from their bottom middle, so all sit on one line. */
+.cover {
+	position: absolute;
+	top: 6px;
+	left: 50%;
+	width: var(--cover-width);
+	margin-left: calc(var(--cover-width) / -2);
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: none;
+	transform-origin: 50% 100%;
+	will-change: transform;
+}
+
+.cover:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.art {
+	display: block;
+	width: 100%;
+	aspect-ratio: 2 / 3;
+	border-radius: 4px;
+	box-shadow: var(--ctd-cover-shadow);
+	pointer-events: none;
+}
+
+/* An added or skipped book leaves from the middle. */
+.departing {
+	z-index: 2000;
+	pointer-events: none;
+}
+
+/* Longhands on purpose: a shorthand without a name minifies to
+   "animation: none" and the variants below would run for 0 ms. */
+.departing .art {
+	animation-duration: 380ms;
+	animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+	animation-fill-mode: forwards;
+}
+
+.row[data-motion="deal"] .departing[data-exit="added"] .art {
+	animation-name: cover-deal;
+}
+
+.row[data-motion="shelve"] .departing[data-exit="added"] .art {
+	animation-name: cover-shelve;
+}
+
+.row[data-motion="lift"] .departing[data-exit="added"] .art {
+	animation-name: cover-lift;
+}
+
+.departing[data-exit="skipped"] .art {
+	animation-name: cover-skip;
+}
+
+@keyframes cover-deal {
+	30% {
+		transform: translateY(-14px) rotate(-3deg);
+		box-shadow: var(--ctd-shadow-lift);
+	}
+	100% {
+		transform: translate(-180%, 20px) rotate(-14deg);
+		opacity: 0;
+	}
+}
+
+@keyframes cover-shelve {
+	30% {
+		transform: translateY(-10px);
+	}
+	100% {
+		transform: translateY(70%) scale(0.3);
+		opacity: 0;
+	}
+}
+
+@keyframes cover-lift {
+	35% {
+		transform: translateY(-18px) scale(1.06);
+		box-shadow: var(--ctd-shadow-lift);
+	}
+	100% {
+		transform: translateY(-160%) scale(0.9);
+		opacity: 0;
+	}
+}
+
+@keyframes cover-skip {
+	100% {
+		transform: translateY(24px) scale(0.85);
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.row[data-motion] .departing[data-exit] .art {
+		animation-name: cover-fade;
+		animation-duration: 200ms;
+	}
+
+	@keyframes cover-fade {
+		to {
+			opacity: 0;
+		}
+	}
+}

@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useRef } from "react";
-import { MotifCover } from "@/components/atoms/MotifCover";
+import { StagedCover } from "@/components/atoms/StagedCover";
 import { useCarouselScroll } from "@/lib/hooks/use-carousel-scroll";
 import type { DepartingCover } from "@/lib/hooks/use-review-deck";
 import type { QueueItem } from "@/lib/uploads/queue";
@@ -24,17 +24,13 @@ export interface CoverCarouselProps {
 	onSelect: (index: number) => void;
 }
 
-const Cover = ({ item }: { item: QueueItem }) =>
-	item.coverUrl ? (
-		<img
-			className={styles.cover}
-			src={item.coverUrl}
-			alt=""
-			draggable={false}
-		/>
-	) : (
-		<MotifCover className={styles.cover} seed={item.book?.title ?? item.name} />
-	);
+const Cover = ({ item }: { item: QueueItem }) => (
+	<StagedCover
+		className={styles.cover}
+		coverUrl={item.coverUrl}
+		seed={item.book?.title ?? item.name}
+	/>
+);
 
 /** The covers to draw: the ready books, with a departing one back in its place. */
 const slides = (

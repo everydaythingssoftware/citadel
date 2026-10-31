@@ -12,8 +12,8 @@ import { Button } from "@/components/ui";
 import { useFileDrag } from "@/lib/hooks/use-file-drag";
 import { useNow } from "@/lib/hooks/use-now";
 import { useReviewDeck } from "@/lib/hooks/use-review-deck";
-import { countdown } from "@/lib/uploads/countdown";
 import { createWebPlatform } from "@/lib/platform/create";
+import { countdown } from "@/lib/uploads/countdown";
 import { createFakeUploads } from "@/lib/uploads/fake-uploads";
 import {
 	BOOK_EXTENSIONS,
@@ -44,7 +44,7 @@ const meta: Meta<SheetStoryArgs> = {
 		onOpenChange: noop,
 		items: QUEUE,
 		summary: summarize({ items: QUEUE }),
-		indicator: ReviewIndicatorStyle.drafts,
+		indicator: ReviewIndicatorStyle.arrival,
 		reviewing: false,
 		deck: staticDeck(QUEUE),
 		motion: AddedMotion.deal,

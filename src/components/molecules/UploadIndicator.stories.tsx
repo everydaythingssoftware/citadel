@@ -16,7 +16,7 @@ const meta: Meta<typeof UploadIndicator> = {
 	component: UploadIndicator,
 	args: {
 		summary: { active: 2, ready: 1, progress: 0.4, settled: false },
-		variant: ReviewIndicatorStyle.drafts,
+		variant: ReviewIndicatorStyle.arrival,
 		onOpen: () => console.log("open"),
 	},
 	argTypes: {
@@ -61,44 +61,18 @@ export const States: Story = {
 
 const OPTIONS: { variant: TReviewIndicatorStyle; idea: string }[] = [
 	{
-		variant: ReviewIndicatorStyle.drafts,
-		idea: "Two pages waiting; pairs with “Drafts kept until…”.",
+		variant: ReviewIndicatorStyle.arrival,
+		idea: "A book with a sparkle: a new arrival.",
 	},
 	{
-		variant: ReviewIndicatorStyle.tray,
-		idea: "An in-tray: something to deal with, like Mail.",
+		variant: ReviewIndicatorStyle.download,
+		idea: "A book with an arrow down into it: downloaded.",
 	},
-	{
-		variant: ReviewIndicatorStyle.books,
-		idea: "Book spines waiting to be shelved.",
-	},
-	{
-		variant: ReviewIndicatorStyle.dot,
-		idea: "Like an unread marker; pulses in the last stretch.",
-	},
-	{
-		variant: ReviewIndicatorStyle.calendar,
-		idea: "A calendar page showing the day the drafts go.",
-	},
-	{
-		variant: ReviewIndicatorStyle.underline,
-		idea: "No icon; the bottom edge drains as time passes.",
-	},
-	{
-		variant: ReviewIndicatorStyle.fill,
-		idea: "No icon; the background empties as time passes.",
-	},
-	{
-		variant: ReviewIndicatorStyle.text,
-		idea: "No icon; the time left, in words.",
-	},
-	{ variant: ReviewIndicatorStyle.timer, idea: "A stopwatch winding down." },
-	{ variant: ReviewIndicatorStyle.sand, idea: "An hourglass draining." },
 ];
 
 /**
- * Static: ten ways to say books are waiting, each with most of the day
- * left and in the last stretch (brass). Hover any for its tooltip.
+ * Static: new-book icons, each with most of the day left and in the last
+ * stretch, when the button turns brass. Hover any for its tooltip.
  */
 export const Options: Story = {
 	render: () => (

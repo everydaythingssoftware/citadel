@@ -125,11 +125,6 @@
 
 .dropzone:focus-visible,
 .done:focus-visible,
-.cancelRow:focus-visible {
-	outline: none;
-	box-shadow: var(--ctd-focus-shadow);
-}
-
 .plus {
 	font-size: 14px;
 }
@@ -319,16 +314,17 @@
 		display: none;
 	}
 
+	/* At the end of the list, full width, press and hold. */
 	.cancelRow {
-		display: block;
-		width: 100%;
-		min-height: 44px;
-		margin-top: 8px;
-		border: 0;
-		background: transparent;
-		font: inherit;
+		display: flex;
+		margin-top: 12px;
 		font-size: 17px;
-		color: color-mix(in oklch, var(--ctd-danger-bg) 88%, var(--ctd-ink));
+	}
+
+	.cancelRow button {
+		min-height: 48px;
+		border-radius: 14px;
+		font-size: 17px;
 	}
 
 	.empty {
