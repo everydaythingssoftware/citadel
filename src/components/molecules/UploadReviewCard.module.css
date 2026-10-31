@@ -101,6 +101,17 @@
 	padding: 8px 4px 4px;
 }
 
+/* Once unfolded, a field's completion list may hang outside the fields. */
+.more[data-open] .moreFields {
+	animation: details-unclip 0s 260ms forwards;
+}
+
+@keyframes details-unclip {
+	to {
+		overflow: visible;
+	}
+}
+
 /* iOS draws date inputs with their own width and height; make them behave
    like the other fields. */
 .date {

@@ -22,7 +22,9 @@ const MARGIN = 8;
 /**
  * Places a field's completion list inside the visible part of the screen:
  * under the field when it fits (or has more room), otherwise above, never
- * past either edge. With too little room on both sides, or the field out of
+ * past either edge, and never over the field itself. `preferAbove` puts it
+ * above whenever there's room there, as when the field sits on a keyboard.
+ * With too little room on both sides, or the field out of
  * view, there's no list at all rather than a sliver.
  */
 export const placeList = (
@@ -31,13 +33,16 @@ export const placeList = (
 	{
 		preferred = 180,
 		minimum = 64,
-	}: { preferred?: number; minimum?: number } = {},
+		preferAbove = false,
+	}: { preferred?: number; minimum?: number; preferAbove?: boolean } = {},
 ): ListPlacement | undefined => {
 	if (field.bottom <= visible.top || field.top >= visible.bottom)
 		return undefined;
 	const below = visible.bottom - field.bottom - GAP - MARGIN;
 	const aboveSpace = field.top - visible.top - GAP - MARGIN;
-	const above = below < preferred && aboveSpace > below;
+	const above = preferAbove
+		? aboveSpace >= minimum || aboveSpace > below
+		: below < preferred && aboveSpace > below;
 	const space = above ? aboveSpace : below;
 	if (space < minimum) return undefined;
 	return {

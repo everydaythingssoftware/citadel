@@ -8,13 +8,30 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { POPOVER_ATTRIBUTE } from "./popover-interop";
+import { useVisibleViewport } from "@/lib/hooks/use-visible-viewport";
 import {
 	type ListPlacement,
 	placeList,
 	visibleArea,
 } from "@/lib/list-placement";
+import { exactMatchIndex, rankSuggestions } from "@/lib/suggestions";
+import { POPOVER_ATTRIBUTE } from "./popover-interop";
 import styles from "./TagsInput.module.css";
+
+const inBody = (list: React.ReactNode) => createPortal(list, document.body);
+
+/** The nearest ancestor that clips vertically, which an attached list must fit inside. */
+const scrollContainer = (element: HTMLElement): HTMLElement | undefined => {
+	for (
+		let parent = element.parentElement;
+		parent;
+		parent = parent.parentElement
+	) {
+		if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY))
+			return parent;
+	}
+	return undefined;
+};
 
 export interface TagsInputProps {
 	value: string[];
@@ -32,9 +49,10 @@ export interface TagsInputProps {
 
 /**
  * An NSTokenField: committed values render as capsule tokens inside the
- * field, typing filters a completion list below it, and Enter or comma
- * commits the highlighted completion (or free text). Follows the WAI-ARIA
- * combobox/listbox pattern.
+ * field, and typing two or more characters shows completions, best first.
+ * Comma commits what was typed; Enter commits a completion only once one is
+ * chosen with the arrows (or typed exactly), otherwise what was typed.
+ * Follows the WAI-ARIA combobox/listbox pattern.
  */
 export const TagsInput = ({
 	value,
@@ -60,28 +78,36 @@ export const TagsInput = ({
 
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
-	const [highlight, setHighlight] = useState(0);
+	// -1: nothing chosen, so Enter commits what was typed.
+	const [highlight, setHighlight] = useState(-1);
 	const [listRect, setListRect] = useState<ListPlacement | null>(null);
+	const viewport = useVisibleViewport();
+	// Inside a modal dialog, and on touch screens, the list is attached to
+	// its field within whatever scrolls: a body portal sits outside a modal's
+	// scroll lock, so neither touch nor wheel could scroll it. Elsewhere it
+	// floats over everything.
+	const [inDialog, setInDialog] = useState(false);
+	useLayoutEffect(() => {
+		setInDialog(fieldRef.current?.closest('[role="dialog"]') != null);
+	}, []);
+	const attached = viewport.touch || inDialog;
+	const cramped = viewport.cramped;
 
-	const filtered = useMemo(() => {
-		const taken = new Set(value.map((v) => v.toLowerCase()));
-		const needle = query.trim().toLowerCase();
-		return suggestions.filter(
-			(s) =>
-				!taken.has(s.toLowerCase()) &&
-				(needle === "" || s.toLowerCase().includes(needle)),
-		);
-	}, [suggestions, value, query]);
+	const filtered = useMemo(
+		() => rankSuggestions(suggestions, value, query),
+		[suggestions, value, query],
+	);
 
 	const listVisible = open && !disabled && filtered.length > 0;
 	const highlightIndex = Math.min(highlight, filtered.length - 1);
 
-	// The completion list renders in a body portal with fixed positioning, so
-	// it can escape scrolling/overflow ancestors (sheets, drawers) instead of
-	// being clipped by them or stretching them into scrolling. It stays within
-	// the visible screen (above the iOS keyboard), flipping above the field
-	// when that has more room. Re-measure on any scroll/resize (of the page or
-	// the visual viewport) and when typing rewraps the token field.
+	// The list stays within the visible screen (above an on-screen keyboard)
+	// and never covers its field, flipping above it when that has more room.
+	// Floating, it renders in a body portal with fixed positioning, escaping
+	// scrolling ancestors instead of being clipped by them or stretching them
+	// into scrolling; attached, it's measured against its scroll container.
+	// Re-measure on any scroll/resize (of the page or the visual viewport)
+	// and when typing rewraps the token field.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: query/value.length only trigger re-measures.
 	useLayoutEffect(() => {
 		if (!listVisible) {
@@ -89,9 +115,26 @@ export const TagsInput = ({
 			return;
 		}
 		const update = () => {
-			const rect = fieldRef.current?.getBoundingClientRect();
-			if (!rect) return;
-			setListRect(placeList(rect, visibleArea()) ?? null);
+			const field = fieldRef.current;
+			const rect = field?.getBoundingClientRect();
+			if (!field || !rect) return;
+			// Attached, the list must fit its scroll container, measured in
+			// the same coordinates as the field. (Mixing in the visual
+			// viewport's offset misplaced it on iOS once the page had panned
+			// for the keyboard, hiding the list entirely.)
+			const bounds = attached
+				? (scrollContainer(field)?.getBoundingClientRect() ?? {
+						top: 0,
+						bottom: window.innerHeight,
+					})
+				: visibleArea();
+			setListRect(
+				placeList(
+					rect,
+					{ top: bounds.top, bottom: bounds.bottom },
+					{ preferAbove: cramped },
+				) ?? null,
+			);
 		};
 		update();
 		const viewport = window.visualViewport;
@@ -105,7 +148,7 @@ export const TagsInput = ({
 			viewport?.removeEventListener("resize", update);
 			viewport?.removeEventListener("scroll", update);
 		};
-	}, [listVisible, query, value.length]);
+	}, [listVisible, query, value.length, attached, cramped]);
 
 	// Keep the highlighted option scrolled into view.
 	useEffect(() => {
@@ -129,7 +172,7 @@ export const TagsInput = ({
 		onChange([...value, canonical]);
 		setQuery("");
 		setOpen(false);
-		setHighlight(0);
+		setHighlight(-1);
 		return true;
 	};
 
@@ -137,9 +180,10 @@ export const TagsInput = ({
 		onChange(value.filter((v) => v !== token));
 	};
 
-	const commitCurrent = () => {
-		const highlighted = listVisible ? filtered[highlightIndex] : undefined;
-		return addToken(highlighted ?? query);
+	const commitChosen = () => {
+		const chosen =
+			listVisible && highlightIndex >= 0 ? filtered[highlightIndex] : undefined;
+		return addToken(chosen ?? query);
 	};
 
 	const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -147,18 +191,18 @@ export const TagsInput = ({
 			case "Enter":
 				if (listVisible || query.trim() !== "") {
 					event.preventDefault();
-					commitCurrent();
+					commitChosen();
 				}
 				break;
 			case ",":
+				// A comma ends what was typed, never swaps in a suggestion.
 				event.preventDefault();
-				commitCurrent();
+				addToken(query);
 				break;
 			case "ArrowDown":
 				event.preventDefault();
 				if (!listVisible) {
 					setOpen(true);
-					setHighlight(0);
 				} else {
 					setHighlight(Math.min(highlightIndex + 1, filtered.length - 1));
 				}
@@ -166,7 +210,8 @@ export const TagsInput = ({
 			case "ArrowUp":
 				if (listVisible) {
 					event.preventDefault();
-					setHighlight(Math.max(highlightIndex - 1, 0));
+					// Above the first completion is back to what was typed.
+					setHighlight(Math.max(highlightIndex - 1, -1));
 				}
 				break;
 			case "Escape":
@@ -255,9 +300,15 @@ export const TagsInput = ({
 					disabled={disabled}
 					value={query}
 					onChange={(event) => {
-						setQuery(event.target.value);
+						const typed = event.target.value;
+						setQuery(typed);
 						setOpen(true);
-						setHighlight(0);
+						setHighlight(
+							exactMatchIndex(
+								rankSuggestions(suggestions, value, typed),
+								typed,
+							),
+						);
 					}}
 					onKeyDown={handleKeyDown}
 					onBlur={() => {
@@ -274,21 +325,30 @@ export const TagsInput = ({
 			{/* ARIA combobox pattern: focus stays on the input and aria-activedescendant tracks the option, so the listbox itself is not focusable. */}
 			{listVisible &&
 				listRect &&
-				createPortal(
+				(attached ? (list: React.ReactNode) => list : inBody)(
 					<div
 						id={listboxId}
 						role="listbox"
 						aria-label={label ?? ariaLabel ?? "Suggestions"}
-						className={styles.listbox}
+						className={clsx(styles.listbox, attached && styles.listboxAttached)}
 						{...{ [POPOVER_ATTRIBUTE]: "" }}
-						style={{
-							left: listRect.left,
-							top: listRect.top,
-							width: listRect.width,
-							maxHeight: listRect.maxHeight,
-							// Above the field, the list grows upwards from its edge.
-							transform: listRect.above ? "translateY(-100%)" : undefined,
-						}}
+						style={
+							attached
+								? {
+										maxHeight: listRect.maxHeight,
+										...(listRect.above
+											? { bottom: "calc(100% + 4px)" }
+											: { top: "calc(100% + 4px)" }),
+									}
+								: {
+										left: listRect.left,
+										top: listRect.top,
+										width: listRect.width,
+										maxHeight: listRect.maxHeight,
+										// Above the field, the list grows upwards from its edge.
+										transform: listRect.above ? "translateY(-100%)" : undefined,
+									}
+						}
 					>
 						{filtered.map((suggestion, index) => (
 							// biome-ignore lint/a11y/useFocusableInteractive: see listbox note above.
@@ -312,7 +372,6 @@ export const TagsInput = ({
 							</div>
 						))}
 					</div>,
-					document.body,
 				)}
 		</div>
 	);

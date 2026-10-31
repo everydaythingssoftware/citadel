@@ -129,6 +129,7 @@
    rest of the document to pointer-events: none while open. */
 .listbox {
 	position: fixed;
+	overscroll-behavior: contain;
 	pointer-events: auto;
 	overflow-y: auto;
 	padding: 4px;
@@ -177,4 +178,12 @@
 		position: absolute;
 		inset: -13px;
 	}
+}
+
+/* Touch screens: attached to the field, above or below it. */
+.listboxAttached {
+	position: absolute;
+	left: 0;
+	right: 0;
+	-webkit-overflow-scrolling: touch;
 }
