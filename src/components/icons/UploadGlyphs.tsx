@@ -44,6 +44,12 @@ export const ChevronRightGlyph = (props: SVGProps<SVGSVGElement>) => (
 	</Glyph>
 );
 
+export const ChevronDownGlyph = (props: SVGProps<SVGSVGElement>) => (
+	<Glyph {...props}>
+		<path d="m6 9 6 6 6-6" />
+	</Glyph>
+);
+
 export const PlusGlyph = (props: SVGProps<SVGSVGElement>) => (
 	<Glyph {...props}>
 		<path d="M12 5v14M5 12h14" />

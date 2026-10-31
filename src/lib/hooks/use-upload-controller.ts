@@ -12,20 +12,17 @@ import { useUploadsStore } from "@/stores/uploads/store";
 import { useBookUploads } from "./use-book-uploads";
 import { useChooseBookFiles } from "./use-choose-book-files";
 import { useFileDrag } from "./use-file-drag";
-import { LEAVE_MS, useReviewDeck } from "./use-review-deck";
+import { useReviewDeck } from "./use-review-deck";
 
 /**
- * After a book is added or skipped: back to the queue once nothing is left to review,
- * and the sheet closes behind the card's exit once nothing is left at all
- * (unless more books arrived meanwhile).
+ * After a book is added or skipped: the sheet closes once nothing is left at
+ * all, or goes back to the queue once nothing is left to review. Either is
+ * the one motion: the last book's cover stays put rather than leaving too.
  */
 const settleAfterReview = () => {
-	// Let the last cover finish leaving before the review goes away.
-	setTimeout(() => {
-		const store = useUploadsStore.getState();
-		if (visibleItems(store.queue).length === 0) store.closeSheet();
-		else if (readyItems(store.queue).length === 0) store.review(null);
-	}, LEAVE_MS);
+	const store = useUploadsStore.getState();
+	if (visibleItems(store.queue).length === 0) store.closeSheet();
+	else if (readyItems(store.queue).length === 0) store.review(null);
 };
 
 /**
@@ -55,7 +52,7 @@ export const useUploadController = () => {
 	const items = useMemo(() => visibleItems(queue), [queue]);
 	const ready = useMemo(() => readyItems(queue), [queue]);
 	const summary = useMemo(() => summarize(queue), [queue]);
-	// Stays true while the last book's cover leaves; settling then ends it.
+	// Stays true while the sheet closes over the last book; reopening resets it.
 	const reviewing = reviewKey !== null;
 	const deck = useReviewDeck({
 		ready,
@@ -74,11 +71,11 @@ export const useUploadController = () => {
 	});
 
 	// Nothing left to review and nothing leaving (an upload expired, say):
-	// back to the queue.
+	// back to the queue. A closed sheet keeps its last view while it leaves.
 	useEffect(() => {
-		if (reviewing && ready.length === 0 && !deck.departing)
+		if (sheetOpen && reviewing && ready.length === 0 && !deck.departing)
 			useUploadsStore.getState().review(null);
-	}, [reviewing, ready.length, deck.departing]);
+	}, [sheetOpen, reviewing, ready.length, deck.departing]);
 
 	// Tag suggestions load on demand, the first time a review needs them.
 	useEffect(() => {

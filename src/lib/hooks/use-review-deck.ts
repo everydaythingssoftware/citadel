@@ -27,6 +27,11 @@ export interface DepartingCover {
 	/** Where it sat among the ready books. */
 	index: number;
 	exit: TCoverExit;
+	/**
+	 * It was the only book left: the review ends instead, so the cover stays
+	 * put and the book stays current while the review goes away.
+	 */
+	last: boolean;
 }
 
 export interface ReviewDeck {
@@ -41,7 +46,12 @@ export interface ReviewDeck {
 	updateForm: (patch: Partial<ReviewForm>) => void;
 	/** A field lost focus: show its problem from now on and tidy it. */
 	leaveField: (field: ReviewField) => void;
+	/** The optional fields are showing; stays as it is from book to book. */
+	detailsOpen: boolean;
+	toggleDetails: () => void;
 	departing: DepartingCover | undefined;
+	/** The last book has been added or skipped; the review is closing. */
+	leaving: boolean;
 	canPrevious: boolean;
 	canNext: boolean;
 	previous: () => void;
@@ -89,6 +99,7 @@ export const useReviewDeck = ({
 }): ReviewDeck => {
 	const [drafts, setDrafts] = useState<Record<string, Draft>>({});
 	const [departing, setDeparting] = useState<DepartingCover>();
+	const [detailsOpen, setDetailsOpen] = useState(false);
 	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
 	// A book being added leaves the list a moment before the deck moves on;
@@ -100,7 +111,8 @@ export const useReviewDeck = ({
 			? found
 			: Math.max(0, Math.min(lastIndex.current, ready.length - 1));
 	lastIndex.current = index;
-	const current = ready[index];
+	const current =
+		ready[index] ?? (departing?.last ? departing.item : undefined);
 	const draft = useMemo<Draft>(
 		() =>
 			(current && drafts[current.key]) ?? {
@@ -137,35 +149,36 @@ export const useReviewDeck = ({
 		[ready, current, setReviewKey],
 	);
 
-	/** Removes the current book from view: next ready book, else the previous. */
 	/**
 	 * Marks the current book's cover as leaving before the book leaves the
 	 * list, so the carousel keeps its element in place and animates it out.
+	 * Returns the book to show next: the next ready book, else the previous.
 	 */
 	const depart = useCallback(
 		(item: QueueItem, exit: TCoverExit) => {
 			clearTimeout(timer.current);
-			setDeparting({ item, index, exit });
-			// With no other book, stay on this one while its cover leaves.
-			return (ready[index + 1] ?? ready[index - 1])?.key ?? item.key;
+			const neighbour = ready[index + 1] ?? ready[index - 1];
+			setDeparting({ item, index, exit, last: neighbour === undefined });
+			return neighbour?.key ?? item.key;
 		},
 		[index, ready],
 	);
 
-	// The leave animation runs once the book has actually left the list.
+	// The leave animation runs once the book has actually left the list; its
+	// edits are kept until then, so the last book doesn't flick back to what
+	// the file said while the review closes.
 	const departingGone =
 		departing !== undefined &&
 		!ready.some((item) => item.key === departing.item.key);
 	useEffect(() => {
-		if (!departingGone) return;
-		timer.current = setTimeout(() => setDeparting(undefined), LEAVE_MS);
+		if (!departingGone || !departing) return;
+		const key = departing.item.key;
+		timer.current = setTimeout(() => {
+			setDeparting(undefined);
+			setDrafts(({ [key]: _, ...rest }) => rest);
+		}, LEAVE_MS);
 		return () => clearTimeout(timer.current);
-	}, [departingGone]);
-
-	const forget = useCallback(
-		(key: string) => setDrafts(({ [key]: _, ...rest }) => rest),
-		[],
-	);
+	}, [departingGone, departing]);
 
 	const add = useCallback(async () => {
 		if (!current) return;
@@ -177,19 +190,17 @@ export const useReviewDeck = ({
 		const after = depart(item, CoverExit.added);
 		if (await onAdd(item.key, reviewedFromForm(draft.form))) {
 			setReviewKey(after);
-			forget(item.key);
 		} else {
 			setDeparting(undefined);
 		}
-	}, [current, draft, onAdd, depart, saveDraft, setReviewKey, forget]);
+	}, [current, draft, onAdd, depart, saveDraft, setReviewKey]);
 
 	const skip = useCallback(async () => {
 		if (!current) return;
 		const item = current;
 		setReviewKey(depart(item, CoverExit.skipped));
-		forget(item.key);
 		await onSkip(item.key);
-	}, [current, onSkip, depart, setReviewKey, forget]);
+	}, [current, onSkip, depart, setReviewKey]);
 
 	useKeymap(
 		keyboard
@@ -204,7 +215,8 @@ export const useReviewDeck = ({
 		items: ready,
 		current,
 		index,
-		count: ready.length,
+		// The last book still counts while the review closes over it.
+		count: ready.length || (current ? 1 : 0),
 		form: draft.form,
 		errors,
 		updateForm: (patch) =>
@@ -219,9 +231,12 @@ export const useReviewDeck = ({
 					? before.touched
 					: [...before.touched, field],
 			})),
+		detailsOpen,
+		toggleDetails: () => setDetailsOpen((open) => !open),
 		departing,
 		canPrevious: index > 0,
 		canNext: index < ready.length - 1,
+		leaving: departing?.last === true,
 		previous: () => select(index - 1),
 		next: () => select(index + 1),
 		select,

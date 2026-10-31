@@ -12,6 +12,9 @@ import { UploadReviewCard } from "./UploadReviewCard";
 
 export { AddedMotion, type TAddedMotion };
 
+/** Beyond this many books the dots would wrap; the position says it instead. */
+const MAX_DOTS = 15;
+
 export interface UploadReviewProps {
 	deck: ReviewDeck;
 	motion?: TAddedMotion;
@@ -36,7 +39,7 @@ export const UploadReview = ({
 	onDone,
 }: UploadReviewProps) => {
 	const { current } = deck;
-	const adding = current?.phase === UploadPhase.adding;
+	const busy = current?.phase === UploadPhase.adding || deck.leaving;
 	return (
 		<section className={styles.review} aria-label="Review book">
 			<header className={styles.header}>
@@ -81,9 +84,11 @@ export const UploadReview = ({
 					motion={motion}
 					onSelect={deck.select}
 				/>
-				{deck.count > 1 && (
-					<div className={styles.dots} aria-hidden="true">
-						{deck.items.map((item, position) => (
+				{/* Always there, so the card below doesn't move up as books go. */}
+				<div className={styles.dots} aria-hidden="true">
+					{deck.count > 1 &&
+						deck.count <= MAX_DOTS &&
+						deck.items.map((item, position) => (
 							<span
 								key={item.key}
 								className={clsx(
@@ -92,8 +97,7 @@ export const UploadReview = ({
 								)}
 							/>
 						))}
-					</div>
-				)}
+				</div>
 				{current && (
 					<UploadReviewCard
 						// One form per book, so focus and field state don't carry over.
@@ -103,6 +107,8 @@ export const UploadReview = ({
 						message={current.message}
 						onChange={deck.updateForm}
 						onLeaveField={deck.leaveField}
+						detailsOpen={deck.detailsOpen}
+						onToggleDetails={deck.toggleDetails}
 						authorSuggestions={authorSuggestions}
 						tagSuggestions={tagSuggestions}
 					/>
@@ -112,7 +118,7 @@ export const UploadReview = ({
 			<footer className={styles.footer}>
 				<Button
 					size="md"
-					disabled={!current || adding}
+					disabled={!current || busy}
 					onClick={() => void deck.skip()}
 				>
 					Skip
@@ -120,10 +126,10 @@ export const UploadReview = ({
 				<Button
 					size="md"
 					variant="primary"
-					disabled={!current || adding || deck.form.title.trim() === ""}
+					disabled={!current || busy || deck.form.title.trim() === ""}
 					onClick={() => void deck.add()}
 				>
-					{adding ? "Adding…" : "Add to Library"}
+					{current?.phase === UploadPhase.adding ? "Adding…" : "Add to Library"}
 				</Button>
 			</footer>
 		</section>

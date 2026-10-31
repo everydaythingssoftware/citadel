@@ -1,7 +1,18 @@
+/*
+ * Neighbours peek in at the edges by --peek of a cover, whatever the width:
+ * the gap is what's left of half the row once the current cover and the
+ * peek are taken out. Neighbours sit at 0.88 scale, which moves their inner
+ * edge outwards by another 6% of a cover.
+ */
 .carousel {
 	--cover-width: 112px;
-	--cover-gap: 20px;
+	--peek: 0.3;
+	--cover-gap: max(
+		16px,
+		calc(50cqi - var(--cover-width) * (0.56 + var(--peek)))
+	);
 	position: relative;
+	container-type: inline-size;
 }
 
 /* A snapping row; side padding lets the first and last covers centre. */
@@ -171,6 +182,5 @@
 @media (max-width: 36em) {
 	.carousel {
 		--cover-width: 136px;
-		--cover-gap: 16px;
 	}
 }
