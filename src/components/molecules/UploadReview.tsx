@@ -1,10 +1,12 @@
 import clsx from "clsx";
+import { useRef } from "react";
 import {
 	ChevronLeftGlyph,
 	ChevronRightGlyph,
 } from "@/components/icons/UploadGlyphs";
 import { Button, IconButton } from "@/components/ui";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
+import { useScrolled } from "@/lib/hooks/use-scrolled";
 import { UploadPhase } from "@/lib/uploads/queue";
 import { AddedMotion, CoverCarousel, type TAddedMotion } from "./CoverCarousel";
 import styles from "./UploadReview.module.css";
@@ -39,10 +41,13 @@ export const UploadReview = ({
 	onDone,
 }: UploadReviewProps) => {
 	const { current } = deck;
+	const scrollRef = useRef<HTMLDivElement>(null);
+	const scrolled = useScrolled(scrollRef);
 	const busy = current?.phase === UploadPhase.adding || deck.leaving;
 	return (
 		<section className={styles.review} aria-label="Review book">
-			<header className={styles.header}>
+			{/* Lifts off the form once the form scrolls under it. */}
+			<header className={styles.header} data-scrolled={scrolled || undefined}>
 				<button type="button" className={styles.back} onClick={onBack}>
 					<ChevronLeftGlyph />
 					<span className={styles.backWide}>All uploads</span>
@@ -76,7 +81,7 @@ export const UploadReview = ({
 				)}
 			</header>
 
-			<div className={styles.scroll}>
+			<div ref={scrollRef} className={styles.scroll}>
 				<CoverCarousel
 					items={deck.items}
 					index={deck.index}

@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useState } from "react";
 import { type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import {
-	inHours,
 	sampleBook as book,
+	inHours,
 	sampleQueue,
 } from "@/lib/uploads/story-fixtures";
 import { UploadQueueRow } from "./UploadQueueRow";

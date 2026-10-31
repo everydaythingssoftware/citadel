@@ -4,6 +4,20 @@ import { usePrefersReducedMotion } from "./use-reduced-motion";
 /** Scroll quiet for this long counts as the end of a programmatic scroll. */
 const SETTLE_MS = 120;
 
+/** Sideways wheel travel (trackpad pixels) that moves to the next book. */
+const PAGE_TRAVEL = 36;
+/** Wheel quiet for this long ends a trackpad gesture and its momentum. */
+const GESTURE_END_MS = 140;
+/** How far the row can be pulled past either end, at most. */
+const STRETCH_LIMIT = 56;
+
+/** Rubber-band resistance: the further you pull, the less it gives. */
+export const stretchFor = (travel: number): number => {
+	const pull = Math.abs(travel);
+	const give = STRETCH_LIMIT * (1 - 1 / (pull / (STRETCH_LIMIT * 1.6) + 1));
+	return Math.sign(travel) * give;
+};
+
 const slideAt = (element: HTMLElement, target: number) =>
 	element.querySelector<HTMLElement>(`[data-slide-index="${target}"]`);
 
@@ -52,6 +66,8 @@ export const useCarouselScroll = ({
 	// The index the person's own swiping chose; the track is already there.
 	const swiped = useRef<number | undefined>(undefined);
 	const first = useRef(true);
+	const indexRef = useRef(index);
+	indexRef.current = index;
 
 	useEffect(() => {
 		const element = track.current;
@@ -71,6 +87,77 @@ export const useCarouselScroll = ({
 		first.current = false;
 	}, [track, index, paused, reduced]);
 
+	// Trackpads and mouse wheels page instead of scrolling: snapping across a
+	// whole cover's width took a long, hard swipe. One gesture (with its
+	// momentum) moves one book; past either end the row stretches and springs
+	// back. Vertical wheeling is left to scroll the page. Touch never sends
+	// wheel events, so swiping on phones is untouched.
+	useEffect(() => {
+		const element = track.current;
+		if (!element || paused) return;
+		let travel = 0;
+		let paged = false;
+		let lastPull = 0;
+		let pagedAt = 0;
+		let quiet: ReturnType<typeof setTimeout> | undefined;
+		const stretch = (amount: number) => {
+			element.style.transition = "none";
+			element.style.transform =
+				amount === 0 ? "" : `translateX(${-stretchFor(amount)}px)`;
+		};
+		const springBack = () => {
+			if (!element.style.transform) return;
+			element.style.transition = reduced
+				? "none"
+				: "transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1)";
+			element.style.transform = "";
+		};
+		const endGesture = () => {
+			travel = 0;
+			paged = false;
+			lastPull = 0;
+			springBack();
+		};
+		const onWheel = (event: WheelEvent) => {
+			if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+			event.preventDefault();
+			clearTimeout(quiet);
+			quiet = setTimeout(endGesture, GESTURE_END_MS);
+			const pull = Math.abs(event.deltaX);
+			// Momentum only ever fades; a pull growing again after a page is
+			// a fresh swipe, so it can page again.
+			if (
+				paged &&
+				pull > lastPull * 1.5 &&
+				pull > 4 &&
+				performance.now() - pagedAt > 180
+			) {
+				paged = false;
+				travel = 0;
+			}
+			lastPull = pull;
+			if (paged) return;
+			travel += event.deltaX;
+			const target = indexRef.current + Math.sign(travel);
+			if (!slideAt(element, target)) {
+				if (!reduced) stretch(travel);
+				return;
+			}
+			if (Math.abs(travel) < PAGE_TRAVEL) return;
+			paged = true;
+			pagedAt = performance.now();
+			travel = 0;
+			onSelectRef.current(target);
+		};
+		element.addEventListener("wheel", onWheel, { passive: false });
+		return () => {
+			clearTimeout(quiet);
+			element.removeEventListener("wheel", onWheel);
+			element.style.transform = "";
+			element.style.transition = "";
+		};
+	}, [track, paused, reduced]);
+
 	useEffect(() => {
 		const element = track.current;
 		if (!element || paused) return;
@@ -86,20 +173,18 @@ export const useCarouselScroll = ({
 			swiped.current = nearest;
 			onSelectRef.current(nearest);
 		};
-		// A touch or wheel means the person has taken over from any glide.
+		// A touch means the person has taken over from any glide.
 		const takeOver = () => {
 			programmatic.current = false;
 		};
 		element.addEventListener("scroll", onScroll, { passive: true });
 		element.addEventListener("pointerdown", takeOver, { passive: true });
 		element.addEventListener("touchstart", takeOver, { passive: true });
-		element.addEventListener("wheel", takeOver, { passive: true });
 		return () => {
 			clearTimeout(settle);
 			element.removeEventListener("scroll", onScroll);
 			element.removeEventListener("pointerdown", takeOver);
 			element.removeEventListener("touchstart", takeOver);
-			element.removeEventListener("wheel", takeOver);
 		};
 	}, [track, index, paused]);
 };

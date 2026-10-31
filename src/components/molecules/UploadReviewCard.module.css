@@ -8,6 +8,7 @@
 .more {
 	border-top: 1px solid var(--ctd-border);
 	padding-top: 4px;
+	container-type: inline-size;
 }
 
 /* Closed: a full-width row, like a settings cell, saying what's inside. */
@@ -44,16 +45,22 @@
 
 .disclosureHint {
 	flex: 1;
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
 	white-space: nowrap;
 	text-align: right;
 	color: var(--disclosure-soft);
 }
 
+/* The hint shows whole or not at all. */
+@container (width < 360px) {
+	.disclosureHint {
+		display: none;
+	}
+}
+
 .disclosureChevron {
 	flex: none;
+	/* At the row's end, with or without the hint. */
+	margin-left: auto;
 	font-size: 14px;
 	color: var(--disclosure-soft);
 	transition: transform 240ms ease;
@@ -144,7 +151,8 @@
 		font-size: 17px;
 	}
 
+	/* Phones: just the label and chevron. */
 	.disclosureHint {
-		font-size: 15px;
+		display: none;
 	}
 }

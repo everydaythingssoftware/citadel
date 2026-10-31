@@ -67,7 +67,7 @@ export const UploadReviewCard = ({
 					onClick={onToggleDetails}
 				>
 					<span className={styles.disclosureLabel}>
-						{detailsOpen ? "More Details" : "Add More Details"}
+						{detailsOpen ? "More details" : "Add more details"}
 					</span>
 					{!detailsOpen && (
 						<span className={styles.disclosureHint}>
