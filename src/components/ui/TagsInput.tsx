@@ -9,6 +9,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { POPOVER_ATTRIBUTE } from "./popover-interop";
+import {
+	type ListPlacement,
+	placeList,
+	visibleArea,
+} from "@/lib/list-placement";
 import styles from "./TagsInput.module.css";
 
 export interface TagsInputProps {
@@ -56,12 +61,7 @@ export const TagsInput = ({
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
 	const [highlight, setHighlight] = useState(0);
-	const [listRect, setListRect] = useState<{
-		left: number;
-		top: number;
-		width: number;
-		maxHeight: number;
-	} | null>(null);
+	const [listRect, setListRect] = useState<ListPlacement | null>(null);
 
 	const filtered = useMemo(() => {
 		const taken = new Set(value.map((v) => v.toLowerCase()));
@@ -78,8 +78,10 @@ export const TagsInput = ({
 
 	// The completion list renders in a body portal with fixed positioning, so
 	// it can escape scrolling/overflow ancestors (sheets, drawers) instead of
-	// being clipped by them or stretching them into scrolling. Re-measure on
-	// any scroll/resize and when typing rewraps the token field.
+	// being clipped by them or stretching them into scrolling. It stays within
+	// the visible screen (above the iOS keyboard), flipping above the field
+	// when that has more room. Re-measure on any scroll/resize (of the page or
+	// the visual viewport) and when typing rewraps the token field.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: query/value.length only trigger re-measures.
 	useLayoutEffect(() => {
 		if (!listVisible) {
@@ -89,20 +91,19 @@ export const TagsInput = ({
 		const update = () => {
 			const rect = fieldRef.current?.getBoundingClientRect();
 			if (!rect) return;
-			const top = rect.bottom + 4;
-			setListRect({
-				left: rect.left,
-				top,
-				width: rect.width,
-				maxHeight: Math.min(180, window.innerHeight - top - 8),
-			});
+			setListRect(placeList(rect, visibleArea()) ?? null);
 		};
 		update();
+		const viewport = window.visualViewport;
 		window.addEventListener("resize", update);
 		window.addEventListener("scroll", update, true);
+		viewport?.addEventListener("resize", update);
+		viewport?.addEventListener("scroll", update);
 		return () => {
 			window.removeEventListener("resize", update);
 			window.removeEventListener("scroll", update, true);
+			viewport?.removeEventListener("resize", update);
+			viewport?.removeEventListener("scroll", update);
 		};
 	}, [listVisible, query, value.length]);
 
@@ -285,6 +286,8 @@ export const TagsInput = ({
 							top: listRect.top,
 							width: listRect.width,
 							maxHeight: listRect.maxHeight,
+							// Above the field, the list grows upwards from its edge.
+							transform: listRect.above ? "translateY(-100%)" : undefined,
 						}}
 					>
 						{filtered.map((suggestion, index) => (
