@@ -8,13 +8,13 @@ afterEach(() => {
 describe("developer flags", () => {
 	it("reads a known value and falls back to the default otherwise", () => {
 		const stored: Record<string, string> = {
-			"citadel:hourglass": "ring",
+			"citadel:reviewIndicator": "calendar",
 			"citadel:dropFan": "nonsense",
 		};
 		vi.stubGlobal("localStorage", {
 			getItem: (key: string) => stored[key] ?? null,
 		});
-		expect(devFlag("hourglass")).toBe("ring");
+		expect(devFlag("reviewIndicator")).toBe("calendar");
 		expect(devFlag("dropFan")).toBe("paintings");
 		expect(devFlag("addedMotion")).toBe("deal");
 	});

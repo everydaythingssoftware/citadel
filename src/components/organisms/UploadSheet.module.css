@@ -104,17 +104,13 @@
 	gap: 6px;
 	width: 100%;
 	margin-top: 12px;
-	padding: var(--drop-padding, 18px) 14px;
-	border: 1.5px dashed
-		var(--drop-border, color-mix(in oklch, var(--ctd-ink) 25%, transparent));
+	padding: 18px 14px;
+	border: 1.5px dashed color-mix(in oklch, var(--ctd-ink) 25%, transparent);
 	border-radius: 8px;
-	background: var(--drop-bg, transparent);
+	background: transparent;
 	font: inherit;
-	font-size: var(--drop-size, 13px);
-	font-weight: var(--drop-weight, normal);
-	color: var(--drop-ink, var(--ctd-ink-soft));
-	/* Colours only: the drop area's size changes at once, so scrolling to
-	   it lands on its final height. */
+	font-size: 13px;
+	color: var(--ctd-ink-soft);
 	transition:
 		background-color 180ms ease,
 		border-color 180ms ease;
@@ -123,16 +119,6 @@
 .dropzone:hover {
 	border-color: var(--ctd-brass);
 	color: var(--ctd-ink);
-}
-
-/* Dragging books over the open sheet: the drop area grows to meet them. */
-.content[data-dragging] {
-	--drop-border: var(--ctd-brass);
-	--drop-bg: color-mix(in oklch, var(--ctd-brass) 10%, transparent);
-	--drop-ink: var(--ctd-ink);
-	--drop-padding: 40px;
-	--drop-size: 15px;
-	--drop-weight: 500;
 }
 
 .dropzone:focus-visible,
@@ -160,10 +146,8 @@
 	gap: 6px;
 	margin-top: 12px;
 	padding: 28px 20px;
-	border: 1.5px dashed
-		var(--drop-border, color-mix(in oklch, var(--ctd-ink) 25%, transparent));
+	border: 1.5px dashed color-mix(in oklch, var(--ctd-ink) 25%, transparent);
 	border-radius: 8px;
-	background: var(--drop-bg, transparent);
 	text-align: center;
 }
 
@@ -187,9 +171,12 @@
 .footer {
 	flex: none;
 	display: flex;
-	justify-content: flex-end;
 	gap: 8px;
 	padding: 12px 20px 16px;
+}
+
+.spacer {
+	flex: 1;
 }
 
 .live {
@@ -385,11 +372,13 @@
 		border-top: 1px solid var(--ctd-border);
 		background: var(--ctd-surface);
 		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		justify-content: stretch;
+		/* Like the review's Skip / Add: the secondary action, then the main one. */
+		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+		gap: 10px;
 	}
 
-	.cancelAll {
+	.cancelAll,
+	.spacer {
 		display: none;
 	}
 

@@ -9,7 +9,9 @@ export interface Countdown {
 	expired: boolean;
 	/** "23 h left", "40 min left". */
 	short: string;
-	/** "Review by 3:40 pm tomorrow". */
+	/** When the drafts go. */
+	deadline: Date;
+	/** "Drafts kept until 3:40 pm tomorrow": why the deadline matters. */
 	description: string;
 }
 
@@ -67,8 +69,9 @@ export const countdown = (
 		urgent: !expired && fraction < URGENT_FRACTION,
 		expired,
 		short: shortRemaining(remainingMs),
+		deadline,
 		description: expired
-			? "Time's up for reviewing"
-			: `Review by ${describeDeadline(deadline, now, locale)}`,
+			? "These drafts have expired"
+			: `Drafts kept until ${describeDeadline(deadline, now, locale)}`,
 	};
 };

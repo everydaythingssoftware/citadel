@@ -1,12 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useMemo, useState } from "react";
-import {
-	HourglassStyle,
-	type THourglassStyle,
-} from "@/components/atoms/Hourglass";
 import { CoverFanStyle } from "@/components/molecules/CoverFan";
 import { DropOverlay } from "@/components/molecules/DropOverlay";
-import { UploadIndicator } from "@/components/molecules/UploadIndicator";
+import {
+	ReviewIndicatorStyle,
+	type TReviewIndicatorStyle,
+	UploadIndicator,
+} from "@/components/molecules/UploadIndicator";
 import { AddedMotion } from "@/components/molecules/UploadReview";
 import { Button } from "@/components/ui";
 import { useFileDrag } from "@/lib/hooks/use-file-drag";
@@ -33,7 +33,9 @@ const QUEUE = sampleQueue(now);
 const noop = () => {};
 
 /** The sheet's props, plus the toolbar indicator's countdown style. */
-type SheetStoryArgs = UploadSheetProps & { hourglass?: THourglassStyle };
+type SheetStoryArgs = UploadSheetProps & {
+	indicator?: TReviewIndicatorStyle;
+};
 
 const meta: Meta<SheetStoryArgs> = {
 	component: UploadSheet,
@@ -42,7 +44,7 @@ const meta: Meta<SheetStoryArgs> = {
 		onOpenChange: noop,
 		items: QUEUE,
 		summary: summarize({ items: QUEUE }),
-		hourglass: HourglassStyle.timer,
+		indicator: ReviewIndicatorStyle.drafts,
 		reviewing: false,
 		deck: staticDeck(QUEUE),
 		motion: AddedMotion.deal,
@@ -55,9 +57,9 @@ const meta: Meta<SheetStoryArgs> = {
 		onCancelAll: noop,
 	},
 	argTypes: {
-		hourglass: {
-			control: "inline-radio",
-			options: Object.values(HourglassStyle),
+		indicator: {
+			control: "select",
+			options: Object.values(ReviewIndicatorStyle),
 		},
 		motion: { control: "inline-radio", options: Object.values(AddedMotion) },
 	},
@@ -79,9 +81,6 @@ export const Empty: Story = {
 export const Paused: Story = {
 	args: { paused: "Add or skip some books to keep uploading." },
 };
-
-/** Static: books dragged over the window while the sheet is open. */
-export const Dragging: Story = { args: { dragging: true } };
 
 /** Static: reviewing the first ready book. */
 export const Reviewing: Story = { args: { reviewing: true } };
@@ -107,7 +106,7 @@ const sampleFiles = (round: number) =>
 const pause = (ms: number) => () =>
 	new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const LiveQueue = ({ hourglass, ...args }: SheetStoryArgs) => {
+const LiveQueue = ({ indicator, ...args }: SheetStoryArgs) => {
 	const fake = useMemo(
 		() =>
 			createFakeUploads({
@@ -193,7 +192,7 @@ const LiveQueue = ({ hourglass, ...args }: SheetStoryArgs) => {
 				<UploadIndicator
 					summary={summary}
 					countdown={soonest}
-					hourglass={hourglass}
+					variant={indicator}
 					onOpen={() => store.getState().openSheet()}
 				/>
 				<span style={{ fontSize: 12 }}>
@@ -201,7 +200,7 @@ const LiveQueue = ({ hourglass, ...args }: SheetStoryArgs) => {
 					minutes.
 				</span>
 			</div>
-			<DropOverlay visible={dragging && !open} fan={CoverFanStyle.paintings} />
+			<DropOverlay visible={dragging} fan={CoverFanStyle.paintings} />
 			<UploadSheet
 				{...args}
 				open={open}
@@ -211,7 +210,6 @@ const LiveQueue = ({ hourglass, ...args }: SheetStoryArgs) => {
 				items={visibleItems(queue)}
 				summary={summary}
 				paused={queue.paused}
-				dragging={dragging}
 				reviewing={reviewKey !== null && ready.length > 0}
 				deck={deck}
 				onChooseFiles={chooseFiles}
