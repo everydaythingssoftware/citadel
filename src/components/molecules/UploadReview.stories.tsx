@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { useReviewDeck } from "@/lib/hooks/use-review-deck";
 import { type QueueItem, UploadPhase } from "@/lib/uploads/queue";
-import { inHours, sampleBook } from "@/lib/uploads/story-fixtures";
+import { inHours, sampleBook, staticDeck } from "@/lib/uploads/story-fixtures";
 import { AddedMotion, type TAddedMotion, UploadReview } from "./UploadReview";
 
 const TITLES: [string, string][] = [
@@ -54,7 +54,9 @@ const Deck = ({ motion }: { motion: TAddedMotion }) => {
 		<div style={{ display: "grid", gap: 16, maxWidth: 520 }}>
 			<div
 				style={{
-					padding: 20,
+					display: "flex",
+					height: 700,
+					overflow: "hidden",
 					background: "var(--ctd-surface)",
 					borderRadius: 10,
 					border: "1px solid var(--ctd-border)",
@@ -110,49 +112,20 @@ export const Lift: Story = { args: { motion: AddedMotion.lift } };
 
 /** Static: the last ready book. */
 export const LastBook: Story = {
-	render: () => {
-		const [item] = readyItems();
-		return (
-			<div
-				style={{
-					maxWidth: 520,
-					padding: 20,
-					background: "var(--ctd-surface)",
-					borderRadius: 10,
-				}}
-			>
-				<UploadReview
-					onBack={() => {}}
-					deck={{
-						current: item,
-						index: 0,
-						count: 1,
-						form: {
-							title: "Moby-Dick",
-							authors: ["Herman Melville"],
-							publisher: "",
-							language: "en",
-							tags: [],
-							publicationDate: "",
-							identifier: "",
-						},
-						updateForm: () => {},
-						leaving: undefined,
-						entered: undefined,
-						canPrevious: false,
-						canNext: false,
-						previous: () => {},
-						next: () => {},
-						add: async () => {},
-						skip: async () => {},
-						swipe: {
-							onPointerDown: () => {},
-							onPointerUp: () => {},
-							onPointerCancel: () => {},
-						},
-					}}
-				/>
-			</div>
-		);
-	},
+	render: () => (
+		<div
+			style={{
+				maxWidth: 520,
+				display: "flex",
+				height: 640,
+				background: "var(--ctd-surface)",
+				borderRadius: 10,
+			}}
+		>
+			<UploadReview
+				onBack={() => {}}
+				deck={staticDeck(readyItems().slice(0, 1))}
+			/>
+		</div>
+	),
 };

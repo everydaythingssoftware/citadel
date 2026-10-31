@@ -1,6 +1,8 @@
+/* Header, a scrolling middle, and actions that never scroll away. */
 .review {
 	display: flex;
 	flex-direction: column;
+	flex: 1;
 	min-height: 0;
 }
 
@@ -9,7 +11,8 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
-	padding-bottom: 12px;
+	padding: 10px 20px 6px;
+	flex: none;
 }
 
 .back {
@@ -31,9 +34,15 @@
 	color: var(--ctd-ink);
 }
 
-.back:focus-visible {
+.back:focus-visible,
+.done:focus-visible {
 	outline: none;
 	box-shadow: var(--ctd-focus-shadow);
+}
+
+.backNarrow,
+.done {
+	display: none;
 }
 
 .pager {
@@ -43,147 +52,56 @@
 }
 
 .position {
-	min-width: 52px;
+	min-width: 56px;
 	text-align: center;
 	font-size: 12px;
 	font-variant-numeric: tabular-nums;
 	color: var(--ctd-ink-soft);
+	white-space: nowrap;
 }
 
-/* Cards stack in one grid cell so the leaving card overlays the new one. */
-.stage {
-	position: relative;
-	display: grid;
-	overflow: hidden;
-	/* Room for the focus rings and shadows the clip would cut. */
-	padding: 4px;
-	margin: -4px;
+.scroll {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 0 20px 16px;
+	-webkit-overflow-scrolling: touch;
 }
 
-.card {
-	grid-area: 1 / 1;
-	min-width: 0;
+/* The covers run edge to edge so neighbours peek in from the sides. */
+.scroll > :first-child {
+	margin: 0 -20px;
+}
+
+.dots {
+	display: flex;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 4px 0 18px;
+}
+
+.dot {
+	width: 7px;
+	height: 7px;
+	border-radius: var(--ctd-radius-capsule);
+	background: color-mix(in oklch, var(--ctd-ink) 22%, transparent);
+	transition: background-color 160ms ease;
+}
+
+.dotCurrent {
+	background: var(--ctd-ink);
+}
+
+.footer {
+	flex: none;
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	padding: 12px 20px 16px;
+	border-top: 1px solid var(--ctd-border);
 	background: var(--ctd-surface);
-}
-
-.leaving {
-	pointer-events: none;
-	z-index: 1;
-	animation: 420ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-.entering {
-	animation: 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-/* Paging: cards slide past like a deck turned over. */
-.leaving[data-transition="forward"] {
-	animation-name: review-out-left;
-}
-
-.leaving[data-transition="back"] {
-	animation-name: review-out-right;
-}
-
-.entering[data-transition="forward"],
-.entering[data-transition="added"],
-.entering[data-transition="skipped"] {
-	animation-name: review-in-right;
-}
-
-.entering[data-transition="back"] {
-	animation-name: review-in-left;
-}
-
-.leaving[data-transition="skipped"] {
-	animation-name: review-out-skip;
-}
-
-/* Added: the motion is chosen per sheet. */
-.stage[data-motion="deal"] .leaving[data-transition="added"] {
-	animation-name: review-out-deal;
-}
-
-.stage[data-motion="shelve"] .leaving[data-transition="added"] {
-	animation-name: review-out-shelve;
-	transform-origin: 50% 100%;
-}
-
-.stage[data-motion="lift"] .leaving[data-transition="added"] {
-	animation-name: review-out-lift;
-}
-
-@keyframes review-out-left {
-	to {
-		transform: translateX(-40%);
-		opacity: 0;
-	}
-}
-
-@keyframes review-out-right {
-	to {
-		transform: translateX(40%);
-		opacity: 0;
-	}
-}
-
-@keyframes review-in-right {
-	from {
-		transform: translateX(32%);
-		opacity: 0;
-	}
-}
-
-@keyframes review-in-left {
-	from {
-		transform: translateX(-32%);
-		opacity: 0;
-	}
-}
-
-@keyframes review-out-skip {
-	to {
-		transform: translateY(12px) scale(0.96);
-		opacity: 0;
-	}
-}
-
-@keyframes review-out-deal {
-	30% {
-		transform: translate(-4%, -6px) rotate(-1.5deg);
-		box-shadow: var(--ctd-shadow-lift);
-	}
-	to {
-		transform: translate(-115%, 10px) rotate(-8deg);
-		opacity: 0.4;
-	}
-}
-
-@keyframes review-out-shelve {
-	30% {
-		transform: translateY(-6px);
-	}
-	to {
-		transform: translateY(70%) scale(0.35);
-		opacity: 0;
-	}
-}
-
-@keyframes review-out-lift {
-	35% {
-		transform: translateY(-10px) scale(1.02);
-		box-shadow: var(--ctd-shadow-lift);
-	}
-	to {
-		transform: translateY(-80%) scale(0.92);
-		opacity: 0;
-	}
-}
-
-.peek,
-.done,
-.backNarrow {
-	display: none;
 }
 
 /* Touch screens: every control is at least 44 × 44 pt (Apple HIG). */
@@ -196,49 +114,13 @@
 	}
 }
 
-.dots {
-	display: none;
-}
-
-.footer {
-	display: flex;
-	justify-content: flex-end;
-	gap: 8px;
-	padding-top: 20px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-	/* As specific as the motion rules above, and later, so it wins. */
-	.stage[data-motion] .leaving[data-transition],
-	.stage[data-motion] .entering[data-transition] {
-		animation-name: review-fade;
-		animation-duration: 160ms;
-	}
-
-	.stage[data-motion] .leaving[data-transition] {
-		animation-direction: reverse;
-	}
-
-	@keyframes review-fade {
-		from {
-			opacity: 0;
-		}
-	}
-}
-
-/* Phones: big thumb-sized buttons pinned to the bottom, page dots, and the
-   next ready book peeking in from the right edge. */
+/* Phones: the review's bar is the navigation bar (‹ Uploads, where you are,
+   Done); covers are swiped, so the arrows go; actions sit in thumb reach. */
 @media (max-width: 36em) {
-	.review {
-		flex: 1;
-	}
-
-	/* The review's bar is the phone's navigation bar: back, where you are, Done. */
 	.header {
 		display: grid;
 		grid-template-columns: 1fr auto 1fr;
 		min-height: 52px;
-		margin: 0 -16px 8px;
 		padding: env(safe-area-inset-top) 8px 0;
 		border-bottom: 1px solid var(--ctd-border);
 	}
@@ -259,7 +141,6 @@
 		display: inline;
 	}
 
-	/* Swipe and the page dots replace the arrows. */
 	.pager :global(button) {
 		display: none;
 	}
@@ -287,51 +168,19 @@
 		cursor: pointer;
 	}
 
-	.stage {
-		touch-action: pan-y;
+	.scroll {
+		padding: 12px 16px 24px;
 	}
 
-	.peek {
-		display: block;
-		position: absolute;
-		top: 40px;
-		right: -84px;
-		width: 128px;
-		aspect-ratio: 2 / 3;
-		border-radius: 4px;
-		background: color-mix(in oklch, var(--ctd-ink) 18%, transparent);
-		box-shadow: var(--ctd-cover-shadow);
-		opacity: 0.8;
-	}
-
-	.dots {
-		display: flex;
-		justify-content: center;
-		gap: 6px;
-		padding-top: 12px;
-	}
-
-	.dot {
-		width: 7px;
-		height: 7px;
-		border-radius: var(--ctd-radius-capsule);
-		background: color-mix(in oklch, var(--ctd-ink) 25%, transparent);
-	}
-
-	.dotCurrent {
-		background: var(--ctd-ink);
+	.scroll > :first-child {
+		margin: 0 -16px;
 	}
 
 	.footer {
-		position: sticky;
-		bottom: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
 		gap: 10px;
-		margin: auto -16px 0;
 		padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-		border-top: 1px solid var(--ctd-border);
-		background: var(--ctd-surface);
 	}
 
 	.footer :global(button) {

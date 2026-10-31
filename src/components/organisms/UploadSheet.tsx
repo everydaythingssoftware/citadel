@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import * as Dialog from "@radix-ui/react-dialog";
 import type { THourglassStyle } from "@/components/atoms/Hourglass";
 import { PlusGlyph, UploadGlyph } from "@/components/icons/UploadGlyphs";
@@ -27,6 +28,7 @@ export interface UploadSheetProps {
 	deck: ReviewDeck;
 	motion?: TAddedMotion;
 	authorSuggestions?: string[];
+	tagSuggestions?: string[];
 	onChooseFiles: () => void;
 	onReview: (key: string) => void;
 	onBackToQueue: () => void;
@@ -52,6 +54,7 @@ export const UploadSheet = ({
 	deck,
 	motion,
 	authorSuggestions,
+	tagSuggestions,
 	onChooseFiles,
 	onReview,
 	onBackToQueue,
@@ -97,12 +100,13 @@ export const UploadSheet = ({
 						<DialogCloseButton className={styles.close} />
 					</Dialog.Close>
 				</div>
-				<div className={styles.body}>
+				<div className={clsx(styles.body, reviewing && styles.bodyReview)}>
 					{reviewing ? (
 						<UploadReview
 							deck={deck}
 							motion={motion}
 							authorSuggestions={authorSuggestions}
+							tagSuggestions={tagSuggestions}
 							onBack={onBackToQueue}
 							onDone={() => onOpenChange(false)}
 						/>

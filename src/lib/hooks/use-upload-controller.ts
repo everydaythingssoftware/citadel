@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "@/components/ui";
 import { countdown } from "@/lib/uploads/countdown";
 import {
@@ -11,8 +11,10 @@ import {
 import {
 	LibraryState,
 	useAuthors,
+	useLibraryActions,
 	useLibraryState,
 	useLibraryStore,
+	useTags,
 } from "@/stores/library/store";
 import { useUploadsStore } from "@/stores/uploads/store";
 import { useBookUploads } from "./use-book-uploads";
@@ -22,19 +24,16 @@ import { useNow } from "./use-now";
 import { LEAVE_MS, useReviewDeck } from "./use-review-deck";
 
 /**
- * After a book is added: back to the queue once nothing is left to review,
+ * After a book is added or skipped: back to the queue once nothing is left to review,
  * and the sheet closes behind the card's exit once nothing is left at all
  * (unless more books arrived meanwhile).
  */
-const settleAfterAdding = () => {
-	const store = useUploadsStore.getState();
-	if (visibleItems(store.queue).length > 0) {
-		if (readyItems(store.queue).length === 0) store.review(null);
-		return;
-	}
+const settleAfterReview = () => {
+	// Let the last cover finish leaving before the review goes away.
 	setTimeout(() => {
-		const later = useUploadsStore.getState();
-		if (visibleItems(later.queue).length === 0) later.closeSheet();
+		const store = useUploadsStore.getState();
+		if (visibleItems(store.queue).length === 0) store.closeSheet();
+		else if (readyItems(store.queue).length === 0) store.review(null);
 	}, LEAVE_MS);
 };
 
@@ -53,6 +52,8 @@ export const useUploadController = () => {
 	const sheetOpen = useUploadsStore((state) => state.sheetOpen);
 	const reviewKey = useUploadsStore((state) => state.reviewKey);
 	const authors = useAuthors();
+	const tags = useTags();
+	const libraryActions = useLibraryActions();
 	const now = useNow();
 	const chooseFiles = useChooseBookFiles();
 
@@ -73,7 +74,8 @@ export const useUploadController = () => {
 				: undefined,
 		[now, reviewSeconds],
 	);
-	const reviewing = reviewKey !== null && ready.length > 0;
+	// Stays true while the last book's cover leaves; settling then ends it.
+	const reviewing = reviewKey !== null;
 	const deck = useReviewDeck({
 		ready,
 		reviewKey,
@@ -81,14 +83,33 @@ export const useUploadController = () => {
 		onAdd: async (key, book) => {
 			const added = await useUploadsStore.getState().add(key, book);
 			if (added) {
-				toast.show({ title: "Added to Library", message: book.title });
-				settleAfterAdding();
+				toast.show({
+					title: "Added to Library",
+					message: book.title,
+					duration: 2500,
+				});
+				settleAfterReview();
 			}
 			return added;
 		},
-		onSkip: (key) => useUploadsStore.getState().remove(key),
+		onSkip: async (key) => {
+			await useUploadsStore.getState().remove(key);
+			settleAfterReview();
+		},
 		keyboard: sheetOpen && reviewing,
 	});
+
+	// Nothing left to review and nothing leaving (an upload expired, say):
+	// back to the queue.
+	useEffect(() => {
+		if (reviewing && ready.length === 0 && !deck.departing)
+			useUploadsStore.getState().review(null);
+	}, [reviewing, ready.length, deck.departing]);
+
+	// Tag suggestions load on demand, the first time a review needs them.
+	useEffect(() => {
+		if (reviewing && tags === null) void libraryActions.loadTags();
+	}, [reviewing, tags, libraryActions]);
 
 	const addAll = useCallback(async () => {
 		const count = readyItems(useUploadsStore.getState().queue).length;
@@ -99,7 +120,7 @@ export const useUploadController = () => {
 				title: "Added to Library",
 				message: added === 1 ? "1 book" : `${added} books`,
 			});
-			settleAfterAdding();
+			settleAfterReview();
 		}
 	}, []);
 
@@ -119,6 +140,7 @@ export const useUploadController = () => {
 			reviewing,
 			deck,
 			authorSuggestions: authors.map((author) => author.name),
+			tagSuggestions: (tags ?? []).map((tag) => tag.name),
 			onChooseFiles: chooseFiles,
 			onReview: (key: string) => useUploadsStore.getState().review(key),
 			onBackToQueue: () => useUploadsStore.getState().review(null),

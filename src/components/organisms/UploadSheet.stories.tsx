@@ -8,7 +8,7 @@ import { AddedMotion } from "@/components/molecules/UploadReview";
 import { Button } from "@/components/ui";
 import { useFileDrag } from "@/lib/hooks/use-file-drag";
 import { useNow } from "@/lib/hooks/use-now";
-import { type ReviewDeck, useReviewDeck } from "@/lib/hooks/use-review-deck";
+import { useReviewDeck } from "@/lib/hooks/use-review-deck";
 import { countdown } from "@/lib/uploads/countdown";
 import { createWebPlatform } from "@/lib/platform/create";
 import { createFakeUploads } from "@/lib/uploads/fake-uploads";
@@ -20,38 +20,12 @@ import {
 	UploadPhase,
 	visibleItems,
 } from "@/lib/uploads/queue";
-import { formForBook } from "@/lib/uploads/review";
-import { sampleQueue } from "@/lib/uploads/story-fixtures";
+import { sampleQueue, staticDeck } from "@/lib/uploads/story-fixtures";
 import { useUploadsStore } from "@/stores/uploads/store";
 import { UploadSheet, type UploadSheetProps } from "./UploadSheet";
 
 const now = new Date();
 const QUEUE = sampleQueue(now);
-
-const staticDeck = (items: QueueItem[]): ReviewDeck => {
-	const ready = items.filter((item) => item.phase === UploadPhase.ready);
-	const [current] = ready;
-	return {
-		current,
-		index: 0,
-		count: ready.length,
-		form: formForBook(current?.book),
-		updateForm: () => {},
-		leaving: undefined,
-		entered: undefined,
-		canPrevious: false,
-		canNext: ready.length > 1,
-		previous: () => {},
-		next: () => {},
-		add: async () => {},
-		skip: async () => {},
-		swipe: {
-			onPointerDown: () => {},
-			onPointerUp: () => {},
-			onPointerCancel: () => {},
-		},
-	};
-};
 
 const noop = () => {};
 

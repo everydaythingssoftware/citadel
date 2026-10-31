@@ -2,54 +2,75 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReviewedBook } from "@/lib/services/library";
 import type { QueueItem } from "@/lib/uploads/queue";
 import {
+	canAddForm,
+	fieldProblem,
 	formForBook,
+	type ReviewField,
 	type ReviewForm,
 	reviewedFromForm,
+	tidyField,
 } from "@/lib/uploads/review";
 import { useKeymap } from "./use-keymap";
-import { type SwipeHandlers, useSwipe } from "./use-swipe";
 
-export const DeckTransition = {
-	forward: "forward",
-	back: "back",
+export const CoverExit = {
 	added: "added",
 	skipped: "skipped",
 } as const;
-export type TDeckTransition =
-	(typeof DeckTransition)[keyof typeof DeckTransition];
+export type TCoverExit = (typeof CoverExit)[keyof typeof CoverExit];
 
-/** How long a card takes to leave; matches the CSS animations. */
-export const LEAVE_MS = 420;
+/** How long a departing cover takes to leave; matches the CSS animations. */
+export const LEAVE_MS = 520;
 
-export interface LeavingCard {
+/** A cover on its way out of the carousel after its book was added or skipped. */
+export interface DepartingCover {
 	item: QueueItem;
-	form: ReviewForm;
-	transition: TDeckTransition;
+	/** Where it sat among the ready books. */
+	index: number;
+	exit: TCoverExit;
 }
 
 export interface ReviewDeck {
+	/** The ready books, in carousel order. */
+	items: QueueItem[];
 	current: QueueItem | undefined;
 	index: number;
 	count: number;
 	form: ReviewForm;
+	/** Problems with fields the person has left (or tried to add with). */
+	errors: Partial<Record<ReviewField, string>>;
 	updateForm: (patch: Partial<ReviewForm>) => void;
-	/** The card on its way out, while it animates. */
-	leaving: LeavingCard | undefined;
-	/** How the current card arrived. */
-	entered: TDeckTransition | undefined;
+	/** A field lost focus: show its problem from now on and tidy it. */
+	leaveField: (field: ReviewField) => void;
+	departing: DepartingCover | undefined;
 	canPrevious: boolean;
 	canNext: boolean;
 	previous: () => void;
 	next: () => void;
+	select: (index: number) => void;
 	add: () => Promise<void>;
 	skip: () => Promise<void>;
-	/** Spread on the card area: swipe left for the next book, right for the previous. */
-	swipe: SwipeHandlers;
 }
 
+interface Draft {
+	form: ReviewForm;
+	touched: ReviewField[];
+}
+
+const ALL_FIELDS: ReviewField[] = [
+	"title",
+	"authors",
+	"publisher",
+	"language",
+	"tags",
+	"publicationDate",
+	"identifier",
+];
+
 /**
- * Pages through ready books one card at a time, keeping each card's edits,
- * and animates cards out as they're added, skipped or paged past.
+ * Pages through ready books: the current one's form switches instantly and
+ * keeps each book's unsaved edits, so paging away and back loses nothing.
+ * Added and skipped books leave through a departing cover the carousel
+ * animates.
  */
 export const useReviewDeck = ({
 	ready,
@@ -66,107 +87,145 @@ export const useReviewDeck = ({
 	onSkip: (key: string) => Promise<void>;
 	keyboard?: boolean;
 }): ReviewDeck => {
-	const [drafts, setDrafts] = useState<Record<string, ReviewForm>>({});
-	const [leaving, setLeaving] = useState<LeavingCard>();
-	const [entered, setEntered] = useState<TDeckTransition>();
+	const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+	const [departing, setDeparting] = useState<DepartingCover>();
 	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-	const index = Math.max(
-		0,
-		ready.findIndex((item) => item.key === reviewKey),
-	);
+	// A book being added leaves the list a moment before the deck moves on;
+	// hold the position meanwhile rather than jumping back to the first book.
+	const lastIndex = useRef(0);
+	const found = ready.findIndex((item) => item.key === reviewKey);
+	const index =
+		found >= 0
+			? found
+			: Math.max(0, Math.min(lastIndex.current, ready.length - 1));
+	lastIndex.current = index;
 	const current = ready[index];
-	const form = useMemo(
+	const draft = useMemo<Draft>(
 		() =>
-			current
-				? (drafts[current.key] ?? formForBook(current.book))
-				: formForBook(undefined),
+			(current && drafts[current.key]) ?? {
+				form: formForBook(current?.book),
+				touched: [],
+			},
 		[current, drafts],
+	);
+	const errors = useMemo(
+		() =>
+			Object.fromEntries(
+				draft.touched
+					.map((field) => [field, fieldProblem(draft.form, field)] as const)
+					.filter(([, problem]) => problem !== undefined),
+			) as Partial<Record<ReviewField, string>>,
+		[draft],
 	);
 
 	useEffect(() => () => clearTimeout(timer.current), []);
 
-	const animate = useCallback(
-		(item: QueueItem, itemForm: ReviewForm, transition: TDeckTransition) => {
+	const saveDraft = useCallback(
+		(change: (draft: Draft) => Draft) => {
+			if (!current) return;
+			setDrafts((all) => ({ ...all, [current.key]: change(draft) }));
+		},
+		[current, draft],
+	);
+
+	const select = useCallback(
+		(target: number) => {
+			const item = ready[target];
+			if (item && item.key !== current?.key) setReviewKey(item.key);
+		},
+		[ready, current, setReviewKey],
+	);
+
+	/** Removes the current book from view: next ready book, else the previous. */
+	/**
+	 * Marks the current book's cover as leaving before the book leaves the
+	 * list, so the carousel keeps its element in place and animates it out.
+	 */
+	const depart = useCallback(
+		(item: QueueItem, exit: TCoverExit) => {
 			clearTimeout(timer.current);
-			setLeaving({ item, form: itemForm, transition });
-			setEntered(transition);
-			timer.current = setTimeout(() => setLeaving(undefined), LEAVE_MS);
+			setDeparting({ item, index, exit });
+			// With no other book, stay on this one while its cover leaves.
+			return (ready[index + 1] ?? ready[index - 1])?.key ?? item.key;
 		},
+		[index, ready],
+	);
+
+	// The leave animation runs once the book has actually left the list.
+	const departingGone =
+		departing !== undefined &&
+		!ready.some((item) => item.key === departing.item.key);
+	useEffect(() => {
+		if (!departingGone) return;
+		timer.current = setTimeout(() => setDeparting(undefined), LEAVE_MS);
+		return () => clearTimeout(timer.current);
+	}, [departingGone]);
+
+	const forget = useCallback(
+		(key: string) => setDrafts(({ [key]: _, ...rest }) => rest),
 		[],
-	);
-
-	const go = useCallback(
-		(step: 1 | -1) => {
-			const target = ready[index + step];
-			if (!current || !target) return;
-			animate(
-				current,
-				form,
-				step === 1 ? DeckTransition.forward : DeckTransition.back,
-			);
-			setReviewKey(target.key);
-		},
-		[ready, index, current, form, animate, setReviewKey],
-	);
-
-	/** Moves on from the current card once it's gone: next, else previous. */
-	const neighbour = useCallback(
-		() => (ready[index + 1] ?? ready[index - 1])?.key ?? null,
-		[ready, index],
 	);
 
 	const add = useCallback(async () => {
 		if (!current) return;
-		const key = current.key;
-		const after = neighbour();
-		if (await onAdd(key, reviewedFromForm(form))) {
-			animate(current, form, DeckTransition.added);
-			setReviewKey(after);
-			setDrafts(({ [key]: _, ...rest }) => rest);
+		if (!canAddForm(draft.form)) {
+			saveDraft((before) => ({ ...before, touched: ALL_FIELDS }));
+			return;
 		}
-	}, [current, form, neighbour, onAdd, animate, setReviewKey]);
+		const item = current;
+		const after = depart(item, CoverExit.added);
+		if (await onAdd(item.key, reviewedFromForm(draft.form))) {
+			setReviewKey(after);
+			forget(item.key);
+		} else {
+			setDeparting(undefined);
+		}
+	}, [current, draft, onAdd, depart, saveDraft, setReviewKey, forget]);
 
 	const skip = useCallback(async () => {
 		if (!current) return;
-		const key = current.key;
-		animate(current, form, DeckTransition.skipped);
-		setReviewKey(neighbour());
-		setDrafts(({ [key]: _, ...rest }) => rest);
-		await onSkip(key);
-	}, [current, form, neighbour, onSkip, animate, setReviewKey]);
+		const item = current;
+		setReviewKey(depart(item, CoverExit.skipped));
+		forget(item.key);
+		await onSkip(item.key);
+	}, [current, onSkip, depart, setReviewKey, forget]);
 
 	useKeymap(
 		keyboard
 			? [
-					{ chord: "arrowleft", onMatch: () => go(-1) },
-					{ chord: "arrowright", onMatch: () => go(1) },
+					{ chord: "arrowleft", onMatch: () => select(index - 1) },
+					{ chord: "arrowright", onMatch: () => select(index + 1) },
 				]
 			: [],
 	);
 
-	const swipe = useSwipe({
-		onSwipeLeft: () => go(1),
-		onSwipeRight: () => go(-1),
-	});
-
 	return {
+		items: ready,
 		current,
 		index,
 		count: ready.length,
-		form,
-		updateForm: (patch) => {
-			if (!current) return;
-			setDrafts((all) => ({ ...all, [current.key]: { ...form, ...patch } }));
-		},
-		leaving,
-		entered,
+		form: draft.form,
+		errors,
+		updateForm: (patch) =>
+			saveDraft((before) => ({
+				...before,
+				form: { ...before.form, ...patch },
+			})),
+		leaveField: (field) =>
+			saveDraft((before) => ({
+				form: { ...before.form, ...tidyField(before.form, field) },
+				touched: before.touched.includes(field)
+					? before.touched
+					: [...before.touched, field],
+			})),
+		departing,
 		canPrevious: index > 0,
 		canNext: index < ready.length - 1,
-		previous: () => go(-1),
-		next: () => go(1),
+		previous: () => select(index - 1),
+		next: () => select(index + 1),
+		select,
 		add,
 		skip,
-		swipe,
 	};
 };

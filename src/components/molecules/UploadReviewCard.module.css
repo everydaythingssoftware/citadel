@@ -1,24 +1,3 @@
-.card {
-	display: grid;
-	grid-template-columns: 120px minmax(0, 1fr);
-	gap: 20px;
-	align-items: start;
-	background: var(--ctd-surface);
-}
-
-.cover {
-	display: flex;
-	justify-content: center;
-}
-
-.coverImage {
-	width: 120px;
-	aspect-ratio: 2 / 3;
-	border-radius: 4px;
-	object-fit: cover;
-	box-shadow: var(--ctd-cover-shadow);
-}
-
 .fields {
 	display: flex;
 	flex-direction: column;
@@ -47,10 +26,23 @@
 	padding-top: 8px;
 }
 
-.pair {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-	gap: 12px;
+/* iOS draws date inputs with their own width and height; make them behave
+   like the other fields. */
+.date {
+	-webkit-appearance: none;
+	appearance: none;
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	text-align: left;
+	/* iOS sizes the control by its content; match the text fields. */
+	min-height: 28px;
+	line-height: normal;
+}
+
+.date::-webkit-date-and-time-value {
+	text-align: left;
 }
 
 .error {
@@ -59,17 +51,14 @@
 	color: color-mix(in oklch, var(--ctd-danger-bg) 88%, var(--ctd-ink));
 }
 
-/* Phones: the cover leads, then a plain labelled form with large fields. */
+@media (pointer: coarse) {
+	.summary {
+		min-height: 44px;
+	}
+}
+
+/* Phones: large fields that iOS won't zoom into (16px+ text). */
 @media (max-width: 36em) {
-	.card {
-		grid-template-columns: minmax(0, 1fr);
-		gap: 16px;
-	}
-
-	.coverImage {
-		width: 160px;
-	}
-
 	.fields :global(input) {
 		min-height: 48px;
 		font-size: 17px;
@@ -77,11 +66,7 @@
 
 	.summary {
 		min-height: 48px;
-		font-size: 16px;
+		font-size: 17px;
 		color: var(--ctd-ink);
-	}
-
-	.pair {
-		grid-template-columns: minmax(0, 1fr);
 	}
 }

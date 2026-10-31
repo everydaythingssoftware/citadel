@@ -61,8 +61,18 @@
 }
 
 .body {
+	flex: 1;
+	min-height: 0;
 	overflow-y: auto;
 	padding: 4px 20px 16px;
+}
+
+/* Reviewing: the review scrolls its own middle and pins its actions. */
+.bodyReview {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	padding: 0;
 }
 
 .list {
@@ -203,7 +213,8 @@
 		transform: none;
 		width: 100%;
 		max-height: none;
-		height: 100dvh;
+		/* Pinned to all four edges, so it is exactly the visible viewport. */
+		height: auto;
 		border: 0;
 		border-radius: 0;
 		font-size: 17px;
@@ -265,10 +276,13 @@
 	}
 
 	.body {
-		flex: 1;
 		display: flex;
 		flex-direction: column;
 		padding: 0 16px;
+	}
+
+	.bodyReview {
+		padding: 0;
 	}
 
 	/* The navigation bar's + takes over choosing more. */

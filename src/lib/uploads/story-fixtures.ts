@@ -1,5 +1,7 @@
+import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
 import type { StagedBook } from "@/lib/services/library";
 import { type QueueItem, RejectReason, UploadPhase } from "./queue";
+import { formForBook } from "./review";
 
 /** Sample queue content for stories and previews. */
 export const sampleBook = (title: string, author: string): StagedBook => ({
@@ -94,3 +96,26 @@ export const sampleQueue = (now = new Date()): QueueItem[] => [
 		book: sampleBook("Emma", "Jane Austen"),
 	},
 ];
+
+/** A review deck frozen on its first ready book, for static stories. */
+export const staticDeck = (items: QueueItem[]): ReviewDeck => {
+	const ready = items.filter((item) => item.phase === UploadPhase.ready);
+	return {
+		items: ready,
+		current: ready[0],
+		index: 0,
+		count: ready.length,
+		form: formForBook(ready[0]?.book),
+		errors: {},
+		updateForm: () => {},
+		leaveField: () => {},
+		departing: undefined,
+		canPrevious: false,
+		canNext: ready.length > 1,
+		previous: () => {},
+		next: () => {},
+		select: () => {},
+		add: async () => {},
+		skip: async () => {},
+	};
+};
