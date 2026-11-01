@@ -178,12 +178,12 @@ timeout. The API shares OPDS's request slots; OPDS keeps its own smaller limits.
 ### Uploads
 
 Browsers add books by uploading them in chunks. A staged upload lives in
-`<stateDirectory>/uploads` (created `0700`, emptied at startup), never inside the
-library, and is discarded after an hour without activity. Only the user who
-started an upload can see it. Upload routes:
+`<stateDirectory>/uploads` (created `0700`; files without a record are removed
+at startup), never inside the library, and expires as described below. Only the
+user who started an upload can see it. Upload routes:
 
-- `GET /api/uploads`: the limits (`maxFileBytes`, `chunkBytes`) and your uploads
-  in progress, so a reloaded page can resume.
+- `GET /api/uploads`: the limits (`maxFileBytes`, `chunkBytes`, `reviewSeconds`)
+  and your uploads, so a reloaded page can resume or review them.
 - `POST /api/uploads` with `{"fileName": "Book.epub", "size": 1234}`: starts an
   upload. The extension must be EPUB, MOBI, AZW, AZW3, PDF or TXT.
 - `PATCH /api/uploads/{upload_id}/content` with an `Upload-Offset` header and up to
@@ -212,12 +212,21 @@ Limits can be tuned in an optional `[api.uploads]` table (defaults shown):
 maxFileBytes = 209715200     # 200 MiB per file
 chunkBytes = 8388608         # 8 MiB per request; 64 KiB to 64 MiB
 maxStagedBytes = 2147483648  # 2 GiB reserved across all uploads
-maxUploadsPerUser = 5
+maxUploadsPerUser = 100
+reviewHours = 24             # how long a finished upload waits to be added
 ```
 
 Starting an upload reserves its declared size, so uploads in progress can't
 exceed `maxStagedBytes`; when they would, or a user already has
-`maxUploadsPerUser` uploads, the server answers 507. Behind a reverse proxy,
+`maxUploadsPerUser` uploads, the server answers 507.
+
+Every upload reports `expiresAt`. An unfinished upload is discarded an hour
+after its last chunk. Once a file has been read it gets a fixed deadline of
+`reviewHours` from that moment, which checking on it doesn't extend;
+`GET /api/uploads` reports the window as `reviewSeconds`. The staging
+directory keeps a small record beside each file, so uploads survive a server
+restart: finished ones stay ready to add, and unfinished ones resume from the
+bytes already on disk. Behind a reverse proxy,
 each chunk must fit the proxy's request limit: nginx's `client_max_body_size`
 defaults to 1 MB, so raise it above `chunkBytes` or lower `chunkBytes`.
 Cloudflare's Free and Pro plans accept requests up to 100 MB.
@@ -282,7 +291,7 @@ perUserPerMinute = 30
 
 Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open `publicUrl` in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 
-Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. Editing and imports are still hidden in the browser until it gains those screens; the upload API above is ready for them. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
+Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. When the library is open for writing, books can be added from the browser: drop files anywhere on the window or use Add Book, watch them upload, then review each one (or add them all with the metadata read from their files). Uploads keep going while the sheet is closed, and finished ones wait out the review window across reloads and restarts. Editing existing books is still hidden in the browser. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
 
 For frontend development, set `publicUrl` to the Vite origin (`http://localhost:1420`) and run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 

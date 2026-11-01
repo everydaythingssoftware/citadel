@@ -1,13 +1,15 @@
 //! Staged book uploads. A browser declares a file, sends it in chunks that
 //! stream straight to disk, and gets back the metadata and cover read from
 //! it for review. Staged files live in the server's state directory, never
-//! inside the library, and expire unless the upload stays active.
+//! inside the library. An unfinished upload expires once it goes idle; a
+//! finished one waits a fixed review window for the user to add or skip it.
+//! A small record beside each file lets uploads survive a server restart.
 use std::{
     collections::HashMap,
     io::Cursor,
     path::{Path as FsPath, PathBuf},
     sync::{Arc, Mutex, Weak},
-    time::{Duration, Instant},
+    time::{Duration, SystemTime},
 };
 
 use axum::{
@@ -17,7 +19,7 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use citadel_core::error::{LibraryError, LibraryErrorCode};
 use futures_util::StreamExt;
 use image::ImageReader;
@@ -28,7 +30,8 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use super::{session::SignedIn, thumbnails::resized_jpeg, ApiFailure, ApiState};
 
 const MIB: u64 = 1024 * 1024;
-const EXPIRY: Duration = Duration::from_secs(60 * 60);
+/// An unfinished upload that receives nothing for this long is discarded.
+const IDLE_EXPIRY: Duration = Duration::from_secs(60 * 60);
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 /// A chunk that sends nothing for this long is abandoned.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -44,6 +47,8 @@ pub struct UploadConfig {
     pub chunk_bytes: u64,
     pub max_staged_bytes: u64,
     pub max_uploads_per_user: usize,
+    /// How long a finished upload waits for the user to add or skip it.
+    pub review_hours: u64,
 }
 
 impl Default for UploadConfig {
@@ -52,7 +57,8 @@ impl Default for UploadConfig {
             max_file_bytes: 200 * MIB,
             chunk_bytes: 8 * MIB,
             max_staged_bytes: 2048 * MIB,
-            max_uploads_per_user: 5,
+            max_uploads_per_user: 100,
+            review_hours: 24,
         }
     }
 }
@@ -74,7 +80,14 @@ impl UploadConfig {
         if self.max_uploads_per_user == 0 {
             return Err("api.uploads.maxUploadsPerUser must be at least 1".into());
         }
+        if !(1..=24 * 365).contains(&self.review_hours) {
+            return Err("api.uploads.reviewHours must be between 1 and 8760 (a year)".into());
+        }
         Ok(())
+    }
+
+    fn review_window(&self) -> Duration {
+        Duration::from_secs(self.review_hours * 60 * 60)
     }
 }
 
@@ -83,7 +96,7 @@ pub struct Staging {
     directory: PathBuf,
     config: UploadConfig,
     uploads: Mutex<HashMap<String, Upload>>,
-    now: Box<dyn Fn() -> Instant + Send + Sync>,
+    now: Box<dyn Fn() -> SystemTime + Send + Sync>,
 }
 
 struct Upload {
@@ -94,11 +107,27 @@ struct Upload {
     format: MIMETYPE,
     size: u64,
     received: u64,
-    last_active: Instant,
+    last_active: SystemTime,
     /// A chunk is being written or the upload is being added to the
     /// library; one thing at a time.
     busy: bool,
     book: Option<StagedBook>,
+    /// When the file was read; the review window counts from here.
+    ready_at: Option<SystemTime>,
+}
+
+/// What survives a restart: everything but the received byte count, which
+/// is the staged file's length.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UploadRecord {
+    user_id: String,
+    library_id: String,
+    file_name: String,
+    extension: String,
+    size: u64,
+    book: Option<StagedBook>,
+    ready_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize, utoipa::ToSchema)]
@@ -106,6 +135,8 @@ struct Upload {
 pub(super) struct UploadList {
     max_file_bytes: u64,
     chunk_bytes: u64,
+    /// How long a finished upload waits to be added or skipped.
+    review_seconds: u64,
     uploads: Vec<StagedUpload>,
 }
 
@@ -127,10 +158,13 @@ pub(super) struct StagedUpload {
     received_bytes: u64,
     /// Present once every byte has arrived and the file has been read.
     book: Option<StagedBook>,
+    /// When the server discards the upload: a fixed review deadline once the
+    /// file has been read, otherwise an hour after its last chunk.
+    expires_at: DateTime<Utc>,
 }
 
 /// What the uploaded file says about itself, for the user to review.
-#[derive(Clone, Serialize, utoipa::ToSchema)]
+#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct StagedBook {
     /// The file's format, as its extension (`epub`, `azw3`, …).
@@ -155,35 +189,137 @@ fn not_found() -> ApiFailure {
 }
 
 impl Staging {
-    /// Opens the staging directory, removing anything left by an earlier run:
-    /// uploads only live in memory, so leftover files can't be resumed.
+    /// Opens the staging directory and restores the uploads recorded there by
+    /// an earlier run. Anything without a usable record is removed.
     pub fn open(directory: PathBuf, config: UploadConfig) -> Result<Arc<Self>, String> {
-        Self::open_with_clock(directory, config, Box::new(Instant::now))
+        Self::open_with_clock(directory, config, Box::new(SystemTime::now))
     }
 
     fn open_with_clock(
         directory: PathBuf,
         config: UploadConfig,
-        now: Box<dyn Fn() -> Instant + Send + Sync>,
+        now: Box<dyn Fn() -> SystemTime + Send + Sync>,
     ) -> Result<Arc<Self>, String> {
         let describe =
             |error: std::io::Error| format!("could not prepare {}: {error}", directory.display());
         create_private_dir(&directory).map_err(describe)?;
+        let mut records = Vec::new();
         for entry in std::fs::read_dir(&directory).map_err(describe)? {
             let path = entry.map_err(describe)?.path();
-            let removed = if path.is_dir() {
-                std::fs::remove_dir_all(&path)
-            } else {
-                std::fs::remove_file(&path)
-            };
-            removed.map_err(describe)?;
+            if path.is_dir() {
+                std::fs::remove_dir_all(&path).map_err(describe)?;
+                continue;
+            }
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "partial")
+            {
+                std::fs::remove_file(&path).map_err(describe)?;
+                continue;
+            }
+            let id = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.strip_suffix(".json"))
+                .filter(|id| is_upload_id(id));
+            if let Some(id) = id {
+                match std::fs::read(&path)
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<UploadRecord>(&bytes).ok())
+                {
+                    Some(record) => records.push((id.to_string(), record)),
+                    None => std::fs::remove_file(&path).map_err(describe)?,
+                }
+            }
         }
-        Ok(Arc::new(Self {
+        let staging = Self {
             directory,
             config,
             uploads: Mutex::default(),
             now,
-        }))
+        };
+        let restored: HashMap<String, Upload> = records
+            .into_iter()
+            .filter_map(|(id, record)| {
+                let upload = staging.restore(&id, record)?;
+                Some((id, upload))
+            })
+            .collect();
+        *staging
+            .uploads
+            .lock()
+            .map_err(|_| "staging lock poisoned")? = restored;
+        staging.sweep();
+        Ok(Arc::new(staging))
+    }
+
+    /// Rebuilds an upload from its record and file, or `None` when it can't
+    /// continue: its file is missing or inconsistent, or its time is up.
+    fn restore(&self, id: &str, record: UploadRecord) -> Option<Upload> {
+        let format = MIMETYPE::from_file_extension(&record.extension)?;
+        let path = self.book_path(id, &record.extension);
+        let mut received = std::fs::metadata(&path).ok()?.len();
+        if received > record.size || (record.book.is_some() && received != record.size) {
+            return None;
+        }
+        if record.book.is_none() {
+            // A crash can leave a whole file that was never read; it would
+            // need re-reading that nothing triggers, so it starts over.
+            if received == record.size {
+                received = 0;
+            }
+            let needed = (book_file::CONTENT_CHECK_BYTES as u64).min(record.size);
+            if received < needed {
+                received = 0;
+            } else {
+                let mut head = vec![0; needed as usize];
+                let mut file = std::fs::File::open(&path).ok()?;
+                std::io::Read::read_exact(&mut file, &mut head).ok()?;
+                if !book_file::content_matches(format, &head) {
+                    return None;
+                }
+            }
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .and_then(|file| file.set_len(received))
+                .ok()?;
+        }
+        let upload = Upload {
+            user_id: record.user_id,
+            library_id: record.library_id,
+            file_name: record.file_name,
+            extension: record.extension,
+            format,
+            size: record.size,
+            received,
+            last_active: (self.now)(),
+            busy: false,
+            book: record.book,
+            ready_at: record.ready_at.map(SystemTime::from),
+        };
+        let expired = (self.now)() >= upload.expires_at(&self.config);
+        (!expired).then_some(upload)
+    }
+
+    /// Writes the upload's record beside its file so it survives a restart.
+    fn persist(&self, id: &str, upload: &Upload) {
+        let record = UploadRecord {
+            user_id: upload.user_id.clone(),
+            library_id: upload.library_id.clone(),
+            file_name: upload.file_name.clone(),
+            extension: upload.extension.clone(),
+            size: upload.size,
+            book: upload.book.clone(),
+            ready_at: upload.ready_at.map(DateTime::<Utc>::from),
+        };
+        let Ok(bytes) = serde_json::to_vec(&record) else {
+            return;
+        };
+        let temporary = self.directory.join(format!("{id}.json.partial"));
+        if write_private(&temporary, &bytes).is_ok() {
+            let _ = std::fs::rename(&temporary, self.record_path(id));
+        }
     }
 
     /// Sweeps expired uploads every minute until the staging area is dropped.
@@ -202,16 +338,15 @@ impl Staging {
         });
     }
 
-    /// Removes uploads idle past their expiry, and any file that belongs to
-    /// no upload (one whose removal failed earlier).
+    /// Removes uploads past their expiry, and any file that belongs to no
+    /// upload (one whose removal failed earlier).
     fn sweep(&self) {
         let now = (self.now)();
         let live: Vec<String> = {
             let Ok(mut uploads) = self.uploads.lock() else {
                 return;
             };
-            uploads
-                .retain(|_, upload| upload.busy || now.duration_since(upload.last_active) < EXPIRY);
+            uploads.retain(|_, upload| upload.busy || now < upload.expires_at(&self.config));
             uploads.keys().cloned().collect()
         };
         let Ok(entries) = std::fs::read_dir(&self.directory) else {
@@ -236,12 +371,18 @@ impl Staging {
         self.directory.join(format!("{id}.cover.jpg"))
     }
 
+    fn record_path(&self, id: &str) -> PathBuf {
+        self.directory.join(format!("{id}.json"))
+    }
+
     fn remove_files(&self, id: &str, extension: &str) {
+        let _ = std::fs::remove_file(self.record_path(id));
         let _ = std::fs::remove_file(self.book_path(id, extension));
         let _ = std::fs::remove_file(self.cover_path(id));
     }
 
-    /// Runs `update` on an upload the user owns, marking it active.
+    /// Runs `update` on an upload the user owns, marking it active. Activity
+    /// keeps an unfinished upload alive; a finished one keeps its deadline.
     fn with_upload<T>(
         &self,
         id: &str,
@@ -276,6 +417,14 @@ fn create_private_dir(directory: &FsPath) -> std::io::Result<()> {
     std::fs::create_dir_all(directory)
 }
 
+fn write_private(path: &FsPath, bytes: &[u8]) -> std::io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    std::io::Write::write_all(&mut options.open(path)?, bytes)
+}
+
 struct Owner {
     user_id: String,
     library_id: String,
@@ -295,15 +444,28 @@ impl Owner {
 }
 
 impl Upload {
-    fn view(&self, id: &str) -> StagedUpload {
+    fn expires_at(&self, config: &UploadConfig) -> SystemTime {
+        match self.ready_at {
+            Some(ready_at) => ready_at + config.review_window(),
+            None => self.last_active + IDLE_EXPIRY,
+        }
+    }
+
+    fn view(&self, id: &str, config: &UploadConfig) -> StagedUpload {
         StagedUpload {
             id: id.to_string(),
             file_name: self.file_name.clone(),
             size: self.size,
             received_bytes: self.received,
             book: self.book.clone(),
+            expires_at: self.expires_at(config).into(),
         }
     }
+}
+
+/// Upload IDs are server-generated simple UUIDs.
+fn is_upload_id(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 /// The name a browser gave the file, reduced to its final component.
@@ -338,11 +500,12 @@ pub(super) async fn list(
         .map_err(|_| LibraryError::unavailable())?
         .iter()
         .filter(|(_, upload)| owner.owns(upload))
-        .map(|(id, upload)| upload.view(id))
+        .map(|(id, upload)| upload.view(id, &staging.config))
         .collect();
     Ok(Json(UploadList {
         max_file_bytes: staging.config.max_file_bytes,
         chunk_bytes: staging.config.chunk_bytes,
+        review_seconds: staging.config.review_window().as_secs(),
         uploads,
     }))
 }
@@ -406,8 +569,10 @@ pub(super) async fn create(
         last_active: (staging.now)(),
         busy: false,
         book: None,
+        ready_at: None,
     };
-    let view = upload.view(&id);
+    let view = upload.view(&id, &staging.config);
+    staging.persist(&id, &upload);
     uploads.insert(id, upload);
     Ok((StatusCode::CREATED, Json(view)))
 }
@@ -423,9 +588,8 @@ pub(super) async fn get(
     Path(id): Path<String>,
 ) -> Result<Json<StagedUpload>, ApiFailure> {
     let owner = Owner::new(&state, &user);
-    let view = state
-        .uploads
-        .with_upload(&id, &owner, |upload| Ok(upload.view(&id)))?;
+    let staging = &state.uploads;
+    let view = staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id, &staging.config)))?;
     Ok(Json(view))
 }
 
@@ -782,12 +946,15 @@ pub(super) async fn receive(
         let book = read_book(&state, &staging, &id, &path, file_name, extension).await?;
         staging.with_upload(&id, &owner, |upload| {
             upload.book = Some(book);
+            upload.ready_at = Some((staging.now)());
+            upload.received = received;
+            staging.persist(&id, upload);
             Ok(())
         })?;
     }
     transfer.received = Some(received);
     drop(transfer);
-    let view = staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id)))?;
+    let view = staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id, &staging.config)))?;
     Ok(Json(view))
 }
 
@@ -888,7 +1055,9 @@ mod tests {
 
     use super::*;
 
-    fn upload(last_active: Instant, busy: bool) -> Upload {
+    const HOUR: u64 = 60 * 60;
+
+    fn upload(last_active: SystemTime, busy: bool) -> Upload {
         Upload {
             user_id: "user".into(),
             library_id: "library".into(),
@@ -900,21 +1069,47 @@ mod tests {
             last_active,
             busy,
             book: None,
+            ready_at: None,
         }
+    }
+
+    fn book() -> StagedBook {
+        StagedBook {
+            format: "txt".into(),
+            title: "Book".into(),
+            author_names: vec!["Author".into()],
+            identifier: None,
+            publisher: None,
+            language: None,
+            tags: Vec::new(),
+            publication_date: None,
+            cover_url: None,
+        }
+    }
+
+    /// A staging area whose clock reads `start` plus the returned counter's
+    /// seconds.
+    fn staging_at(directory: &FsPath, start: SystemTime) -> (Arc<Staging>, Arc<AtomicU64>) {
+        let elapsed = Arc::new(AtomicU64::new(0));
+        let clock = elapsed.clone();
+        let staging = Staging::open_with_clock(
+            directory.join("uploads"),
+            UploadConfig::default(),
+            Box::new(move || start + Duration::from_secs(clock.load(Ordering::SeqCst))),
+        )
+        .unwrap();
+        (staging, elapsed)
+    }
+
+    fn id(n: u8) -> String {
+        format!("{n:032x}")
     }
 
     #[test]
     fn sweeping_removes_idle_uploads_and_stray_files() {
         let directory = tempfile::tempdir().unwrap();
-        let start = Instant::now();
-        let elapsed = Arc::new(AtomicU64::new(0));
-        let clock = elapsed.clone();
-        let staging = Staging::open_with_clock(
-            directory.path().join("uploads"),
-            UploadConfig::default(),
-            Box::new(move || start + Duration::from_secs(clock.load(Ordering::SeqCst))),
-        )
-        .unwrap();
+        let start = SystemTime::now();
+        let (staging, elapsed) = staging_at(directory.path(), start);
         {
             let mut uploads = staging.uploads.lock().unwrap();
             uploads.insert("idle".into(), upload(start, false));
@@ -924,12 +1119,12 @@ mod tests {
             std::fs::write(staging.directory.join(name), b"data").unwrap();
         }
 
-        elapsed.store(EXPIRY.as_secs() - 1, Ordering::SeqCst);
+        elapsed.store(IDLE_EXPIRY.as_secs() - 1, Ordering::SeqCst);
         staging.sweep();
         assert!(staging.directory.join("idle.txt").exists());
         assert!(!staging.directory.join("stray.txt").exists());
 
-        elapsed.store(EXPIRY.as_secs(), Ordering::SeqCst);
+        elapsed.store(IDLE_EXPIRY.as_secs(), Ordering::SeqCst);
         staging.sweep();
         let mut left: Vec<_> = std::fs::read_dir(&staging.directory)
             .unwrap()
@@ -939,6 +1134,124 @@ mod tests {
         assert_eq!(left, ["busy.txt"]);
         assert!(staging.uploads.lock().unwrap().contains_key("busy"));
         assert!(!staging.uploads.lock().unwrap().contains_key("idle"));
+    }
+
+    #[test]
+    fn finished_uploads_keep_a_fixed_review_deadline_despite_activity() {
+        let directory = tempfile::tempdir().unwrap();
+        let start = SystemTime::now();
+        let (staging, elapsed) = staging_at(directory.path(), start);
+        let mut ready = upload(start, false);
+        ready.book = Some(book());
+        ready.ready_at = Some(start);
+        let config = UploadConfig::default();
+        assert_eq!(
+            ready.expires_at(&config),
+            start + Duration::from_secs(24 * HOUR)
+        );
+        staging
+            .uploads
+            .lock()
+            .unwrap()
+            .insert("ready".into(), ready);
+        let owner = Owner {
+            user_id: "user".into(),
+            library_id: "library".into(),
+        };
+
+        elapsed.store(24 * HOUR - 1, Ordering::SeqCst);
+        staging
+            .with_upload("ready", &owner, |_| Ok(()))
+            .ok()
+            .unwrap();
+        staging.sweep();
+        assert!(staging.uploads.lock().unwrap().contains_key("ready"));
+
+        elapsed.store(24 * HOUR, Ordering::SeqCst);
+        staging.sweep();
+        assert!(!staging.uploads.lock().unwrap().contains_key("ready"));
+    }
+
+    #[test]
+    fn recorded_uploads_survive_reopening_the_staging_area() {
+        let directory = tempfile::tempdir().unwrap();
+        let start = SystemTime::now();
+        let (staging, _) = staging_at(directory.path(), start);
+        let text = "Plain text, long enough for the content check. ".repeat(40);
+        let text = text.as_bytes();
+
+        let mut ready = upload(start, false);
+        ready.size = text.len() as u64;
+        ready.received = ready.size;
+        ready.book = Some(book());
+        ready.ready_at = Some(start);
+        let mut partial = upload(start, false);
+        partial.size = 100_000;
+        partial.received = text.len() as u64;
+        let mut expired = upload(start, false);
+        expired.size = text.len() as u64;
+        expired.received = expired.size;
+        expired.book = Some(book());
+        expired.ready_at = Some(start - Duration::from_secs(25 * HOUR));
+        let missing = upload(start, false);
+        for (id, upload) in [(id(1), &ready), (id(2), &partial), (id(3), &expired)] {
+            std::fs::write(staging.book_path(&id, "txt"), text).unwrap();
+            staging.persist(&id, upload);
+        }
+        staging.persist(&id(4), &missing);
+        std::fs::write(
+            staging.directory.join(format!("{}.json", id(5))),
+            b"not json",
+        )
+        .unwrap();
+        drop(staging);
+
+        let (reopened, _) = staging_at(directory.path(), start + Duration::from_secs(HOUR));
+        let uploads = reopened.uploads.lock().unwrap();
+        let mut ids: Vec<_> = uploads.keys().cloned().collect();
+        ids.sort();
+        assert_eq!(ids, [id(1), id(2)]);
+        let restored = &uploads[&id(1)];
+        assert_eq!(restored.received, restored.size);
+        assert_eq!(restored.book.as_ref().unwrap().title, "Book");
+        assert_eq!(restored.ready_at, Some(start));
+        assert_eq!(uploads[&id(2)].received, text.len() as u64);
+        assert!(!uploads[&id(2)].busy);
+        drop(uploads);
+        let mut left: Vec<_> = std::fs::read_dir(&reopened.directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        let mut expected = vec![
+            format!("{}.json", id(1)),
+            format!("{}.txt", id(1)),
+            format!("{}.json", id(2)),
+            format!("{}.txt", id(2)),
+        ];
+        expected.sort();
+        assert_eq!(left, expected);
+    }
+
+    #[test]
+    fn restored_partial_uploads_too_short_to_check_start_over() {
+        let directory = tempfile::tempdir().unwrap();
+        let start = SystemTime::now();
+        let (staging, _) = staging_at(directory.path(), start);
+        let mut partial = upload(start, false);
+        partial.size = 100_000;
+        std::fs::write(staging.book_path(&id(1), "txt"), b"ab").unwrap();
+        staging.persist(&id(1), &partial);
+        drop(staging);
+
+        let (reopened, _) = staging_at(directory.path(), start);
+        assert_eq!(reopened.uploads.lock().unwrap()[&id(1)].received, 0);
+        assert_eq!(
+            std::fs::metadata(reopened.book_path(&id(1), "txt"))
+                .unwrap()
+                .len(),
+            0
+        );
     }
 
     #[test]
@@ -971,6 +1284,10 @@ mod tests {
             },
             UploadConfig {
                 max_uploads_per_user: 0,
+                ..Default::default()
+            },
+            UploadConfig {
+                review_hours: 0,
                 ..Default::default()
             },
         ] {
