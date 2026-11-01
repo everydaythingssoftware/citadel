@@ -123,9 +123,9 @@ export interface Spring {
 }
 
 /**
- * One step of a critically damped spring towards `target`: settles as fast
- * as it can without overshooting, so covers glide into place without a
- * wobble at the end.
+ * A critically damped spring towards `target`, solved exactly rather than
+ * stepped: settles as fast as it can without a wobble, and stays steady
+ * however long (or oddly timed) a frame is.
  */
 export const springStep = (
 	{ position, velocity }: Spring,
@@ -133,12 +133,14 @@ export const springStep = (
 	seconds: number,
 	stiffness: number,
 ): Spring => {
-	const damping = 2 * Math.sqrt(stiffness);
-	const acceleration = stiffness * (target - position) - damping * velocity;
-	const nextVelocity = velocity + acceleration * seconds;
+	const omega = Math.sqrt(stiffness);
+	const t = Math.max(0, seconds);
+	const offset = position - target;
+	const carry = velocity + omega * offset;
+	const decay = Math.exp(-omega * t);
 	return {
-		position: position + nextVelocity * seconds,
-		velocity: nextVelocity,
+		position: target + (offset + carry * t) * decay,
+		velocity: (velocity - omega * carry * t) * decay,
 	};
 };
 

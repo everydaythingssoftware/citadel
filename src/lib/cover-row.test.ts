@@ -101,6 +101,16 @@ describe("cover row scrolling", () => {
 		expect(highest).toBe(2.4);
 	});
 
+	it("stays steady through long, stalled or out-of-order frames", () => {
+		for (const seconds of [0.25, 1, -0.01]) {
+			let spring = { position: 11.2, velocity: 12 };
+			for (let frame = 0; frame < 20; frame++)
+				spring = springStep(spring, 11, seconds, params.edgeStiffness);
+			expect(Number.isFinite(spring.position)).toBe(true);
+			expect(Math.abs(spring.position - 11)).toBeLessThan(0.3);
+		}
+	});
+
 	it("carries a flung drag on to where its momentum would land", () => {
 		expect(flingTarget(1.2, 0, 10)).toBe(1);
 		expect(flingTarget(1.2, 12, 10)).toBe(3);
