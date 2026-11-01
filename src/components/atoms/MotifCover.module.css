@@ -1,0 +1,12 @@
+.cover {
+	position: relative;
+	overflow: hidden;
+	aspect-ratio: 2 / 3;
+	border-radius: 4px;
+	box-sizing: border-box;
+}
+
+.shape {
+	position: absolute;
+	box-sizing: border-box;
+}
