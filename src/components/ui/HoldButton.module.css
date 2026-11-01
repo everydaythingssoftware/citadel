@@ -1,0 +1,163 @@
+.wrap {
+	position: relative;
+	display: inline-flex;
+}
+
+.button {
+	position: relative;
+	overflow: hidden;
+	isolation: isolate;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	min-height: 28px;
+	padding: 0 12px;
+	border: var(--ctd-control-border-width) solid
+		color-mix(in oklch, var(--ctd-danger-bg) 70%, transparent);
+	border-radius: var(--ctd-radius-control);
+	background: transparent;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	color: color-mix(in oklch, var(--ctd-danger-bg) 85%, var(--ctd-ink));
+	/* A long press must not select the label, call out or scroll. */
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
+	touch-action: none;
+}
+
+.button:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.button:disabled {
+	opacity: 0.5;
+}
+
+.label {
+	position: relative;
+	z-index: 1;
+}
+
+/* The fill, and a white copy of the label clipped to it, grow from the middle. */
+.button::before,
+.button::after {
+	position: absolute;
+	inset: 0;
+	clip-path: circle(0% at 50% 50%);
+	/* Letting go shrinks it back quickly. */
+	transition: clip-path 120ms ease-out;
+}
+
+.button::before {
+	content: "";
+	z-index: 0;
+	background: var(--ctd-danger-bg);
+}
+
+.button::after {
+	content: attr(data-label);
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--ctd-danger-text);
+}
+
+/* Held: fills over exactly the hold time; 72% covers a wide pill's corners. */
+.button[data-state="holding"]::before,
+.button[data-state="holding"]::after {
+	clip-path: circle(72% at 50% 50%);
+	transition: clip-path var(--hold-ms) linear;
+}
+
+.button[data-state="held"]::before,
+.button[data-state="held"]::after {
+	clip-path: circle(72% at 50% 50%);
+}
+
+.button[data-state] {
+	border-color: var(--ctd-danger-bg);
+}
+
+.button[data-shake] {
+	animation-duration: 320ms;
+	animation-timing-function: ease-in-out;
+}
+
+.button[data-shake="odd"] {
+	animation-name: hold-shake-odd;
+}
+
+.button[data-shake="even"] {
+	animation-name: hold-shake-even;
+}
+
+@keyframes hold-shake-odd {
+	20% {
+		transform: translateX(-4px);
+	}
+	40% {
+		transform: translateX(4px);
+	}
+	60% {
+		transform: translateX(-3px);
+	}
+	80% {
+		transform: translateX(2px);
+	}
+}
+
+@keyframes hold-shake-even {
+	20% {
+		transform: translateX(-4px);
+	}
+	40% {
+		transform: translateX(4px);
+	}
+	60% {
+		transform: translateX(-3px);
+	}
+	80% {
+		transform: translateX(2px);
+	}
+}
+
+.hint {
+	position: absolute;
+	bottom: calc(100% + 6px);
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 5;
+	padding: 5px 9px;
+	border-radius: var(--ctd-radius-control);
+	background: var(--ctd-ink);
+	color: var(--ctd-surface);
+	font-size: 12px;
+	white-space: nowrap;
+	pointer-events: none;
+	animation: hold-hint-in 140ms ease-out;
+}
+
+@keyframes hold-hint-in {
+	from {
+		opacity: 0;
+		transform: translate(-50%, 4px);
+	}
+}
+
+@media (pointer: coarse) {
+	.button {
+		min-height: 44px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.button[data-shake],
+	.hint {
+		animation: none;
+	}
+}
