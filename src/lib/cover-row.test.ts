@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import threeFlicks from "./__fixtures__/trackpad-three-flicks.json";
 import {
 	atRest,
+	bounceVelocity,
 	coverStep,
 	DEFAULT_COVER_ROW,
 	flingTarget,
 	nearestCover,
+	pastEdge,
 	placeCover,
 	scrollBy,
 	springStep,
@@ -48,14 +50,42 @@ describe("cover row scrolling", () => {
 			return position;
 		});
 		// Every flick moves the stack on; hard flicks spin through several.
-		expect(positions.at(-1)).toBeGreaterThan(20);
+		expect(positions.at(-1)).toBeGreaterThan(10);
 		expect(positions).toEqual([...positions].sort((a, b) => a - b));
 	});
 
 	it("gives less past either end", () => {
-		expect(scrollBy(0, -90, 5, params)).toBeCloseTo(-params.edgeResistance);
-		expect(scrollBy(4, 90, 5, params)).toBeCloseTo(4 + params.edgeResistance);
-		expect(scrollBy(2, 90, 5, params)).toBeCloseTo(3);
+		const one = params.pixelsPerCover;
+		expect(scrollBy(0, -one, 5, params)).toBeCloseTo(-params.edgeResistance);
+		expect(scrollBy(4, one, 5, params)).toBeCloseTo(4 + params.edgeResistance);
+		expect(scrollBy(2, one, 5, params)).toBeCloseTo(3);
+	});
+
+	it("knows which end a position has been pulled past", () => {
+		expect(pastEdge(-0.05, 12)).toBe(0);
+		expect(pastEdge(11.2, 12)).toBe(11);
+		expect(pastEdge(5, 12)).toBeUndefined();
+		expect(pastEdge(0, 12)).toBeUndefined();
+	});
+
+	it("bounces off an end quickly, nudging out only a little", () => {
+		// A hard flick's momentum: 120px in one 16ms frame.
+		const outwards = bounceVelocity(120, 0.016, params);
+		expect(outwards).toBeGreaterThan(0);
+		expect(outwards).toBeLessThanOrEqual(12);
+		expect(bounceVelocity(8, 0.016, params)).toBeLessThan(outwards);
+		expect(bounceVelocity(-120, 0.016, params)).toBe(-outwards);
+		let spring = { position: 11.1, velocity: outwards };
+		let furthest = spring.position;
+		let frames = 0;
+		while (frames < 120 && !atRest(spring, 11)) {
+			spring = springStep(spring, 11, 1 / 60, params.edgeStiffness);
+			furthest = Math.max(furthest, spring.position);
+			frames++;
+		}
+		expect(furthest - 11).toBeLessThan(0.25);
+		// Out and back in well under half a second.
+		expect(frames / 60).toBeLessThan(0.45);
 	});
 
 	it("settles on the nearest cover without overshooting", () => {

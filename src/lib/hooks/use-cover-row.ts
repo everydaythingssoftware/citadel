@@ -7,10 +7,12 @@ import {
 } from "react";
 import {
 	atRest,
+	bounceVelocity,
 	type CoverRowParams,
 	coverStep,
 	flingTarget,
 	nearestCover,
+	pastEdge,
 	placeCover,
 	scrollBy,
 	springStep,
@@ -24,6 +26,11 @@ const WHEEL_IDLE_MS = 70;
  * on: settle now rather than creep the last few pixels.
  */
 const DRIFT_SHARE = 0.18;
+/**
+ * Past an end, scrolling slower than this share of the gesture's top speed
+ * is momentum running out (or the fingers stopping): bounce back now.
+ */
+const EDGE_LET_GO = 0.8;
 /** A drag moving less than this (px) is a click. */
 const CLICK_SLOP = 4;
 
@@ -57,6 +64,7 @@ export const useCoverRow = ({
 	const position = useRef(index);
 	const velocity = useRef(0);
 	const target = useRef<number | undefined>(undefined);
+	const stiffness = useRef(params.stiffness);
 	const selected = useRef(index);
 	const frame = useRef(0);
 	const latest = useRef({ count: keys.length, params, onSelect, reduced });
@@ -97,7 +105,7 @@ export const useCoverRow = ({
 				{ position: position.current, velocity: velocity.current },
 				settling,
 				Math.min(0.05, (now - last) / 1000),
-				latest.current.params.stiffness,
+				stiffness.current,
 			);
 			position.current = spring.position;
 			velocity.current = spring.velocity;
@@ -112,7 +120,13 @@ export const useCoverRow = ({
 				frame.current = requestAnimationFrame(tick(now));
 		};
 
+		/** Glide to a cover; from past either end, snap back with the edge spring. */
 		const settleTo = (cover: number) => {
+			const { params: current, count } = latest.current;
+			stiffness.current =
+				pastEdge(position.current, count) === undefined
+					? current.stiffness
+					: current.edgeStiffness;
 			target.current = cover;
 			cancelAnimationFrame(frame.current);
 			if (latest.current.reduced) {
@@ -128,6 +142,7 @@ export const useCoverRow = ({
 
 		const hold = () => {
 			target.current = undefined;
+			velocity.current = 0;
 			cancelAnimationFrame(frame.current);
 		};
 		return { layout, select, settleTo, hold };
@@ -170,10 +185,17 @@ export const useCoverRow = ({
 		let speed = 0;
 		let peak = 0;
 		let drifting = false;
+		// After bouncing off an end, the rest of the gesture pushing the same
+		// way: ignored, so the bounce isn't held out there.
+		let bounced = 0;
 		const finish = () => {
 			drifting = false;
 			peak = 0;
 			speed = 0;
+			if (bounced !== 0) {
+				bounced = 0;
+				return;
+			}
 			settleTo(nearestCover(position.current, latest.current.count));
 		};
 		const onWheel = (event: WheelEvent) => {
@@ -189,6 +211,8 @@ export const useCoverRow = ({
 			lastAt = event.timeStamp;
 			clearTimeout(idle);
 			idle = setTimeout(finish, WHEEL_IDLE_MS);
+			if (bounced === Math.sign(delta)) return;
+			bounced = 0;
 			// The tail of a flick that's already settling: let it go.
 			if (drifting && gap < WHEEL_IDLE_MS && Math.abs(delta) < 4) return;
 			drifting = false;
@@ -200,6 +224,15 @@ export const useCoverRow = ({
 			peak = Math.max(peak, speed);
 			layout();
 			select();
+			// Past an end and no longer speeding up: like macOS, spring straight
+			// back, carrying on outwards only as far as the bounce's own speed.
+			const edge = pastEdge(position.current, count);
+			if (edge !== undefined && speed < peak * EDGE_LET_GO) {
+				bounced = Math.sign(delta);
+				velocity.current = bounceVelocity(delta, gap / 1000, current);
+				settleTo(edge);
+				return;
+			}
 			if (peak > 0.5 && speed < peak * DRIFT_SHARE) {
 				drifting = true;
 				settleTo(nearestCover(position.current, count));

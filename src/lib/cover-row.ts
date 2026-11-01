@@ -18,15 +18,18 @@ export interface CoverRowParams {
 	stiffness: number;
 	/** How much scrolling past either end still moves (0–1). */
 	edgeResistance: number;
+	/** Spring stiffness snapping back from past either end; higher is quicker. */
+	edgeStiffness: number;
 }
 
 export const DEFAULT_COVER_ROW: CoverRowParams = {
 	coverWidth: 112,
 	peek: 0.3,
 	sideScale: 0.88,
-	pixelsPerCover: 90,
+	pixelsPerCover: 400,
 	stiffness: 260,
-	edgeResistance: 0.3,
+	edgeResistance: 0.1,
+	edgeStiffness: 900,
 };
 
 export interface CoverPlacement {
@@ -84,6 +87,34 @@ export const scrollBy = (
 	const end = Math.max(0, count - 1);
 	const outside = next < 0 || next > end;
 	return outside ? position + step * params.edgeResistance : next;
+};
+
+/** The end cover a position has been pulled past, if it's past either end. */
+export const pastEdge = (
+	position: number,
+	count: number,
+): number | undefined => {
+	const end = Math.max(0, count - 1);
+	if (position < 0) return 0;
+	if (position > end) return end;
+	return undefined;
+};
+
+/** Fastest a bounce off an end starts, in covers per second. */
+const MAX_BOUNCE = 12;
+
+/**
+ * Covers per second a bounce off an end starts with: the scrolling's own
+ * speed, so a hard flick bounces further out than a gentle one, capped so
+ * even the hardest only nudges out before the spring brings it back.
+ */
+export const bounceVelocity = (
+	deltaPx: number,
+	seconds: number,
+	params: CoverRowParams,
+): number => {
+	const rate = deltaPx / params.pixelsPerCover / Math.max(0.004, seconds);
+	return Math.max(-MAX_BOUNCE, Math.min(MAX_BOUNCE, rate));
 };
 
 export interface Spring {

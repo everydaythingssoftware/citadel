@@ -76,9 +76,12 @@ const meta: Meta<TuneArgs> = {
 		coverWidth: { control: { type: "range", min: 64, max: 200, step: 4 } },
 		peek: { control: { type: "range", min: 0, max: 0.8, step: 0.02 } },
 		sideScale: { control: { type: "range", min: 0.5, max: 1, step: 0.01 } },
-		pixelsPerCover: { control: { type: "range", min: 20, max: 400, step: 5 } },
+		pixelsPerCover: { control: { type: "range", min: 20, max: 800, step: 10 } },
 		stiffness: { control: { type: "range", min: 40, max: 800, step: 10 } },
 		edgeResistance: { control: { type: "range", min: 0, max: 1, step: 0.05 } },
+		edgeStiffness: {
+			control: { type: "range", min: 100, max: 3000, step: 50 },
+		},
 		books: { control: { type: "range", min: 1, max: 40, step: 1 } },
 		width: { control: { type: "range", min: 320, max: 1000, step: 10 } },
 	},
