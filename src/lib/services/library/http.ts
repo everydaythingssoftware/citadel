@@ -2,6 +2,7 @@ import type { ClientOptions } from "openapi-fetch";
 import type { CoverThumbnail, LibraryBook } from "@/bindings";
 import { createCitadelHttpClient } from "@/lib/api/client";
 import { BookDeletion, CoverExpiredError, type Library } from "./types";
+import { createHttpUploads } from "./uploads-http";
 
 const unsupported = async (): Promise<never> => {
 	throw new Error(
@@ -25,6 +26,8 @@ const unwrap = async <T>(
 
 export const createHttpLibrary = (
 	options: ClientOptions & { baseUrl: string },
+	/** Whether the server opened its library for writing, so it takes uploads. */
+	{ writable = false }: { writable?: boolean } = {},
 ): Library => {
 	const client = createCitadelHttpClient(options);
 	const covers = new Map<string, string>();
@@ -48,8 +51,13 @@ export const createHttpLibrary = (
 		items.map((item) => ({ ...item, url: assetUrl(item.url) }));
 
 	return {
+		// Metadata editing isn't served over HTTP yet, so the library stays
+		// read-only to the editing screens even when it accepts uploads.
 		readOnly: true,
 		bookDeletion: BookDeletion.permanent,
+		uploads: writable
+			? createHttpUploads(client, options.baseUrl, rememberBook)
+			: undefined,
 		queryBooks: async (query) => {
 			if (query.limit !== null && query.limit <= 200) {
 				const page = await unwrap(

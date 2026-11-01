@@ -21,4 +21,6 @@ export const createTauriDialogs = (): DialogAdapter => ({
 		if (typeof result === "string") return result;
 		return null;
 	},
+	// The desktop app imports by path through openFile instead.
+	chooseFiles: async () => [],
 });
