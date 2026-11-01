@@ -63,7 +63,9 @@ export const placeCover = (
 	return {
 		x: offset * coverStep(params, rowWidth),
 		scale: 1 - near * (1 - params.sideScale),
-		zIndex: 1000 - Math.round(Math.abs(offset) * 10),
+		// Nearer covers on top, changing only as a cover passes halfway, so the
+		// stacking order isn't rebuilt every frame.
+		zIndex: 1000 - Math.round(Math.abs(offset)),
 	};
 };
 

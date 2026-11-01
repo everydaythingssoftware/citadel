@@ -67,28 +67,60 @@ export const useCoverRow = ({
 	const stiffness = useRef(params.stiffness);
 	const selected = useRef(index);
 	const frame = useRef(0);
+	const width = useRef(0);
 	const latest = useRef({ count: keys.length, params, onSelect, reduced });
 	latest.current = { count: keys.length, params, onSelect, reduced };
 
 	// Everything that moves the stack, built once from refs, so the event
 	// listeners below never hold stale values.
-	const { layout, select, settleTo, hold } = useMemo(() => {
+	const { layout, draw, select, settleTo, hold } = useMemo(() => {
+		// What each cover was last given, so a frame only writes what changed:
+		// unchanged and off-row covers cost the browser nothing.
+		const drawn = new WeakMap<
+			HTMLElement,
+			{ transform: string; zIndex: string; hidden: boolean }
+		>();
 		const layout = () => {
 			const element = stage.current;
 			if (!element) return;
-			const width = element.clientWidth;
-			const reach = width / 2 + latest.current.params.coverWidth;
+			if (width.current === 0) width.current = element.clientWidth;
+			const rowWidth = width.current;
+			const reach = rowWidth / 2 + latest.current.params.coverWidth;
 			for (const cover of coversIn(element)) {
 				const place = placeCover(
 					Number(cover.dataset.coverIndex) - position.current,
 					latest.current.params,
-					width,
+					rowWidth,
 				);
-				cover.style.transform = `translate3d(${place.x}px, 0, 0) scale(${place.scale})`;
-				cover.style.zIndex = String(place.zIndex);
-				// Off the row entirely: nothing to draw.
-				cover.style.visibility = Math.abs(place.x) > reach ? "hidden" : "";
+				const was = drawn.get(cover);
+				// Off the row entirely: hide it once and leave it be.
+				const hidden = Math.abs(place.x) > reach;
+				if (hidden) {
+					if (!was?.hidden) cover.style.visibility = "hidden";
+					drawn.set(cover, {
+						transform: was?.transform ?? "",
+						zIndex: was?.zIndex ?? "",
+						hidden,
+					});
+					continue;
+				}
+				const transform = `translate3d(${place.x}px, 0, 0) scale(${place.scale})`;
+				const zIndex = String(place.zIndex);
+				if (was?.hidden !== false) cover.style.visibility = "";
+				if (was?.transform !== transform) cover.style.transform = transform;
+				if (was?.zIndex !== zIndex) cover.style.zIndex = zIndex;
+				drawn.set(cover, { transform, zIndex, hidden });
 			}
+		};
+
+		// Scrolling and dragging can fire several times a frame: draw once.
+		let pending = 0;
+		const draw = () => {
+			if (pending) return;
+			pending = requestAnimationFrame(() => {
+				pending = 0;
+				layout();
+			});
 		};
 
 		const select = () => {
@@ -145,11 +177,24 @@ export const useCoverRow = ({
 			velocity.current = 0;
 			cancelAnimationFrame(frame.current);
 		};
-		return { layout, select, settleTo, hold };
+		return { layout, draw, select, settleTo, hold };
 	}, [stage]);
 
 	// Place covers after every render (new ones included), and stop on unmount.
 	useLayoutEffect(layout);
+	// The row's width, kept rather than read every frame: reading it after
+	// moving covers would make the browser restyle the row to answer.
+	useLayoutEffect(() => {
+		const element = stage.current;
+		if (!element) return;
+		width.current = element.clientWidth;
+		const observer = new ResizeObserver(() => {
+			width.current = element.clientWidth;
+			layout();
+		});
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [stage, layout]);
 	useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
 	// A cover leaving or arriving shifts the indices: keep what's on screen
@@ -222,7 +267,7 @@ export const useCoverRow = ({
 			const rate = Math.abs(delta) / Math.max(4, gap);
 			speed = speed * 0.6 + rate * 0.4;
 			peak = Math.max(peak, speed);
-			layout();
+			draw();
 			select();
 			// Past an end and no longer speeding up: like macOS, spring straight
 			// back, carrying on outwards only as far as the bounce's own speed.
@@ -243,7 +288,7 @@ export const useCoverRow = ({
 			clearTimeout(idle);
 			element.removeEventListener("wheel", onWheel);
 		};
-	}, [stage, hold, layout, select, settleTo]);
+	}, [stage, hold, draw, select, settleTo]);
 
 	// Dragging with a mouse or finger moves the stack with the pointer; let
 	// go and it carries on to where the flick's momentum would land.
@@ -256,7 +301,8 @@ export const useCoverRow = ({
 		let lastX = 0;
 		let lastAt = 0;
 		let rate = 0;
-		const step = () => coverStep(latest.current.params, element.clientWidth);
+		const step = () =>
+			coverStep(latest.current.params, width.current || element.clientWidth);
 		const onDown = (event: PointerEvent) => {
 			if (event.button !== 0) return;
 			start = {
@@ -287,7 +333,7 @@ export const useCoverRow = ({
 			rate = rate * 0.5 + (-(event.clientX - lastX) / step() / seconds) * 0.5;
 			lastX = event.clientX;
 			lastAt = event.timeStamp;
-			layout();
+			draw();
 			select();
 		};
 		const onUp = (event: PointerEvent) => {
@@ -317,5 +363,5 @@ export const useCoverRow = ({
 			element.removeEventListener("pointercancel", onUp);
 			element.removeEventListener("click", onClick, true);
 		};
-	}, [stage, hold, layout, select, settleTo]);
+	}, [stage, hold, draw, select, settleTo]);
 };
