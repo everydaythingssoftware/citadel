@@ -1,0 +1,176 @@
+.fields {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.more {
+	border-top: 1px solid var(--ctd-border);
+	padding-top: 4px;
+}
+
+/* Closed: a full-width row, like a settings cell, saying what's inside. */
+.disclosure {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 32px;
+	padding: 0 2px;
+	border: 0;
+	border-radius: var(--ctd-radius-control);
+	background: transparent;
+	font: inherit;
+	font-size: 13px;
+	color: var(--ctd-ink);
+	text-align: left;
+	--disclosure-soft: var(--ctd-ink-soft);
+}
+
+.disclosure:hover {
+	--disclosure-soft: var(--ctd-ink);
+}
+
+.disclosure:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.disclosureLabel {
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+/*
+ * The hint shows whole or not at all: an empty first item fills the line,
+ * so a hint too long for what's left wraps onto a second line, which the
+ * box's one-line height clips away.
+ */
+.disclosureHintBox {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	height: 1.4em;
+	line-height: 1.4em;
+	overflow: hidden;
+}
+
+.disclosureHintBox::before {
+	content: "";
+	flex: 1 0 0;
+	height: 1.4em;
+}
+
+.disclosureHint {
+	white-space: nowrap;
+	color: var(--disclosure-soft);
+}
+
+.disclosureChevron {
+	flex: none;
+	/* At the row's end, with or without the hint. */
+	margin-left: auto;
+	font-size: 14px;
+	color: var(--disclosure-soft);
+	transition: transform 240ms ease;
+}
+
+/* Open: just the label, so the space beside it isn't a hidden button. */
+.more[data-open] .disclosure {
+	width: auto;
+}
+
+.more[data-open] .disclosureChevron {
+	transform: rotate(180deg);
+}
+
+/* The fields unfold to their own height. */
+.moreBody {
+	display: grid;
+	grid-template-rows: 0fr;
+	opacity: 0;
+	transition:
+		grid-template-rows 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+		opacity 200ms ease;
+}
+
+.more[data-open] .moreBody {
+	grid-template-rows: 1fr;
+	opacity: 1;
+}
+
+/* Room inside the clip for focus rings. */
+.moreFields {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-height: 0;
+	overflow: hidden;
+	margin: 0 -4px;
+	padding: 8px 4px 4px;
+}
+
+/* Once unfolded, a field's completion list may hang outside the fields. */
+.more[data-open] .moreFields {
+	animation: details-unclip 0s 260ms forwards;
+}
+
+@keyframes details-unclip {
+	to {
+		overflow: visible;
+	}
+}
+
+/* iOS draws date inputs with their own width and height; make them behave
+   like the other fields. */
+.date {
+	-webkit-appearance: none;
+	appearance: none;
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	text-align: left;
+	/* iOS sizes the control by its content; match the text fields. */
+	min-height: 28px;
+	line-height: normal;
+}
+
+.date::-webkit-date-and-time-value {
+	text-align: left;
+}
+
+.error {
+	margin: 0;
+	font-size: 12px;
+	color: color-mix(in oklch, var(--ctd-danger-bg) 88%, var(--ctd-ink));
+}
+
+@media (pointer: coarse) {
+	.disclosure {
+		min-height: 44px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.moreBody,
+	.disclosureChevron {
+		transition: none;
+	}
+}
+
+/* Phones: large fields that iOS won't zoom into (16px+ text). */
+@media (max-width: 36em) {
+	.fields :global(input) {
+		min-height: 48px;
+		font-size: 17px;
+	}
+
+	.disclosure {
+		min-height: 48px;
+		font-size: 17px;
+	}
+}

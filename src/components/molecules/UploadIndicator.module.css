@@ -1,0 +1,47 @@
+.indicator {
+	white-space: nowrap;
+}
+
+.label {
+	font-variant-numeric: tabular-nums;
+}
+
+.glyph {
+	flex: none;
+	font-size: 14px;
+	color: var(--ctd-ink-soft);
+}
+
+/* Near the deadline: brass, tinted, and calling gently for attention. */
+.indicator[data-urgent] {
+	border-color: var(--ctd-brass);
+	background-color: color-mix(in oklch, var(--ctd-brass) 18%, transparent);
+	animation: indicator-call 2.4s ease-in-out infinite;
+}
+
+.indicator[data-urgent] .glyph {
+	color: var(--ctd-brass);
+}
+
+@keyframes indicator-call {
+	50% {
+		box-shadow: 0 0 0 3px color-mix(in oklch, var(--ctd-brass) 30%, transparent);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.indicator[data-urgent] {
+		animation: none;
+	}
+}
+
+@media (max-width: 36em) {
+	.label {
+		/* Icon only on phones; the label stays for screen readers. */
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+}

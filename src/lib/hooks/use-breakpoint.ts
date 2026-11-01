@@ -9,7 +9,7 @@ const BREAKPOINTS: Record<string, string> = {
 	xl: "88em",
 };
 
-function useMediaQuery(query: string): boolean {
+export function useMediaQuery(query: string): boolean {
 	const subscribe = useCallback(
 		(onChange: () => void) => {
 			const mql = window.matchMedia(query);

@@ -1,0 +1,79 @@
+.overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 120;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 36px;
+	/* Acrylic: a heavy blur that keeps the colour, a tint lit from above,
+	   and fine grain so it reads as a material rather than a smear. */
+	background:
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+		linear-gradient(
+			180deg,
+			oklch(98% 0.005 85 / 0.1),
+			oklch(98% 0.005 85 / 0) 45%
+		),
+		oklch(24% 0.006 270 / 0.42);
+	backdrop-filter: blur(36px) saturate(1.6) brightness(0.95);
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	transition:
+		opacity 160ms ease,
+		visibility 0s linear 160ms;
+}
+
+.contained {
+	position: absolute;
+	z-index: 1;
+}
+
+.visible {
+	opacity: 1;
+	visibility: visible;
+	transition: opacity 160ms ease;
+}
+
+.copy {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	text-align: center;
+	color: oklch(99% 0.003 90);
+	text-shadow: 0 1px 2px oklch(0% 0 0 / 0.3);
+}
+
+.title {
+	margin: 0;
+	font-family: var(--ctd-font-serif);
+	font-size: 30px;
+	line-height: 1.15;
+}
+
+.hint {
+	margin: 0;
+	font-size: 14px;
+	opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.overlay,
+	.visible {
+		transition: none;
+	}
+}
+
+@media (max-width: 36em) {
+	.overlay {
+		gap: 24px;
+	}
+
+	.title {
+		font-size: 24px;
+	}
+}
