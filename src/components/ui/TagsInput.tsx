@@ -45,6 +45,11 @@ export interface TagsInputProps {
 	disabled?: boolean;
 	id?: string;
 	className?: string;
+	/**
+	 * Changing it clears what's half-typed and closes the list, for one
+	 * field reused across records (a form showing another book).
+	 */
+	resetKey?: string;
 }
 
 /**
@@ -65,6 +70,7 @@ export const TagsInput = ({
 	disabled = false,
 	id,
 	className,
+	resetKey,
 }: TagsInputProps) => {
 	const fallbackId = useId();
 	const inputId = id ?? fallbackId;
@@ -80,6 +86,13 @@ export const TagsInput = ({
 	const [open, setOpen] = useState(false);
 	// -1: nothing chosen, so Enter commits what was typed.
 	const [highlight, setHighlight] = useState(-1);
+	const [shownFor, setShownFor] = useState(resetKey);
+	if (shownFor !== resetKey) {
+		setShownFor(resetKey);
+		setQuery("");
+		setOpen(false);
+		setHighlight(-1);
+	}
 	const [listRect, setListRect] = useState<ListPlacement | null>(null);
 	const viewport = useVisibleViewport();
 	// Inside a modal dialog, and on touch screens, the list is attached to

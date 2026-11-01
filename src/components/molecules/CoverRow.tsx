@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { type CSSProperties, useMemo, useRef } from "react";
+import { type CSSProperties, memo, useMemo, useRef } from "react";
 import { StagedCover } from "@/components/atoms/StagedCover";
 import { type CoverRowParams, DEFAULT_COVER_ROW } from "@/lib/cover-row";
 import { useCoverRow } from "@/lib/hooks/use-cover-row";
@@ -20,13 +20,14 @@ export interface CoverRowProps {
 
 const titleOf = (item: QueueItem) => item.book?.title ?? item.name;
 
-const Art = ({ item }: { item: QueueItem }) => (
+// Unchanged covers skip re-rendering when the selection moves.
+const Art = memo(({ item }: { item: QueueItem }) => (
 	<StagedCover
 		className={styles.art}
 		coverUrl={item.coverUrl}
 		seed={titleOf(item)}
 	/>
-);
+));
 
 /**
  * The ready books' covers in a row, with Cover Flow's feel: the current one

@@ -141,8 +141,7 @@ export const UploadReview = ({
 				</div>
 				{current && (
 					<UploadReviewCard
-						// One form per book, so focus and field state don't carry over.
-						key={current.key}
+						bookKey={current.key}
 						form={deck.form}
 						errors={deck.errors}
 						message={current.message}

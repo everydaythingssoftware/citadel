@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import { StagedCover } from "@/components/atoms/StagedCover";
 import { useCarouselScroll } from "@/lib/hooks/use-carousel-scroll";
 import type { DepartingCover } from "@/lib/hooks/use-review-deck";
@@ -24,13 +24,14 @@ export interface CoverCarouselProps {
 	onSelect: (index: number) => void;
 }
 
-const Cover = ({ item }: { item: QueueItem }) => (
+// Unchanged covers skip re-rendering when the selection moves.
+const Cover = memo(({ item }: { item: QueueItem }) => (
 	<StagedCover
 		className={styles.cover}
 		coverUrl={item.coverUrl}
 		seed={item.book?.title ?? item.name}
 	/>
-);
+));
 
 /** The covers to draw: the ready books, with a departing one back in its place. */
 const slides = (

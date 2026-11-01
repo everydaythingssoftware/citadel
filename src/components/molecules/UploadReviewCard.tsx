@@ -19,6 +19,12 @@ export interface UploadReviewCardProps {
 	onToggleDetails?: () => void;
 	authorSuggestions?: string[];
 	tagSuggestions?: string[];
+	/**
+	 * The book shown. The card stays mounted from book to book (rebuilding
+	 * the form for every cover a flick passes is slow); changing this clears
+	 * anything half-typed in the token fields.
+	 */
+	bookKey?: string;
 	className?: string;
 }
 
@@ -33,6 +39,7 @@ export const UploadReviewCard = ({
 	onToggleDetails,
 	authorSuggestions = [],
 	tagSuggestions = [],
+	bookKey,
 	className,
 }: UploadReviewCardProps) => {
 	const change = (patch: Partial<ReviewForm>) => onChange?.(patch);
@@ -55,6 +62,7 @@ export const UploadReviewCard = ({
 				onChange={(authors) => change({ authors })}
 				suggestions={authorSuggestions}
 				placeholder="Add author"
+				resetKey={bookKey}
 			/>
 			<div className={styles.more} data-open={detailsOpen || undefined}>
 				{/* Closed, the whole row opens it and says what's inside; open,
@@ -96,6 +104,7 @@ export const UploadReviewCard = ({
 							}
 							suggestions={KNOWN_LANGUAGE_NAMES}
 							placeholder={form.language ? "" : "Search languages"}
+							resetKey={bookKey}
 						/>
 						<TextInput
 							className={styles.date}
@@ -114,6 +123,7 @@ export const UploadReviewCard = ({
 							onChange={(tags) => change({ tags })}
 							suggestions={tagSuggestions}
 							placeholder="Search or add tags"
+							resetKey={bookKey}
 						/>
 						<TextInput
 							label="ISBN"
