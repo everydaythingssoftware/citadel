@@ -10,6 +10,7 @@ import {
 	pastEdge,
 	placeCover,
 	scrollBy,
+	springPath,
 	springStep,
 } from "./cover-row";
 
@@ -109,6 +110,17 @@ describe("cover row scrolling", () => {
 			expect(Number.isFinite(spring.position)).toBe(true);
 			expect(Math.abs(spring.position - 11)).toBeLessThan(0.3);
 		}
+	});
+
+	it("works out a settle's whole path ahead, ending exactly on the cover", () => {
+		const start = { position: 11.2, velocity: 6 };
+		const path = springPath(start, 11, params.edgeStiffness);
+		expect(path[0]).toBe(11.2);
+		expect(path.at(-1)).toBe(11);
+		// The same exact spring, sampled: it nudges out, then comes back.
+		expect(Math.max(...path)).toBeGreaterThan(11.2);
+		expect(path.length).toBeLessThan(0.5 * 120);
+		expect(springPath({ position: 3, velocity: 0 }, 3, 260)).toEqual([3, 3]);
 	});
 
 	it("carries a flung drag on to where its momentum would land", () => {

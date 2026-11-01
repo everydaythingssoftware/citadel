@@ -150,6 +150,30 @@ export const springStep = (
 export const atRest = ({ position, velocity }: Spring, target: number) =>
 	Math.abs(target - position) < 0.001 && Math.abs(velocity) < 0.01;
 
+/** How often a settle's path is sampled for the browser to animate. */
+export const PATH_STEP_SECONDS = 1 / 120;
+
+/**
+ * The positions a settle passes through, one per `PATH_STEP_SECONDS`, from
+ * where it starts until it comes to rest exactly on `target`: worked out up
+ * front, so the browser can run the whole glide without waiting on scripts.
+ */
+export const springPath = (
+	start: Spring,
+	target: number,
+	stiffness: number,
+	maxSeconds = 3,
+): number[] => {
+	const path = [start.position];
+	for (let t = PATH_STEP_SECONDS; t < maxSeconds; t += PATH_STEP_SECONDS) {
+		const spring = springStep(start, target, t, stiffness);
+		if (atRest(spring, target)) break;
+		path.push(spring.position);
+	}
+	path.push(target);
+	return path;
+};
+
 /**
  * Where a drag released with this velocity (covers per second) settles: the
  * cover its momentum would carry it to, like a flick on iOS.

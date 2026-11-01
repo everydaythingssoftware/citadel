@@ -6,15 +6,17 @@ import {
 	useRef,
 } from "react";
 import {
-	atRest,
 	bounceVelocity,
 	type CoverRowParams,
 	coverStep,
 	flingTarget,
 	nearestCover,
+	PATH_STEP_SECONDS,
 	pastEdge,
 	placeCover,
+	type Spring,
 	scrollBy,
+	springPath,
 	springStep,
 } from "@/lib/cover-row";
 import { usePrefersReducedMotion } from "./use-reduced-motion";
@@ -63,8 +65,6 @@ export const useCoverRow = ({
 	const reduced = usePrefersReducedMotion();
 	const position = useRef(index);
 	const velocity = useRef(0);
-	const target = useRef<number | undefined>(undefined);
-	const stiffness = useRef(params.stiffness);
 	const selected = useRef(index);
 	const frame = useRef(0);
 	const width = useRef(0);
@@ -73,7 +73,7 @@ export const useCoverRow = ({
 
 	// Everything that moves the stack, built once from refs, so the event
 	// listeners below never hold stale values.
-	const { layout, draw, select, settleTo, hold } = useMemo(() => {
+	const { layout, draw, select, settleTo, hold, pause } = useMemo(() => {
 		// What each cover was last given, so a frame only writes what changed:
 		// unchanged and off-row covers cost the browser nothing.
 		const drawn = new WeakMap<
@@ -113,6 +113,17 @@ export const useCoverRow = ({
 			}
 		};
 
+		const show = (cover: HTMLElement) => {
+			const was = drawn.get(cover);
+			if (was?.hidden === false) return;
+			cover.style.visibility = "";
+			drawn.set(cover, {
+				transform: was?.transform ?? "",
+				zIndex: "",
+				hidden: false,
+			});
+		};
+
 		// Scrolling and dragging can fire several times a frame: draw once.
 		let pending = 0;
 		const draw = () => {
@@ -130,54 +141,131 @@ export const useCoverRow = ({
 			latest.current.onSelect(nearest);
 		};
 
-		const tick = (last: number) => (now: number) => {
-			const settling = target.current;
-			if (settling === undefined) return;
-			const spring = springStep(
-				{ position: position.current, velocity: velocity.current },
-				settling,
-				Math.min(0.05, (now - last) / 1000),
-				stiffness.current,
+		/**
+		 * A settle under way: the browser animates each cover along the
+		 * spring's precomputed path (off the main thread, so a busy page
+		 * can't stutter it), while a light loop tracks the same exact spring
+		 * only to keep the selection in step.
+		 */
+		let settling:
+			| {
+					start: Spring;
+					target: number;
+					stiffness: number;
+					began: number;
+					seconds: number;
+					animations: Animation[];
+			  }
+			| undefined;
+
+		const elapsed = (motion: NonNullable<typeof settling>) => {
+			const time = motion.animations[0]?.currentTime;
+			const ms =
+				typeof time === "number" ? time : performance.now() - motion.began;
+			return Math.min(motion.seconds, Math.max(0, ms / 1000));
+		};
+
+		/** Ends a settle where it has got to (or at its end), as plain styles. */
+		const stop = (finished: boolean) => {
+			const motion = settling;
+			if (!motion) return;
+			settling = undefined;
+			cancelAnimationFrame(frame.current);
+			const now = springStep(
+				motion.start,
+				motion.target,
+				elapsed(motion),
+				motion.stiffness,
 			);
-			position.current = spring.position;
-			velocity.current = spring.velocity;
-			if (atRest(spring, settling)) {
-				position.current = settling;
-				velocity.current = 0;
-				target.current = undefined;
-			}
+			position.current = finished ? motion.target : now.position;
+			velocity.current = finished ? 0 : now.velocity;
+			// Styles first, then drop the animations: no frame shows neither.
 			layout();
+			for (const animation of motion.animations) animation.cancel();
 			select();
-			if (target.current !== undefined)
-				frame.current = requestAnimationFrame(tick(now));
+		};
+
+		const follow = () => {
+			const motion = settling;
+			if (!motion) return;
+			const seconds = elapsed(motion);
+			if (seconds >= motion.seconds) {
+				stop(true);
+				return;
+			}
+			position.current = springStep(
+				motion.start,
+				motion.target,
+				seconds,
+				motion.stiffness,
+			).position;
+			select();
+			frame.current = requestAnimationFrame(follow);
 		};
 
 		/** Glide to a cover; from past either end, snap back with the edge spring. */
 		const settleTo = (cover: number) => {
-			const { params: current, count } = latest.current;
-			stiffness.current =
+			stop(false);
+			const element = stage.current;
+			const { params: current, count, reduced } = latest.current;
+			const path = springPath(
+				{ position: position.current, velocity: velocity.current },
+				cover,
 				pastEdge(position.current, count) === undefined
 					? current.stiffness
-					: current.edgeStiffness;
-			target.current = cover;
-			cancelAnimationFrame(frame.current);
-			if (latest.current.reduced) {
+					: current.edgeStiffness,
+			);
+			if (reduced || !element || path.length <= 2) {
 				position.current = cover;
 				velocity.current = 0;
-				target.current = undefined;
 				layout();
 				select();
 				return;
 			}
-			frame.current = requestAnimationFrame(tick(performance.now()));
+			const rowWidth = width.current || element.clientWidth;
+			const reach = rowWidth / 2 + current.coverWidth;
+			const animations: Animation[] = [];
+			const duration = (path.length - 1) * PATH_STEP_SECONDS * 1000;
+			for (const node of coversIn(element)) {
+				const at = Number(node.dataset.coverIndex);
+				const places = path.map((p) => placeCover(at - p, current, rowWidth));
+				// Covers that stay off the row through the whole glide sit it out.
+				if (places.every((place) => Math.abs(place.x) > reach)) continue;
+				const last = places.at(-1);
+				if (last) node.style.zIndex = String(last.zIndex);
+				show(node);
+				animations.push(
+					node.animate(
+						places.map((place) => ({
+							transform: `translate3d(${place.x}px, 0, 0) scale(${place.scale})`,
+						})),
+						{ duration, easing: "linear", fill: "forwards" },
+					),
+				);
+			}
+			settling = {
+				start: { position: position.current, velocity: velocity.current },
+				target: cover,
+				stiffness:
+					pastEdge(position.current, count) === undefined
+						? current.stiffness
+						: current.edgeStiffness,
+				began: performance.now(),
+				seconds: duration / 1000,
+				animations,
+			};
+			frame.current = requestAnimationFrame(follow);
 		};
 
+		/** Freezes any settle where it has got to, keeping its speed. */
+		const pause = () => stop(false);
+
+		/** A new gesture takes over from any settle, exactly where it is. */
 		const hold = () => {
-			target.current = undefined;
+			stop(false);
 			velocity.current = 0;
-			cancelAnimationFrame(frame.current);
 		};
-		return { layout, draw, select, settleTo, hold };
+		return { layout, draw, select, settleTo, hold, pause };
 	}, [stage]);
 
 	// Place covers after every render (new ones included), and stop on unmount.
@@ -195,7 +283,7 @@ export const useCoverRow = ({
 		observer.observe(element);
 		return () => observer.disconnect();
 	}, [stage, layout]);
-	useEffect(() => () => cancelAnimationFrame(frame.current), []);
+	useEffect(() => hold, [hold]);
 
 	// A cover leaving or arriving shifts the indices: keep what's on screen
 	// where it was, then glide the chosen cover into the middle.
@@ -204,6 +292,8 @@ export const useCoverRow = ({
 		const before = previousKeys.current;
 		previousKeys.current = keys;
 		if (before === keys || before.join("\n") === keys.join("\n")) return;
+		// Where a settle had got to, in the old indices, before re-mapping.
+		pause();
 		const anchor = keys[index];
 		const was = anchor === undefined ? -1 : before.indexOf(anchor);
 		if (was >= 0) position.current = index - (was - position.current);
