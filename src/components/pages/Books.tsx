@@ -379,11 +379,13 @@ export const Books = ({
 					onChange={(value) => setSortOrder(value as LibraryBookSortOrderKey)}
 					disabled={series_id !== undefined}
 				/>
-				<Checkbox
-					label="Unread only"
-					checked={hideRead}
-					onCheckedChange={setHideRead}
-				/>
+				<span className={styles.unreadToggle}>
+					<Checkbox
+						label="Unread only"
+						checked={hideRead}
+						onCheckedChange={setHideRead}
+					/>
+				</span>
 				<SaveAsShelfControl
 					query={query}
 					sortOrder={sortOrder}

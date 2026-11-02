@@ -35,6 +35,12 @@
 	width: 100%;
 }
 
+/* Keeps "Unread only" on one line; the search field gives up the room. */
+.unreadToggle {
+	flex: none;
+	white-space: nowrap;
+}
+
 .gridArea {
 	flex: 1;
 	min-height: 0;
