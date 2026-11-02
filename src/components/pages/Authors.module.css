@@ -4,10 +4,15 @@
  * whole-row hover/overlay behavior lives in styles.css
  * (.ctd-author-row / .ctd-author-row-link).
  */
+/*
+ * min-height (not height): the page must grow with its rows so the sticky
+ * header and footer stay inside it for the whole scroll. A fixed-height page
+ * scrolls away under them and drags the footer up mid-list.
+ */
 .page {
 	display: flex;
 	flex-direction: column;
-	height: 100%;
+	min-height: 100%;
 }
 
 .filterBar {
@@ -20,6 +25,7 @@
 }
 
 .headerRow {
+	flex-shrink: 0;
 	position: sticky;
 	top: 0;
 	z-index: 2;
@@ -44,7 +50,7 @@
 .rows {
 	display: flex;
 	flex-direction: column;
-	flex: 1;
+	flex: 1 0 auto;
 }
 
 .row {
@@ -126,6 +132,7 @@
 }
 
 .footer {
+	flex-shrink: 0;
 	position: sticky;
 	bottom: 0;
 	display: flex;

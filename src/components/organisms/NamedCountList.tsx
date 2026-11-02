@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { type CSSProperties, useMemo, useState } from "react";
 
 import { SearchField } from "@/components/ui";
-import { useNamedCountRows } from "@/lib/hooks/use-named-count-rows";
+import { useVirtualListRows } from "@/lib/hooks/use-virtual-list-rows";
 import styles from "./NamedCountList.module.css";
 
 /** A named library entity with its linked-book count. */
@@ -110,7 +110,7 @@ const NamedCountRows = <T extends NamedCount>({
 	items,
 	toSearch,
 }: NamedCountRowsProps<T>) => {
-	const { rowsRef, virtualizer, scrollMargin } = useNamedCountRows(items);
+	const { rowsRef, virtualizer, scrollMargin } = useVirtualListRows(items);
 
 	return (
 		<div

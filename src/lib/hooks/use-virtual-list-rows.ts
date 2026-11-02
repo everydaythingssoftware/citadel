@@ -1,6 +1,9 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLayoutEffect, useRef, useState } from "react";
 
+const ROW_HEIGHT = 40;
+const OVERSCAN_ROWS = 10;
+
 const findScrollParent = (element: HTMLElement): HTMLElement | null => {
 	for (let node = element.parentElement; node; node = node.parentElement) {
 		if (["auto", "scroll"].includes(getComputedStyle(node).overflowY)) {
@@ -11,11 +14,18 @@ const findScrollParent = (element: HTMLElement): HTMLElement | null => {
 };
 
 /**
- * Virtualizes a page-level list of id-keyed rows (series, tags, publishers)
- * inside the nearest scrolling ancestor, and scrolls back to the top when
- * the list itself changes (e.g. a new search term).
+ * Virtualizes a page-level list of id-keyed rows (authors, series, tags,
+ * publishers) inside the nearest scrolling ancestor, so the page's sticky
+ * header and footer keep pinning to that same region.
+ *
+ * Scrolls back to the top when `resetKey` changes. It defaults to the list
+ * itself (e.g. a new search term); pass a narrower key when the list also
+ * changes for edits that should keep the reader's place.
  */
-export const useNamedCountRows = <T extends { id: number }>(items: T[]) => {
+export const useVirtualListRows = <T extends { id: number | string }>(
+	items: T[],
+	resetKey: unknown = items,
+) => {
 	const rowsRef = useRef<HTMLDivElement>(null);
 	const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
 	const [scrollMargin, setScrollMargin] = useState(0);
@@ -44,18 +54,18 @@ export const useNamedCountRows = <T extends { id: number }>(items: T[]) => {
 		count: items.length,
 		getScrollElement: () => scrollElement,
 		getItemKey: (index) => items[index]?.id ?? index,
-		estimateSize: () => 40,
-		overscan: 10,
+		estimateSize: () => ROW_HEIGHT,
+		overscan: OVERSCAN_ROWS,
 		scrollMargin,
 	});
 
-	const previousItems = useRef(items);
+	const previousResetKey = useRef(resetKey);
 	useLayoutEffect(() => {
-		if (previousItems.current !== items) {
+		if (!Object.is(previousResetKey.current, resetKey)) {
 			if (scrollElement) scrollElement.scrollTop = 0;
-			previousItems.current = items;
+			previousResetKey.current = resetKey;
 		}
-	}, [items, scrollElement]);
+	}, [resetKey, scrollElement]);
 
 	return { rowsRef, virtualizer, scrollMargin };
 };

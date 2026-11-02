@@ -1,12 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
 	type CSSProperties,
 	type FormEvent,
 	useCallback,
 	useEffect,
-	useLayoutEffect,
 	useRef,
 	useState,
 } from "react";
@@ -22,6 +20,7 @@ import {
 	TextInput,
 } from "@/components/ui";
 import { useAuthorFilters } from "@/lib/hooks/use-author-filters";
+import { useVirtualListRows } from "@/lib/hooks/use-virtual-list-rows";
 import {
 	useAuthors,
 	useAuthorsLoading,
@@ -44,22 +43,7 @@ const AUTHOR_GRID: CSSProperties = {
 	columnGap: 16,
 };
 
-/** Single-line row: 40px min-height (.ctd-author-row) + 1px bottom border. */
-const ESTIMATED_ROW_HEIGHT = 41;
-const OVERSCAN_ROWS = 10;
-
-/**
- * Nearest scrollable ancestor — the app's shared scroll region
- * (root.module.css .content), which the sticky header/footer rows already
- * pin to. The virtualizer windows author rows against it.
- */
-const findScrollParent = (element: HTMLElement): HTMLElement | null => {
-	for (let node = element.parentElement; node; node = node.parentElement) {
-		const { overflowY } = getComputedStyle(node);
-		if (overflowY === "auto" || overflowY === "scroll") return node;
-	}
-	return null;
-};
+const authorNoun = (count: number) => (count === 1 ? "author" : "authors");
 
 export const Authors = () => {
 	const authors = useAuthors();
@@ -202,7 +186,11 @@ export const Authors = () => {
 				)
 			) : (
 				<>
-					<div className={styles.headerRow} style={AUTHOR_GRID}>
+					<div
+						data-authors-header=""
+						className={styles.headerRow}
+						style={AUTHOR_GRID}
+					>
 						<span className={styles.columnLabel}>Name</span>
 						<span className={clsx(styles.columnLabel, styles.visibleFromMd)}>
 							Sort name
@@ -215,15 +203,16 @@ export const Authors = () => {
 
 					<AuthorRows
 						authors={filteredAuthors}
+						resetKey={JSON.stringify(filters)}
 						onEditAuthor={onOpenEditAuthorSheet}
 						onDeleteAuthor={onOpenDeleteAuthorDialog}
 					/>
 
-					<div className={styles.footer}>
+					<div data-authors-footer="" className={styles.footer}>
 						<span className={styles.footerText}>
 							{filteredAuthors.length === authors.length
-								? `${authors.length} authors`
-								: `${filteredAuthors.length} of ${authors.length} authors`}
+								? `${authors.length} ${authorNoun(authors.length)}`
+								: `${filteredAuthors.length} of ${authors.length} ${authorNoun(authors.length)}`}
 						</span>
 					</div>
 				</>
@@ -331,53 +320,26 @@ const EditAuthorSheet = ({
 };
 
 /**
- * The author list, windowed with @tanstack/react-virtual (same pattern as
- * BookGrid): only rows near the viewport mount. The page itself does not
- * scroll — rows window against the app's shared scroll region, so the
- * sticky header/footer keep pinning exactly as before.
+ * The author list, windowed against the app's shared scroll region like the
+ * Series/Tags/Publishers lists, so the sticky header and footer pin to it.
+ * Editing an author keeps the reader's place; changing a filter returns to
+ * the top.
  */
 const AuthorRows = ({
 	authors,
+	resetKey,
 	onEditAuthor,
 	onDeleteAuthor,
 }: {
 	authors: LibraryAuthor[];
+	resetKey: string;
 	onEditAuthor: (authorId: string) => void;
 	onDeleteAuthor: (authorId: string) => void;
 }) => {
-	const rowsRef = useRef<HTMLDivElement>(null);
-	const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
-	// Distance from the scroll region's content top to the first row (the
-	// filter bar + sticky column header above the list).
-	const [scrollMargin, setScrollMargin] = useState(0);
-
-	useLayoutEffect(() => {
-		const rows = rowsRef.current;
-		if (!rows) return;
-		const scrollParent = findScrollParent(rows);
-		setScrollElement(scrollParent);
-		if (!scrollParent) return;
-
-		const measure = () => {
-			setScrollMargin(
-				rows.getBoundingClientRect().top -
-					scrollParent.getBoundingClientRect().top +
-					scrollParent.scrollTop,
-			);
-		};
-		measure();
-		const observer = new ResizeObserver(measure);
-		observer.observe(scrollParent);
-		return () => observer.disconnect();
-	}, []);
-
-	const virtualizer = useVirtualizer({
-		count: authors.length,
-		getScrollElement: () => scrollElement,
-		estimateSize: () => ESTIMATED_ROW_HEIGHT,
-		overscan: OVERSCAN_ROWS,
-		scrollMargin,
-	});
+	const { rowsRef, virtualizer, scrollMargin } = useVirtualListRows(
+		authors,
+		resetKey,
+	);
 
 	return (
 		<div
@@ -390,7 +352,7 @@ const AuthorRows = ({
 				if (author === undefined) return null;
 				return (
 					<div
-						key={author.id}
+						key={virtualRow.key}
 						ref={virtualizer.measureElement}
 						data-index={virtualRow.index}
 						style={{
