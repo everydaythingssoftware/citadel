@@ -51,15 +51,18 @@ const BookCoverUsingImage = ({
 	book,
 	disableFade,
 	fluid,
+	interactive,
 	thumb,
 	...props
 }: {
 	book: LibraryBookWithCoverImage;
 	disableFade: boolean;
 	fluid: boolean;
+	interactive: boolean;
 	thumb?: CoverThumbnail;
 } & HTMLAttributes<HTMLDivElement>) => {
-	const [isHovering, setIsHovering] = useState(false);
+	const [pointerInside, setPointerInside] = useState(false);
+	const isHovering = interactive && pointerInside;
 	// A cover can fail without an `error` event: an asset:// URL outside the
 	// asset scope "loads" at 0×0, which would render a zero-height cell and
 	// collapse the virtualized grid's row measurement. Either failure mode
@@ -73,6 +76,7 @@ const BookCoverUsingImage = ({
 				book={book}
 				disableFade={disableFade}
 				fluid={fluid}
+				interactive={interactive}
 				{...props}
 			/>
 		);
@@ -95,10 +99,10 @@ const BookCoverUsingImage = ({
 			}}
 			{...props}
 			onPointerOver={() => {
-				setIsHovering(true);
+				setPointerInside(true);
 			}}
 			onPointerLeave={() => {
-				setIsHovering(false);
+				setPointerInside(false);
 			}}
 		>
 			<img
@@ -153,13 +157,16 @@ const BookCoverWithPlaceholder = ({
 	book,
 	disableFade,
 	fluid,
+	interactive,
 	...props
 }: {
 	book: LibraryBook;
 	disableFade: boolean;
 	fluid: boolean;
+	interactive: boolean;
 } & HTMLAttributes<HTMLDivElement>) => {
-	const [isHovering, setIsHovering] = useState(false);
+	const [pointerInside, setPointerInside] = useState(false);
+	const isHovering = interactive && pointerInside;
 
 	const imgUrl = selectByStringHash(
 		[img1Url, img2Url, img3Url, img4Url, img5Url],
@@ -181,10 +188,10 @@ const BookCoverWithPlaceholder = ({
 				position: "relative",
 			}}
 			onPointerOver={() => {
-				setIsHovering(true);
+				setPointerInside(true);
 			}}
 			onPointerLeave={() => {
-				setIsHovering(false);
+				setPointerInside(false);
 			}}
 		>
 			<div
@@ -287,6 +294,11 @@ export const BookCover = ({
 	 */
 	thumb?: CoverThumbnail;
 } & HTMLAttributes<HTMLDivElement>) => {
+	// Only covers that respond to a press lift on hover; display-only covers
+	// (details sidebar, edit page) stay still.
+	const interactive =
+		props.onClick !== undefined || props.onPointerDown !== undefined;
+
 	if (book.cover_image?.url !== undefined) {
 		return (
 			<BookCoverUsingImage
@@ -297,6 +309,7 @@ export const BookCover = ({
 				book={book}
 				disableFade={disableFade}
 				fluid={fluid}
+				interactive={interactive}
 				thumb={thumb}
 				{...props}
 			/>
@@ -308,6 +321,7 @@ export const BookCover = ({
 			book={book}
 			disableFade={disableFade}
 			fluid={fluid}
+			interactive={interactive}
 			{...props}
 		/>
 	);
