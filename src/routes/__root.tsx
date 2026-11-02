@@ -15,6 +15,7 @@ import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton } from "@/components/ui";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
+import { usePlatform } from "@/lib/platform/context";
 import classes from "./root.module.css";
 
 const Root = () => {
@@ -23,15 +24,20 @@ const Root = () => {
 	const [mobileOpenedOn, setMobileOpenedOn] = useState<string | null>(null);
 	const [desktopOpened, setDesktopOpened] = useState(true);
 	const { location } = useRouterState();
+	const platform = usePlatform();
 	const mobileOpened = mobileOpenedOn === location.href;
 	useNativeThemeSync();
 	// Self-disables in the settings window (/settings pathname check inside).
 	useAppKeymap();
 
-	// The settings window loads /settings in its own webview; it brings its
-	// own full-window layout and must not inherit the library chrome
-	// (toolbar, sidebar, Add Book).
-	if (location.pathname.startsWith("/settings")) {
+	// The desktop settings window loads /settings in its own webview; it
+	// brings its own full-window layout and must not inherit the library
+	// chrome (toolbar, sidebar, Add Book). On the web, Settings is a page of
+	// the app like any other.
+	if (
+		platform.capabilities.supportsNativeWindows &&
+		location.pathname.startsWith("/settings")
+	) {
 		return <Outlet />;
 	}
 

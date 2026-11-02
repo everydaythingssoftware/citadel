@@ -1820,7 +1820,7 @@ async fn provider_keys_are_verified_saved_per_user_and_never_returned() {
     assert!(hardcover(&providers)["unavailableReason"]
         .as_str()
         .unwrap()
-        .contains("Account settings"));
+        .contains("under Account in Settings"));
     let (status, _, error) = call(
         "GET",
         "/api/metadata/search?provider=hardcover&q=dune",

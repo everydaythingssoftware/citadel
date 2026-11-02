@@ -8,6 +8,8 @@ export interface SettingsButtonProps {
 	/** Version of a pending update; badges the gear when set. */
 	updateVersion: string | null;
 	onClick: () => void;
+	/** Settings is the page showing (web, where Settings is a page). */
+	active?: boolean;
 	className?: string;
 }
 
@@ -15,6 +17,7 @@ export interface SettingsButtonProps {
 export const SettingsButton = ({
 	updateVersion,
 	onClick,
+	active = false,
 	className,
 }: SettingsButtonProps) => {
 	const button = (
@@ -25,6 +28,8 @@ export const SettingsButton = ({
 					: "Settings"
 			}
 			className={clsx(styles.button, className)}
+			data-active={active || undefined}
+			aria-current={active ? "page" : undefined}
 			onClick={onClick}
 		>
 			{/* F7Gear hardcodes width/height 56; size it to fit the button. */}

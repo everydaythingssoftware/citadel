@@ -287,11 +287,11 @@ async fn credential(
     match secret {
         Some(CredentialSecret::Available(secret)) => Ok(Some(secret)),
         Some(CredentialSecret::NeedsReentry) => Err(LibraryError::invalid(format!(
-            "Your {name} API key needs to be entered again in Account settings"
+            "Enter your {name} API key again under Account in Settings"
         ))
         .into()),
         None => Err(LibraryError::invalid(format!(
-            "Add your {name} API key in Account settings to search {name}"
+            "Add your {name} API key under Account in Settings to search {name}"
         ))
         .into()),
     }

@@ -17,3 +17,8 @@
 .gearCutout {
 	mask-image: radial-gradient(circle at 17px 2px, transparent 5.5px, black 6px);
 }
+
+.button[data-active] {
+	background-color: var(--ctd-nav-active-bg);
+	color: var(--ctd-nav-active-text);
+}
