@@ -122,7 +122,6 @@ impl Backoff {
 /// The signed-in user, available to handlers behind [`require_session`]; write
 /// handlers derive their `Actor` from it.
 #[derive(Clone, Debug)]
-#[allow(dead_code)] // No write routes yet (CDL-37).
 pub(super) struct SignedIn(pub User);
 
 #[derive(Serialize, utoipa::ToSchema)]
@@ -193,7 +192,7 @@ fn cross_origin(access: &Access, request_method: &Method, headers: &HeaderMap) -
     })
 }
 
-async fn blocking<T: Send + 'static>(
+pub(super) async fn blocking<T: Send + 'static>(
     state: &ApiState,
     operation: impl FnOnce(&CitadelStore) -> Result<T, citadel_core::store::StoreError> + Send + 'static,
 ) -> Result<T, ApiFailure> {

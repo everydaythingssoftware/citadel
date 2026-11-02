@@ -1,0 +1,22 @@
+{
+  "ISBN:9780553103540": {
+    "url": "https://openlibrary.org/books/OL7826547M/A_Game_of_Thrones",
+    "key": "/books/OL7826547M",
+    "title": "A Game of Thrones",
+    "subtitle": "A Song of Ice and Fire, Book One",
+    "authors": [{ "url": "https://openlibrary.org/authors/OL234664A/George_R._R._Martin", "name": "George R. R. Martin" }],
+    "identifiers": {
+      "isbn_10": ["0553103547"],
+      "isbn_13": ["9780553103540"],
+      "openlibrary": ["OL7826547M"]
+    },
+    "publishers": [{ "name": "Bantam" }],
+    "publish_date": "August 1996",
+    "subjects": [{ "name": "Fantasy fiction", "url": "https://openlibrary.org/subjects/fantasy_fiction" }],
+    "cover": {
+      "small": "https://covers.openlibrary.org/b/id/8303480-S.jpg",
+      "medium": "https://covers.openlibrary.org/b/id/8303480-M.jpg",
+      "large": "https://covers.openlibrary.org/b/id/8303480-L.jpg"
+    }
+  }
+}

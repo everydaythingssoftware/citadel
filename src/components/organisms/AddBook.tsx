@@ -17,7 +17,9 @@ import { Button, Sheet } from "@/components/ui";
 import {
 	applyMetadataToBook,
 	type PendingMetadata,
+	refreshCoverId,
 } from "@/lib/metadata-import";
+import { useChooseBookFiles } from "@/lib/hooks/use-choose-book-files";
 import type { Library } from "@/lib/services/library";
 import { usePlatform } from "@/lib/platform/context";
 import {
@@ -27,11 +29,15 @@ import {
 	useLibraryStore,
 	useLibraryState,
 } from "@/stores/library/store";
+import { useResolvedProviderConfig } from "@/stores/settings/metadata-providers";
 
 interface AddBookContextValue {
-	/** Opens the native file picker and walks the import flow. */
+	/**
+	 * Opens the native file picker and walks the import flow, or, for a
+	 * library that takes uploads, the browser's chooser into the upload queue.
+	 */
 	startAddBook: () => void;
-	/** True when the library is ready and the platform can pick local files. */
+	/** True when the library is ready and can take a new book from here. */
 	canAddBook: boolean;
 }
 
@@ -47,6 +53,7 @@ export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 	const actions = useLibraryActions();
 	const authors = useAuthors();
 	const platform = usePlatform();
+	const getProviderConfig = useResolvedProviderConfig();
 	const activeLibrary = useLibraryStore((state) => state.library);
 	const importLibraryRef = useRef<Library | null>(null);
 
@@ -89,13 +96,23 @@ export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 		[actions],
 	);
 
-	const canAddBook =
+	const chooseUploads = useChooseBookFiles();
+	const canImport =
 		state === LibraryState.ready &&
 		activeLibrary?.readOnly === false &&
 		platform.capabilities.canPickLocalFiles;
+	const canUpload =
+		state === LibraryState.ready &&
+		activeLibrary?.uploads !== undefined &&
+		!platform.capabilities.canPickLocalFiles;
+	const canAddBook = canImport || canUpload;
 
 	const startAddBook = useCallback(() => {
-		if (!canAddBook) return;
+		if (canUpload) {
+			chooseUploads();
+			return;
+		}
+		if (!canImport) return;
 
 		triggerRef.current =
 			document.activeElement instanceof HTMLElement
@@ -127,7 +144,7 @@ export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 				console.error("failed to import new book: ", failure);
 			}
 		})();
-	}, [actions, canAddBook, openModal, platform]);
+	}, [actions, canImport, canUpload, chooseUploads, openModal, platform]);
 
 	// File > Add Book… in the native menu emits this event to the main window
 	// (see src-tauri/src/menu.rs); it triggers the same flow as the button.
@@ -191,10 +208,12 @@ export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 						assertLibrary();
 						await actions.updateBook(...args);
 					},
-					setBookCoverFromUrl: async (...args) => {
+					setBookCoverFromMetadata: async (...args) => {
 						assertLibrary();
-						await actions.setBookCoverFromUrl(...args);
+						await actions.setBookCoverFromMetadata(...args);
 					},
+					refreshCoverId: (book) =>
+						refreshCoverId(book, getProviderConfig(book.provider)),
 				});
 			}
 			assertLibrary();

@@ -11,6 +11,9 @@ use crate::{
 };
 use libcalibre::{BookId, Library};
 
+mod delete;
+pub use delete::{remove_permanently, DeletedBooks};
+
 type Result<T> = std::result::Result<T, LibraryError>;
 
 pub struct LibraryService<'a> {
@@ -156,6 +159,24 @@ impl<'a> LibraryService<'a> {
             .update_author(id, updates.to_library_update())?
             .id
             .as_i32())
+    }
+    /// Deletes books from the database in one transaction: nothing is deleted
+    /// if any id is unknown. Their folders stay on disk until the host passes
+    /// its removal strategy to [`DeletedBooks::remove_folders`], ideally after
+    /// releasing the library.
+    pub fn delete_books(&mut self, _actor: &Actor, ids: &[String]) -> Result<DeletedBooks> {
+        let ids = ids
+            .iter()
+            .map(|id| book_id(id))
+            .collect::<Result<Vec<_>>>()?;
+        let library_root = std::path::Path::new(self.library.library_path())
+            .canonicalize()
+            .map_err(libcalibre::CalibreError::from)?;
+        let folders = self.library.delete_books(&ids)?;
+        Ok(DeletedBooks {
+            library_root,
+            folders,
+        })
     }
     pub fn delete_author(&mut self, _actor: &Actor, id: &str) -> Result<()> {
         let id = id

@@ -5,7 +5,7 @@
 .shell {
 	display: flex;
 	flex-direction: column;
-	height: 100vh;
+	height: 100dvh;
 	overflow: hidden;
 	background: var(--ctd-shell-gradient);
 }
@@ -16,10 +16,15 @@
 	justify-content: space-between;
 	flex-shrink: 0;
 	height: 46px;
-	/* 110px clears the traffic lights at trafficLightPosition x14/y16 */
-	padding: 0 16px 0 110px;
+	padding: 0 16px;
 	background-color: var(--ctd-header-bg);
 	z-index: 100;
+}
+
+/* 110px clears the macOS traffic lights at trafficLightPosition x14/y16; the
+   vibrancy flag marks exactly that native window. */
+:root[data-vibrancy] .header {
+	padding-left: 110px;
 }
 
 .headerControls {
@@ -69,6 +74,10 @@
 	border-top-left-radius: var(--ctd-radius-panel);
 }
 
+.scrim {
+	display: none;
+}
+
 .sidebarToggle {
 	color: var(--ctd-ink);
 }
@@ -79,6 +88,15 @@
 }
 
 @media (max-width: 47.99em) {
+	.header {
+		padding: 0 8px;
+	}
+
+	.headerControls {
+		gap: 6px;
+		min-width: 0;
+	}
+
 	.desktopOnly {
 		display: none;
 	}
@@ -101,5 +119,17 @@
 		background-color: var(--ctd-surface);
 		border-right: 1px solid var(--ctd-border);
 		z-index: 105;
+		overflow-y: auto;
+	}
+
+	/* Tapping the content beside the open sidebar closes it. */
+	.scrim {
+		display: block;
+		position: fixed;
+		inset: 46px 0 0;
+		z-index: 104;
+		padding: 0;
+		border: 0;
+		background: oklch(0% 0 0 / 0.2);
 	}
 }

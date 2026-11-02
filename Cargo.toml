@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/citadel-core",
+    "crates/citadel-metadata",
     "crates/citadel-opds",
     "crates/citadel-server",
     "crates/libcalibre",

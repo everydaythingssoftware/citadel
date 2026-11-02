@@ -1,15 +1,9 @@
-use chrono::NaiveDate;
+use libcalibre::mime_type::MIMETYPE;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use crate::imports::ImportableFile;
 use crate::imports::{ImportableBookMetadata, ImportableBookType};
-
-mod epub;
-mod mobi;
-mod pdf;
-mod txt;
 
 #[derive(Serialize, Clone, Copy, specta::Type)]
 pub enum SupportedFormats {
@@ -88,51 +82,24 @@ pub fn validate_file_importable(path: &Path) -> Option<ImportableFile> {
 }
 
 pub fn get_importable_file_metadata(file: ImportableFile) -> Option<ImportableBookMetadata> {
-    let ext = &file.path.extension().and_then(|s| s.to_str()).unwrap_or("");
-    let format = SupportedFormats::from_file_extension(ext);
-
-    match format {
-        Some(SupportedFormats::EPUB) => match epub::read_metadata(&file.path) {
-            Some(metadata) => Some(ImportableBookMetadata {
-                file_type: ImportableBookType::Epub,
-                title: metadata.title.unwrap_or("".to_string()),
-                author_names: metadata.creator_list,
-                language: metadata.language,
-                publisher: metadata.publisher,
-                identifier: metadata.identifier,
-                path: file.path,
-                file_contains_cover: metadata.cover_image_data.is_some(),
-                tags: metadata.subjects,
-                publication_date: NaiveDate::from_str(
-                    metadata.publication_date.unwrap_or("".to_string()).as_str(),
-                )
-                .ok(),
-            }),
-            _ => None,
-        },
-        Some(SupportedFormats::MOBI)
-        | Some(SupportedFormats::KF7)
-        | Some(SupportedFormats::KF8) => match mobi::read_metadata(&file.path) {
-            Some(metadata) => Some(ImportableBookMetadata {
-                file_type: ImportableBookType::Mobi,
-                title: metadata.title,
-                author_names: Some(vec![metadata.author]),
-                identifier: Some(metadata.isbn),
-                publisher: Some(metadata.publisher),
-                language: Some(metadata.language),
-                tags: metadata.subjects,
-                path: file.path,
-                publication_date: metadata.pub_date,
-                file_contains_cover: metadata.cover_image_data.is_some(),
-            }),
-            _ => None,
-        },
-        Some(SupportedFormats::PDF) => {
-            pdf::read_metadata(&file.path).map(|metadata| metadata.to_importable_book_metadata())
-        }
-        Some(SupportedFormats::TXT) => {
-            txt::read_metadata(&file.path).map(|metadata| metadata.to_importable_book_metadata())
-        }
-        _ => None,
-    }
+    let metadata = libcalibre::book_file::read_metadata(&file.path)?;
+    let file_type = match metadata.format {
+        MIMETYPE::EPUB => ImportableBookType::Epub,
+        MIMETYPE::MOBI | MIMETYPE::KF7 | MIMETYPE::KF8 => ImportableBookType::Mobi,
+        MIMETYPE::PDF => ImportableBookType::Pdf,
+        MIMETYPE::TXT => ImportableBookType::Text,
+        MIMETYPE::UNKNOWN => return None,
+    };
+    Some(ImportableBookMetadata {
+        file_type,
+        title: metadata.title.unwrap_or_default(),
+        author_names: (!metadata.author_names.is_empty()).then_some(metadata.author_names),
+        identifier: metadata.identifier,
+        publisher: metadata.publisher,
+        language: metadata.language,
+        tags: metadata.tags,
+        path: file.path,
+        publication_date: metadata.publication_date,
+        file_contains_cover: metadata.has_cover,
+    })
 }

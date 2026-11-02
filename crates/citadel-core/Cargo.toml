@@ -14,6 +14,7 @@ openapi = ["dep:utoipa"]
 [dependencies]
 argon2 = { version = "0.5", features = ["std"] }
 base64 = "0.22"
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 chrono = { version = "0.4.31", features = ["serde"] }
 utoipa = { version = "6", features = ["chrono"], optional = true }
 diesel = { version = "2.2.4", features = ["sqlite"] }

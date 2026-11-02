@@ -23,18 +23,20 @@ jobs:
         with:
           prefix-key: opds-runtime
           workspaces: "."
+      # Calibre's annotations table has FTS5 triggers, so deleting a book
+      # needs an SQLite built with FTS5.
       - name: Install SQLite on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          vcpkg install sqlite3:x64-windows-static-md
+          vcpkg install "sqlite3[core,json1,fts5]:x64-windows-static-md"
           "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
           "VCPKGRS_TRIPLET=x64-windows-static-md" >> $env:GITHUB_ENV
       - name: Install SQLite on Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev pkg-config libssl-dev
       - name: Test runtime and headless host without Tauri
-        run: cargo test --locked -p citadel-core --features citadel-core/openapi -p citadel-opds -p citadel-server
+        run: cargo test --locked -p citadel-core --features citadel-core/openapi -p citadel-metadata -p citadel-opds -p citadel-server
       - name: Test validation fixture input checks
         run: cargo test --locked -p libcalibre --example create_opds_validation_library
 

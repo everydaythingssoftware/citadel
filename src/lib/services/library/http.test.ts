@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LibraryBook, LibraryBookQuery } from "@/bindings";
 import { createHttpLibrary } from "./http";
+import { CoverExpiredError } from "./types";
 
 const query: LibraryBookQuery = {
 	text: "search",
@@ -229,12 +230,85 @@ describe("HTTP Library", () => {
 				language_list: null,
 			}),
 		).rejects.toThrow("browsing and downloads only");
-		await expect(library.deleteBooks(["7"])).rejects.toThrow(
-			"browsing and downloads only",
-		);
 		await expect(
 			library.checkFileImportable("/server/book.epub"),
 		).rejects.toThrow("browsing and downloads only");
 		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("sets covers by cover ID or uploaded image, never by URL", async () => {
+		const requests: Request[] = [];
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async (request) => {
+				requests.push(request.clone());
+				if (request.method === "POST") {
+					const { coverId } = (await request.json()) as { coverId: string };
+					return coverId === "stale"
+						? json({ code: "notFound", message: "Search again" }, 410)
+						: new Response(null, { status: 204 });
+				}
+				return new Response(null, { status: 204 });
+			},
+		});
+		await library.setBookCoverFromMetadata("7", "cover-1");
+		await expect(
+			library.setBookCoverFromMetadata("7", "stale"),
+		).rejects.toBeInstanceOf(CoverExpiredError);
+		const image = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], {
+			type: "image/jpeg",
+		});
+		await library.setBookCoverFromFile("7", image);
+
+		expect(requests.map((request) => request.method)).toEqual([
+			"POST",
+			"POST",
+			"PUT",
+		]);
+		expect(new URL(requests[0]?.url ?? "").pathname).toBe("/api/books/7/cover");
+		expect(await requests[0]?.json()).toEqual({ coverId: "cover-1" });
+		const upload = requests[2];
+		expect(upload?.headers.get("content-type")).toBe("image/jpeg");
+		expect(new Uint8Array(await (upload as Request).arrayBuffer())).toEqual(
+			new Uint8Array([0xff, 0xd8, 0xff]),
+		);
+	});
+
+	it("deletes books and authors permanently through the HTTP contract", async () => {
+		const requests: Request[] = [];
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async (request) => {
+				requests.push(request);
+				return request.method === "DELETE"
+					? new Response(null, { status: 204 })
+					: json({ deleted: 2, folder_failures: ["Author/Book (8): busy"] });
+			},
+		});
+		expect(library.bookDeletion).toBe("permanent");
+		expect(await library.deleteBooks(["7", "8"])).toEqual({
+			deleted: 2,
+			folder_failures: ["Author/Book (8): busy"],
+		});
+		expect(requests[0]?.method).toBe("POST");
+		expect(requests[0]?.url).toBe("https://citadel.test/api/books/delete");
+		expect(await requests[0]?.json()).toEqual({ book_ids: ["7", "8"] });
+		await library.deleteAuthor("3");
+		expect(requests[1]?.method).toBe("DELETE");
+		expect(requests[1]?.url).toBe("https://citadel.test/api/authors/3");
+	});
+
+	it("reports a read-only library's refusal to delete", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () =>
+				json({ code: "readOnly", message: "This library is read-only" }, 403),
+		});
+		await expect(library.deleteBooks(["7"])).rejects.toThrow(
+			"This library is read-only",
+		);
+		await expect(library.deleteAuthor("3")).rejects.toThrow(
+			"This library is read-only",
+		);
 	});
 });

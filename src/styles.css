@@ -22,6 +22,8 @@
 	--pal-accent-text: oklch(97.5% 0.003 90);
 	--pal-red: oklch(52% 0.18 25);
 	--pal-red-text: oklch(98% 0.005 25);
+	/* Brass: the one warm accent, kept for time and drop-target cues. */
+	--pal-brass: oklch(56% 0.11 75);
 
 	--ctd-bg: var(--pal-mantle);
 	--ctd-bg-deep: var(--pal-crust);
@@ -60,6 +62,7 @@
 	--ctd-control-disabled-bg: oklch(from var(--pal-mantle) l c h / 0.9);
 	--ctd-control-disabled-border: oklch(from var(--pal-text) l c h / 0.12);
 	--ctd-control-disabled-text: oklch(from var(--pal-subtext) l c h / 0.6);
+	--ctd-brass: var(--pal-brass);
 	--ctd-danger-bg: var(--pal-red);
 	--ctd-danger-bg-hover: oklch(from var(--pal-red) calc(l - 0.06) c h);
 	--ctd-danger-text: var(--pal-red-text);
@@ -154,6 +157,7 @@
 	--pal-accent-text: oklch(20% 0.004 270);
 	--pal-red: oklch(55% 0.18 25);
 	--pal-red-text: oklch(98% 0.005 25);
+	--pal-brass: oklch(78% 0.11 80);
 
 	--ctd-bg: var(--pal-mantle);
 	--ctd-bg-deep: var(--pal-crust);
@@ -269,8 +273,18 @@ body {
 	background: transparent;
 }
 
+/* The visible viewport: on iOS Safari 100vh is taller than the screen
+   behind the browser's toolbars, which let the page scroll the toolbar away. */
 #root {
-	height: 100vh;
+	height: 100dvh;
+}
+
+/* iOS zooms into any field with text under 16px and doesn't zoom back out. */
+@media (pointer: coarse) {
+	/* :root lifts this above single-class component rules. */
+	:root :is(input, textarea, select) {
+		font-size: max(16px, 1em);
+	}
 }
 
 * {

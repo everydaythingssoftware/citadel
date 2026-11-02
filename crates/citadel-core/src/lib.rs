@@ -28,3 +28,4 @@ pub mod error;
 pub mod library;
 pub mod password;
 pub mod store;
+pub mod vault;

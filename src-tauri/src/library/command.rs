@@ -5,7 +5,9 @@ use crate::imports::ImportableBookMetadata;
 use crate::libs::cover_thumbs::{self, CoverThumbnail};
 use crate::state::CitadelState;
 use citadel_core::{
-    contracts::{custom_columns::CustomValueDto, AuthorUpdate, BookUpdate, NewAuthor},
+    contracts::{
+        custom_columns::CustomValueDto, AuthorUpdate, BookUpdate, DeleteBooksOutcome, NewAuthor,
+    },
     Actor, LibraryAuthor,
 };
 
@@ -148,61 +150,56 @@ pub fn clb_cmd_delete_book_identifier(
         .map_err(|error| error.to_string())
 }
 
+/// Apply a cover from a metadata lookup result, by the `cover_id` the
+/// lookup returned. Citadel fetches the image itself (ADR 0010).
 #[tauri::command]
 #[specta::specta]
-pub async fn clb_cmd_set_book_cover_from_url(
+pub async fn clb_cmd_set_book_cover_from_metadata(
     state: tauri::State<'_, CitadelState>,
     account: tauri::State<'_, LocalAccount>,
+    metadata: tauri::State<'_, citadel_metadata::MetadataClient>,
     book_id: String,
-    image_url: String,
+    cover_id: String,
 ) -> Result<(), String> {
-    download_book_cover(
-        state.inner(),
-        &account.actor(),
-        book_id,
-        image_url,
-        &reqwest::Client::new(),
-    )
+    apply_cover(state.inner(), &account.actor(), book_id, async {
+        Ok(metadata.cover_image(&cover_id).await?.to_vec())
+    })
     .await
 }
 
-async fn download_book_cover(
+/// Apply a cover image the user chose from a file.
+#[tauri::command]
+#[specta::specta]
+pub async fn clb_cmd_set_book_cover_from_file(
+    state: tauri::State<'_, CitadelState>,
+    account: tauri::State<'_, LocalAccount>,
+    book_id: String,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    apply_cover(state.inner(), &account.actor(), book_id, async {
+        Ok(citadel_metadata::reencode_cover(bytes, MAX_COVER_FILE_BYTES).await?)
+    })
+    .await
+}
+
+const MAX_COVER_FILE_BYTES: u64 = 15 * 1024 * 1024;
+
+/// Waits for the image, then applies it only if the same library is still
+/// open: the user may switch libraries while a cover downloads.
+async fn apply_cover(
     state: &CitadelState,
     actor: &Actor,
     book_id: String,
-    image_url: String,
-    client: &reqwest::Client,
+    image: impl std::future::Future<Output = Result<Vec<u8>, String>>,
 ) -> Result<(), String> {
     let library_root = state.with_library(|library| library.library_path().to_owned())?;
-    let image_url = image_url.trim();
-    if image_url.is_empty() {
-        return Err("Image URL is empty".to_string());
-    }
-
-    let response = client
-        .get(image_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to download cover image: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "Cover image request returned status {}",
-            response.status()
-        ));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read cover image bytes: {}", e))?;
-
+    let bytes = image.await?;
     state.with_library(|library| {
         if library.library_path() != library_root {
             return Err("Library changed while downloading the cover".to_string());
         }
         citadel_core::library::LibraryService::new(library, &citadel_core::AssetUrlBuilder)
-            .set_cover(actor, &book_id, bytes.to_vec())
+            .set_cover(actor, &book_id, bytes)
             .map_err(|error| error.to_string())
     })?
 }
@@ -345,15 +342,6 @@ pub fn clb_cmd_delete_author(
         .map_err(|error| error.to_string())
 }
 
-/// Result of [`clb_cmd_delete_books`]. The books are gone from the library
-/// either way; `trash_failures` lists folder paths and errors for files
-/// that could not be moved to the system trash.
-#[derive(serde::Serialize, specta::Type)]
-pub struct DeleteBooksOutcome {
-    pub deleted: u32,
-    pub trash_failures: Vec<String>,
-}
-
 /// Delete books from the library. The database rows go first, in one
 /// transaction (nothing is deleted if any id is unknown); each book's folder
 /// is then moved to the system trash rather than erased, so it can be
@@ -363,47 +351,18 @@ pub struct DeleteBooksOutcome {
 #[specta::specta]
 pub fn clb_cmd_delete_books(
     state: tauri::State<CitadelState>,
+    account: tauri::State<LocalAccount>,
     book_ids: Vec<String>,
 ) -> Result<DeleteBooksOutcome, String> {
-    let ids = book_ids
-        .iter()
-        .map(|raw| {
-            raw.parse::<i32>()
-                .map(libcalibre::BookId::from)
-                .map_err(|e| format!("Invalid book id '{raw}': {e}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let (library_root, dirs) = state
-        .with_library(|lib| -> Result<_, libcalibre::CalibreError> {
-            let root = std::path::Path::new(lib.library_path()).canonicalize()?;
-            let dirs = lib.delete_books(&ids)?;
-            Ok((root, dirs))
-        })?
-        .map_err(|e| e.to_string())?;
-
-    let trash_failures = dirs
-        .iter()
-        .filter_map(|dir| {
-            match super::delete_books::trash_book_dir(&library_root, dir, |path| {
-                move_to_trash(path).map_err(|error| error.to_string())
-            }) {
-                Ok(true) => {
-                    remove_empty_author_dir(&library_root, dir);
-                    None
-                }
-                Ok(false) => None,
-                Err(e) => {
-                    log::warn!("Failed to move {} to the trash: {e}", dir.display());
-                    Some(format!("{}: {e}", dir.display()))
-                }
-            }
-        })
-        .collect();
-
-    Ok(DeleteBooksOutcome {
-        deleted: u32::try_from(dirs.len()).unwrap_or(u32::MAX),
-        trash_failures,
-    })
+    let deleted = state
+        .with_library_service(|service| service.delete_books(&account.actor(), &book_ids))
+        .map_err(|error| error.to_string())?;
+    let outcome =
+        deleted.remove_folders(|path| move_to_trash(path).map_err(|error| error.to_string()));
+    for failure in &outcome.folder_failures {
+        log::warn!("Failed to move a book folder to the trash: {failure}");
+    }
+    Ok(outcome)
 }
 
 /// Moves `path` to the system trash. On macOS this uses `NSFileManager`
@@ -421,19 +380,6 @@ fn move_to_trash(path: &std::path::Path) -> Result<(), trash::Error> {
     {
         trash::delete(path)
     }
-}
-
-/// Removes `book_dir`'s parent (the author folder) if it is now empty and
-/// sits inside the library. `remove_dir` refuses non-empty directories, so
-/// this never deletes anything but an empty folder.
-fn remove_empty_author_dir(library_root: &std::path::Path, book_dir: &std::path::Path) {
-    let Some(author_dir) = book_dir.parent() else {
-        return;
-    };
-    if author_dir == library_root || !author_dir.starts_with(library_root) {
-        return;
-    }
-    let _ = std::fs::remove_dir(author_dir);
 }
 
 #[tauri::command]
@@ -487,7 +433,6 @@ mod cover_download_tests {
 
     #[tokio::test]
     async fn download_cannot_apply_its_cover_to_a_newly_selected_library() {
-        use axum::{routing::get, Router};
         let a = fixture();
         let b = fixture();
         let state = CitadelState::new();
@@ -496,36 +441,19 @@ mod cover_download_tests {
             .unwrap();
         let started = Arc::new(Notify::new());
         let release = Arc::new(Notify::new());
-        let app = Router::new().route(
-            "/cover",
-            get({
-                let started = started.clone();
-                let release = release.clone();
-                move || {
-                    let started = started.clone();
-                    let release = release.clone();
-                    async move {
-                        started.notify_one();
-                        release.notified().await;
-                        "downloaded cover"
-                    }
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://{}/cover", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
         let download = tokio::spawn({
             let state = state.clone();
+            let (started, release) = (started.clone(), release.clone());
             async move {
-                download_book_cover(
+                apply_cover(
                     &state,
                     &Actor::User { id: "test".into() },
                     "1".into(),
-                    url,
-                    &reqwest::Client::builder().no_proxy().build().unwrap(),
+                    async move {
+                        started.notify_one();
+                        release.notified().await;
+                        Ok(b"downloaded cover".to_vec())
+                    },
                 )
                 .await
             }
@@ -538,7 +466,6 @@ mod cover_download_tests {
             .unwrap();
         release.notify_one();
         let result = download.await.unwrap();
-        server.abort();
         assert!(result.unwrap_err().contains("Library changed"));
         assert!(!state
             .with_library(|library| library
@@ -554,5 +481,39 @@ mod cover_download_tests {
                 .unwrap()
                 .has_cover
         );
+    }
+
+    #[tokio::test]
+    async fn file_covers_are_reencoded_and_unreadable_ones_refused() {
+        let directory = fixture();
+        let state = CitadelState::new();
+        state
+            .init_library(directory.path().to_str().unwrap().into())
+            .unwrap();
+        let actor = Actor::User { id: "test".into() };
+        let refused = apply_cover(&state, &actor, "1".into(), async {
+            Ok(
+                citadel_metadata::reencode_cover(b"not an image".to_vec(), MAX_COVER_FILE_BYTES)
+                    .await?,
+            )
+        })
+        .await;
+        assert!(refused.is_err());
+        let mut png = Vec::new();
+        image::RgbImage::from_pixel(20, 30, image::Rgb([1, 2, 3]))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        apply_cover(&state, &actor, "1".into(), async {
+            Ok(citadel_metadata::reencode_cover(png, MAX_COVER_FILE_BYTES).await?)
+        })
+        .await
+        .unwrap();
+        let cover = state
+            .with_library(|library| library.library_path().to_owned())
+            .unwrap();
+        let jpeg =
+            std::fs::read(std::path::Path::new(&cover).join("Author/Cover Target (1)/cover.jpg"))
+                .unwrap();
+        assert_eq!(&jpeg[..2], &[0xFF, 0xD8], "stored as JPEG");
     }
 }

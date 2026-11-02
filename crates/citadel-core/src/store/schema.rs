@@ -44,7 +44,20 @@ diesel::table! {
         created_at -> BigInt,
     }
 }
+diesel::table! {
+    provider_credentials (user_id, provider) {
+        user_id -> Text,
+        provider -> Text,
+        key_id -> Text,
+        nonce -> Binary,
+        ciphertext -> Binary,
+        label -> Nullable<Text>,
+        created_at -> BigInt,
+        verified_at -> Nullable<BigInt>,
+    }
+}
 diesel::joinable!(sessions -> users (user_id));
+diesel::joinable!(provider_credentials -> users (user_id));
 diesel::joinable!(library_grants -> users (user_id));
 diesel::joinable!(library_grants -> libraries (library_id));
 diesel::joinable!(external_identities -> users (user_id));
@@ -54,5 +67,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     sessions,
     libraries,
     library_grants,
-    properties
+    properties,
+    provider_credentials
 );

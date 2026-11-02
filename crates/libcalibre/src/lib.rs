@@ -1,5 +1,5 @@
 mod assets;
-mod cover_image;
+pub mod book_file;
 mod custom_columns;
 mod entities;
 pub mod error;

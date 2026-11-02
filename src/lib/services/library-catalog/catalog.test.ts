@@ -8,11 +8,12 @@ const ipc = vi.hoisted(() => ({
 	clbQueryLibraryStats: vi.fn(),
 	clbQueryPathSyncStatus: vi.fn(),
 	clbCmdSetCustomValue: vi.fn(),
-	clbCmdSetBookCoverFromUrl: vi.fn(),
+	clbCmdSetBookCoverFromMetadata: vi.fn(),
 }));
 vi.mock("@/bindings", () => ({ commands: ipc }));
 import { tauriLibraryCatalog } from "./tauri";
 import { webLibraryCatalog } from "./web";
+import { CoverExpiredError } from "../library/types";
 
 describe("catalog and library transports", () => {
 	it("rejects unavailable remote connections before issuing desktop commands", async () => {
@@ -44,13 +45,20 @@ describe("catalog and library transports", () => {
 		await expect(library.setCustomValue("1", 2, null)).rejects.toThrow(
 			"invalid custom field",
 		);
-		ipc.clbCmdSetBookCoverFromUrl.mockResolvedValue({
+		ipc.clbCmdSetBookCoverFromMetadata.mockResolvedValue({
 			status: "error",
 			error: "download failed",
 		});
 		await expect(
-			library.setBookCoverFromUrl("1", "https://example.test/cover.jpg"),
+			library.setBookCoverFromMetadata("1", "cover-1"),
 		).rejects.toThrow("download failed");
+		ipc.clbCmdSetBookCoverFromMetadata.mockResolvedValue({
+			status: "error",
+			error: "This cover is no longer available — search again.",
+		});
+		await expect(
+			library.setBookCoverFromMetadata("1", "cover-1"),
+		).rejects.toBeInstanceOf(CoverExpiredError);
 	});
 	it("propagates discovery/create errors without turning them into success", async () => {
 		ipc.clbCmdCreateLibrary.mockResolvedValue({

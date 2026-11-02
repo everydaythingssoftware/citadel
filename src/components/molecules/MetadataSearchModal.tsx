@@ -1,3 +1,4 @@
+import { CoverSpine } from "@/components/atoms/CoverSpine";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import { Button, Sheet, Spinner, TextInput } from "@/components/ui";
 import type { AggregatedResult } from "@/lib/metadata-providers/aggregate";
@@ -19,6 +20,8 @@ export interface MetadataSearchModalProps {
 	onSelect: (result: AggregatedResult) => void;
 	/** Stops in-flight provider searches. */
 	onStop?: () => void;
+	/** A cover preview failed to load, e.g. because its ID expired. */
+	onCoverError?: () => void;
 	/** When set, rendered as an error notice above the results area. */
 	error?: string | null;
 	width?: number;
@@ -41,6 +44,7 @@ export const MetadataSearchModal = ({
 	pendingProviderNames,
 	onSelect,
 	onStop,
+	onCoverError,
 	error = null,
 	width = 780,
 }: MetadataSearchModalProps) => (
@@ -92,12 +96,17 @@ export const MetadataSearchModal = ({
 							className={styles.searchResult}
 							onClick={() => onSelect(result)}
 						>
-							{result.book.image_url ? (
-								<img
-									src={result.book.image_url}
-									alt={result.book.title}
-									className={styles.searchResultCover}
-								/>
+							{result.coverUrl ? (
+								<span className={styles.searchResultCover}>
+									<span className={styles.coverArt}>
+										<img
+											src={result.coverUrl}
+											alt={result.book.title}
+											onError={onCoverError}
+										/>
+										<CoverSpine />
+									</span>
+								</span>
 							) : (
 								<span className={styles.coverPlaceholder} aria-hidden>
 									<F7BookFill className={styles.coverPlaceholderIcon} />

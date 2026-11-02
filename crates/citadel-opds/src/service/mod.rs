@@ -472,13 +472,13 @@ enum BindOutcome {
 }
 
 impl OpdsService {
-    /// Apply this service's shared request/body/deadline limits to additional
-    /// routes. The host authenticates them; hosts must start the service before
-    /// accepting requests on those routes.
+    /// Admit additional routes through this service's shared request budget.
+    /// The host authenticates them and owns their body and deadline limits;
+    /// hosts must start the service before accepting requests on those routes.
     pub fn limit_http_routes(&self, router: axum::Router) -> axum::Router {
         router.layer(axum::middleware::from_fn_with_state(
             self.inner.auth.limits(),
-            crate::limits::enforce,
+            crate::limits::admit,
         ))
     }
 

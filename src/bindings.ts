@@ -209,9 +209,24 @@ async clbCmdDeleteBookIdentifier(bookId: string, identifierId: number) : Promise
     else return { status: "error", error: e  as any };
 }
 },
-async clbCmdSetBookCoverFromUrl(bookId: string, imageUrl: string) : Promise<Result<null, string>> {
+/**
+ * Apply a cover from a metadata lookup result, by the `cover_id` the
+ * lookup returned. Citadel fetches the image itself (ADR 0010).
+ */
+async clbCmdSetBookCoverFromMetadata(bookId: string, coverId: string) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_book_cover_from_url", { bookId, imageUrl }) };
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_book_cover_from_metadata", { bookId, coverId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Apply a cover image the user chose from a file.
+ */
+async clbCmdSetBookCoverFromFile(bookId: string, bytes: number[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_book_cover_from_file", { bookId, bytes }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -355,6 +370,17 @@ async clbQueryMetadataSearch(provider: string, query: string, apiKey: string) : 
 async clbQueryMetadataByIsbn(provider: string, isbn: string, apiKey: string) : Promise<Result<BookMetadata[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_metadata_by_isbn", { provider, isbn, apiKey }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Fetch a chosen result's full-size cover ahead of applying it.
+ */
+async clbCmdPrefetchMetadataCover(coverId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_prefetch_metadata_cover", { coverId }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -513,7 +539,12 @@ export type BookMetadata = { provider: MetadataProvider;
  * Provider-native id: hardcover id (stringified), LCCN, DNB control
  * number, BnF ARK name, or Open Library OLID.
  */
-provider_id: string; identifier_label: string; title: string; subtitle: string | null; authors: string[]; isbn: string | null; release_year: number | null; description: string | null; image_url: string | null; publisher: string | null; 
+provider_id: string; identifier_label: string; title: string; subtitle: string | null; authors: string[]; isbn: string | null; release_year: number | null; description: string | null;
+/**
+ * Opaque ID for this result's cover, for previews and applying it.
+ * Expires an hour after the result was last returned.
+ */
+cover_id: string | null; publisher: string | null;
 /**
  * Subject headings, mapped to tag suggestions on the frontend.
  */
@@ -609,11 +640,11 @@ export type DatabaseProblem = { kind: DatabaseProblemKind; databasePath: string;
 steps: RecoveryStep[] }
 export type DatabaseProblemKind = "damaged" | "newerVersion" | "migrationFailed" | "migrationInterrupted" | "unreadable"
 /**
- * Result of [`clb_cmd_delete_books`]. The books are gone from the library
- * either way; `trash_failures` lists folder paths and errors for files
- * that could not be moved to the system trash.
+ * Result of deleting books. The books are gone from the library either way;
+ * `folder_failures` lists folders, relative to the library, that could not
+ * be removed, each with its error.
  */
-export type DeleteBooksOutcome = { deleted: number; trash_failures: string[] }
+export type DeleteBooksOutcome = { deleted: number; folder_failures: string[] }
 export type DetectedLibrary = { path: string; source: DetectionSource }
 /**
  * Where [`detect_calibre_library`] found its hit.
@@ -712,7 +743,23 @@ text: string | null; author_id: string | null; series_id: number | null; tag_id:
 limit: number | null; offset: number }
 export type LibraryEntry = { id: string; displayName: string; absolutePath: string }
 export type LibraryError = { code: LibraryErrorCode; message: string }
-export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "unavailable" | "internal"
+export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" |
+/**
+ * The library is open for reading only, so writes are refused.
+ */
+"readOnly" | "unavailable" |
+/**
+ * A request body or declared size exceeds a limit.
+ */
+"tooLarge" |
+/**
+ * The request conflicts with the resource's current state.
+ */
+"conflict" |
+/**
+ * The server has no room to store more.
+ */
+"storageFull" | "internal"
 export type LibraryIdChange = { previousId: string; id: string }
 export type LibraryPublisher = { id: number; name: string; book_count: number }
 export type LibrarySeries = { id: number; name: string; book_count: number }

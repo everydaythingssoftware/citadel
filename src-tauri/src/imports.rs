@@ -66,12 +66,9 @@ impl ImportableBookMetadata {
             language: self.language.clone(),
             identifiers: self
                 .identifier
-                .as_ref()
-                .map(|id| {
-                    let mut map = HashMap::new();
-                    map.insert("isbn".to_string(), id.clone());
-                    map
-                })
+                .as_deref()
+                .and_then(libcalibre::book_file::isbn)
+                .map(|isbn| HashMap::from([("isbn".to_string(), isbn)]))
                 .unwrap_or_default(),
             file_paths: vec![self.path.clone()],
         }

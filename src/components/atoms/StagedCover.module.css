@@ -1,0 +1,59 @@
+.cover {
+	position: relative;
+	display: block;
+	overflow: hidden;
+}
+
+.image {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+/* Longhands on purpose: a shorthand without a name minifies to
+   "animation: none" and the exits below would run for 0 ms. */
+.leaving {
+	animation-duration: 380ms;
+	animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+	animation-fill-mode: forwards;
+}
+
+.added {
+	animation-name: cover-deal;
+}
+
+.skipped {
+	animation-name: cover-skip;
+}
+
+@keyframes cover-deal {
+	30% {
+		transform: translateY(-14px) rotate(-3deg);
+		box-shadow: var(--ctd-shadow-lift);
+	}
+	100% {
+		transform: translate(-180%, 20px) rotate(-14deg);
+		opacity: 0;
+	}
+}
+
+@keyframes cover-skip {
+	100% {
+		transform: translateY(24px) scale(0.85);
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.leaving {
+		animation-name: cover-fade;
+		animation-duration: 200ms;
+	}
+
+	@keyframes cover-fade {
+		to {
+			opacity: 0;
+		}
+	}
+}

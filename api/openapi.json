@@ -14,6 +14,178 @@
     "version": "1"
   },
   "paths": {
+    "/api/account/provider-credentials": {
+      "get": {
+        "description": "The signed-in user's saved provider keys. Keys themselves are never returned.",
+        "operationId": "listProviderCredentials",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderCredentialInfo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/account/provider-credentials/{provider}": {
+      "put": {
+        "description": "Check a provider key with the provider, then save it for the signed-in user, replacing any earlier key.",
+        "operationId": "saveProviderCredential",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "A provider that needs a key",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveProviderCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCredentialInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "description": "Forget the signed-in user's key for a provider.",
+        "operationId": "deleteProviderCredential",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/authors": {
       "get": {
         "operationId": "listAuthors",
@@ -31,6 +203,180 @@
             }
           },
           "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/authors/{author_id}": {
+      "delete": {
+        "description": "Delete an author with no books.",
+        "operationId": "deleteAuthor",
+        "parameters": [
+          {
+            "name": "author_id",
+            "in": "path",
+            "description": "Library author ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/books/delete": {
+      "post": {
+        "description": "Permanently delete books and their files; this can't be undone. Nothing is deleted if any ID is unknown. Folders that could not be removed are listed, relative to the library, in folder_failures.",
+        "operationId": "deleteBooks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteBooksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteBooksOutcome"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
             "content": {
               "application/json": {
                 "schema": {
@@ -280,6 +626,195 @@
           },
           "503": {
             "description": "Library unavailable"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "description": "Set a book's cover from an uploaded image. The image is decoded within limits and stored re-encoded as JPEG.",
+        "operationId": "setBookCoverFromFile",
+        "parameters": [
+          {
+            "name": "book_id",
+            "in": "path",
+            "description": "Library book ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "A JPEG, PNG or WebP image, up to `api.metadata.maxImageBytes`",
+          "content": {
+            "image/*": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "description": "Set a book's cover from a metadata result. The server fetches the full-size image from the provider; clients never send a URL. 410 when the cover ID has expired.",
+        "operationId": "setBookCoverFromMetadata",
+        "parameters": [
+          {
+            "name": "book_id",
+            "in": "path",
+            "description": "Library book ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyCover"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -843,6 +1378,398 @@
         ]
       }
     },
+    "/api/metadata/covers/{cover_id}/prefetch": {
+      "post": {
+        "description": "Start fetching a chosen cover at full size so applying it is quick.",
+        "operationId": "prefetchMetadataCover",
+        "parameters": [
+          {
+            "name": "cover_id",
+            "in": "path",
+            "description": "A `cover_id` from a metadata result",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/covers/{cover_id}/preview": {
+      "get": {
+        "description": "A small JPEG of a result's cover, fetched by the server from the provider. 410 when the ID has expired; search again.",
+        "operationId": "previewMetadataCover",
+        "parameters": [
+          {
+            "name": "cover_id",
+            "in": "path",
+            "description": "A `cover_id` from a metadata result",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cover preview",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/isbn/{isbn}": {
+      "get": {
+        "description": "Look one provider up by ISBN. No match is an empty list, not an error.",
+        "operationId": "lookUpMetadataByIsbn",
+        "parameters": [
+          {
+            "name": "isbn",
+            "in": "path",
+            "description": "ISBN-10 or ISBN-13, hyphens allowed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Provider ID, such as `openlibrary` or `loc`.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookMetadata"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/providers": {
+      "get": {
+        "description": "Metadata providers and whether the signed-in user can use each. Keyless providers are always available.",
+        "operationId": "listMetadataProviders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MetadataProviderInfo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/providers/{provider}/test": {
+      "post": {
+        "description": "Check that the server can reach a provider, with the user's own key when it needs one.",
+        "operationId": "testMetadataProvider",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/metadata/search": {
+      "get": {
+        "description": "Free-text search one provider. No results is an empty list, not an error. Answers are cached briefly; uncached lookups count against a per-user rate limit.",
+        "operationId": "searchMetadata",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Provider ID, such as `openlibrary` or `loc`.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProvider"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Title, author or keywords.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookMetadata"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/publishers": {
       "get": {
         "operationId": "listPublishers",
@@ -1152,10 +2079,465 @@
           }
         ]
       }
+    },
+    "/api/uploads": {
+      "get": {
+        "operationId": "listUploads",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadList"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createUpload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagedUpload"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/uploads/{upload_id}": {
+      "get": {
+        "operationId": "getUpload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagedUpload"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "cancelUpload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Upload cancelled"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/uploads/{upload_id}/commit": {
+      "post": {
+        "operationId": "commitUpload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryBook"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/uploads/{upload_id}/content": {
+      "patch": {
+        "operationId": "sendUploadChunk",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Upload-Offset",
+            "in": "header",
+            "description": "Byte offset of this chunk; must equal receivedBytes",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The next bytes of the file, at most chunkBytes",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagedUpload"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/uploads/{upload_id}/cover": {
+      "get": {
+        "operationId": "getUploadCover",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "ApplyCover": {
+        "type": "object",
+        "required": [
+          "coverId"
+        ],
+        "properties": {
+          "coverId": {
+            "type": "string",
+            "description": "A `cover_id` from a metadata result."
+          }
+        },
+        "additionalProperties": false
+      },
       "BookCustomValue": {
         "type": "object",
         "description": "One book's value for one custom column.",
@@ -1199,6 +2581,138 @@
           }
         ]
       },
+      "BookMetadata": {
+        "type": "object",
+        "description": "A book record from a provider. Providers return these fully populated from a\nsingle search call — there is no separate resolve step, so the cover-less\nMARC sources' subjects/publisher/language survive into the applied record.",
+        "required": [
+          "provider",
+          "provider_id",
+          "identifier_label",
+          "title",
+          "subtitle",
+          "authors",
+          "isbn",
+          "release_year",
+          "description",
+          "cover_id",
+          "publisher",
+          "subjects",
+          "genre_candidates",
+          "language_code",
+          "slug",
+          "series",
+          "series_index",
+          "collection"
+        ],
+        "properties": {
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A publisher's collection with its number (e.g. \"Folio junior 899\"), as\ndistinct from a narrative series. Applied only to a Calibre custom\ncolumn labelled `collection` when the library has one."
+          },
+          "cover_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque ID for this result's cover, for previews and applying it.\nExpires an hour after the result was last returned."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "genre_candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GenreCandidate"
+            },
+            "description": "Explicit provider genre/form terms. Subject headings are never placed\nhere merely because they look genre-like."
+          },
+          "identifier_label": {
+            "type": "string"
+          },
+          "isbn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MARC 3-letter language code. Parsed now; applied once CDL-2 lands."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MetadataProvider"
+          },
+          "provider_id": {
+            "type": "string",
+            "description": "Provider-native id: hardcover id (stringified), LCCN, DNB control\nnumber, BnF ARK name, or Open Library OLID."
+          },
+          "publisher": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release_year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "series": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Narrative series (not a publisher's collection); BnF only for now."
+          },
+          "series_index": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hardcover deep-link slug; `None` for other providers."
+          },
+          "subjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subject headings, mapped to tag suggestions on the frontend."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
       "BookSortOrder": {
         "type": "string",
         "enum": [
@@ -1207,6 +2721,57 @@
           "AuthorAsc",
           "AuthorDesc"
         ]
+      },
+      "CommitUpload": {
+        "type": "object",
+        "description": "The metadata the user reviewed, to add the upload to the library with.",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "authorNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "identifier": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`\nprefixes are accepted); other identifiers are ignored."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publicationDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "publisher": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "CoverThumbnail": {
         "type": "object",
@@ -1234,6 +2799,26 @@
             "minimum": 0
           }
         }
+      },
+      "CreateUpload": {
+        "type": "object",
+        "required": [
+          "fileName",
+          "size"
+        ],
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "description": "The file's name, which decides its format by extension."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The file's total size in bytes.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "CustomColumnDef": {
         "type": "object",
@@ -1372,6 +2957,66 @@
           }
         ],
         "description": "A custom-column value crossing the application boundary.\n\nMirrors `libcalibre::CustomValue`, except datetimes travel as RFC3339\nstrings and integers as `i32` (specta cannot export `i64` without bigint\nsupport)."
+      },
+      "DeleteBooksOutcome": {
+        "type": "object",
+        "description": "Result of deleting books. The books are gone from the library either way;\n`folder_failures` lists folders, relative to the library, that could not\nbe removed, each with its error.",
+        "required": [
+          "deleted",
+          "folder_failures"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "folder_failures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "DeleteBooksRequest": {
+        "type": "object",
+        "required": [
+          "book_ids"
+        ],
+        "properties": {
+          "book_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GenreCandidate": {
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "vocabulary"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "Stable provider field identity, such as `hardcover:genre` or\n`marc:655`."
+          },
+          "vocabulary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider vocabulary or thesaurus when one is declared."
+          }
+        }
       },
       "Identifier": {
         "type": "object",
@@ -1648,7 +3293,11 @@
           "unauthorized",
           "rateLimited",
           "notFound",
+          "readOnly",
           "unavailable",
+          "tooLarge",
+          "conflict",
+          "storageFull",
           "internal"
         ]
       },
@@ -1764,6 +3413,112 @@
           }
         }
       },
+      "MetadataProvider": {
+        "type": "string",
+        "description": "The metadata sources Citadel can look books up against. The serialized\nshort form is the single id used across the Rust enum, the TS string union,\nand the frontend registry keys.",
+        "enum": [
+          "hardcover",
+          "loc",
+          "dnb",
+          "k10plus",
+          "bnf",
+          "openlibrary"
+        ]
+      },
+      "MetadataProviderInfo": {
+        "type": "object",
+        "required": [
+          "provider",
+          "displayName",
+          "requiresKey",
+          "available",
+          "unavailableReason"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether this user can look books up with the provider right now."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MetadataProvider"
+          },
+          "requiresKey": {
+            "type": "boolean"
+          },
+          "unavailableReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why not, when it isn't."
+          }
+        }
+      },
+      "ProviderCredentialInfo": {
+        "type": "object",
+        "required": [
+          "provider",
+          "displayName",
+          "accountName",
+          "createdAt",
+          "verifiedAt",
+          "needsReentry"
+        ],
+        "properties": {
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider account the key belongs to, when the provider says."
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the key was saved, in Unix seconds."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "needsReentry": {
+            "type": "boolean",
+            "description": "The server can no longer read the key (its vault key changed); enter\nit again."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MetadataProvider"
+          },
+          "verifiedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the provider last accepted the key, in Unix seconds."
+          }
+        }
+      },
+      "ProviderStatus": {
+        "type": "object",
+        "required": [
+          "provider",
+          "is_valid",
+          "message"
+        ],
+        "properties": {
+          "is_valid": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MetadataProvider"
+          }
+        }
+      },
       "RemoteFile": {
         "type": "object",
         "required": [
@@ -1774,6 +3529,19 @@
             "type": "string"
           }
         }
+      },
+      "SaveProviderCredential": {
+        "type": "object",
+        "required": [
+          "secret"
+        ],
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "The provider API key. It is checked with the provider before saving."
+          }
+        },
+        "additionalProperties": false
       },
       "SessionInfo": {
         "type": "object",
@@ -1822,6 +3590,113 @@
         },
         "additionalProperties": false
       },
+      "StagedBook": {
+        "type": "object",
+        "description": "What the uploaded file says about itself, for the user to review.",
+        "required": [
+          "format",
+          "title",
+          "authorNames",
+          "tags"
+        ],
+        "properties": {
+          "authorNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "description": "The file's format, as its extension (`epub`, `azw3`, …)."
+          },
+          "identifier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publicationDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "publisher": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title": {
+            "type": "string",
+            "description": "The file's own title, or its name when it has none."
+          }
+        }
+      },
+      "StagedUpload": {
+        "type": "object",
+        "required": [
+          "id",
+          "fileName",
+          "size",
+          "receivedBytes",
+          "expiresAt"
+        ],
+        "properties": {
+          "book": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StagedBook",
+                "description": "Present once every byte has arrived and the file has been read."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the server discards the upload: a fixed review deadline once the\nfile has been read, otherwise an hour after its last chunk."
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receivedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "ThumbnailQuery": {
         "type": "object",
         "required": [
@@ -1836,6 +3711,39 @@
           }
         },
         "additionalProperties": false
+      },
+      "UploadList": {
+        "type": "object",
+        "required": [
+          "maxFileBytes",
+          "chunkBytes",
+          "reviewSeconds",
+          "uploads"
+        ],
+        "properties": {
+          "chunkBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "maxFileBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reviewSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How long a finished upload waits to be added or skipped.",
+            "minimum": 0
+          },
+          "uploads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StagedUpload"
+            }
+          }
+        }
       }
     },
     "securitySchemes": {

@@ -7,24 +7,37 @@ import clsx from "clsx";
 import { useState } from "react";
 import { F7SidebarLeft } from "@/components/icons/F7SidebarLeft";
 import { AddBookButton, AddBookProvider } from "@/components/organisms/AddBook";
+import {
+	BookUploads,
+	UploadToolbarStatus,
+} from "@/components/organisms/BookUploads";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton } from "@/components/ui";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
+import { usePlatform } from "@/lib/platform/context";
 import classes from "./root.module.css";
 
 const Root = () => {
-	const [mobileOpened, setMobileOpened] = useState(false);
+	// The phone sidebar belongs to the page it was opened on: going anywhere
+	// closes it.
+	const [mobileOpenedOn, setMobileOpenedOn] = useState<string | null>(null);
 	const [desktopOpened, setDesktopOpened] = useState(true);
 	const { location } = useRouterState();
+	const platform = usePlatform();
+	const mobileOpened = mobileOpenedOn === location.href;
 	useNativeThemeSync();
 	// Self-disables in the settings window (/settings pathname check inside).
 	useAppKeymap();
 
-	// The settings window loads /settings in its own webview; it brings its
-	// own full-window layout and must not inherit the library chrome
-	// (toolbar, sidebar, Add Book).
-	if (location.pathname.startsWith("/settings")) {
+	// The desktop settings window loads /settings in its own webview; it
+	// brings its own full-window layout and must not inherit the library
+	// chrome (toolbar, sidebar, Add Book). On the web, Settings is a page of
+	// the app like any other.
+	if (
+		platform.capabilities.supportsNativeWindows &&
+		location.pathname.startsWith("/settings")
+	) {
 		return <Outlet />;
 	}
 
@@ -40,7 +53,9 @@ const Root = () => {
 						<IconButton
 							aria-label="Toggle sidebar"
 							className={clsx(classes.sidebarToggle, classes.mobileOnly)}
-							onClick={() => setMobileOpened((open) => !open)}
+							onClick={() =>
+								setMobileOpenedOn(mobileOpened ? null : location.href)
+							}
 						>
 							<F7SidebarLeft title="Toggle sidebar" />
 						</IconButton>
@@ -52,6 +67,7 @@ const Root = () => {
 							<F7SidebarLeft title="Toggle sidebar" />
 						</IconButton>
 						<AddBookButton />
+						<UploadToolbarStatus />
 					</div>
 				</header>
 
@@ -59,6 +75,15 @@ const Root = () => {
 					<nav className={classes.nav}>
 						<Sidebar />
 					</nav>
+					{mobileOpened && (
+						<button
+							type="button"
+							tabIndex={-1}
+							aria-label="Close sidebar"
+							className={classes.scrim}
+							onClick={() => setMobileOpenedOn(null)}
+						/>
+					)}
 
 					<main className={classes.main}>
 						<div className={classes.content}>
@@ -67,6 +92,7 @@ const Root = () => {
 					</main>
 				</div>
 			</div>
+			<BookUploads />
 		</AddBookProvider>
 	);
 };

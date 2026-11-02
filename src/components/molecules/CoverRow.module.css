@@ -1,0 +1,46 @@
+/* As tall as a cover, clipping the covers beyond the edges. */
+.row {
+	position: relative;
+	height: calc(var(--cover-width) * 1.5 + 20px);
+	overflow: hidden;
+	/* Vertical swipes still scroll the review; sideways ones move the covers. */
+	touch-action: pan-y;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* Covers are placed from the middle by transforms, set every frame;
+   neighbours shrink from their bottom middle, so all sit on one line. */
+.cover {
+	position: absolute;
+	top: 6px;
+	left: 50%;
+	width: var(--cover-width);
+	margin-left: calc(var(--cover-width) / -2);
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: none;
+	transform-origin: 50% 100%;
+	will-change: transform;
+}
+
+.cover:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.art {
+	display: block;
+	width: 100%;
+	aspect-ratio: 2 / 3;
+	border-radius: 4px;
+	box-shadow: var(--ctd-cover-shadow);
+	pointer-events: none;
+}
+
+/* An added or skipped book leaves from the middle. */
+.departing {
+	z-index: 2000;
+	pointer-events: none;
+}

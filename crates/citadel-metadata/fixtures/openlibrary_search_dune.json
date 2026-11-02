@@ -1,0 +1,26 @@
+{
+  "numFound": 2,
+  "start": 0,
+  "numFoundExact": true,
+  "docs": [
+    {
+      "key": "/works/OL893415W",
+      "title": "Dune",
+      "author_name": ["Frank Herbert"],
+      "first_publish_year": 1965,
+      "isbn": ["0441172717", "9780441172719"],
+      "cover_i": 11481354,
+      "edition_key": ["OL26242482M", "OL7353617M"],
+      "publisher": ["Ace Books", "Chilton Books"],
+      "subject": ["Science fiction", "Dune (Imaginary place)", "science fiction", " "]
+    },
+    {
+      "key": "/works/OL893512W",
+      "title": "Dune Messiah",
+      "author_name": ["Frank Herbert"],
+      "first_publish_year": 1969
+    }
+  ],
+  "q": "dune herbert",
+  "offset": null
+}

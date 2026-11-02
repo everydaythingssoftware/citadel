@@ -1,19 +1,19 @@
-//! Read-only JSON API. Contracts and application behavior live in citadel-core;
+//! JSON library API. Contracts and application behavior live in citadel-core;
 //! browsers authenticate with a Citadel session cookie (see `session`).
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     body::{to_bytes, Body},
-    extract::{rejection::JsonRejection, Path, Request, State},
+    extract::{rejection::JsonRejection, Extension, Path, Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json, Router,
 };
 use citadel_core::{
-    contracts::{LibraryBookPage, LibraryBookQuery},
+    contracts::{DeleteBooksOutcome, LibraryBookPage, LibraryBookQuery},
     error::{LibraryError, LibraryErrorCode},
-    library::LibraryService,
+    library::{remove_permanently, LibraryService},
     HttpUrlBuilder, LibraryBook,
 };
 use serde::{Deserialize, Serialize};
@@ -25,13 +25,18 @@ use utoipa::openapi::{
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::CalibreCatalogSource;
-use citadel_core::store::CitadelStore;
+use citadel_core::{store::CitadelStore, vault::Vault};
 
+mod account;
+mod metadata;
 mod session;
 mod thumbnails;
+mod uploads;
 pub(crate) mod web;
 
+pub use metadata::{Metadata, MetadataConfig};
 pub use session::{PublicUrl, SESSION_COOKIE};
+pub use uploads::{Staging, UploadConfig};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -39,6 +44,10 @@ pub struct ApiConfig {
     pub listen: SocketAddr,
     pub public_url: String,
     pub web_directory: Option<std::path::PathBuf>,
+    #[serde(default)]
+    pub uploads: UploadConfig,
+    #[serde(default)]
+    pub metadata: MetadataConfig,
 }
 
 /// Who may use the API: the accounts database, the Citadel ID of the library
@@ -47,6 +56,8 @@ pub struct ApiAccess {
     pub accounts: Arc<CitadelStore>,
     pub library_id: String,
     pub public_url: PublicUrl,
+    /// Seals users' provider keys in `citadel.db` (ADR 0011).
+    pub secrets: Arc<Vault>,
 }
 
 #[derive(Clone)]
@@ -55,6 +66,9 @@ struct ApiState {
     access: Arc<session::Access>,
     work: Arc<Semaphore>,
     thumbnails: thumbnails::ThumbnailCache,
+    uploads: Arc<Staging>,
+    metadata: Arc<Metadata>,
+    secrets: Arc<Vault>,
 }
 
 // Keep slots inside blocking tasks so timed-out HTTP requests cannot queue
@@ -67,6 +81,18 @@ async fn run<T: Send + 'static>(
         operation(&mut LibraryService::new(library, &HttpUrlBuilder::new("")))
     })
     .await
+}
+
+// Writes are refused up front on a read-only library rather than left for
+// SQLite to reject as an internal error.
+async fn write<T: Send + 'static>(
+    state: ApiState,
+    operation: impl FnOnce(&mut LibraryService<'_>) -> Result<T, LibraryError> + Send + 'static,
+) -> Result<T, ApiFailure> {
+    if state.source.read_only() {
+        return Err(LibraryError::read_only().into());
+    }
+    run(state, operation).await
 }
 
 async fn run_library<T: Send + 'static>(
@@ -104,7 +130,11 @@ impl IntoResponse for ApiFailure {
             LibraryErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
             LibraryErrorCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             LibraryErrorCode::NotFound => StatusCode::NOT_FOUND,
+            LibraryErrorCode::ReadOnly => StatusCode::FORBIDDEN,
             LibraryErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+            LibraryErrorCode::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+            LibraryErrorCode::Conflict => StatusCode::CONFLICT,
+            LibraryErrorCode::StorageFull => StatusCode::INSUFFICIENT_STORAGE,
             LibraryErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
         if self.0.code == LibraryErrorCode::Internal {
@@ -173,11 +203,12 @@ async fn library_descriptor(
     State(state): State<ApiState>,
 ) -> Result<Json<LibraryDescriptor>, ApiFailure> {
     let id = state.access.library_id.clone();
+    let read_only = state.source.read_only();
     run_library(state, |library| Ok(library.library_uuid()?)).await?;
     Ok(Json(LibraryDescriptor {
         id,
         name: "Citadel Library".into(),
-        read_only: true,
+        read_only,
     }))
 }
 
@@ -247,10 +278,133 @@ async fn custom_values(
     ))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+struct DeleteBooksRequest {
+    book_ids: Vec<String>,
+}
+
+#[utoipa::path(post, path = "/api/books/delete", operation_id = "deleteBooks",
+    request_body = DeleteBooksRequest,
+    description = "Permanently delete books and their files; this can't be undone. Nothing is deleted if any ID is unknown. Folders that could not be removed are listed, relative to the library, in folder_failures.",
+    responses((status = 200, body = DeleteBooksOutcome), (status = 400, body = LibraryError),
+        (status = 401, body = LibraryError), (status = 403, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 429, body = LibraryError), (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
+    security(("session" = [])))]
+async fn delete_books(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    request: Result<Json<DeleteBooksRequest>, JsonRejection>,
+) -> Result<Json<DeleteBooksOutcome>, ApiFailure> {
+    let Json(request) = request.map_err(|_| LibraryError::invalid("Invalid delete books JSON"))?;
+    let deleted = write(state, move |service| {
+        service.delete_books(&user.actor(), &request.book_ids)
+    })
+    .await?;
+    let outcome = tokio::task::spawn_blocking(move || deleted.remove_folders(remove_permanently))
+        .await
+        .map_err(|_| LibraryError::unavailable())?;
+    for failure in &outcome.folder_failures {
+        eprintln!("citadel_server warning=\"could not delete book folder: {failure}\"");
+    }
+    Ok(Json(outcome))
+}
+
+#[utoipa::path(delete, path = "/api/authors/{author_id}", operation_id = "deleteAuthor",
+    params(("author_id" = String, Path, description = "Library author ID")),
+    description = "Delete an author with no books.",
+    responses((status = 204), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
+        (status = 403, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
+    security(("session" = [])))]
+async fn delete_author(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiFailure> {
+    write(state, move |service| {
+        service.delete_author(&user.actor(), &id)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ApplyCover {
+    /// A `cover_id` from a metadata result.
+    cover_id: String,
+}
+
+#[utoipa::path(post, path = "/api/books/{book_id}/cover", operation_id = "setBookCoverFromMetadata",
+    params(("book_id" = String, Path, description = "Library book ID")),
+    request_body = ApplyCover,
+    description = "Set a book's cover from a metadata result. The server fetches the full-size image from the provider; clients never send a URL. 410 when the cover ID has expired.",
+    responses((status = 204), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
+        (status = 403, body = LibraryError), (status = 404, body = LibraryError), (status = 410, body = LibraryError),
+        (status = 413, body = LibraryError), (status = 503, body = LibraryError)),
+    security(("session" = [])))]
+async fn set_cover_from_metadata(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Path(id): Path<String>,
+    request: Result<Json<ApplyCover>, JsonRejection>,
+) -> Result<StatusCode, metadata::MetadataFailure> {
+    let Json(request) = request.map_err(|_| LibraryError::invalid("Invalid cover JSON"))?;
+    if state.source.read_only() {
+        return Err(LibraryError::read_only().into());
+    }
+    let bytes = state.metadata.cover_image(&request.cover_id).await?;
+    write(state, move |service| {
+        service.set_cover(&user.actor(), &id, bytes)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(put, path = "/api/books/{book_id}/cover", operation_id = "setBookCoverFromFile",
+    params(("book_id" = String, Path, description = "Library book ID")),
+    request_body(content = Vec<u8>, content_type = "image/*", description = "A JPEG, PNG or WebP image, up to `api.metadata.maxImageBytes`"),
+    description = "Set a book's cover from an uploaded image. The image is decoded within limits and stored re-encoded as JPEG.",
+    responses((status = 204), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
+        (status = 403, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 413, body = LibraryError), (status = 503, body = LibraryError)),
+    security(("session" = [])))]
+async fn set_cover_from_file(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Path(id): Path<String>,
+    body: Body,
+) -> Result<StatusCode, metadata::MetadataFailure> {
+    if state.source.read_only() {
+        return Err(LibraryError::read_only().into());
+    }
+    let limit = usize::try_from(state.metadata.max_image_bytes()).unwrap_or(usize::MAX);
+    let bytes = match tokio::time::timeout(REQUEST_DEADLINE, to_bytes(body, limit)).await {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(_)) => {
+            return Err(LibraryError::new(
+                LibraryErrorCode::TooLarge,
+                format!("Cover images are limited to {} MiB", limit / (1024 * 1024)),
+            )
+            .into())
+        }
+        Err(_) => return Err(LibraryError::unavailable().into()),
+    };
+    let jpeg = state.metadata.reencode_upload(bytes.to_vec()).await?;
+    write(state, move |service| {
+        service.set_cover(&user.actor(), &id, jpeg)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn routes() -> OpenApiRouter<ApiState> {
     OpenApiRouter::new()
         .routes(routes!(query_books))
         .routes(routes!(get_book))
+        .routes(routes!(delete_books))
+        .routes(routes!(delete_author))
         .routes(routes!(library_descriptor))
         .routes(routes!(authors))
         .routes(routes!(series))
@@ -260,10 +414,34 @@ fn routes() -> OpenApiRouter<ApiState> {
         .routes(routes!(custom_values))
         .routes(routes!(thumbnails::ensure, thumbnails::list))
         .routes(routes!(thumbnails::image))
+        .routes(routes!(uploads::list, uploads::create))
+        .routes(routes!(uploads::get, uploads::cancel))
+        .routes(routes!(uploads::cover))
+        .routes(routes!(uploads::commit))
+        .routes(routes!(metadata::providers))
+        .routes(routes!(metadata::search))
+        .routes(routes!(metadata::by_isbn))
+        .routes(routes!(metadata::test))
+        .routes(routes!(metadata::cover_preview))
+        .routes(routes!(metadata::prefetch_cover))
+        .routes(routes!(set_cover_from_metadata))
+        .routes(routes!(account::list))
+        .routes(routes!(account::save, account::delete))
+}
+
+/// Upload chunks stream to disk and cover images have their own size limit,
+/// so they bypass the JSON request bounds.
+fn chunk_routes() -> OpenApiRouter<ApiState> {
+    OpenApiRouter::new()
+        .routes(routes!(uploads::receive))
+        .routes(routes!(set_cover_from_file))
 }
 
 pub fn openapi() -> OpenApi {
-    let (_, mut schema) = routes().merge(session::routes()).split_for_parts();
+    let (_, mut schema) = routes()
+        .merge(chunk_routes())
+        .merge(session::routes())
+        .split_for_parts();
     // These handlers are mounted from OPDS so byte streaming, range support and
     // containment checks have one implementation across both transports.
     for (path, operation_id, content_type, extra_parameters) in [
@@ -300,10 +478,18 @@ pub fn openapi() -> OpenApi {
         });
         let mut head = operation.clone();
         head["operationId"] = serde_json::json!(format!("{operation_id}Head"));
+        // Keep any operations the API itself defines on the same path.
+        let mut item = schema
+            .paths
+            .paths
+            .get(path)
+            .map(|item| serde_json::to_value(item).expect("OpenAPI paths serialize"))
+            .unwrap_or_else(|| serde_json::json!({}));
+        item["get"] = operation;
+        item["head"] = head;
         schema.paths.paths.insert(
             path.into(),
-            serde_json::from_value(serde_json::json!({"get":operation,"head":head}))
-                .expect("asset OpenAPI paths are valid"),
+            serde_json::from_value(item).expect("asset OpenAPI paths are valid"),
         );
     }
     schema.info.title = "Citadel library API".into();
@@ -324,7 +510,11 @@ pub fn router(
     service: &citadel_opds::OpdsService,
     access: ApiAccess,
     web_directory: Option<&std::path::Path>,
+    uploads: Arc<Staging>,
+    metadata: Arc<Metadata>,
 ) -> Router {
+    uploads.spawn_sweeper();
+    let secrets = access.secrets;
     let state = ApiState {
         source: source.clone(),
         access: Arc::new(session::Access::new(
@@ -334,9 +524,19 @@ pub fn router(
         )),
         work: Arc::new(Semaphore::new(64)),
         thumbnails: Default::default(),
+        uploads,
+        metadata,
+        secrets,
     };
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes().split_for_parts();
+    let (chunks, _) = chunk_routes().split_for_parts();
+    let chunks = chunks
+        .with_state(state.clone())
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            session::require_session,
+        ));
     let assets = service.book_asset_routes(source, "/api");
     let schema = openapi();
     let library = library
@@ -361,8 +561,36 @@ pub fn router(
         None => router,
     };
     service
-        .limit_http_routes(router)
+        .limit_http_routes(
+            router
+                .layer(axum::middleware::from_fn(bound_requests))
+                .merge(chunks),
+        )
         .layer(axum::middleware::from_fn(normalize_errors))
+}
+
+const JSON_BODY_BYTES: usize = 1024 * 1024;
+const REQUEST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+// JSON requests are small: buffer the body (even when chunked) under the
+// deadline so slow clients can't hold handlers, then bound the handler too.
+// Asset responses only need their headers within the deadline.
+async fn bound_requests(request: Request, next: Next) -> Response {
+    let (parts, body) = request.into_parts();
+    let body = match tokio::time::timeout(REQUEST_DEADLINE, to_bytes(body, JSON_BODY_BYTES)).await {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
+        Err(_) => return ApiFailure(LibraryError::unavailable()).into_response(),
+    };
+    match tokio::time::timeout(
+        REQUEST_DEADLINE,
+        next.run(Request::from_parts(parts, Body::from(body))),
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(_) => ApiFailure(LibraryError::unavailable()).into_response(),
+    }
 }
 
 // Admission middleware is shared with OPDS, which uses plain text errors.
@@ -386,6 +614,8 @@ async fn normalize_errors(request: Request, next: Next) -> Response {
         StatusCode::NOT_FOUND => LibraryErrorCode::NotFound,
         StatusCode::TOO_MANY_REQUESTS => LibraryErrorCode::RateLimited,
         StatusCode::SERVICE_UNAVAILABLE => LibraryErrorCode::Unavailable,
+        StatusCode::PAYLOAD_TOO_LARGE => LibraryErrorCode::TooLarge,
+        StatusCode::CONFLICT => LibraryErrorCode::Conflict,
         status if status.is_client_error() => LibraryErrorCode::InvalidArgument,
         _ => LibraryErrorCode::Internal,
     };

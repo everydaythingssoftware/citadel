@@ -37,6 +37,24 @@ fn unsafe_paths_reject_the_entire_batch_before_deletion() {
 }
 
 #[test]
+fn authorless_book_folder_at_the_root_is_deleted_only_with_its_own_id() {
+    let (temp, mut lib) = common::setup_with_library();
+    let book = lib.add_book(common::standard_test_book()).unwrap();
+    let other = lib.add_book(common::standard_test_book()).unwrap();
+    let own = format!("Repair manual ({})", book.id.as_i32());
+    std::fs::create_dir(temp.path().join(&own)).unwrap();
+
+    set_path(&lib, other.id, &own);
+    assert!(lib.delete_books(&[other.id]).is_err());
+    assert!(lib.get_book(other.id).is_ok());
+
+    set_path(&lib, book.id, &own);
+    let paths = lib.delete_books(&[book.id]).unwrap();
+    assert_eq!(paths, [temp.path().canonicalize().unwrap().join(&own)]);
+    assert!(lib.get_book(book.id).is_err());
+}
+
+#[test]
 fn missing_folder_can_still_be_removed_from_catalog() {
     let (temp, mut lib) = common::setup_with_library();
     let book = lib.add_book(common::standard_test_book()).unwrap();

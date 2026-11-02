@@ -30,3 +30,7 @@ Both hosts now store app passwords reversibly in `citadel.db` and supply them to
 the OPDS runtime, which holds them only in memory; see ADR 0009. The desktop
 migrates `opds-credentials.json` into it once. `CITADEL_OPDS_USERS` has been
 removed.
+
+Third-party secrets that must also be stored reversibly, such as users'
+Hardcover keys, are sealed with the vault from ADR 0011 instead. App passwords
+are planned to move into it as well (CDL-60).

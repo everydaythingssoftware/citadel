@@ -27,7 +27,8 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbQueryGetCustomValuesForBook",
 		"clbCmdSetCustomValue",
 		"clbCmdAddBookGenres",
-		"clbCmdSetBookCoverFromUrl",
+		"clbCmdSetBookCoverFromMetadata",
+		"clbCmdSetBookCoverFromFile",
 	],
 	"src/lib/services/library-catalog/tauri.ts": [
 		"initClient",
@@ -46,6 +47,7 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbQueryMetadataSearch",
 		"clbQueryMetadataByIsbn",
 		"clbCmdTestMetadataProvider",
+		"clbCmdPrefetchMetadataCover",
 	],
 	"src/lib/services/opds/tauri.ts": [
 		"clbQueryOpdsStatus",

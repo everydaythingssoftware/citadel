@@ -16,13 +16,27 @@ use crate::{
 
 pub(crate) fn validated_book_delete_dir(
     library_root: &Path,
+    book_id: BookId,
     book_path: &str,
 ) -> Result<PathBuf, CalibreError> {
     use std::path::Component;
 
     let relative = Path::new(book_path);
     let components: Vec<_> = relative.components().collect();
-    if components.len() < 2
+    // A book imported without an author has its folder at the library root.
+    // Only accept that when the folder carries this book's own " (id)"
+    // suffix, so a bare author folder holding other books is never taken.
+    let own_root_folder = || {
+        relative
+            .to_str()
+            .is_some_and(|name| name.ends_with(&format!(" ({})", book_id.as_i32())))
+    };
+    let shape_is_safe = match components.len() {
+        0 => false,
+        1 => own_root_folder(),
+        _ => true,
+    };
+    if !shape_is_safe
         || components
             .iter()
             .any(|part| !matches!(part, Component::Normal(_)))

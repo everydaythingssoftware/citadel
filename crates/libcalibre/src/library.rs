@@ -4,8 +4,10 @@ use chrono::{NaiveDate, NaiveDateTime};
 use diesel::{prelude::*, sql_query, OptionalExtension, RunQueryDsl, SqliteConnection};
 use sanitise_file_name::sanitise;
 
+const UNKNOWN_AUTHOR: &str = "Unknown";
+
 use crate::{
-    cover_image::cover_image_data_from_path,
+    book_file::cover_image_data,
     custom_columns::{self, CustomColumn, CustomColumnKind, CustomColumnSpec, CustomValue},
     entities::book_file::NewBookFile,
     operations,
@@ -297,10 +299,19 @@ impl Library {
     // =========================================================================
 
     pub fn add_book(&mut self, book: BookAdd) -> Result<Book, CalibreError> {
-        // 1. Create/find authors
-        let created_authors: Vec<crate::entities::author::Author> = book
+        // 1. Create/find authors. Like Calibre, a book with no author is filed
+        // under "Unknown", so its folder is never at the library root.
+        let mut author_names: Vec<&str> = book
             .author_names
             .iter()
+            .map(|name| name.trim())
+            .filter(|name| !name.is_empty())
+            .collect();
+        if author_names.is_empty() {
+            author_names.push(UNKNOWN_AUTHOR);
+        }
+        let created_authors: Vec<crate::entities::author::Author> = author_names
+            .into_iter()
             .map(|name| author_queries::create_if_not_exists(&mut self.conn, name))
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -359,12 +370,36 @@ impl Library {
             )?;
         }
 
+        if let Some(publisher) = book.publisher.as_deref().map(str::trim) {
+            if !publisher.is_empty() {
+                crate::queries::publishers::set_for_book(
+                    &mut self.conn,
+                    BookId(book_row.id),
+                    publisher,
+                )?;
+            }
+        }
+
+        if let Some(comments) = book.comments.as_ref().filter(|c| !c.trim().is_empty()) {
+            crate::queries::book_descriptions::create(
+                &mut self.conn,
+                BookId(book_row.id),
+                comments.clone(),
+            )?;
+        }
+
+        let mut identifiers: Vec<_> = book.identifiers.iter().collect();
+        identifiers.sort();
+        for (label, value) in identifiers {
+            self.upsert_book_identifier(BookId(book_row.id), label.clone(), value.clone(), None)?;
+        }
+
         // 4. Create directories
         let primary_author = created_authors
             .first()
             .map(|a| a.name.clone())
             .unwrap_or_default();
-        let author_dir_name = primary_author.clone();
+        let author_dir_name = sanitise(&primary_author);
         let book_dir_name = sanitise(&format!("{} ({})", &book.title, book_row.id));
         let book_dir_relative = Path::new(&author_dir_name).join(&book_dir_name);
         let library_root = Path::new(&self.db_path.library_path);
@@ -426,7 +461,7 @@ impl Library {
 
         // 6. Extract cover image
         if let Some(primary_file) = book.file_paths.first() {
-            if let Ok(Some(cover_data)) = cover_image_data_from_path(primary_file) {
+            if let Some(cover_data) = cover_image_data(primary_file) {
                 let cover_path = library_root.join(&book_dir_relative).join("cover.jpg");
                 let _ = std::fs::write(&cover_path, &cover_data);
                 let _ = book_queries::update(
@@ -533,7 +568,9 @@ impl Library {
     /// trash. Fails with [`CalibreError::BookNotFound`] if any id is missing,
     /// in which case nothing is deleted. Every folder is validated before
     /// records are removed: paths must be relative author/book directories
-    /// within the library, without symlinks or inaccessible ancestors.
+    /// within the library (or, for a book without an author, a root folder
+    /// ending in the book's own ` (id)`), without symlinks or inaccessible
+    /// ancestors.
     pub fn delete_books(&mut self, book_ids: &[BookId]) -> Result<Vec<PathBuf>, CalibreError> {
         let library_root = PathBuf::from(&self.db_path.library_path);
         self.conn.transaction(|conn| {
@@ -543,6 +580,7 @@ impl Library {
                     book_queries::get(conn, book_id)?.ok_or(CalibreError::BookNotFound(book_id))?;
                 dirs.push(operations::assets::validated_book_delete_dir(
                     &library_root,
+                    book_id,
                     &book.path,
                 )?);
             }

@@ -1,0 +1,412 @@
+.overlay {
+	position: fixed;
+	inset: 0;
+	background-color: oklch(0% 0 0 / 0.18);
+	z-index: 110;
+}
+
+.overlay[data-state="open"] {
+	animation: upload-sheet-fade-in 180ms ease-out;
+}
+
+.overlay[data-state="closed"] {
+	animation: upload-sheet-fade-out 160ms ease-in forwards;
+}
+
+/* A detached sheet below the toolbar, like Sheet, sized for the queue. */
+.content {
+	position: fixed;
+	top: 64px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	flex-direction: column;
+	width: min(520px, calc(100vw - 32px));
+	max-height: min(560px, calc(100vh - 64px - 48px));
+	background-color: var(--ctd-surface);
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-panel);
+	box-shadow: var(--ctd-dialog-shadow);
+	z-index: 111;
+	color: var(--ctd-ink);
+}
+
+.content[data-state="open"] {
+	animation: upload-sheet-in 180ms ease-out;
+}
+
+.content[data-state="closed"] {
+	animation: upload-sheet-out 160ms ease-in forwards;
+}
+
+.header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--ctd-border);
+}
+
+.title {
+	flex: 1;
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.status {
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Phone-only navigation-bar controls. */
+.done,
+.addMore,
+.cancelRow,
+.narrowOnly {
+	display: none;
+}
+
+.body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	/* A scrollbar appearing mustn't narrow the rows. */
+	scrollbar-gutter: stable both-edges;
+	scrollbar-width: thin;
+	padding: 4px 20px 16px;
+}
+
+/* Reviewing: the review scrolls its own middle and pins its actions. */
+.bodyReview {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	/* The review scrolls inside; no gutter to inset its edges. */
+	scrollbar-gutter: auto;
+	padding: 0;
+}
+
+.list {
+	margin: 0;
+	padding: 0;
+}
+
+.paused {
+	margin: 8px 0 0;
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+}
+
+.dropzone {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: 100%;
+	margin-top: 12px;
+	padding: 18px 14px;
+	border: 1.5px dashed color-mix(in oklch, var(--ctd-ink) 25%, transparent);
+	border-radius: 8px;
+	background: transparent;
+	font: inherit;
+	font-size: 13px;
+	color: var(--ctd-ink-soft);
+	transition:
+		background-color 180ms ease,
+		border-color 180ms ease;
+}
+
+.dropzone:hover {
+	border-color: var(--ctd-brass);
+	color: var(--ctd-ink);
+}
+
+.dropzone:focus-visible,
+.done:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.plus {
+	font-size: 14px;
+}
+
+.link {
+	color: var(--ctd-ink);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+/* Nothing queued yet: one clear way in. */
+.empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	margin-top: 12px;
+	padding: 28px 20px;
+	border: 1.5px dashed color-mix(in oklch, var(--ctd-ink) 25%, transparent);
+	border-radius: 8px;
+	text-align: center;
+}
+
+.emptyGlyph {
+	font-size: 28px;
+	color: var(--ctd-ink-soft);
+}
+
+.emptyTitle {
+	margin: 6px 0 0;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.emptyHint {
+	margin: 0 0 10px;
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+}
+
+.footer {
+	flex: none;
+	display: flex;
+	gap: 8px;
+	padding: 12px 20px 16px;
+}
+
+.spacer {
+	flex: 1;
+}
+
+.live {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	margin: 0;
+}
+
+@keyframes upload-sheet-fade-in {
+	from {
+		opacity: 0;
+	}
+}
+
+@keyframes upload-sheet-fade-out {
+	to {
+		opacity: 0;
+	}
+}
+
+@keyframes upload-sheet-in {
+	from {
+		transform: translate(-50%, -10px);
+		opacity: 0;
+	}
+}
+
+@keyframes upload-sheet-out {
+	to {
+		transform: translate(-50%, -6px);
+		opacity: 0;
+	}
+}
+
+/* Touch screens: every control is at least 44 × 44 pt (Apple HIG). */
+@media (pointer: coarse) {
+	.footer :global(button),
+	.empty :global(button) {
+		min-height: 44px;
+	}
+}
+
+/*
+ * Phones and narrow or zoomed windows follow iOS conventions: a full-screen
+ * page with a navigation bar (Done, title, +), a plain list, the destructive
+ * action at the end of the list, and one prominent action in a bottom bar
+ * within thumb reach.
+ */
+@media (max-width: 36em) {
+	.content {
+		/* The whole screen. With the keyboard up, iOS itself pans the page to
+		   keep the focused field in view; resizing to follow it fought that. */
+		inset: 0;
+		height: auto;
+		transform: none;
+		width: 100%;
+		max-height: none;
+		border: 0;
+		border-radius: 0;
+		font-size: 17px;
+	}
+
+	.content[data-state="open"] {
+		animation: upload-sheet-rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+
+	/* One motion out: the page slides back down. */
+	.content[data-state="closed"] {
+		animation: upload-sheet-sink 240ms cubic-bezier(0.4, 0, 1, 1) forwards;
+	}
+
+	.header {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		min-height: 52px;
+		padding: env(safe-area-inset-top) 8px 0;
+		border-bottom: 1px solid var(--ctd-border);
+	}
+
+	/* Reviewing on a phone: the review's own bar is the navigation bar. */
+	.header[data-reviewing] {
+		display: none;
+	}
+
+	.done {
+		display: inline-flex;
+		align-items: center;
+		justify-self: start;
+		min-width: 44px;
+		min-height: 44px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: var(--ctd-radius-control);
+		background: transparent;
+		font: inherit;
+		font-size: 17px;
+		font-weight: 600;
+		color: var(--ctd-link);
+	}
+
+	.title {
+		grid-column: 2;
+		font-size: 17px;
+		text-align: center;
+	}
+
+	.status,
+	.close {
+		display: none;
+	}
+
+	.addMore {
+		display: inline-flex;
+		justify-self: end;
+		grid-column: 3;
+		min-width: 44px;
+		min-height: 44px;
+		font-size: 22px;
+		color: var(--ctd-link);
+	}
+
+	.body {
+		display: flex;
+		flex-direction: column;
+		padding: 0 16px 16px;
+		overscroll-behavior-y: contain;
+	}
+
+	.bodyReview {
+		padding: 0;
+	}
+
+	/* The navigation bar's + takes over choosing more. */
+	.dropzone {
+		display: none;
+	}
+
+	/* At the end of the list, full width, press and hold. */
+	.cancelRow {
+		display: flex;
+		margin-top: 12px;
+		font-size: 17px;
+	}
+
+	.cancelRow button {
+		min-height: 48px;
+		border-radius: 14px;
+		font-size: 17px;
+	}
+
+	.empty {
+		flex: 1;
+		justify-content: center;
+		margin: 0;
+		border: 0;
+		gap: 8px;
+	}
+
+	.emptyGlyph {
+		font-size: 44px;
+	}
+
+	.emptyTitle {
+		font-size: 20px;
+	}
+
+	.emptyHint {
+		font-size: 15px;
+		margin-bottom: 16px;
+	}
+
+	.wideOnly {
+		display: none;
+	}
+
+	.narrowOnly {
+		display: inline;
+	}
+
+	.choose {
+		min-width: 220px;
+		min-height: 50px;
+		border-radius: 14px;
+		font-size: 17px;
+		font-weight: 600;
+	}
+
+	.footer {
+		padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+		border-top: 1px solid var(--ctd-border);
+		background: var(--ctd-surface);
+		display: grid;
+		/* Like the review's Skip / Add: the secondary action, then the main one. */
+		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+		gap: 10px;
+	}
+
+	.cancelAll,
+	.spacer {
+		display: none;
+	}
+
+	.footer :global(button) {
+		min-height: 50px;
+		border-radius: 14px;
+		font-size: 17px;
+		font-weight: 600;
+	}
+
+	@keyframes upload-sheet-rise {
+		from {
+			transform: translateY(100%);
+		}
+	}
+
+	@keyframes upload-sheet-sink {
+		to {
+			transform: translateY(100%);
+		}
+	}
+}
+
+/* Last, so it also wins over the phone layout's motion. */
+@media (prefers-reduced-motion: reduce) {
+	.overlay[data-state],
+	.content[data-state] {
+		animation: none;
+	}
+}

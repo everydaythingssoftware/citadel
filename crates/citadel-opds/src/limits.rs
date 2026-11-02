@@ -72,39 +72,46 @@ pub(crate) async fn run_work<T: Send + 'static>(
     .map_err(|_| WorkUnavailable)
 }
 
-pub(crate) async fn enforce(
-    State(limits): State<Limits>,
-    request: Request,
-    next: Next,
-) -> Response {
+/// Admission shared by every listener: a request holds one slot until its
+/// response body is consumed or dropped. Body and deadline policy is each
+/// listener's own (see [`bound_feeds`]).
+pub(crate) async fn admit(State(limits): State<Limits>, request: Request, next: Next) -> Response {
     let permit = match limits.requests.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => return busy(),
     };
+    let (parts, body) = next.run(request).await.into_parts();
+    let stream = futures_util::stream::unfold(
+        (body.into_data_stream(), permit),
+        |(mut body, permit)| async move { body.next().await.map(|chunk| (chunk, (body, permit))) },
+    );
+    Response::from_parts(parts, Body::from_stream(stream))
+}
+
+/// OPDS request bounds: catalog requests carry no meaningful body, so bodies
+/// are capped small, and feeds must answer within the deadline. Downloads are
+/// exempt from the deadline so slow readers can finish.
+pub(crate) async fn bound_feeds(
+    State(limits): State<Limits>,
+    request: Request,
+    next: Next,
+) -> Response {
     let feed = !request.uri().path().starts_with("/opds/books/");
     let (parts, body) = request.into_parts();
-    // Bound even chunked bodies under a deadline, retaining JSON for API handlers.
+    // Bound even chunked bodies under a deadline.
     let body = match tokio::time::timeout(limits.deadline, to_bytes(body, BODY_BYTES)).await {
         Ok(Ok(bytes)) => bytes,
         Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
         Err(_) => return busy(),
     };
     let request = Request::from_parts(parts, Body::from(body));
-    let response = if feed {
-        match tokio::time::timeout(limits.deadline, next.run(request)).await {
-            Ok(response) => response,
-            Err(_) => return busy(),
-        }
-    } else {
-        next.run(request).await
-    };
-    let (parts, body) = response.into_parts();
-    // Keep admission occupied until the client consumes or drops the response body.
-    let stream = futures_util::stream::unfold(
-        (body.into_data_stream(), permit),
-        |(mut body, permit)| async move { body.next().await.map(|chunk| (chunk, (body, permit))) },
-    );
-    Response::from_parts(parts, Body::from_stream(stream))
+    if !feed {
+        return next.run(request).await;
+    }
+    match tokio::time::timeout(limits.deadline, next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => busy(),
+    }
 }
 
 #[cfg(test)]
@@ -113,10 +120,20 @@ mod tests {
     use axum::{routing::get, Router};
     use tower::ServiceExt;
 
+    fn opds(router: Router, limits: Limits) -> Router {
+        router
+            .layer(axum::middleware::from_fn_with_state(
+                limits.clone(),
+                bound_feeds,
+            ))
+            .layer(axum::middleware::from_fn_with_state(limits, admit))
+    }
+
     fn app(limits: Limits) -> Router {
-        Router::new()
-            .route("/opds", get(|| async { "feed" }))
-            .layer(axum::middleware::from_fn_with_state(limits, enforce))
+        opds(
+            Router::new().route("/opds", get(|| async { "feed" })),
+            limits,
+        )
     }
 
     #[tokio::test]
@@ -153,6 +170,36 @@ mod tests {
                 .unwrap();
             assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
         }
+    }
+
+    #[tokio::test]
+    async fn admission_alone_leaves_bodies_to_the_listener() {
+        let router = Router::new()
+            .route(
+                "/api/echo",
+                axum::routing::post(
+                    |body: axum::body::Bytes| async move { body.len().to_string() },
+                ),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                Limits::default(),
+                admit,
+            ));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/echo")
+                    .body(Body::from(vec![b'x'; BODY_BYTES * 4]))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), 100).await.unwrap(),
+            (BODY_BYTES * 4).to_string()
+        );
     }
 
     #[tokio::test]
@@ -199,8 +246,8 @@ mod tests {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                     "cover-bytes"
                 }),
-            )
-            .layer(axum::middleware::from_fn_with_state(limits, enforce));
+            );
+        let router = opds(router, limits);
         let feed = router
             .clone()
             .oneshot(Request::builder().uri("/opds").body(Body::empty()).unwrap())

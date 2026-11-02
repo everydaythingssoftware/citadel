@@ -9,6 +9,7 @@ import { LibraryListCard } from "@/components/molecules/LibraryListCard";
 import { SoftwareUpdateRow } from "@/components/molecules/SoftwareUpdateRow";
 import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
 import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
+import { AccountSettings } from "@/components/organisms/AccountSettings";
 import classes from "@/components/organisms/SettingsPanes.module.css";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
 import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
@@ -18,10 +19,20 @@ import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
 import { none, some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
+import {
+	SettingsSection,
+	type TSettingsSection,
+} from "@/lib/settings-sections";
 import { applyColorScheme } from "@/lib/theme-manager";
-import { useAnySourceEnabled } from "@/stores/settings/metadata-providers";
+import {
+	providerKeysOnServer,
+	useAnySourceEnabled,
+	useProviderKeyAvailable,
+	useServerKeyReason,
+} from "@/stores/settings/metadata-providers";
 import { useSettings } from "@/stores/settings/store";
 
+/** The desktop Settings window's tabs; the browser uses SettingsPage. */
 const SETTINGS_TABS = [
 	"general",
 	"library",
@@ -70,9 +81,6 @@ interface SettingsPanesProps {
  */
 export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 	const platform = usePlatform();
-	const tabs: readonly SettingsTab[] = platform.capabilities.canPickLocalFiles
-		? SETTINGS_TABS
-		: ["general"];
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
 	// The badged gear and Citadel → Check for Updates… land here; the window
@@ -112,20 +120,23 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 	// Automatic activation: arrows move both focus and selection, macOS style.
 	const handleTabKeyDown = useCallback(
 		(event: KeyboardEvent<HTMLButtonElement>) => {
-			const index = tabs.indexOf(activeTab);
+			const index = SETTINGS_TABS.indexOf(activeTab);
 			let next: SettingsTab | undefined;
 			switch (event.key) {
 				case "ArrowRight":
-					next = tabs[(index + 1) % tabs.length];
+					next = SETTINGS_TABS[(index + 1) % SETTINGS_TABS.length];
 					break;
 				case "ArrowLeft":
-					next = tabs[(index - 1 + tabs.length) % tabs.length];
+					next =
+						SETTINGS_TABS[
+							(index - 1 + SETTINGS_TABS.length) % SETTINGS_TABS.length
+						];
 					break;
 				case "Home":
-					next = tabs[0];
+					next = SETTINGS_TABS[0];
 					break;
 				case "End":
-					next = tabs[tabs.length - 1];
+					next = SETTINGS_TABS[SETTINGS_TABS.length - 1];
 					break;
 				default:
 					return;
@@ -133,7 +144,7 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 			event.preventDefault();
 			if (next) selectAndFocusTab(next);
 		},
-		[activeTab, selectAndFocusTab, tabs],
+		[activeTab, selectAndFocusTab],
 	);
 
 	return (
@@ -144,7 +155,7 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 				className={classes.tabStrip}
 				data-tauri-drag-region
 			>
-				{tabs.map((tab) => (
+				{SETTINGS_TABS.map((tab) => (
 					<button
 						key={tab}
 						ref={(node) => {
@@ -182,6 +193,37 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 			</div>
 		</div>
 	);
+};
+
+/** The sections the browser's in-app Settings page offers. */
+export const BROWSER_SETTINGS_SECTIONS: readonly TSettingsSection[] =
+	providerKeysOnServer
+		? [
+				SettingsSection.general,
+				SettingsSection.metadata,
+				SettingsSection.account,
+			]
+		: [SettingsSection.general];
+
+interface SettingsSectionContentProps {
+	section: TSettingsSection;
+	/** A provider row's "Manage key" button: show where keys are kept. */
+	onManageKeys: () => void;
+}
+
+/** One section of the browser's Settings page, without any surrounding chrome. */
+export const SettingsSectionContent = ({
+	section,
+	onManageKeys,
+}: SettingsSectionContentProps) => {
+	switch (section) {
+		case SettingsSection.general:
+			return <GeneralTab />;
+		case SettingsSection.metadata:
+			return <IntegrationsTab titled={false} onManageKeys={onManageKeys} />;
+		case SettingsSection.account:
+			return <AccountSettings />;
+	}
 };
 
 interface SettingsRowProps {
@@ -261,31 +303,33 @@ const GeneralTab = () => {
 					}
 				/>
 			</div>
-			<div className={classes.group}>
-				<SettingsRow
-					label="Check for updates automatically"
-					htmlFor={autoUpdateSwitchId}
-					control={
-						<Switch
-							id={autoUpdateSwitchId}
-							checked={autoUpdateCheckingEnabled}
-							disabled={!supportsAutoUpdates}
-							onCheckedChange={(checked) =>
-								void setAutoUpdateCheckingEnabled(checked)
-							}
-						/>
-					}
-				/>
-				{softwareUpdate && (
-					<SoftwareUpdateRow
-						state={softwareUpdate.state}
-						onCheck={softwareUpdate.check}
-						onLater={softwareUpdate.later}
-						onUpdateNow={softwareUpdate.updateNow}
-						onRestartNow={softwareUpdate.updateNow}
+			{/* A browser can't install anything; the server updates on its own. */}
+			{supportsAutoUpdates && (
+				<div className={classes.group}>
+					<SettingsRow
+						label="Check for updates automatically"
+						htmlFor={autoUpdateSwitchId}
+						control={
+							<Switch
+								id={autoUpdateSwitchId}
+								checked={autoUpdateCheckingEnabled}
+								onCheckedChange={(checked) =>
+									void setAutoUpdateCheckingEnabled(checked)
+								}
+							/>
+						}
 					/>
-				)}
-			</div>
+					{softwareUpdate && (
+						<SoftwareUpdateRow
+							state={softwareUpdate.state}
+							onCheck={softwareUpdate.check}
+							onLater={softwareUpdate.later}
+							onUpdateNow={softwareUpdate.updateNow}
+							onRestartNow={softwareUpdate.updateNow}
+						/>
+					)}
+				</div>
+			)}
 		</div>
 	);
 };
@@ -356,7 +400,13 @@ interface TestResult {
 	message: string;
 }
 
-const ProviderRow = ({ id }: { id: ProviderId }) => {
+interface ProviderRowProps {
+	id: ProviderId;
+	/** Where a browser manages keys the server keeps. */
+	onManageKeys?: () => void;
+}
+
+const ProviderRow = ({ id, onManageKeys }: ProviderRowProps) => {
 	const descriptor = getDescriptor(id);
 	const config = useSettings((state) => state.metadataProviders.configs[id]);
 	const setProviderEnabled = useSettings((state) => state.setProviderEnabled);
@@ -366,7 +416,8 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 	const enabled = config?.enabled ?? false;
 	const requiresKey = descriptor.capabilities.requiresKey;
 	const savedKey = config?.apiKey ?? "";
-	const hasKey = savedKey.trim().length > 0;
+	const hasKey = useProviderKeyAvailable()(id);
+	const serverKeyReason = useServerKeyReason(id);
 
 	const [expanded, setExpanded] = useState(false);
 	const [apiKeyInput, setApiKeyInput] = useState(savedKey);
@@ -376,7 +427,9 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 	const status = requiresKey
 		? hasKey
 			? "Key saved"
-			: "Add a key"
+			: providerKeysOnServer
+				? "Not set up"
+				: "Add a key"
 		: "No key needed";
 
 	const handleTest = useCallback(async () => {
@@ -444,7 +497,20 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 			{expanded && (
 				<div className={classes.providerBody}>
 					<p className={classes.rowDescription}>{descriptor.blurb}</p>
-					{requiresKey ? (
+					{requiresKey && providerKeysOnServer ? (
+						<>
+							<p className={classes.inlineNote} role="status">
+								{hasKey
+									? "Your key is kept by this Citadel server."
+									: (serverKeyReason ?? "Add your key under Account.")}
+							</p>
+							<div className={classes.rowActions}>
+								<Button size="sm" variant="default" onClick={onManageKeys}>
+									Go to Account
+								</Button>
+							</div>
+						</>
+					) : requiresKey ? (
 						<>
 							<TextInput
 								className={classes.keyInput}
@@ -508,7 +574,16 @@ const ProviderRow = ({ id }: { id: ProviderId }) => {
 	);
 };
 
-const IntegrationsTab = () => {
+interface IntegrationsTabProps {
+	/** False where the page already heads the section (web Settings page). */
+	titled?: boolean;
+	onManageKeys?: () => void;
+}
+
+const IntegrationsTab = ({
+	titled = true,
+	onManageKeys,
+}: IntegrationsTabProps) => {
 	const preferenceOrder = useSettings(
 		(state) => state.metadataProviders.preferenceOrder,
 	);
@@ -524,26 +599,26 @@ const IntegrationsTab = () => {
 	return (
 		<div className={classes.groups}>
 			<div>
-				<h4 className={classes.groupTitle}>Metadata sources</h4>
+				{titled && <h4 className={classes.groupTitle}>Metadata sources</h4>}
 				<p className={classes.paneNote}>
-					Citadel looks up book details — titles, authors, and subjects — from
-					these sources.
+					Search these sources for titles, authors and other details when you
+					add or edit a book.
 				</p>
 				<div className={classes.group}>
 					{preferenceOrder.map((id) => (
-						<ProviderRow key={id} id={id} />
+						<ProviderRow key={id} id={id} onManageKeys={onManageKeys} />
 					))}
 				</div>
 			</div>
 			<div>
 				<div className={classes.group}>
 					<SettingsRow
-						label="Look up metadata when importing"
+						label="Search automatically when adding books"
 						htmlFor={autoLookupSwitchId}
 						description={
 							anySourceEnabled
-								? "When an imported file has an ISBN, search your enabled sources automatically."
-								: "Turn on a source above to enable automatic lookups."
+								? "For files that include an ISBN."
+								: "Turn on a source above to use this."
 						}
 						control={
 							<Switch

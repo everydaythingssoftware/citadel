@@ -275,6 +275,7 @@ export const AddBookForm = ({
 				pendingProviderNames={meta.pendingProviderNames}
 				onSelect={(result) => meta.selectSearchResult(result)}
 				onStop={meta.stopSearch}
+				onCoverError={meta.retryAfterCoverError}
 				error={meta.message?.type === "error" ? meta.message.text : null}
 				width={640}
 			/>

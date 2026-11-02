@@ -1,0 +1,36 @@
+import clsx from "clsx";
+import { DropHalo } from "@/components/atoms/DropHalo";
+import { CoverFan } from "./CoverFan";
+import styles from "./DropOverlay.module.css";
+
+export interface DropOverlayProps {
+	visible: boolean;
+	/** Renders in place rather than over the window (stories, previews). */
+	contained?: boolean;
+}
+
+/**
+ * Covers the window while books are dragged over it: the library goes behind
+ * acrylic glass, a brass light sweeps the edge to say the whole window takes the drop, and a
+ * fan of books sits in the middle.
+ */
+export const DropOverlay = ({
+	visible,
+	contained = false,
+}: DropOverlayProps) => (
+	<div
+		className={clsx(
+			styles.overlay,
+			contained && styles.contained,
+			visible && styles.visible,
+		)}
+		aria-hidden={!visible}
+	>
+		<DropHalo />
+		<CoverFan size={128} />
+		<div className={styles.copy}>
+			<p className={styles.title}>Add to Library</p>
+			<p className={styles.hint}>Drop to upload</p>
+		</div>
+	</div>
+);

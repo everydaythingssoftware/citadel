@@ -36,6 +36,14 @@ export interface DialogAdapter {
 		filters?: { name: string; extensions: string[] }[];
 	}): Promise<string | null>;
 	openDirectory(options?: { title?: string }): Promise<string | null>;
+	/**
+	 * Lets the person choose files to read in the page itself (uploads).
+	 * Resolves with none when they cancel or the platform has no picker.
+	 */
+	chooseFiles(options: {
+		extensions: string[];
+		multiple?: boolean;
+	}): Promise<File[]>;
 }
 
 export interface ClipboardAdapter {

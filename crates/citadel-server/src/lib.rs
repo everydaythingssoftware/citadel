@@ -18,6 +18,7 @@ use libcalibre::{BookId, BookPage, CalibreError, Library, ResolvedBookAsset};
 use serde::Deserialize;
 
 const ACCOUNTS_DATABASE: &str = "citadel.db";
+const UPLOADS_DIRECTORY: &str = "uploads";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -58,20 +59,50 @@ pub enum Invocation {
 
 pub struct CalibreCatalogSource {
     library: Mutex<Library>,
+    read_only: bool,
 }
 
 impl CalibreCatalogSource {
+    /// Opens the library for queries only; it is never changed.
     pub fn open(library_path: &Path) -> Result<Self, String> {
+        Self::open_with(library_path, Library::open_read_only, true)
+    }
+
+    /// Opens the library for writing. Only one program should write to a
+    /// library at a time; nothing enforces that.
+    pub fn open_writable(library_path: &Path) -> Result<Self, String> {
+        Self::open_with(library_path, Library::new, false)
+    }
+
+    /// Opens the library for writing, or read-only (logging why) when it
+    /// can't be written, for example a read-only file or folder.
+    pub fn open_preferring_writes(library_path: &Path) -> Result<Self, String> {
+        Self::open_writable(library_path).or_else(|error| {
+            eprintln!("citadel_server library=read-only reason={error}");
+            Self::open(library_path)
+        })
+    }
+
+    fn open_with(
+        library_path: &Path,
+        open: impl FnOnce(libcalibre::util::ValidDbPath) -> Result<Library, CalibreError>,
+        read_only: bool,
+    ) -> Result<Self, String> {
         let library_path = library_path
             .to_str()
             .ok_or_else(|| "libraryPath must be valid UTF-8".to_string())?;
         let database = libcalibre::util::get_db_path(library_path)
             .ok_or_else(|| format!("libraryPath is not a Calibre library: {library_path}"))?;
-        let library = Library::open_read_only(database)
-            .map_err(|error| format!("could not open libraryPath: {error}"))?;
+        let library =
+            open(database).map_err(|error| format!("could not open libraryPath: {error}"))?;
         Ok(Self {
             library: Mutex::new(library),
+            read_only,
         })
+    }
+
+    pub fn read_only(&self) -> bool {
+        self.read_only
     }
 }
 
@@ -248,6 +279,8 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
         }
         citadel_opds::network::validate_explicit_addresses(&[api.listen.ip().to_string()], true)?;
         api::PublicUrl::parse(&api.public_url)?;
+        api.uploads.validate()?;
+        api.metadata.validate()?;
         if let Some(directory) = &api.web_directory {
             api::web::validate(directory)?;
         }
@@ -255,15 +288,8 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// The accounts database, with this config's library registered under its
-/// Calibre library UUID.
-pub(crate) fn open_accounts(
-    config: &ServerConfig,
-    source: &CalibreCatalogSource,
-) -> Result<(CitadelStore, RegisteredLibrary), String> {
-    let library_id = source
-        .active_library_id()
-        .map_err(|error| format!("could not read the library's Calibre UUID: {error}"))?;
+/// The configured state directory (or the platform default), created if needed.
+fn state_directory(config: &ServerConfig) -> Result<PathBuf, String> {
     let state_directory = config
         .state_directory
         .clone()
@@ -275,12 +301,47 @@ pub(crate) fn open_accounts(
             state_directory.display()
         )
     })?;
+    Ok(state_directory)
+}
+
+/// The accounts database, with this config's library registered under its
+/// Calibre library UUID.
+pub(crate) fn open_accounts(
+    config: &ServerConfig,
+    source: &CalibreCatalogSource,
+) -> Result<(CitadelStore, RegisteredLibrary), String> {
+    let library_id = source
+        .active_library_id()
+        .map_err(|error| format!("could not read the library's Calibre UUID: {error}"))?;
+    let state_directory = state_directory(config)?;
     let accounts = CitadelStore::open(&state_directory.join(ACCOUNTS_DATABASE))
         .map_err(|error| error.to_string())?;
     let library = accounts
         .register_library(&library_id, &config.library_path, None)
         .map_err(|error| error.to_string())?;
     Ok((accounts, library))
+}
+
+/// The vault sealing users' provider keys. Keys sealed with a lost or
+/// replaced vault key are kept but unreadable; their owners re-enter them.
+fn open_secrets(
+    config: &ServerConfig,
+    accounts: &CitadelStore,
+) -> Result<Arc<citadel_core::vault::Vault>, String> {
+    let vault = citadel_core::vault::Vault::open_or_create(&citadel_core::vault::directory(
+        &state_directory(config)?,
+    ))?;
+    match accounts.unreadable_provider_credentials(&vault) {
+        Ok(0) => {}
+        Ok(count) => eprintln!(
+            "citadel_server warning=\"{count} saved provider key(s) were sealed with a different \
+             vault key and must be entered again by their users\""
+        ),
+        Err(error) => {
+            eprintln!("citadel_server warning=\"could not check provider keys: {error}\"")
+        }
+    }
+    Ok(Arc::new(vault))
 }
 
 fn opds_users(
@@ -300,7 +361,9 @@ fn opds_users(
 
 pub async fn run(config: ServerConfig, config_path: &Path) -> Result<(), String> {
     validate_config(&config)?;
-    let source = Arc::new(CalibreCatalogSource::open(&config.library_path)?);
+    let source = Arc::new(CalibreCatalogSource::open_preferring_writes(
+        &config.library_path,
+    )?);
     let (accounts, library) = open_accounts(&config, &source)?;
     let accounts = Arc::new(accounts);
     let users = opds_users(&accounts, &library.id)?;
@@ -326,18 +389,47 @@ pub async fn run(config: ServerConfig, config_path: &Path) -> Result<(), String>
             .unwrap_or_else(|| "OPDS failed to start".to_string()));
     }
 
+    let config_root = &config;
     let mut api = if let Some(config) = &config.api {
+        let secrets = match open_secrets(config_root, &accounts) {
+            Ok(secrets) => secrets,
+            Err(error) => {
+                service.stop().await;
+                return Err(error);
+            }
+        };
         let access = api::ApiAccess {
             accounts: accounts.clone(),
             library_id: library.id.clone(),
             public_url: api::PublicUrl::parse(&config.public_url)?,
+            secrets,
         };
-        match api::start(
-            config,
-            api::router(source, &service, access, config.web_directory.as_deref()),
-        )
-        .await
-        {
+        let staging = match api::Staging::open(
+            state_directory(&config_root)?.join(UPLOADS_DIRECTORY),
+            config.uploads.clone(),
+        ) {
+            Ok(staging) => staging,
+            Err(error) => {
+                service.stop().await;
+                return Err(error);
+            }
+        };
+        let metadata = match api::Metadata::new(config.metadata.clone()) {
+            Ok(metadata) => Arc::new(metadata),
+            Err(error) => {
+                service.stop().await;
+                return Err(error);
+            }
+        };
+        let router = api::router(
+            source,
+            &service,
+            access,
+            config.web_directory.as_deref(),
+            staging,
+            metadata,
+        );
+        match api::start(config, router).await {
             Ok(api) => {
                 println!(
                     "citadel_server api=http://{} public_url={}",
@@ -519,6 +611,32 @@ target = "localNetworks"
         ] {
             assert!(validate_config(&toml::from_str::<ServerConfig>(&invalid).unwrap()).is_err());
         }
+        let config = toml::from_str::<ServerConfig>(&format!(
+            "{with_api}\n[api.uploads]\nmaxFileBytes = 1048576\nmaxUploadsPerUser = 2\n"
+        ))
+        .unwrap();
+        let uploads = &config.api.as_ref().unwrap().uploads;
+        assert_eq!(
+            (uploads.max_file_bytes, uploads.max_uploads_per_user),
+            (1048576, 2)
+        );
+        assert_eq!(
+            uploads.chunk_bytes,
+            api::UploadConfig::default().chunk_bytes
+        );
+        assert!(validate_config(&config).is_ok());
+        let error = validate_config(
+            &toml::from_str::<ServerConfig>(&format!(
+                "{with_api}\n[api.uploads]\nchunkBytes = 10\n"
+            ))
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert!(error.contains("chunkBytes"), "{error}");
+        assert!(toml::from_str::<ServerConfig>(&format!(
+            "{with_api}\n[api.uploads]\nmaxSize = 10\n"
+        ))
+        .is_err());
     }
 
     #[test]

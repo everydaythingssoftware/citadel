@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { BookMetadata, LibraryBook } from "@/bindings";
 import { useLibraryActions, useLibraryStore } from "@/stores/library/store";
 import { lookupIsbn, normalizeIsbn } from "@/lib/isbn";
+import { applyMetadataCover, refreshCoverId } from "@/lib/metadata-import";
 import type {
 	AggregatedResult,
 	SearchHandle,
@@ -88,6 +89,9 @@ export const useMetadataBookActions = ({
 		null,
 	);
 	const searchHandleRef = useRef<SearchHandle | null>(null);
+	// Cover previews use IDs that expire; a broken preview re-runs the
+	// search once per opening to get fresh ones.
+	const coverRetriedRef = useRef(false);
 
 	useEffect(
 		() => () => {
@@ -142,9 +146,16 @@ export const useMetadataBookActions = ({
 			}
 		}
 
-		if (chosen.image_url) {
+		if (chosen.cover_id) {
 			assertLibrary();
-			await actions.setBookCoverFromUrl(book.id, chosen.image_url);
+			await applyMetadataCover(book.id, chosen, {
+				setBookCoverFromMetadata: async (...args) => {
+					assertLibrary();
+					await actions.setBookCoverFromMetadata(...args);
+				},
+				refreshCoverId: (record) =>
+					refreshCoverId(record, getConfig(record.provider)),
+			});
 			await onReloadBooks();
 		}
 
@@ -268,6 +279,7 @@ export const useMetadataBookActions = ({
 	};
 
 	const openSearch = (initialQuery: string) => {
+		coverRetriedRef.current = false;
 		setSearchQuery(initialQuery);
 		setMessage(null);
 		setIsSearchModalOpen(true);
@@ -286,6 +298,12 @@ export const useMetadataBookActions = ({
 		} catch (error) {
 			setMessage({ type: "error", text: `Error: ${errorText(error)}` });
 		}
+	};
+
+	const retryAfterCoverError = () => {
+		if (coverRetriedRef.current || isSearching) return;
+		coverRetriedRef.current = true;
+		startSearch();
 	};
 
 	const stopSearch = () => {
@@ -336,6 +354,7 @@ export const useMetadataBookActions = ({
 		search: () => startSearch(),
 		selectResult,
 		stopSearch,
+		retryAfterCoverError,
 		openIdentifierLink,
 	};
 };

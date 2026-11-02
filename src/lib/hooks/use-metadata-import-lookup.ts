@@ -8,6 +8,7 @@ import type {
 import { searchAcrossProviders } from "@/lib/metadata-providers/aggregate";
 import { getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
+import { metadataService } from "@/lib/services/metadata";
 import {
 	useAutoLookupOnImport,
 	useEnabledProviders,
@@ -51,6 +52,17 @@ export const useMetadataImportLookup = ({
 	const [results, setResults] = useState<AggregatedResult[]>([]);
 	const [pendingProviders, setPendingProviders] = useState<ProviderId[]>([]);
 	const searchHandleRef = useRef<SearchHandle | null>(null);
+	// Cover previews use IDs that expire; a broken preview re-runs the
+	// search once per opening to get fresh ones.
+	const coverRetriedRef = useRef(false);
+
+	// The chosen cover is applied only after the book is created; fetch it at
+	// full size now so that step doesn't wait on the provider.
+	const pendingCoverId = pending?.metadata.cover_id ?? null;
+	useEffect(() => {
+		if (pendingCoverId)
+			void metadataService.prefetchCover(pendingCoverId).catch(() => {});
+	}, [pendingCoverId]);
 
 	// Guards against stale async resolutions: any lookup, selection, or clear
 	// bumps the generation; an in-flight operation only commits if its captured
@@ -125,6 +137,7 @@ export const useMetadataImportLookup = ({
 	};
 
 	const openSearch = (initialQuery: string) => {
+		coverRetriedRef.current = false;
 		setSearchQuery(initialQuery);
 		setResults([]);
 		setIsSearchModalOpen(true);
@@ -137,6 +150,12 @@ export const useMetadataImportLookup = ({
 		setPending({ metadata: result.book, source: "manual" });
 		setMessage(null);
 		setIsSearchModalOpen(false);
+	};
+
+	const retryAfterCoverError = () => {
+		if (coverRetriedRef.current || isSearching) return;
+		coverRetriedRef.current = true;
+		startSearch();
 	};
 
 	const stopSearch = () => {
@@ -173,6 +192,7 @@ export const useMetadataImportLookup = ({
 		openSearch,
 		search: () => startSearch(),
 		selectSearchResult,
+		retryAfterCoverError,
 		stopSearch,
 		clearPending: () => {
 			generationRef.current += 1;
