@@ -108,16 +108,6 @@
 	gap: 1.125rem;
 }
 
-.groupTitle {
-	margin: 0 0 0.375rem;
-	padding: 0 0.125rem;
-	font-size: 0.6875rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-	color: var(--ctd-ink-soft);
-}
-
 .group {
 	border: 1px solid var(--ctd-border);
 	border-radius: 0.5rem;
@@ -288,6 +278,15 @@
 
 .keyForm .rowActions {
 	margin-left: 0;
+}
+
+.inlineLink {
+	color: var(--ctd-link);
+	text-decoration: none;
+}
+
+.inlineLink:hover {
+	text-decoration: underline;
 }
 
 /* Inside a provider row the body's gap already spaces the note. */

@@ -14,7 +14,6 @@ const ROWS: Record<TSettingsSection, string[]> = {
 		"Open Library",
 		"Hardcover",
 	],
-	account: ["Hardcover API key"],
 };
 
 /** Stand-in content: the real sections read the app's stores. */

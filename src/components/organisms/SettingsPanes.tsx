@@ -9,12 +9,16 @@ import { LibraryListCard } from "@/components/molecules/LibraryListCard";
 import { SoftwareUpdateRow } from "@/components/molecules/SoftwareUpdateRow";
 import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
 import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
-import { AccountSettings } from "@/components/organisms/AccountSettings";
+import {
+	ServerProviderKey,
+	serverKeyStatus,
+} from "@/components/organisms/ServerProviderKey";
 import classes from "@/components/organisms/SettingsPanes.module.css";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
 import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
-import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
+import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
+import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
 import { none, some } from "@/lib/option";
@@ -28,7 +32,6 @@ import {
 	providerKeysOnServer,
 	useAnySourceEnabled,
 	useProviderKeyAvailable,
-	useServerKeyReason,
 } from "@/stores/settings/metadata-providers";
 import { useSettings } from "@/stores/settings/store";
 
@@ -58,7 +61,7 @@ const TAB_META: Record<
 		icon: (className) => <F7Wifi className={className} />,
 	},
 	integrations: {
-		label: "Metadata",
+		label: "Sources",
 		icon: (className) => <F7BookFill className={className} />,
 	},
 };
@@ -198,31 +201,22 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 /** The sections the browser's in-app Settings page offers. */
 export const BROWSER_SETTINGS_SECTIONS: readonly TSettingsSection[] =
 	providerKeysOnServer
-		? [
-				SettingsSection.general,
-				SettingsSection.metadata,
-				SettingsSection.account,
-			]
+		? [SettingsSection.general, SettingsSection.metadata]
 		: [SettingsSection.general];
 
 interface SettingsSectionContentProps {
 	section: TSettingsSection;
-	/** A provider row's "Manage key" button: show where keys are kept. */
-	onManageKeys: () => void;
 }
 
 /** One section of the browser's Settings page, without any surrounding chrome. */
 export const SettingsSectionContent = ({
 	section,
-	onManageKeys,
 }: SettingsSectionContentProps) => {
 	switch (section) {
 		case SettingsSection.general:
 			return <GeneralTab />;
 		case SettingsSection.metadata:
-			return <IntegrationsTab titled={false} onManageKeys={onManageKeys} />;
-		case SettingsSection.account:
-			return <AccountSettings />;
+			return <IntegrationsTab />;
 	}
 };
 
@@ -400,37 +394,105 @@ interface TestResult {
 	message: string;
 }
 
-interface ProviderRowProps {
+interface ProviderRowShellProps {
 	id: ProviderId;
-	/** Where a browser manages keys the server keeps. */
-	onManageKeys?: () => void;
+	/** Shown under the name only where a provider needs setting up. */
+	status: string | null;
+	children: ReactNode;
 }
 
-const ProviderRow = ({ id, onManageKeys }: ProviderRowProps) => {
+/** A source's name, status and switch over an expandable body. */
+const ProviderRowShell = ({ id, status, children }: ProviderRowShellProps) => {
+	const descriptor = getDescriptor(id);
+	const enabled = useSettings(
+		(state) => state.metadataProviders.configs[id]?.enabled ?? false,
+	);
+	const setProviderEnabled = useSettings((state) => state.setProviderEnabled);
+	const platform = usePlatform();
+	const switchId = useId();
+	const [expanded, setExpanded] = useState(false);
+	const keyHelpUrl = descriptor.keyHelpUrl;
+
+	return (
+		<div className={classes.providerRow}>
+			<div className={classes.providerHeader}>
+				<button
+					type="button"
+					className={classes.providerDisclosure}
+					aria-expanded={expanded}
+					aria-label={`${expanded ? "Collapse" : "Expand"} ${descriptor.displayName}`}
+					onClick={() => setExpanded((open) => !open)}
+				>
+					<span className={classes.providerChevron} data-open={expanded}>
+						›
+					</span>
+				</button>
+				<div className={classes.rowLabels}>
+					<span className={classes.rowLabel}>{descriptor.displayName}</span>
+					{status && <span className={classes.rowDescription}>{status}</span>}
+				</div>
+				<Switch
+					id={switchId}
+					checked={enabled}
+					aria-label={`Enable ${descriptor.displayName}`}
+					onCheckedChange={(checked) => void setProviderEnabled(id, checked)}
+				/>
+			</div>
+			{expanded && (
+				<div className={classes.providerBody}>
+					<p className={classes.rowDescription}>
+						{descriptor.blurb}
+						{keyHelpUrl && (
+							<>
+								{" "}
+								<a
+									className={classes.inlineLink}
+									href={keyHelpUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									onClick={(event) => {
+										event.preventDefault();
+										void platform.fileOpener.openPath(keyHelpUrl);
+									}}
+								>
+									How to get a key
+								</a>
+							</>
+						)}
+					</p>
+					{children}
+				</div>
+			)}
+		</div>
+	);
+};
+
+/** A keyed source whose key the signed-in user keeps on the server. */
+const ServerKeyProviderRow = ({ id }: { id: ProviderId }) => {
+	const controller = useProviderCredential(id);
+	return (
+		<ProviderRowShell id={id} status={serverKeyStatus(controller)}>
+			<ServerProviderKey id={id} controller={controller} />
+		</ProviderRowShell>
+	);
+};
+
+/** A source used straight from this app, with its key (if any) kept here. */
+const LocalProviderRow = ({ id }: { id: ProviderId }) => {
 	const descriptor = getDescriptor(id);
 	const config = useSettings((state) => state.metadataProviders.configs[id]);
-	const setProviderEnabled = useSettings((state) => state.setProviderEnabled);
 	const setProviderConfig = useSettings((state) => state.setProviderConfig);
-	const switchId = useId();
 
 	const enabled = config?.enabled ?? false;
 	const requiresKey = descriptor.capabilities.requiresKey;
 	const savedKey = config?.apiKey ?? "";
 	const hasKey = useProviderKeyAvailable()(id);
-	const serverKeyReason = useServerKeyReason(id);
 
-	const [expanded, setExpanded] = useState(false);
 	const [apiKeyInput, setApiKeyInput] = useState(savedKey);
 	const [isTesting, setIsTesting] = useState(false);
 	const [testResult, setTestResult] = useState<TestResult | null>(null);
 
-	const status = requiresKey
-		? hasKey
-			? "Key saved"
-			: providerKeysOnServer
-				? "Not set up"
-				: "Add a key"
-		: "No key needed";
+	const status = requiresKey ? (hasKey ? "Key saved" : "Requires setup") : null;
 
 	const handleTest = useCallback(async () => {
 		setIsTesting(true);
@@ -470,120 +532,84 @@ const ProviderRow = ({ id, onManageKeys }: ProviderRowProps) => {
 	}, [id, setProviderConfig]);
 
 	return (
-		<div className={classes.providerRow}>
-			<div className={classes.providerHeader}>
-				<button
-					type="button"
-					className={classes.providerDisclosure}
-					aria-expanded={expanded}
-					aria-label={`${expanded ? "Collapse" : "Expand"} ${descriptor.displayName}`}
-					onClick={() => setExpanded((open) => !open)}
+		<ProviderRowShell id={id} status={status}>
+			{requiresKey ? (
+				<form
+					className={classes.keyForm}
+					onSubmit={(event) => {
+						event.preventDefault();
+						if (apiKeyInput && !isTesting) void handleSaveKey();
+					}}
 				>
-					<span className={classes.providerChevron} data-open={expanded}>
-						›
-					</span>
-				</button>
-				<div className={classes.rowLabels}>
-					<span className={classes.rowLabel}>{descriptor.displayName}</span>
-					<span className={classes.rowDescription}>{status}</span>
-				</div>
-				<Switch
-					id={switchId}
-					checked={enabled}
-					aria-label={`Enable ${descriptor.displayName}`}
-					onCheckedChange={(checked) => void setProviderEnabled(id, checked)}
-				/>
-			</div>
-			{expanded && (
-				<div className={classes.providerBody}>
-					<p className={classes.rowDescription}>{descriptor.blurb}</p>
-					{requiresKey && providerKeysOnServer ? (
-						<>
-							<p className={classes.inlineNote} role="status">
-								{hasKey
-									? "Your key is kept by this Citadel server."
-									: (serverKeyReason ?? "Add your key under Account.")}
-							</p>
-							<div className={classes.rowActions}>
-								<Button size="sm" variant="default" onClick={onManageKeys}>
-									Go to Account
-								</Button>
-							</div>
-						</>
-					) : requiresKey ? (
-						<>
-							<TextInput
-								className={classes.keyInput}
-								type="password"
-								placeholder="API key"
-								aria-label={`${descriptor.displayName} API key`}
-								value={apiKeyInput}
-								onChange={(event) => setApiKeyInput(event.currentTarget.value)}
-							/>
-							<div className={classes.rowActions}>
-								<Button
-									size="sm"
-									variant="default"
-									disabled={!apiKeyInput || isTesting}
-									onClick={() => void handleClearKey()}
-								>
-									Clear
-								</Button>
-								<Button
-									size="sm"
-									variant="default"
-									disabled={!apiKeyInput || isTesting}
-									onClick={() => void handleTest()}
-								>
-									{isTesting ? "Testing…" : "Test"}
-								</Button>
-								<Button
-									size="sm"
-									variant="primary"
-									disabled={!apiKeyInput || isTesting}
-									onClick={() => void handleSaveKey()}
-								>
-									Save
-								</Button>
-							</div>
-						</>
-					) : (
-						<div className={classes.rowActions}>
-							<Button
-								size="sm"
-								variant="default"
-								disabled={isTesting}
-								onClick={() => void handleTest()}
-							>
-								{isTesting ? "Testing…" : "Test"}
-							</Button>
-						</div>
-					)}
-					{testResult && (
-						<p
-							className={classes.inlineNote}
-							data-tone={testResult.success ? "ok" : "error"}
-							role="status"
+					<TextInput
+						className={classes.keyInput}
+						type="password"
+						autoComplete="off"
+						placeholder="API key"
+						aria-label={`${descriptor.displayName} API key`}
+						value={apiKeyInput}
+						onChange={(event) => setApiKeyInput(event.currentTarget.value)}
+					/>
+					<div className={classes.rowActions}>
+						<Button
+							size="sm"
+							variant="default"
+							disabled={!apiKeyInput || isTesting}
+							onClick={() => void handleClearKey()}
 						>
-							{testResult.message}
-						</p>
-					)}
+							Clear
+						</Button>
+						<Button
+							size="sm"
+							variant="default"
+							disabled={!apiKeyInput || isTesting}
+							onClick={() => void handleTest()}
+						>
+							{isTesting ? "Testing…" : "Test"}
+						</Button>
+						<Button
+							size="sm"
+							variant="primary"
+							type="submit"
+							disabled={!apiKeyInput || isTesting}
+						>
+							Save
+						</Button>
+					</div>
+				</form>
+			) : (
+				<div className={classes.rowActions}>
+					<Button
+						size="sm"
+						variant="default"
+						disabled={isTesting}
+						onClick={() => void handleTest()}
+					>
+						{isTesting ? "Testing…" : "Test"}
+					</Button>
 				</div>
 			)}
-		</div>
+			{testResult && (
+				<p
+					className={classes.inlineNote}
+					data-tone={testResult.success ? "ok" : "error"}
+					role="status"
+				>
+					{testResult.message}
+				</p>
+			)}
+		</ProviderRowShell>
 	);
 };
 
-interface IntegrationsTabProps {
-	/** False where the page already heads the section (web Settings page). */
-	titled?: boolean;
-	onManageKeys?: () => void;
-}
+const ProviderRow = ({ id }: { id: ProviderId }) =>
+	providerKeysOnServer && getDescriptor(id).capabilities.requiresKey ? (
+		<ServerKeyProviderRow id={id} />
+	) : (
+		<LocalProviderRow id={id} />
+	);
 
-const IntegrationsTab = ({
-	titled = true,
-	onManageKeys,
-}: IntegrationsTabProps) => {
+const IntegrationsTab = () => {
 	const preferenceOrder = useSettings(
 		(state) => state.metadataProviders.preferenceOrder,
 	);
@@ -599,14 +625,13 @@ const IntegrationsTab = ({
 	return (
 		<div className={classes.groups}>
 			<div>
-				{titled && <h4 className={classes.groupTitle}>Metadata sources</h4>}
 				<p className={classes.paneNote}>
 					Search these sources for titles, authors and other details when you
 					add or edit a book.
 				</p>
 				<div className={classes.group}>
 					{preferenceOrder.map((id) => (
-						<ProviderRow key={id} id={id} onManageKeys={onManageKeys} />
+						<ProviderRow key={id} id={id} />
 					))}
 				</div>
 			</div>

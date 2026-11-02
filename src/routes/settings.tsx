@@ -1,15 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-	SettingsPage,
-	settingsSectionId,
-} from "@/components/organisms/SettingsPage";
+import { SettingsPage } from "@/components/organisms/SettingsPage";
 import {
 	BROWSER_SETTINGS_SECTIONS,
 	SettingsSectionContent,
 } from "@/components/organisms/SettingsPanes";
 import { SettingsWindow } from "@/components/pages/SettingsWindow";
 import { usePlatform } from "@/lib/platform/context";
-import { SettingsSection } from "@/lib/settings-sections";
 
 export const Route = createFileRoute("/settings")({
 	component: Settings,
@@ -23,16 +19,7 @@ function Settings() {
 	) : (
 		<SettingsPage
 			sections={BROWSER_SETTINGS_SECTIONS}
-			renderSection={(section) => (
-				<SettingsSectionContent
-					section={section}
-					onManageKeys={() =>
-						document
-							.getElementById(settingsSectionId(SettingsSection.account))
-							?.scrollIntoView({ block: "start" })
-					}
-				/>
-			)}
+			renderSection={(section) => <SettingsSectionContent section={section} />}
 		/>
 	);
 }

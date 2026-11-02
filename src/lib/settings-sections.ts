@@ -2,7 +2,6 @@
 export const SettingsSection = {
 	general: "general",
 	metadata: "metadata",
-	account: "account",
 } as const;
 export type TSettingsSection =
 	(typeof SettingsSection)[keyof typeof SettingsSection];
@@ -10,5 +9,4 @@ export type TSettingsSection =
 export const SETTINGS_SECTION_LABELS: Record<TSettingsSection, string> = {
 	general: "General",
 	metadata: "Sources",
-	account: "Account",
 };

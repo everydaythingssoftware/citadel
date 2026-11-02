@@ -19,8 +19,7 @@ const DESCRIPTORS: Record<ProviderId, ProviderDescriptor> = {
 	loc: {
 		id: "loc",
 		displayName: "Library of Congress",
-		blurb:
-			"The U.S. national library. Authoritative records and subjects; no account needed.",
+		blurb: "The U.S. national library. Authoritative records and subjects.",
 		capabilities: {
 			requiresKey: false,
 			hasCovers: false,
@@ -34,8 +33,7 @@ const DESCRIPTORS: Record<ProviderId, ProviderDescriptor> = {
 	dnb: {
 		id: "dnb",
 		displayName: "Deutsche Nationalbibliothek",
-		blurb:
-			"The German national library. Strong for German-language titles; no account needed.",
+		blurb: "The German national library. Strong for German-language titles.",
 		capabilities: {
 			requiresKey: false,
 			hasCovers: false,
@@ -50,7 +48,7 @@ const DESCRIPTORS: Record<ProviderId, ProviderDescriptor> = {
 		id: "k10plus",
 		displayName: "K10plus",
 		blurb:
-			"A large European union catalogue (GBV/SWB). Broad, authoritative records; no account needed.",
+			"A large European union catalogue (GBV/SWB). Broad, authoritative records.",
 		capabilities: {
 			requiresKey: false,
 			hasCovers: false,
@@ -66,8 +64,7 @@ const DESCRIPTORS: Record<ProviderId, ProviderDescriptor> = {
 	openlibrary: {
 		id: "openlibrary",
 		displayName: "Open Library",
-		blurb:
-			"The Internet Archive's open catalogue. Often has cover art; no account needed.",
+		blurb: "The Internet Archive's open catalogue. Often has cover art.",
 		capabilities: {
 			requiresKey: false,
 			hasCovers: true,
@@ -83,7 +80,8 @@ const DESCRIPTORS: Record<ProviderId, ProviderDescriptor> = {
 	hardcover: {
 		id: "hardcover",
 		displayName: "Hardcover",
-		blurb: "A reader-focused book database. Requires a free API key.",
+		blurb: "A reader-focused book database. Requires an API key.",
+		keyHelpUrl: "https://docs.hardcover.app/api/getting-started/",
 		capabilities: {
 			requiresKey: true,
 			hasCovers: true,
