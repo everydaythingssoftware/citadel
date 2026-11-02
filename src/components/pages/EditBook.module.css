@@ -49,10 +49,52 @@
 	margin-right: auto;
 }
 
-.pageHeader {
+.pinnedTop {
 	position: sticky;
 	top: 0;
 	z-index: 5;
+	background-color: var(--ctd-content-bg);
+}
+
+/* The notice slot grows open and fades in, then collapses as it fades out,
+ * so the form below slides rather than jumps. */
+.noticeSlot {
+	display: grid;
+	grid-template-rows: 1fr;
+	animation: noticeIn 180ms ease-out;
+}
+
+.noticeSlotLeaving {
+	animation: noticeOut 220ms ease-in forwards;
+}
+
+.noticeSlotInner {
+	min-height: 0;
+	overflow: hidden;
+}
+
+@keyframes noticeIn {
+	from {
+		grid-template-rows: 0fr;
+		opacity: 0;
+	}
+}
+
+@keyframes noticeOut {
+	to {
+		grid-template-rows: 0fr;
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.noticeSlot,
+	.noticeSlotLeaving {
+		animation-duration: 1ms;
+	}
+}
+
+.pageHeader {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -138,6 +180,25 @@
 	font-size: 14px;
 }
 
+/* Margin, not padding, so the slot can collapse to nothing. A message that
+ * replaces another fades in where the old one was. */
+.noticeSlotInner > .notice {
+	margin-bottom: 12px;
+	animation: noticeSwap 160ms ease-out;
+}
+
+@keyframes noticeSwap {
+	from {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.noticeSlotInner > .notice {
+		animation-duration: 1ms;
+	}
+}
+
 .layout {
 	/* AppKit inspector label gutter: right-aligned labels, fixed width. */
 	--edit-label-width: 120px;
@@ -152,6 +213,7 @@
 @media (max-width: 640px) {
 	.layout {
 		grid-template-columns: minmax(0, 1fr);
+		row-gap: 24px;
 	}
 }
 
@@ -193,6 +255,15 @@
 .formatItem {
 	font-size: 13px;
 	color: var(--ctd-ink);
+}
+
+.formatLink {
+	color: inherit;
+	text-decoration: none;
+}
+
+.formatLink:hover {
+	text-decoration: underline;
 }
 
 .formColumn {

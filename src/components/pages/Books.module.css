@@ -136,11 +136,13 @@
 	color: var(--ctd-ink-soft);
 }
 
+/* Left-aligned with a fixed gap, so the buttons sit in the same place
+ * whatever the title's length makes the column's width. */
 .detailsActions {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	justify-content: space-between;
-	width: 100%;
+	gap: 8px;
 }
 
 .divider {

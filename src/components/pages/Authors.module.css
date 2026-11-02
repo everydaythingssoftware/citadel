@@ -168,3 +168,24 @@
 		display: none;
 	}
 }
+
+/* A failed delete, reported above the list once its confirmation closed. */
+.failure {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 10px 24px 0;
+	padding: 6px 6px 6px 12px;
+	border: 1px solid color-mix(in oklch, var(--ctd-danger-bg) 30%, transparent);
+	border-radius: 8px;
+	background-color: color-mix(in oklch, var(--ctd-danger-bg) 12%, transparent);
+	color: var(--ctd-ink);
+	font-size: 13px;
+}
+
+.sheetFailure {
+	margin: 12px 0 0;
+	color: var(--ctd-danger-border);
+	font-size: 13px;
+}

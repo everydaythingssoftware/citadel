@@ -210,30 +210,136 @@ describe("HTTP Library", () => {
 		);
 	});
 
-	it("rejects writes/imports before issuing any request", async () => {
+	it("keeps devices and local-file imports to the desktop", async () => {
 		const fetch = vi.fn();
 		const library = createHttpLibrary({
 			baseUrl: "https://citadel.test",
 			fetch,
 		});
 		await expect(
-			library.updateBook("7", {
-				title: "Changed",
-				author_id_list: null,
-				tag_list: null,
-				timestamp: null,
-				publication_date: null,
-				is_read: null,
-				description: null,
-				series: null,
-				series_index: null,
-				language_list: null,
-			}),
-		).rejects.toThrow("browsing and downloads only");
-		await expect(
 			library.checkFileImportable("/server/book.epub"),
-		).rejects.toThrow("browsing and downloads only");
+		).rejects.toThrow("isn't available in the browser");
+		await expect(library.listValidFileTypes()).rejects.toThrow(
+			"isn't available in the browser",
+		);
 		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("edits books and authors through the HTTP contract", async () => {
+		const requests: Request[] = [];
+		const library = createHttpLibrary(
+			{
+				baseUrl: "https://citadel.test",
+				fetch: async (request) => {
+					requests.push(request.clone());
+					return request.url.endsWith("/api/authors")
+						? json([
+								{ id: "9", name: "New", sortable_name: "New", book_count: 0 },
+							])
+						: new Response(null, { status: 204 });
+				},
+			},
+			{ writable: true },
+		);
+		expect(library.readOnly).toBe(false);
+		const update = {
+			title: "Changed",
+			author_id_list: ["1", "9"],
+			tag_list: null,
+			timestamp: null,
+			publication_date: null,
+			is_read: true,
+			description: null,
+			series: null,
+			series_index: null,
+			language_list: null,
+		};
+		await library.updateBook("7", update);
+		await library.updateAuthor("9", {
+			full_name: "Renamed",
+			sortable_name: null,
+			external_url: null,
+		});
+		expect(
+			await library.createAuthors([{ name: "New", sortable_name: null }]),
+		).toEqual([{ id: "9", name: "New", sortable_name: "New", book_count: 0 }]);
+		await library.upsertBookIdentifier("7", null, "isbn", "9780000000002");
+		await library.upsertBookIdentifier("7", 4, "isbn", "9780000000019");
+		await library.deleteBookIdentifier("7", 4);
+		await library.setCustomValue("7", 3, { Text: "Signed" });
+		await library.setCustomValue("7", 3, null);
+		await library.addBookGenres("7", ["Fiction"]);
+
+		const sent = await Promise.all(
+			requests.map(async (request) => ({
+				method: request.method,
+				path: new URL(request.url).pathname,
+				body: request.method === "DELETE" ? null : await request.json(),
+			})),
+		);
+		expect(sent).toEqual([
+			{ method: "PATCH", path: "/api/books/7", body: update },
+			{
+				method: "PATCH",
+				path: "/api/authors/9",
+				body: { full_name: "Renamed", sortable_name: null, external_url: null },
+			},
+			{
+				method: "POST",
+				path: "/api/authors",
+				body: { authors: [{ name: "New", sortable_name: null }] },
+			},
+			{
+				method: "POST",
+				path: "/api/books/7/identifiers",
+				body: { label: "isbn", value: "9780000000002", existing_id: null },
+			},
+			{
+				method: "POST",
+				path: "/api/books/7/identifiers",
+				body: { label: "isbn", value: "9780000000019", existing_id: 4 },
+			},
+			{ method: "DELETE", path: "/api/books/7/identifiers/4", body: null },
+			{
+				method: "PUT",
+				path: "/api/books/7/custom-values/3",
+				body: { value: { Text: "Signed" } },
+			},
+			{
+				method: "PUT",
+				path: "/api/books/7/custom-values/3",
+				body: { value: null },
+			},
+			{
+				method: "POST",
+				path: "/api/books/7/genres",
+				body: { genres: ["Fiction"] },
+			},
+		]);
+	});
+
+	it("surfaces the server's message when an edit is refused", async () => {
+		const library = createHttpLibrary(
+			{
+				baseUrl: "https://citadel.test",
+				fetch: async () =>
+					json(
+						{ code: "invalidArgument", message: "Unknown author id '-1'" },
+						400,
+					),
+			},
+			{ writable: true },
+		);
+		await expect(
+			library.updateAuthor("1", {
+				full_name: "X",
+				sortable_name: null,
+				external_url: null,
+			}),
+		).rejects.toThrow("Unknown author id '-1'");
+		await expect(library.addBookGenres("7", ["Fiction"])).rejects.toThrow(
+			"Unknown author id '-1'",
+		);
 	});
 
 	it("sets covers by cover ID or uploaded image, never by URL", async () => {
