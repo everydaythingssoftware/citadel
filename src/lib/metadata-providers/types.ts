@@ -27,6 +27,8 @@ export interface ProviderDescriptor {
 	displayName: string;
 	/** A one-line description for the settings row. */
 	blurb: string;
+	/** Where to learn how to get an API key, for providers that need one. */
+	keyHelpUrl?: string;
 	capabilities: ProviderCapabilities;
 	/** A public URL for a record, or null when none applies. */
 	deepLink: (book: BookMetadata) => string | null;

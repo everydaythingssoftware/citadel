@@ -14,10 +14,6 @@ const serverHoldsKeys = metadataService.credentials === CREDENTIAL_HOME.server;
 /** True in a browser: keyed providers use the user's key kept by the server. */
 export const providerKeysOnServer = serverHoldsKeys;
 
-/** Why a key-requiring provider can't be used, as the server reports it. */
-export const useServerKeyReason = (id: ProviderId): string | null =>
-	useMetadataAvailability((state) => state.byProvider[id]?.reason ?? null);
-
 /**
  * Whether a key-requiring provider has a key: in local settings on the
  * desktop, or on the server for the signed-in user in a browser.
