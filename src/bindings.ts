@@ -539,12 +539,12 @@ export type BookMetadata = { provider: MetadataProvider;
  * Provider-native id: hardcover id (stringified), LCCN, DNB control
  * number, BnF ARK name, or Open Library OLID.
  */
-provider_id: string; identifier_label: string; title: string; subtitle: string | null; authors: string[]; isbn: string | null; release_year: number | null; description: string | null;
+provider_id: string; identifier_label: string; title: string; subtitle: string | null; authors: string[]; isbn: string | null; release_year: number | null; description: string | null; 
 /**
  * Opaque ID for this result's cover, for previews and applying it.
  * Expires an hour after the result was last returned.
  */
-cover_id: string | null; publisher: string | null;
+cover_id: string | null; publisher: string | null; 
 /**
  * Subject headings, mapped to tag suggestions on the frontend.
  */
@@ -743,19 +743,19 @@ text: string | null; author_id: string | null; series_id: number | null; tag_id:
 limit: number | null; offset: number }
 export type LibraryEntry = { id: string; displayName: string; absolutePath: string }
 export type LibraryError = { code: LibraryErrorCode; message: string }
-export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" |
+export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | 
 /**
  * The library is open for reading only, so writes are refused.
  */
-"readOnly" | "unavailable" |
+"readOnly" | "unavailable" | 
 /**
  * A request body or declared size exceeds a limit.
  */
-"tooLarge" |
+"tooLarge" | 
 /**
  * The request conflicts with the resource's current state.
  */
-"conflict" |
+"conflict" | 
 /**
  * The server has no room to store more.
  */

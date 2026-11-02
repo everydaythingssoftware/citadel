@@ -108,6 +108,7 @@ fn metadata_at(base: String, config: api::MetadataConfig) -> Arc<api::Metadata> 
             loc: format!("{base}/loc"),
             dnb: format!("{base}/dnb"),
             k10plus: format!("{base}/k10plus"),
+            bnf: format!("{base}/bnf"),
             // The stand-in serves Hardcover's images from loopback.
             covers: citadel_metadata::CoverPolicy {
                 hosts: vec![(
