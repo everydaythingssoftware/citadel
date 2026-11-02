@@ -43,7 +43,8 @@ export interface paths {
         };
         get: operations["listAuthors"];
         put?: never;
-        post?: never;
+        /** @description Add authors. A name already in the library (ignoring case) isn't added again; its existing author comes back instead. Names can't be blank. */
+        post: operations["createAuthors"];
         delete?: never;
         options?: never;
         head?: never;
@@ -60,11 +61,12 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** @description Delete an author with no books. */
+        /** @description Delete an author with no books. Deleting an author that doesn't exist succeeds: it's already gone. */
         delete: operations["deleteAuthor"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** @description Change an author's name, sortable name or link. Fields left out (or null) stay as they are. A name can't be blank or another author's (409). */
+        patch: operations["updateAuthor"];
         trace?: never;
     };
     "/api/books/delete": {
@@ -114,7 +116,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** @description Change a book's metadata. Fields left out (or null) stay as they are; `timestamp` is ignored. The title can't be blank, and every ID in `author_id_list` must be an existing author. */
+        patch: operations["updateBook"];
         trace?: never;
     };
     "/api/books/{book_id}/cover": {
@@ -151,6 +154,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/books/{book_id}/custom-values/{column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["setCustomValue"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/books/{book_id}/files/{format}/{filename}": {
         parameters: {
             query?: never;
@@ -164,6 +183,56 @@ export interface paths {
         delete?: never;
         options?: never;
         head: operations["downloadBookFileHead"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/{book_id}/genres": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Add genres to the ones a book already has. The library's genre column is created the first time any book gets one. */
+        post: operations["addBookGenres"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/{book_id}/identifiers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Add an identifier (such as an ISBN) to a book, or replace one of its identifiers. A book has at most one identifier of each type (ignoring case), so adding a second is refused with 409. */
+        post: operations["upsertBookIdentifier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/{book_id}/identifiers/{identifier_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteBookIdentifier"];
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -485,9 +554,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AddGenres: {
+            genres: string[];
+        };
         ApplyCover: {
             /** @description A `cover_id` from a metadata result. */
             coverId: string;
+        };
+        AuthorUpdate: {
+            external_url?: string | null;
+            full_name?: string | null;
+            sortable_name?: string | null;
         };
         /** @description One book's value for one custom column. */
         BookCustomValue: {
@@ -540,6 +617,30 @@ export interface components {
         };
         /** @enum {string} */
         BookSortOrder: "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc";
+        BookUpdate: {
+            author_id_list?: string[] | null;
+            description?: string | null;
+            is_read?: boolean | null;
+            /**
+             * @description Language codes to write through to `books_languages_link` (canonicalized
+             *     to Calibre's ISO 639-2/3 form). An empty list clears the book's
+             *     languages; `None` leaves them unchanged.
+             */
+            language_list?: string[] | null;
+            /** Format: date-time */
+            publication_date?: string | null;
+            /**
+             * @description An empty (or whitespace) name unlinks the book from its series;
+             *     `None` leaves it unchanged.
+             */
+            series?: string | null;
+            /** Format: float */
+            series_index?: number | null;
+            tag_list?: string[] | null;
+            /** Format: date-time */
+            timestamp?: string | null;
+            title?: string | null;
+        };
         /** @description The metadata the user reviewed, to add the upload to the library with. */
         CommitUpload: {
             authorNames?: string[];
@@ -562,6 +663,9 @@ export interface components {
             url: string;
             /** Format: int32 */
             width: number;
+        };
+        CreateAuthors: {
+            authors: components["schemas"]["NewAuthor"][];
         };
         CreateUpload: {
             /** @description The file's name, which decides its format by extension. */
@@ -770,6 +874,10 @@ export interface components {
             /** @description Why not, when it isn't. */
             unavailableReason: string | null;
         };
+        NewAuthor: {
+            name: string;
+            sortable_name?: string | null;
+        };
         ProviderCredentialInfo: {
             /** @description The provider account the key belongs to, when the provider says. */
             accountName: string | null;
@@ -811,6 +919,9 @@ export interface components {
         SessionUser: {
             id: string;
             username: string;
+        };
+        SetCustomValue: {
+            value: components["schemas"]["CustomValueDto"] | null;
         };
         SignInRequest: {
             password: string;
@@ -860,6 +971,15 @@ export interface components {
              */
             reviewSeconds: number;
             uploads: components["schemas"]["StagedUpload"][];
+        };
+        UpsertIdentifier: {
+            /**
+             * Format: int32
+             * @description Replace this identifier of the book; omit to add a new one.
+             */
+            existing_id?: number | null;
+            label: string;
+            value: string;
         };
     };
     responses: never;
@@ -1050,6 +1170,69 @@ export interface operations {
             };
         };
     };
+    createAuthors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAuthors"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryAuthor"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
     deleteAuthor: {
         parameters: {
             query?: never;
@@ -1092,7 +1275,79 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryError"];
                 };
             };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    updateAuthor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Library author ID */
+                author_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthorUpdate"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1313,6 +1568,78 @@ export interface operations {
                 };
             };
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    updateBook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Library book ID */
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookUpdate"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1680,6 +2007,80 @@ export interface operations {
             };
         };
     };
+    setCustomValue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Library book ID */
+                book_id: string;
+                /** @description A custom column ID from /api/custom-columns */
+                column_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCustomValue"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
     downloadBookFile: {
         parameters: {
             query?: never;
@@ -1809,6 +2210,228 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    addBookGenres: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Library book ID */
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddGenres"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    upsertBookIdentifier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Library book ID */
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertIdentifier"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    deleteBookIdentifier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Library book ID */
+                book_id: string;
+                /** @description One of the book's identifier IDs */
+                identifier_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
             };
         };
     };

@@ -671,6 +671,52 @@ async fn read_only_library_refuses_deletes_and_keeps_every_byte() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(error["code"], "readOnly");
+    for (method, path, body) in [
+        (
+            "PATCH",
+            format!("/api/books/{id}"),
+            json!({"title": "Changed"}),
+        ),
+        (
+            "POST",
+            format!("/api/books/{id}/identifiers"),
+            json!({"label": "isbn", "value": "9780000000002"}),
+        ),
+        (
+            "DELETE",
+            format!("/api/books/{id}/identifiers/1"),
+            Value::Null,
+        ),
+        (
+            "PUT",
+            format!("/api/books/{id}/custom-values/1"),
+            json!({"value": null}),
+        ),
+        (
+            "POST",
+            format!("/api/books/{id}/genres"),
+            json!({"genres": ["Fiction"]}),
+        ),
+        (
+            "POST",
+            "/api/authors".into(),
+            json!({"authors": [{"name": "New", "sortable_name": null}]}),
+        ),
+        (
+            "PATCH",
+            "/api/authors/1".into(),
+            json!({"full_name": "Changed"}),
+        ),
+    ] {
+        let body = if body.is_null() {
+            String::new()
+        } else {
+            body.to_string()
+        };
+        let (status, _, error) = request(&router, method, &path, body, Some(&cookie)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {path}");
+        assert_eq!(error["code"], "readOnly", "{method} {path}");
+    }
     assert_eq!(std::fs::read(database_path).unwrap(), before);
     assert!(directory.path().join("Test Author").is_dir());
     service.stop().await;
@@ -762,6 +808,410 @@ async fn writable_library_deletes_books_and_their_folders_permanently() {
     let (_, _, authors) =
         request(&router, "GET", "/api/authors", String::new(), Some(&cookie)).await;
     assert_eq!(authors, json!([]));
+    service.stop().await;
+}
+
+async fn send(
+    router: &Router,
+    cookie: &str,
+    method: &str,
+    path: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    let body = if body.is_null() {
+        String::new()
+    } else {
+        body.to_string()
+    };
+    let (status, _, value) = request(router, method, path, body, Some(cookie)).await;
+    (status, value)
+}
+
+async fn book(router: &Router, cookie: &str, id: &str) -> Value {
+    let (status, value) = send(
+        router,
+        cookie,
+        "GET",
+        &format!("/api/books/{id}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    value
+}
+
+#[tokio::test]
+async fn writable_library_edits_books_and_authors_like_the_desktop() {
+    let (_directory, service, router, id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let original_author = book(&router, &cookie, &id).await["author_list"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "PATCH",
+        &format!("/api/books/{id}"),
+        json!({"title": "Edited Contract", "tag_list": ["Edited"], "is_read": true, "description": "<p>New</p>"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let edited = book(&router, &cookie, &id).await;
+    assert_eq!(edited["title"], "Edited Contract");
+    assert_eq!(edited["tag_list"], json!(["Edited"]));
+    assert_eq!(edited["is_read"], true);
+    assert_eq!(edited["description"], "<p>New</p>");
+    assert_eq!(
+        edited["series"], "Contracts",
+        "fields left out stay as they are"
+    );
+
+    let (status, created) = send(
+        &router,
+        &cookie,
+        "POST",
+        "/api/authors",
+        json!({"authors": [{"name": "Second Author", "sortable_name": null}]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    let second = created[0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(created[0]["name"], "Second Author");
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "PATCH",
+        &format!("/api/books/{id}"),
+        json!({"author_id_list": [original_author, second]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let names: Vec<_> = book(&router, &cookie, &id).await["author_list"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|author| author["name"].clone())
+        .collect();
+    assert_eq!(names, vec![json!("Test Author"), json!("Second Author")]);
+
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "PATCH",
+        &format!("/api/authors/{second}"),
+        json!({"full_name": "Renamed Author"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (_, authors) = send(&router, &cookie, "GET", "/api/authors", Value::Null).await;
+    assert!(authors
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|author| author["name"] == "Renamed Author"));
+
+    let identifiers = format!("/api/books/{id}/identifiers");
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "POST",
+        &identifiers,
+        json!({"label": "isbn", "value": "9780000000002"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let added = book(&router, &cookie, &id).await["identifier_list"][0].clone();
+    assert_eq!(added["value"], "9780000000002");
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "POST",
+        &identifiers,
+        json!({"label": "isbn", "value": "9780000000019", "existing_id": added["id"]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let replaced = book(&router, &cookie, &id).await["identifier_list"].clone();
+    assert_eq!(replaced.as_array().unwrap().len(), 1);
+    assert_eq!(replaced[0]["value"], "9780000000019");
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "DELETE",
+        &format!("{identifiers}/{}", added["id"]),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    assert_eq!(
+        book(&router, &cookie, &id).await["identifier_list"],
+        json!([])
+    );
+
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "POST",
+        &format!("/api/books/{id}/genres"),
+        json!({"genres": ["Fiction"]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (_, columns) = send(&router, &cookie, "GET", "/api/custom-columns", Value::Null).await;
+    let genres = columns
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|column| column["is_multiple"] == true)
+        .expect("a genre column")["column_id"]
+        .clone();
+    let values = format!("/api/books/{id}/custom-values");
+    let genre_value = |values: &Value| {
+        values
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|value| value["column_id"] == genres)
+            .map(|value| value["value"].clone())
+    };
+    let (_, current) = send(&router, &cookie, "GET", &values, Value::Null).await;
+    assert_eq!(
+        genre_value(&current),
+        Some(json!({"TextMultiple": ["Fiction"]}))
+    );
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "PUT",
+        &format!("{values}/{genres}"),
+        json!({"value": {"TextMultiple": ["Fiction", "Drama"]}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (_, current) = send(&router, &cookie, "GET", &values, Value::Null).await;
+    assert_eq!(
+        genre_value(&current),
+        Some(json!({"TextMultiple": ["Fiction", "Drama"]}))
+    );
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "PUT",
+        &format!("{values}/{genres}"),
+        json!({"value": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (_, current) = send(&router, &cookie, "GET", &values, Value::Null).await;
+    assert_eq!(genre_value(&current), None);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn edits_refuse_unknown_books_identifiers_and_authors_without_changing_anything() {
+    let (_directory, service, router, id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let (_, columns_before) =
+        send(&router, &cookie, "GET", "/api/custom-columns", Value::Null).await;
+    let before = book(&router, &cookie, &id).await;
+
+    for (method, path, body) in [
+        (
+            "PATCH",
+            "/api/books/999".to_owned(),
+            json!({"title": "Ghost"}),
+        ),
+        (
+            "POST",
+            "/api/books/999/genres".into(),
+            json!({"genres": ["Fiction"]}),
+        ),
+        (
+            "PUT",
+            "/api/books/999/custom-values/1".into(),
+            json!({"value": null}),
+        ),
+        (
+            "POST",
+            "/api/books/999/identifiers".into(),
+            json!({"label": "isbn", "value": "1"}),
+        ),
+        ("DELETE", "/api/books/999/identifiers/1".into(), Value::Null),
+        (
+            "POST",
+            format!("/api/books/{id}/identifiers"),
+            json!({"label": "isbn", "value": "1", "existing_id": 999}),
+        ),
+        (
+            "DELETE",
+            format!("/api/books/{id}/identifiers/999"),
+            Value::Null,
+        ),
+        (
+            "PATCH",
+            "/api/authors/999".into(),
+            json!({"full_name": "Ghost"}),
+        ),
+    ] {
+        let (status, error) = send(&router, &cookie, method, &path, body).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {error}");
+        assert_eq!(error["code"], "notFound", "{method} {path}");
+    }
+
+    for author_ids in [json!(["999"]), json!(["-1"]), json!(["not a number"])] {
+        let (status, error) = send(
+            &router,
+            &cookie,
+            "PATCH",
+            &format!("/api/books/{id}"),
+            json!({"title": "Changed", "author_id_list": author_ids}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{author_ids}: {error}");
+        assert_eq!(error["code"], "invalidArgument");
+    }
+
+    for (method, path, body) in [
+        ("PATCH", format!("/api/books/{id}"), "{\"title\": 3}"),
+        ("PATCH", format!("/api/books/{id}"), "not json"),
+        (
+            "POST",
+            format!("/api/books/{id}/genres"),
+            "{\"genres\": [], \"extra\": 1}",
+        ),
+        ("PUT", format!("/api/books/{id}/custom-values/1"), "{}"),
+    ] {
+        let (status, _, error) = request(&router, method, &path, body.into(), Some(&cookie)).await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "{method} {path} {body}: {error}"
+        );
+    }
+
+    let (_, columns_after) =
+        send(&router, &cookie, "GET", "/api/custom-columns", Value::Null).await;
+    assert_eq!(
+        columns_after, columns_before,
+        "no genre column for a missing book"
+    );
+    assert_eq!(book(&router, &cookie, &id).await, before);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn author_names_stay_unique_and_blank_names_and_titles_are_refused() {
+    let (_directory, service, router, id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let (_, before) = send(&router, &cookie, "GET", "/api/authors", Value::Null).await;
+    let existing = before[0].clone();
+
+    // Someone else already added this name: the existing author comes back.
+    let (status, created) = send(
+        &router,
+        &cookie,
+        "POST",
+        "/api/authors",
+        json!({"authors": [{"name": "test author", "sortable_name": null}]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    assert_eq!(created[0]["id"], existing["id"]);
+    assert_eq!(created[0]["name"], existing["name"]);
+    assert_eq!(created[0]["book_count"], 1);
+
+    let (_, other) = send(
+        &router,
+        &cookie,
+        "POST",
+        "/api/authors",
+        json!({"authors": [{"name": "Second Author", "sortable_name": null}]}),
+    )
+    .await;
+    let other = other[0]["id"].as_str().unwrap().to_owned();
+    let (status, error) = send(
+        &router,
+        &cookie,
+        "PATCH",
+        &format!("/api/authors/{other}"),
+        json!({"full_name": "TEST AUTHOR"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{error}");
+    assert_eq!(
+        error["message"],
+        "Another author is already called Test Author"
+    );
+    // A change of case on the author's own name is fine.
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "PATCH",
+        &format!("/api/authors/{other}"),
+        json!({"full_name": "second author"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+
+    for (method, path, body) in [
+        (
+            "POST",
+            "/api/authors".to_owned(),
+            json!({"authors": [{"name": "   ", "sortable_name": null}]}),
+        ),
+        (
+            "PATCH",
+            format!("/api/authors/{other}"),
+            json!({"full_name": " "}),
+        ),
+        ("PATCH", format!("/api/books/{id}"), json!({"title": "  "})),
+    ] {
+        let (status, error) = send(&router, &cookie, method, &path, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{method} {path}: {error}");
+        assert_eq!(error["code"], "invalidArgument");
+    }
+
+    // Deleting an author that's already gone succeeds.
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "DELETE",
+        "/api/authors/999999",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "DELETE",
+        &format!("/api/authors/{other}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "DELETE",
+        &format!("/api/authors/{other}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (_, after) = send(&router, &cookie, "GET", "/api/authors", Value::Null).await;
+    assert_eq!(after, before);
     service.stop().await;
 }
 
@@ -2061,5 +2511,79 @@ async fn covers_are_previewed_and_applied_by_id_never_by_url() {
         (status, error["code"].as_str()),
         (StatusCode::FORBIDDEN, Some("readOnly"))
     );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_book_keeps_one_identifier_of_each_type() {
+    let (_directory, service, router, id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let identifiers = format!("/api/books/{id}/identifiers");
+    for (label, value) in [("isbn", "9780000000002"), ("goodreads", "123")] {
+        let (status, body) = send(
+            &router,
+            &cookie,
+            "POST",
+            &identifiers,
+            json!({"label": label, "value": value}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    }
+    let before = book(&router, &cookie, &id).await["identifier_list"].clone();
+    let goodreads = before
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|each| each["label"] == "goodreads")
+        .unwrap()["id"]
+        .clone();
+
+    let (status, error) = send(
+        &router,
+        &cookie,
+        "POST",
+        &identifiers,
+        json!({"label": "ISBN", "value": ""}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{error}");
+    assert_eq!(
+        error["message"],
+        "This book already has an identifier called ISBN"
+    );
+    let (status, error) = send(
+        &router,
+        &cookie,
+        "POST",
+        &identifiers,
+        json!({"label": "isbn", "value": "1", "existing_id": goodreads}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{error}");
+    let (status, error) = send(
+        &router,
+        &cookie,
+        "POST",
+        &identifiers,
+        json!({"label": "  ", "value": "1"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+    assert_eq!(book(&router, &cookie, &id).await["identifier_list"], before);
+
+    // Editing an identifier keeps its own type.
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "POST",
+        &identifiers,
+        json!({"label": "goodreads", "value": "456", "existing_id": goodreads}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
     service.stop().await;
 }

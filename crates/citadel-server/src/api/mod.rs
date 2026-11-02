@@ -28,6 +28,7 @@ use crate::CalibreCatalogSource;
 use citadel_core::{store::CitadelStore, vault::Vault};
 
 mod account;
+mod edits;
 mod metadata;
 mod session;
 mod thumbnails;
@@ -312,9 +313,9 @@ async fn delete_books(
 
 #[utoipa::path(delete, path = "/api/authors/{author_id}", operation_id = "deleteAuthor",
     params(("author_id" = String, Path, description = "Library author ID")),
-    description = "Delete an author with no books.",
+    description = "Delete an author with no books. Deleting an author that doesn't exist succeeds: it's already gone.",
     responses((status = 204), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
-        (status = 403, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 403, body = LibraryError),
         (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
     security(("session" = [])))]
 async fn delete_author(
@@ -402,11 +403,15 @@ async fn set_cover_from_file(
 fn routes() -> OpenApiRouter<ApiState> {
     OpenApiRouter::new()
         .routes(routes!(query_books))
-        .routes(routes!(get_book))
+        .routes(routes!(get_book, edits::update_book))
         .routes(routes!(delete_books))
-        .routes(routes!(delete_author))
+        .routes(routes!(delete_author, edits::update_author))
         .routes(routes!(library_descriptor))
-        .routes(routes!(authors))
+        .routes(routes!(authors, edits::create_authors))
+        .routes(routes!(edits::upsert_identifier))
+        .routes(routes!(edits::delete_identifier))
+        .routes(routes!(edits::set_custom_value))
+        .routes(routes!(edits::add_genres))
         .routes(routes!(series))
         .routes(routes!(tags))
         .routes(routes!(publishers))

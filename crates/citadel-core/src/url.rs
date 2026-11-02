@@ -101,13 +101,21 @@ impl BookUrlBuilder for HttpUrlBuilder {
     fn cover_url(
         &self,
         book: &libcalibre::library::Book,
-        _cover_path: &Path,
-        _cache_bust: bool,
+        cover_path: &Path,
+        cache_bust: bool,
     ) -> LocalOrRemoteUrl {
+        let mut url = format!("{}/api/books/{}/cover", self.base_url, book.id.as_i32());
+        // Browsers cache the cover by URL too, so a single book's cover is
+        // versioned by its mtime, as the desktop's asset URLs are.
+        if cache_bust {
+            if let Some(mtime_ms) = cover_mtime_ms(cover_path) {
+                url = format!("{url}?v={mtime_ms}");
+            }
+        }
         LocalOrRemoteUrl {
             kind: LocalOrRemote::Remote,
             local_path: None,
-            url: format!("{}/api/books/{}/cover", self.base_url, book.id.as_i32()),
+            url,
         }
     }
 
@@ -244,6 +252,26 @@ mod tests {
         assert!(cover.url.starts_with("asset://") || cover.url.contains("asset.localhost"));
         assert!(cover.url.contains("cover.jpg"));
         assert!(!cover.url.contains("?v="));
+    }
+
+    /// A single book's cover changes URL when its file changes, so a browser
+    /// shows a replaced cover instead of its cached copy.
+    #[test]
+    fn http_cover_is_versioned_by_mtime_only_when_asked() {
+        let library = tempfile::tempdir().unwrap();
+        let book = test_book(true, vec![]);
+        let cover_dir = library.path().join(&book.book_dir_path);
+        std::fs::create_dir_all(&cover_dir).unwrap();
+        std::fs::write(cover_dir.join("cover.jpg"), b"jpeg").unwrap();
+        let root = library.path().to_str().unwrap();
+        let builder = HttpUrlBuilder::new("");
+
+        let single = LibraryBook::from_library_book(&book, root, &HashMap::new(), &builder, true);
+        let url = single.cover_image.expect("cover").url;
+        assert!(url.starts_with("/api/books/1/cover?v="), "{url}");
+
+        let listed = LibraryBook::from_library_book(&book, root, &HashMap::new(), &builder, false);
+        assert_eq!(listed.cover_image.expect("cover").url, "/api/books/1/cover");
     }
 
     /// The acceptance criterion: the same `Book` serialized through the two
