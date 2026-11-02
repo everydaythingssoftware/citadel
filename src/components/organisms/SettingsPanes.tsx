@@ -15,7 +15,13 @@ import {
 } from "@/components/organisms/ServerProviderKey";
 import classes from "@/components/organisms/SettingsPanes.module.css";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
-import { Button, SegmentedControl, Switch, TextInput } from "@/components/ui";
+import {
+	Button,
+	InlineLink,
+	SegmentedControl,
+	Switch,
+	TextInput,
+} from "@/components/ui";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
@@ -408,7 +414,6 @@ const ProviderRowShell = ({ id, status, children }: ProviderRowShellProps) => {
 		(state) => state.metadataProviders.configs[id]?.enabled ?? false,
 	);
 	const setProviderEnabled = useSettings((state) => state.setProviderEnabled);
-	const platform = usePlatform();
 	const switchId = useId();
 	const [expanded, setExpanded] = useState(false);
 	const keyHelpUrl = descriptor.keyHelpUrl;
@@ -445,18 +450,9 @@ const ProviderRowShell = ({ id, status, children }: ProviderRowShellProps) => {
 						{keyHelpUrl && (
 							<>
 								{" "}
-								<a
-									className={classes.inlineLink}
-									href={keyHelpUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									onClick={(event) => {
-										event.preventDefault();
-										void platform.fileOpener.openPath(keyHelpUrl);
-									}}
-								>
+								<InlineLink href={keyHelpUrl} isExternal>
 									How to get a key
-								</a>
+								</InlineLink>
 							</>
 						)}
 					</p>

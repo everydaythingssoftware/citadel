@@ -45,6 +45,9 @@
 		var(--pal-border-strong-alpha, 0.32)
 	);
 	--ctd-link: oklch(from var(--pal-accent) calc(l - 0.04) c h);
+	/* Prose links take macOS's system link colour (NSColor.linkColor) so they
+	   read as links against the monochrome ink, per the HIG. */
+	--ctd-text-link: #0068da;
 	--ctd-shell-gradient: oklch(from var(--pal-mantle) l c h / 0.85);
 	--ctd-header-bg: oklch(from var(--pal-base) l c h / 0.88);
 	--ctd-nav-bg: oklch(from var(--pal-mantle) l c h / 0.85);
@@ -179,6 +182,7 @@
 		var(--pal-border-strong-alpha, 0.22)
 	);
 	--ctd-link: var(--pal-accent);
+	--ctd-text-link: #419cff;
 	--ctd-shell-gradient: oklch(from var(--pal-mantle) l c h / 0.85);
 	--ctd-header-bg: oklch(from var(--pal-base) l c h / 0.9);
 	--ctd-nav-bg: oklch(from var(--pal-mantle) l c h / 0.88);
