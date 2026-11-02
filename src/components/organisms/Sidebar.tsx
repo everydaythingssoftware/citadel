@@ -58,6 +58,7 @@ export const Sidebar = () => {
 			}
 			updateVersion={updateVersion}
 			session={session}
+			settingsShowing={location.pathname === "/settings"}
 		/>
 	);
 };
@@ -71,6 +72,8 @@ interface SidebarPureProps {
 	updateVersion: string | null;
 	/** The signed-in browser user; null on desktop. */
 	session: BrowserSessionControls | null;
+	/** The web app is showing its Settings page. */
+	settingsShowing: boolean;
 }
 
 const SidebarPure = ({
@@ -79,6 +82,7 @@ const SidebarPure = ({
 	openSettings,
 	updateVersion,
 	session,
+	settingsShowing,
 }: SidebarPureProps) => {
 	const platform = usePlatform();
 	const allShelves = useSettings((s) => s.smartShelves);
@@ -211,6 +215,7 @@ const SidebarPure = ({
 				)}
 				<SettingsButton
 					updateVersion={updateVersion}
+					active={settingsShowing}
 					onClick={openSettings}
 					className={clsx("ctd-settings-button", styles.settingsButton)}
 				/>

@@ -196,7 +196,9 @@
 /* Doubled class beats the ui-kit input's own width: 100% regardless of
  * CSS-module emit order. */
 .keyInput.keyInput {
-	width: 220px;
+	flex: 1 1 12rem;
+	width: auto;
+	max-width: 20rem;
 }
 
 /* Quiet status note under a group (e.g. connection test feedback). */
@@ -213,7 +215,8 @@
 }
 
 .paneNote {
-	margin: 0;
+	margin: 0 0.125rem 0.625rem;
+	line-height: 1.45;
 	font-size: 0.8125rem;
 	color: var(--ctd-ink-soft);
 }
@@ -275,8 +278,19 @@
 	padding-left: 0.875rem;
 }
 
+/* The key field with Save beside it, wrapping under it when narrow. */
 .keyForm {
 	display: flex;
-	flex-direction: column;
+	flex-wrap: wrap;
+	align-items: center;
 	gap: 0.5rem;
+}
+
+.keyForm .rowActions {
+	margin-left: 0;
+}
+
+/* Inside a provider row the body's gap already spaces the note. */
+.providerBody .inlineNote {
+	margin: 0;
 }

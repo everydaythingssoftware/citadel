@@ -132,12 +132,7 @@ export const AccountSettings = () => {
 	return (
 		<div className={classes.groups}>
 			<div>
-				<h4 className={classes.groupTitle}>Metadata providers</h4>
-				<p className={classes.paneNote}>
-					Some sources need your own account. Citadel checks each key with the
-					provider, keeps it encrypted on this server for your lookups only, and
-					never shows it again.
-				</p>
+				<p className={classes.paneNote}>Some sources need your own API key.</p>
 				<div className={classes.group}>
 					<ProviderKeyRow id="hardcover" controller={hardcover} />
 				</div>

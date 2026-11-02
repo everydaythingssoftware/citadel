@@ -1,5 +1,6 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useKeymap } from "@/lib/hooks/use-keymap";
+import { usePlatform } from "@/lib/platform/context";
 import type { KeyBinding } from "@/lib/keymap";
 import { chordForShelf, SHELF_TARGETS } from "@/lib/shelves";
 
@@ -12,15 +13,19 @@ const overlayOpen = () =>
 
 export const useAppKeymap = () => {
 	const navigate = useNavigate();
+	const platform = usePlatform();
 	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
 	});
 
 	const bindings: KeyBinding[] = [];
 
-	// The settings window loads /settings in its own webview on this same
-	// route tree; shelf chords there would navigate the settings UI away.
-	if (!pathname.startsWith("/settings")) {
+	// The desktop settings window loads /settings in its own webview on this
+	// same route tree; shelf chords there would navigate the settings UI away.
+	const inSettingsWindow =
+		platform.capabilities.supportsNativeWindows &&
+		pathname.startsWith("/settings");
+	if (!inSettingsWindow) {
 		for (const [index, shelf] of SHELF_TARGETS.entries()) {
 			const chord = chordForShelf(index);
 			if (chord === null) break;

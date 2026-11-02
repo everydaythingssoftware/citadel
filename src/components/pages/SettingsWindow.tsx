@@ -1,4 +1,3 @@
-import { useRouter } from "@tanstack/react-router";
 import { usePlatform } from "@/lib/platform/context";
 import { useCallback, useEffect } from "react";
 import { SettingsPanes } from "@/components/organisms/SettingsPanes";
@@ -35,13 +34,12 @@ const resolveTokenColor = (token: string): [number, number, number] | null => {
 
 /**
  * Full-window settings, opened as its own webview window (label `settings`)
- * by the macOS menu bar or the sidebar gear. Falls back to an in-window page
- * when not running under Tauri.
+ * by the macOS menu bar or the sidebar gear. The web app shows SettingsPage
+ * instead (see routes/settings.tsx).
  */
 export const SettingsWindow = () => {
 	const platform = usePlatform();
 	const theme = useSettings((state) => state.theme);
-	const router = useRouter();
 	useNativeThemeSync();
 
 	// Keep the document color scheme in sync with the persisted theme; this
@@ -90,12 +88,8 @@ export const SettingsWindow = () => {
 	}, [platform]);
 
 	const requestClose = useCallback(() => {
-		if (platform.capabilities.supportsNativeWindows) {
-			void platform.window.hide();
-		} else {
-			router.history.back();
-		}
-	}, [router, platform]);
+		void platform.window.hide();
+	}, [platform]);
 
 	return (
 		<div className={classes.window}>
