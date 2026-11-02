@@ -6,7 +6,7 @@ use crate::{
         AuthorUpdate, BookUpdate, LibraryBookPage, LibraryBookQuery, LibraryPublisher,
         LibrarySeries, LibraryTag, NewAuthor,
     },
-    error::LibraryError,
+    error::{LibraryError, LibraryErrorCode},
     Actor, BookUrlBuilder, LibraryAuthor, LibraryBook,
 };
 use libcalibre::{BookId, Library};
@@ -138,9 +138,30 @@ impl<'a> LibraryService<'a> {
     }
 
     pub fn update_book(&mut self, _actor: &Actor, id: &str, updates: BookUpdate) -> Result<i32> {
+        if updates
+            .title
+            .as_deref()
+            .is_some_and(|title| title.trim().is_empty())
+        {
+            return Err(LibraryError::invalid("A book needs a title"));
+        }
+        let id = self.existing_book(id)?.id;
+        // libcalibre links whatever ids it's given, and Calibre's schema has no
+        // foreign keys to stop a link to an author that isn't there.
+        for raw in updates.author_id_list.iter().flatten() {
+            let author = author_id(raw)?;
+            self.library
+                .get_author(author)
+                .map_err(|error| match error {
+                    libcalibre::CalibreError::AuthorNotFound(_) => {
+                        LibraryError::invalid(format!("Unknown author id '{raw}'"))
+                    }
+                    other => other.into(),
+                })?;
+        }
         Ok(self
             .library
-            .update_book(book_id(id)?, updates.to_library_update())?
+            .update_book(id, updates.to_library_update())?
             .id
             .as_i32())
     }
@@ -150,10 +171,21 @@ impl<'a> LibraryService<'a> {
         id: &str,
         updates: AuthorUpdate,
     ) -> Result<i32> {
-        let id = id
-            .parse::<i32>()
-            .map(libcalibre::AuthorId::from)
-            .map_err(|error| LibraryError::invalid(error.to_string()))?;
+        let id = author_id(id)?;
+        self.library.get_author(id)?;
+        if let Some(name) = &updates.full_name {
+            let name = required_name(name)?;
+            // Calibre keeps author names unique (ignoring case); two authors
+            // can't share one, so a rename onto another's name is refused.
+            if let Some(other) = self.author_named(name)? {
+                if other.id != id {
+                    return Err(LibraryError::new(
+                        LibraryErrorCode::Conflict,
+                        format!("Another author is already called {}", other.name),
+                    ));
+                }
+            }
+        }
         Ok(self
             .library
             .update_author(id, updates.to_library_update())?
@@ -178,28 +210,40 @@ impl<'a> LibraryService<'a> {
             folders,
         })
     }
+    /// Deleting an author that isn't there succeeds: the outcome the caller
+    /// asked for already holds.
     pub fn delete_author(&mut self, _actor: &Actor, id: &str) -> Result<()> {
-        let id = id
-            .parse::<i32>()
-            .map(libcalibre::AuthorId::from)
-            .map_err(|error| LibraryError::invalid(error.to_string()))?;
-        self.library.remove_author(id)?;
-        Ok(())
+        let id = author_id(id)?;
+        match self.library.get_author(id) {
+            Err(libcalibre::CalibreError::AuthorNotFound(_)) => Ok(()),
+            Err(error) => Err(error.into()),
+            Ok(_) => {
+                self.library.remove_author(id)?;
+                Ok(())
+            }
+        }
     }
     pub fn create_authors(
         &mut self,
         _actor: &Actor,
         authors: Vec<NewAuthor>,
     ) -> Result<Vec<LibraryAuthor>> {
-        let counts = std::collections::HashMap::new();
+        let counts = self.library.author_book_counts()?;
         authors
             .into_iter()
             .map(|author| {
-                let id = self.library.add_author(libcalibre::AuthorAdd {
-                    name: author.name,
-                    sort: author.sortable_name,
-                    link: None,
-                })?;
+                let name = required_name(&author.name)?.to_owned();
+                // Adding a name that's already in the library is a no-op that
+                // answers with the existing author: someone else may have added
+                // it since this client last loaded the list.
+                let id = match self.author_named(&name)? {
+                    Some(existing) => existing.id,
+                    None => self.library.add_author(libcalibre::AuthorAdd {
+                        name,
+                        sort: author.sortable_name,
+                        link: None,
+                    })?,
+                };
                 Ok(LibraryAuthor::from_author(
                     &self.library.get_author(id)?,
                     &counts,
@@ -215,8 +259,30 @@ impl<'a> LibraryService<'a> {
         value: String,
         existing_id: Option<i32>,
     ) -> Result<()> {
+        let book = self.existing_book(id)?;
+        if let Some(existing) = existing_id {
+            require_identifier(&book, existing)?;
+        }
+        let label = label.trim().to_string();
+        if label.is_empty() {
+            return Err(LibraryError::new(
+                LibraryErrorCode::InvalidArgument,
+                "An identifier needs a type, like ISBN".to_string(),
+            ));
+        }
+        // Calibre allows one identifier of each type per book (ignoring case).
+        if book
+            .identifiers
+            .iter()
+            .any(|each| Some(each.id) != existing_id && each.label.eq_ignore_ascii_case(&label))
+        {
+            return Err(LibraryError::new(
+                LibraryErrorCode::Conflict,
+                format!("This book already has an identifier called {label}"),
+            ));
+        }
         self.library
-            .upsert_book_identifier(book_id(id)?, label, value, existing_id)?;
+            .upsert_book_identifier(book.id, label, value, existing_id)?;
         Ok(())
     }
     pub fn delete_identifier(
@@ -225,8 +291,10 @@ impl<'a> LibraryService<'a> {
         id: &str,
         identifier_id: i32,
     ) -> Result<()> {
+        let book = self.existing_book(id)?;
+        require_identifier(&book, identifier_id)?;
         self.library
-            .delete_book_identifier(book_id(id)?, identifier_id)?;
+            .delete_book_identifier(book.id, identifier_id)?;
         Ok(())
     }
     pub fn list_custom_columns(&mut self) -> Result<Vec<CustomColumnDef>> {
@@ -261,18 +329,66 @@ impl<'a> LibraryService<'a> {
             .map(libcalibre::CustomValue::try_from)
             .transpose()
             .map_err(LibraryError::invalid)?;
-        self.library
-            .set_custom_value(book_id(id)?, column_id, value)?;
+        // An unchanged value is a no-op that never touches the book, so check
+        // it exists rather than report success for a book that isn't there.
+        let id = self.existing_book(id)?.id;
+        self.library.set_custom_value(id, column_id, value)?;
         Ok(())
     }
     pub fn add_genres(&mut self, _actor: &Actor, id: &str, genres: Vec<String>) -> Result<()> {
-        self.library.add_book_genres(book_id(id)?, genres)?;
+        // Checked first: the genre column is created (and isn't rolled back)
+        // before libcalibre finds out the book is missing.
+        let id = self.existing_book(id)?.id;
+        self.library.add_book_genres(id, genres)?;
         Ok(())
     }
     pub fn set_cover(&mut self, _actor: &Actor, id: &str, bytes: Vec<u8>) -> Result<()> {
         self.library.set_book_cover(book_id(id)?, bytes)?;
         Ok(())
     }
+}
+
+impl LibraryService<'_> {
+    /// The author with this name, matched as Calibre's unique index does
+    /// (ASCII case-insensitive).
+    fn author_named(&mut self, name: &str) -> Result<Option<libcalibre::LibraryAuthor>> {
+        Ok(self
+            .library
+            .authors()?
+            .into_iter()
+            .find(|author| author.name.eq_ignore_ascii_case(name)))
+    }
+
+    /// The book, or `NotFound`, before a write changes anything.
+    fn existing_book(&mut self, id: &str) -> Result<libcalibre::library::Book> {
+        Ok(self.library.get_book(book_id(id)?)?)
+    }
+}
+
+fn require_identifier(book: &libcalibre::library::Book, identifier_id: i32) -> Result<()> {
+    if book.identifiers.iter().any(|each| each.id == identifier_id) {
+        Ok(())
+    } else {
+        Err(LibraryError::new(
+            LibraryErrorCode::NotFound,
+            format!("Identifier {identifier_id} not found on this book"),
+        ))
+    }
+}
+
+fn required_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() {
+        Err(LibraryError::invalid("An author needs a name"))
+    } else {
+        Ok(name)
+    }
+}
+
+fn author_id(raw: &str) -> Result<libcalibre::AuthorId> {
+    raw.parse::<i32>()
+        .map(libcalibre::AuthorId::from)
+        .map_err(|error| LibraryError::invalid(format!("Invalid author id '{raw}': {error}")))
 }
 
 fn book_id(raw: &str) -> Result<BookId> {
