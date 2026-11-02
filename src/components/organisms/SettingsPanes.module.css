@@ -280,15 +280,6 @@
 	margin-left: 0;
 }
 
-.inlineLink {
-	color: var(--ctd-link);
-	text-decoration: none;
-}
-
-.inlineLink:hover {
-	text-decoration: underline;
-}
-
 /* Inside a provider row the body's gap already spaces the note. */
 .providerBody .inlineNote {
 	margin: 0;

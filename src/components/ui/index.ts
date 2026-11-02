@@ -15,6 +15,7 @@ export { Drawer, type DrawerProps } from "./Drawer";
 export { FormField, type FormFieldProps } from "./FormField";
 export { HoldButton, type HoldButtonProps } from "./HoldButton";
 export { IconButton, type IconButtonProps } from "./IconButton";
+export { InlineLink, type InlineLinkProps } from "./InlineLink";
 export { LoadingOverlay, type LoadingOverlayProps } from "./LoadingOverlay";
 export { ProgressBar, type ProgressBarProps } from "./ProgressBar";
 export { SearchField, type SearchFieldProps } from "./SearchField";

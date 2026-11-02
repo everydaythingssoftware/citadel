@@ -1,0 +1,44 @@
+/*
+ * A link inside running text, macOS style: system link colour, no underline
+ * at rest, a pointing hand, and an underline on hover.
+ */
+.link {
+	color: var(--ctd-text-link);
+	text-decoration: none;
+	cursor: pointer;
+	border-radius: 0.125rem;
+}
+
+.link:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+.link:active {
+	color: oklch(from var(--ctd-text-link) calc(l - 0.08) c h);
+}
+
+.link:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+/* The north-east arrow that marks a link leaving the app. */
+.externalGlyph {
+	display: inline-block;
+	margin-left: 0.125em;
+	font-size: 0.85em;
+	text-decoration: none;
+}
+
+.visuallyHidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
