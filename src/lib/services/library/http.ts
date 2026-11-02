@@ -5,9 +5,7 @@ import { BookDeletion, CoverExpiredError, type Library } from "./types";
 import { createHttpUploads } from "./uploads-http";
 
 const unsupported = async (): Promise<never> => {
-	throw new Error(
-		"This server connection supports browsing and downloads only",
-	);
+	throw new Error("This isn't available in the browser");
 };
 
 const unwrap = async <T>(
@@ -24,9 +22,19 @@ const unwrap = async <T>(
 	return data;
 };
 
+/** For writes that answer 204 No Content, where openapi-fetch has no data. */
+const succeed = async (
+	request: Promise<{ error?: { message: string }; response: Response }>,
+): Promise<void> => {
+	const { error, response } = await request;
+	if (error) throw new Error(error.message);
+	if (!response.ok)
+		throw new Error(`Library request failed (${response.status})`);
+};
+
 export const createHttpLibrary = (
 	options: ClientOptions & { baseUrl: string },
-	/** Whether the server opened its library for writing, so it takes uploads. */
+	/** Whether the server opened its library for writing: editing and uploads. */
 	{ writable = false }: { writable?: boolean } = {},
 ): Library => {
 	const client = createCitadelHttpClient(options);
@@ -51,9 +59,7 @@ export const createHttpLibrary = (
 		items.map((item) => ({ ...item, url: assetUrl(item.url) }));
 
 	return {
-		// Metadata editing isn't served over HTTP yet, so the library stays
-		// read-only to the editing screens even when it accepts uploads.
-		readOnly: true,
+		readOnly: !writable,
 		bookDeletion: BookDeletion.permanent,
 		uploads: writable
 			? createHttpUploads(client, options.baseUrl, rememberBook)
@@ -127,8 +133,20 @@ export const createHttpLibrary = (
 		getCoverUrlForBook: (id) => covers.get(id),
 		getCoverPathForBook: () => undefined,
 		getDefaultFilePathForBook: () => undefined,
-		setCustomValue: unsupported,
-		addBookGenres: unsupported,
+		setCustomValue: (bookId, columnId, value) =>
+			succeed(
+				client.PUT("/api/books/{book_id}/custom-values/{column_id}", {
+					params: { path: { book_id: bookId, column_id: columnId } },
+					body: { value },
+				}),
+			),
+		addBookGenres: (bookId, genres) =>
+			succeed(
+				client.POST("/api/books/{book_id}/genres", {
+					params: { path: { book_id: bookId } },
+					body: { genres },
+				}),
+			),
 		setBookCoverFromMetadata: async (bookId, coverId) => {
 			const { error, response } = await client.POST(
 				"/api/books/{book_id}/cover",
@@ -156,23 +174,47 @@ export const createHttpLibrary = (
 			if (!response.ok)
 				throw new Error(`Library request failed (${response.status})`);
 		},
-		createAuthors: unsupported,
+		createAuthors: (authors) =>
+			unwrap(client.POST("/api/authors", { body: { authors } })),
+		// Devices and local files are on the desktop's side; a browser has no path to name.
 		sendToDevice: unsupported,
-		updateBook: unsupported,
-		updateAuthor: unsupported,
-		deleteAuthor: async (authorId) => {
-			const { error, response } = await client.DELETE(
-				"/api/authors/{author_id}",
-				{ params: { path: { author_id: authorId } } },
-			);
-			if (error) throw new Error(error.message);
-			if (!response.ok)
-				throw new Error(`Library request failed (${response.status})`);
-		},
+		updateBook: (bookId, updates) =>
+			succeed(
+				client.PATCH("/api/books/{book_id}", {
+					params: { path: { book_id: bookId } },
+					body: updates,
+				}),
+			),
+		updateAuthor: (authorId, updates) =>
+			succeed(
+				client.PATCH("/api/authors/{author_id}", {
+					params: { path: { author_id: authorId } },
+					body: updates,
+				}),
+			),
+		deleteAuthor: (authorId) =>
+			succeed(
+				client.DELETE("/api/authors/{author_id}", {
+					params: { path: { author_id: authorId } },
+				}),
+			),
 		deleteBooks: (bookIds) =>
 			unwrap(client.POST("/api/books/delete", { body: { book_ids: bookIds } })),
-		deleteBookIdentifier: unsupported,
-		upsertBookIdentifier: unsupported,
+		deleteBookIdentifier: (bookId, identifierId) =>
+			succeed(
+				client.DELETE("/api/books/{book_id}/identifiers/{identifier_id}", {
+					params: {
+						path: { book_id: bookId, identifier_id: identifierId },
+					},
+				}),
+			),
+		upsertBookIdentifier: (bookId, identifierId, label, value) =>
+			succeed(
+				client.POST("/api/books/{book_id}/identifiers", {
+					params: { path: { book_id: bookId } },
+					body: { label, value, existing_id: identifierId },
+				}),
+			),
 		checkFileImportable: unsupported,
 		getImportableFileMetadata: unsupported,
 		addImportableFileByMetadata: unsupported,

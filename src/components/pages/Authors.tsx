@@ -45,6 +45,9 @@ const AUTHOR_GRID: CSSProperties = {
 
 const authorNoun = (count: number) => (count === 1 ? "author" : "authors");
 
+const errorText = (error: unknown): string =>
+	error instanceof Error ? error.message : String(error);
+
 export const Authors = () => {
 	const authors = useAuthors();
 	const loadingAuthors = useAuthorsLoading();
@@ -106,10 +109,19 @@ export const Authors = () => {
 		[filteredAuthors],
 	);
 
+	// The confirmation closes as soon as it's confirmed, so a delete that
+	// fails (the author still has books, say) is reported on the page.
+	const [deleteFailure, setDeleteFailure] = useState<string | null>(null);
 	const onConfirmDeleteAuthor = useCallback(async (): Promise<void> => {
-		if (authorToDelete && actions) {
+		if (!authorToDelete || !actions) return;
+		setDeleteFailure(null);
+		try {
 			await actions.deleteAuthor(authorToDelete.id);
 			setDeleteDialogOpened(false);
+		} catch (error) {
+			setDeleteFailure(
+				`Couldn't delete ${authorToDelete.name}: ${errorText(error)}`,
+			);
 		}
 	}, [actions, authorToDelete]);
 
@@ -158,6 +170,17 @@ export const Authors = () => {
 				onConfirm={() => void onConfirmDeleteAuthor()}
 			/>
 
+			{deleteFailure && (
+				<div role="alert" className={styles.failure}>
+					<span>{deleteFailure}</span>
+					<IconButton
+						aria-label="Dismiss"
+						onClick={() => setDeleteFailure(null)}
+					>
+						×
+					</IconButton>
+				</div>
+			)}
 			<div className={styles.filterBar}>
 				<AuthorFilterControls
 					filters={filters}
@@ -243,12 +266,14 @@ const EditAuthorSheet = ({
 		displayName?: string;
 		sortName?: string;
 	}>({});
+	const [saveFailure, setSaveFailure] = useState<string | null>(null);
 
 	// Values reset whenever a different author is opened.
 	useEffect(() => {
 		setDisplayName(authorToEdit.name ?? "");
 		setSortName(authorToEdit.sortable_name ?? "");
 		setErrors({});
+		setSaveFailure(null);
 	}, [authorToEdit]);
 
 	const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -261,12 +286,14 @@ const EditAuthorSheet = ({
 			setErrors(nextErrors);
 			return;
 		}
-		void onSubmitEdit(authorToEdit.id, {
+		setSaveFailure(null);
+		// Stays open on failure (a name another author has, say) so the
+		// change isn't lost and the reason shows.
+		onSubmitEdit(authorToEdit.id, {
 			full_name: displayName,
 			sortable_name: sortName,
 			external_url: null,
-		});
-		onClose();
+		}).then(onClose, (error: unknown) => setSaveFailure(errorText(error)));
 	};
 
 	return (
@@ -308,6 +335,11 @@ const EditAuthorSheet = ({
 						/>
 					</FormField>
 				</div>
+				{saveFailure && (
+					<p role="alert" className={styles.sheetFailure}>
+						{saveFailure}
+					</p>
+				)}
 				<div className={styles.sheetFooter}>
 					<Button onClick={onClose}>Cancel</Button>
 					<Button type="submit" variant="primary">

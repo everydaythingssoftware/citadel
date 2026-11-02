@@ -82,9 +82,8 @@ const EditBookRoute = () => {
 				sortable_name: authorName,
 			};
 
-			if (actions) {
-				await actions.createAuthors([newAuthor]);
-			}
+			const [created] = await actions.createAuthors([newAuthor]);
+			return created;
 		},
 		[actions],
 	);

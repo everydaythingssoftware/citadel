@@ -57,7 +57,7 @@ export const Primary: Story = {
 		book: MOCK_BOOK,
 		allAuthorList: [Bugliacci, Gregor_Samsa],
 		allTagList: ["Classic", "Satire", "Metafiction"],
-		onCreateAuthor: () => Promise.resolve(),
+		onCreateAuthor: () => Promise.resolve(undefined),
 		onDeleteIdentifier: () => Promise.resolve(),
 		onReloadBooks: () => Promise.resolve(),
 		onUpsertIdentifier: () => Promise.resolve(),

@@ -693,7 +693,8 @@ const BookDetails = ({
 						)}
 						{canEdit && (
 							<Button
-								variant="primary"
+								// Download is the drawer's main action when it's offered.
+								variant={firstDownload ? "default" : "primary"}
 								data-drawer-initial-focus={canRead ? undefined : ""}
 								onClick={() =>
 									void navigate({

@@ -2,12 +2,14 @@ import { useLibraryActions, useLibraryStore } from "@/stores/library/store";
 import { Link as RouterLink } from "@tanstack/react-router";
 import DOMPurify from "dompurify";
 import {
+	type AnimationEvent,
 	type FormEvent,
 	type HTMLProps,
 	type ReactNode,
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import type {
@@ -29,7 +31,6 @@ import {
 	Tooltip,
 } from "@/components/ui";
 import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
-import { safeAsyncEventHandler } from "@/lib/async";
 import { deleteBookCopy, deleteBookDialogTitle } from "@/lib/delete-book-title";
 import {
 	type CustomFieldValue,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/languages";
 import { deepLinkForIdentifier } from "@/lib/metadata-providers/registry";
 import { formatSeriesIndex } from "@/lib/series";
+import { remoteBookDownloads } from "@/lib/book-downloads";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
 import { BookCover } from "../atoms/BookCover";
 import { MetadataSearchModal } from "../molecules/MetadataSearchModal";
@@ -125,7 +127,8 @@ interface BookPageProps {
 	allAuthorList: LibraryAuthor[];
 	allTagList: string[];
 	book: LibraryBook;
-	onCreateAuthor: (authorName: string) => Promise<void>;
+	/** Resolves with the new author, or nothing if it couldn't be added. */
+	onCreateAuthor: (authorName: string) => Promise<LibraryAuthor | undefined>;
 	onSave: (bookUpdate: BookUpdate) => Promise<void>;
 	onDeleteIdentifier: (bookId: string, identifierId: number) => Promise<void>;
 	onDelete?: () => Promise<void>;
@@ -239,21 +242,22 @@ const Formats = ({
 		<div style={style} {...props}>
 			<div className={styles.sectionLabel}>Formats</div>
 			<ul className={styles.formatList}>
-				{book.file_list.map((file) => {
-					if ("Local" in file) {
-						return (
-							<li key={file.Local.mime_type} className={styles.formatItem}>
-								{file.Local.mime_type}
-							</li>
-						);
-					}
-
-					return (
-						<li key={file.Remote.url} className={styles.formatItem}>
-							{file.Remote.url}
-						</li>
-					);
-				})}
+				{book.file_list.flatMap((file) =>
+					"Local" in file
+						? [
+								<li key={file.Local.mime_type} className={styles.formatItem}>
+									{file.Local.mime_type}
+								</li>,
+							]
+						: [],
+				)}
+				{remoteBookDownloads(book.file_list).map((file) => (
+					<li key={file.url} className={styles.formatItem}>
+						<a className={styles.formatLink} href={file.url} download>
+							{file.label} ↓
+						</a>
+					</li>
+				))}
 			</ul>
 		</div>
 	);
@@ -384,6 +388,11 @@ const CustomColumnInput = ({
 	}
 };
 
+const SAVED_NOTICE_MS = 3000;
+
+const errorText = (error: unknown): string =>
+	error instanceof Error ? error.message : String(error);
+
 const formValuesFromBook = (book: LibraryBook): EditBookFormValues => ({
 	title: book.title,
 	sortTitle: book.sortable_title ?? "",
@@ -411,7 +420,7 @@ const EditBookForm = ({
 	allAuthorList: LibraryAuthor[];
 	allTagList: string[];
 	book: LibraryBook;
-	onCreateAuthor: (name: string) => Promise<void>;
+	onCreateAuthor: (name: string) => Promise<LibraryAuthor | undefined>;
 	onSave: (update: BookUpdate) => Promise<void>;
 	onDeleteIdentifier: (bookId: string, identifierId: number) => Promise<void>;
 	onReloadBooks: () => Promise<void>;
@@ -423,6 +432,22 @@ const EditBookForm = ({
 	) => Promise<void>;
 }) => {
 	const actions = useLibraryActions();
+	// New authors are created as they're typed; saving waits for them so the
+	// book is linked to their real IDs, however slow the library is to answer.
+	const authorCreations = useRef(
+		new Map<string, Promise<LibraryAuthor | undefined>>(),
+	);
+	const createAuthorOnce = useCallback(
+		(name: string) => {
+			const pending = authorCreations.current.get(name);
+			if (pending) return pending;
+			const creation = createAuthor(name);
+			authorCreations.current.set(name, creation);
+			creation.catch(() => authorCreations.current.delete(name));
+			return creation;
+		},
+		[createAuthor],
+	);
 	const sourceLibrary = useLibraryStore((state) => state.library);
 	const isCurrentLibrary = useCallback(
 		() => useLibraryStore.getState().library === sourceLibrary,
@@ -577,7 +602,9 @@ const EditBookForm = ({
 		allAuthorNames,
 		form,
 		onUpsertIdentifier,
-		onCreateAuthor: createAuthor,
+		onCreateAuthor: async (name) => {
+			await createAuthorOnce(name);
+		},
 		onReloadBooks,
 	});
 
@@ -636,7 +663,7 @@ const EditBookForm = ({
 		// created, mirroring the old MultiSelectCreatable behavior.
 		for (const name of next) {
 			if (!values.authorList.includes(name) && !allAuthorNames.includes(name)) {
-				void createAuthor(name);
+				void createAuthorOnce(name);
 			}
 		}
 		setFieldValue("authorList", next);
@@ -650,82 +677,165 @@ const EditBookForm = ({
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
-		safeAsyncEventHandler(async () => {
-			const authorIdsFromName = values.authorList.map(
-				(authorName) =>
-					allAuthorList.find((author) => author.name === authorName)?.id ??
-					"-1",
-			);
-
-			const parsedSeriesIndex = Number.parseFloat(values.seriesIndex);
-			const bookUpdate: BookUpdate = {
-				title: values.title,
-				author_id_list: authorIdsFromName,
-				tag_list: values.tagList,
-				timestamp: null,
-				publication_date: null,
-				is_read: values.isRead,
-				description: values.description === "<p></p>" ? "" : values.description,
-				// An empty name unlinks the book from its series.
-				series: values.series.trim(),
-				series_index: Number.isFinite(parsedSeriesIndex)
-					? parsedSeriesIndex
-					: null,
-				language_list: values.languageList.map(codeForLanguageName),
-			};
-
-			await onSave(bookUpdate);
-			await saveCustomChanges();
-
-			setBaseline(values);
+		void (async () => {
+			// The outcome replaces whatever notice is showing (a lookup's, say)
+			// in place, rather than clearing it first.
+			try {
+				await save();
+				meta.setMessage({ type: "success", text: "Saved" });
+			} catch (error) {
+				meta.setMessage({
+					type: "error",
+					text: `Couldn't save: ${errorText(error)}`,
+				});
+			}
 		})();
+	};
+
+	const save = async () => {
+		const authorIdsFromName = await Promise.all(
+			values.authorList.map(async (authorName) => {
+				const known = allAuthorList.find(
+					(author) => author.name === authorName,
+				);
+				if (known) return known.id;
+				const created = await createAuthorOnce(authorName);
+				if (!created) throw new Error(`Couldn't add the author ${authorName}`);
+				return created.id;
+			}),
+		);
+
+		const parsedSeriesIndex = Number.parseFloat(values.seriesIndex);
+		const bookUpdate: BookUpdate = {
+			title: values.title,
+			author_id_list: authorIdsFromName,
+			tag_list: values.tagList,
+			timestamp: null,
+			publication_date: null,
+			is_read: values.isRead,
+			description: values.description === "<p></p>" ? "" : values.description,
+			// An empty name unlinks the book from its series.
+			series: values.series.trim(),
+			series_index: Number.isFinite(parsedSeriesIndex)
+				? parsedSeriesIndex
+				: null,
+			language_list: values.languageList.map(codeForLanguageName),
+		};
+
+		// onSave reloads the book, which resets the form and its saved
+		// snapshot to what the library now holds (a new title can change the
+		// sort title, for one), so the pre-save values aren't the baseline.
+		await onSave(bookUpdate);
+		await saveCustomChanges();
+	};
+
+	// The notice keeps showing its last message while it animates out, so
+	// clearing it (dismiss, a new lookup starting) never cuts it off.
+	const { setMessage } = meta;
+	const [shownMessage, setShownMessage] = useState(meta.message);
+	if (meta.message && meta.message !== shownMessage) {
+		setShownMessage(meta.message);
+	}
+	const noticeLeaving = !meta.message && shownMessage !== null;
+	const finishLeaving = (event: AnimationEvent<HTMLDivElement>) => {
+		if (event.target === event.currentTarget && noticeLeaving) {
+			setShownMessage(null);
+		}
+	};
+	const dismissNotice = () => setMessage(null);
+
+	// "Saved" is a brief confirmation; errors stay until dismissed.
+	const savedMessage =
+		meta.message?.type === "success" && meta.message.text === "Saved"
+			? meta.message
+			: null;
+	useEffect(() => {
+		if (!savedMessage) return;
+		const timer = setTimeout(
+			() =>
+				setMessage((current) => (current === savedMessage ? null : current)),
+			SAVED_NOTICE_MS,
+		);
+		return () => clearTimeout(timer);
+	}, [savedMessage, setMessage]);
+
+	// An identifier error is about the identifier just tried, so it goes once
+	// you type in the identifiers again or the next identifier change works.
+	const identifierFailure = useRef<typeof meta.message>(null);
+	const reportFailure = (what: string) => (error: unknown) => {
+		const failure = {
+			type: "error" as const,
+			text: `${what}: ${errorText(error)}`,
+		};
+		identifierFailure.current = failure;
+		setMessage(failure);
+	};
+	const clearIdentifierFailure = () => {
+		const failure = identifierFailure.current;
+		if (!failure) return;
+		identifierFailure.current = null;
+		setMessage((current) => (current === failure ? null : current));
 	};
 
 	return (
 		<form className={styles.page} onSubmit={handleSubmit}>
-			<header className={styles.pageHeader}>
-				<div className={styles.headerLead}>
-					<Tooltip label="Back to library">
-						<RouterLink
-							to="/"
-							aria-label="Back to library"
-							className={styles.backLink}
-						>
-							<BackChevron />
-						</RouterLink>
-					</Tooltip>
-					<h3 className={styles.pageTitle}>{book.title}</h3>
-				</div>
-				<div className={styles.headerActions}>
-					{hasChanges && (
-						<Button variant="subtle" onClick={revert}>
-							Revert
+			{/* The header and its notice stay pinned together, so a save's outcome
+			    shows wherever the form is scrolled to. */}
+			<div className={styles.pinnedTop}>
+				<header className={styles.pageHeader}>
+					<div className={styles.headerLead}>
+						<Tooltip label="Back to library">
+							<RouterLink
+								to="/"
+								aria-label="Back to library"
+								className={styles.backLink}
+							>
+								<BackChevron />
+							</RouterLink>
+						</Tooltip>
+						<h3 className={styles.pageTitle}>{book.title}</h3>
+					</div>
+					<div className={styles.headerActions}>
+						{hasChanges && (
+							<Button variant="subtle" onClick={revert}>
+								Revert
+							</Button>
+						)}
+						<Button variant="primary" type="submit" disabled={!hasChanges}>
+							Save
 						</Button>
-					)}
-					<Button variant="primary" type="submit" disabled={!hasChanges}>
-						Save
-					</Button>
-				</div>
-			</header>
-			{meta.message && (
-				<div
-					role="alert"
-					className={`${styles.notice} ${
-						meta.message.type === "success"
-							? styles.noticeSuccess
-							: styles.noticeError
-					}`}
-				>
-					<span className={styles.noticeText}>{meta.message.text}</span>
-					<IconButton
-						aria-label="Dismiss"
-						className={styles.noticeClose}
-						onClick={() => meta.setMessage(null)}
+					</div>
+				</header>
+				{shownMessage && (
+					<div
+						className={`${styles.noticeSlot} ${
+							noticeLeaving ? styles.noticeSlotLeaving : ""
+						}`}
+						onAnimationEnd={finishLeaving}
 					>
-						×
-					</IconButton>
-				</div>
-			)}
+						<div className={styles.noticeSlotInner}>
+							<div
+								key={`${shownMessage.type}:${shownMessage.text}`}
+								role="alert"
+								className={`${styles.notice} ${
+									shownMessage.type === "success"
+										? styles.noticeSuccess
+										: styles.noticeError
+								}`}
+							>
+								<span className={styles.noticeText}>{shownMessage.text}</span>
+								<IconButton
+									aria-label="Dismiss"
+									className={styles.noticeClose}
+									onClick={dismissNotice}
+								>
+									×
+								</IconButton>
+							</div>
+						</div>
+					</div>
+				)}
+			</div>
 			<div className={styles.layout}>
 				<div className={styles.sideColumn}>
 					<Cover book={book} />
@@ -867,6 +977,7 @@ const EditBookForm = ({
 															: identifier,
 												);
 												setFieldValue("identifierList", nextList);
+												clearIdentifierFailure();
 											}}
 											onBlur={(event) => {
 												onUpsertIdentifier(
@@ -874,7 +985,9 @@ const EditBookForm = ({
 													id,
 													label,
 													event.target.value,
-												).catch(console.error);
+												)
+													.then(clearIdentifierFailure)
+													.catch(reportFailure("Couldn't save the identifier"));
 											}}
 										/>
 										{meta.anySourceEnabled &&
@@ -906,7 +1019,11 @@ const EditBookForm = ({
 												aria-label="Remove identifier"
 												className={styles.dangerIcon}
 												onClick={() => {
-													onDeleteIdentifier(book.id, id).catch(console.error);
+													onDeleteIdentifier(book.id, id)
+														.then(clearIdentifierFailure)
+														.catch(
+															reportFailure("Couldn't remove the identifier"),
+														);
 												}}
 											>
 												×
@@ -925,9 +1042,10 @@ const EditBookForm = ({
 										placeholder="ISBN"
 										className={styles.flexGrow}
 										value={newBookIdentifierLabel}
-										onChange={(event) =>
-											setNewBookIdentifierLabel(event.target.value)
-										}
+										onChange={(event) => {
+											setNewBookIdentifierLabel(event.target.value);
+											clearIdentifierFailure();
+										}}
 									/>
 									<Button
 										variant="default"
@@ -938,8 +1056,11 @@ const EditBookForm = ({
 												newBookIdentifierLabel,
 												"",
 											)
-												.then(() => setNewBookIdentifierLabel(""))
-												.catch(console.error);
+												.then(() => {
+													setNewBookIdentifierLabel("");
+													clearIdentifierFailure();
+												})
+												.catch(reportFailure("Couldn't add the identifier"));
 										}}
 									>
 										Add

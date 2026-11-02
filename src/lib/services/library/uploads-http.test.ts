@@ -76,7 +76,10 @@ describe("HTTP uploads", () => {
 			createHttpLibrary({ baseUrl: "https://citadel.test", fetch }).uploads,
 		).toBeUndefined();
 		expect(library(fetch).uploads).toBeDefined();
-		expect(library(fetch).readOnly).toBe(true);
+		expect(library(fetch).readOnly).toBe(false);
+		expect(
+			createHttpLibrary({ baseUrl: "https://citadel.test", fetch }).readOnly,
+		).toBe(true);
 	});
 
 	it("lists limits and uploads, starts, checks and cancels uploads", async () => {

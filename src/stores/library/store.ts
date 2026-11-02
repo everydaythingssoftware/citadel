@@ -95,7 +95,8 @@ interface LibraryActions {
 	// Book and author mutations
 	updateBook: (bookId: string, updates: BookUpdate) => Promise<void>;
 	updateAuthor: (authorId: string, updates: AuthorUpdate) => Promise<void>;
-	createAuthors: (newAuthors: NewAuthor[]) => Promise<void>;
+	/** Resolves with the authors as created, IDs included. */
+	createAuthors: (newAuthors: NewAuthor[]) => Promise<LibraryAuthor[]>;
 	deleteAuthor: (authorId: string) => Promise<void>;
 	/** Deletes books and moves their folders to the trash; see the service. */
 	deleteBooks: (bookIds: LibraryBook["id"][]) => Promise<DeleteBooksOutcome>;
@@ -864,9 +865,10 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 
 			createAuthors: (authors) =>
 				withActiveLibrary(async (library, assertCurrent) => {
-					await library.createAuthors(authors);
+					const created = await library.createAuthors(authors);
 					assertCurrent();
 					await get().actions.loadAuthors();
+					return created;
 				}),
 
 			deleteAuthor: (id) =>
