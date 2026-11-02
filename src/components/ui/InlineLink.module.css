@@ -1,24 +1,25 @@
 /*
  * A link inside running text, macOS style: system link colour, no underline
- * at rest, a pointing hand, and an underline on hover.
+ * at rest, a pointing hand, and an underline on hover. `:any-link` matches
+ * the global link reset's specificity in styles.css so these rules win.
  */
-.link {
+.link:any-link {
 	color: var(--ctd-text-link);
 	text-decoration: none;
 	cursor: pointer;
 	border-radius: 0.125rem;
 }
 
-.link:hover {
+.link:any-link:hover {
 	text-decoration: underline;
 	text-underline-offset: 0.15em;
 }
 
-.link:active {
+.link:any-link:active {
 	color: oklch(from var(--ctd-text-link) calc(l - 0.08) c h);
 }
 
-.link:focus-visible {
+.link:any-link:focus-visible {
 	outline: none;
 	box-shadow: var(--ctd-focus-shadow);
 }
