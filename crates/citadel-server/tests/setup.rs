@@ -401,14 +401,17 @@ async fn readers_never_reach_the_setup_routes() {
     }
 }
 
+/// A Calibre 7.2 library (schema 26), the older-library fixture.
 fn copy_fixture(target: &std::path::Path) {
     std::fs::create_dir_all(target).unwrap();
-    std::fs::copy(
-        concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../libcalibre/tests/fixtures/empty_library/metadata.db"
-        ),
-        target.join("metadata.db"),
+    let conn = rusqlite::Connection::open(target.join("metadata.db")).unwrap();
+    conn.execute_batch(include_str!(
+        "../../libcalibre/tests/fixtures/calibre_schema_26.sql"
+    ))
+    .unwrap();
+    conn.execute(
+        "INSERT INTO library_id (uuid) VALUES (?1)",
+        [uuid::Uuid::new_v4().to_string()],
     )
     .unwrap();
 }

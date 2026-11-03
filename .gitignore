@@ -37,3 +37,6 @@ test-library/**/metadata.db
 
 # Python test tooling
 __pycache__/
+
+# Review pages and captures written for pull-request review
+.pulse-out/
