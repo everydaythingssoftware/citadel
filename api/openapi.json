@@ -2786,14 +2786,11 @@
         "parameters": [
           {
             "name": "path",
-            "in": "path",
+            "in": "query",
             "description": "An absolute path on the server; the browse root when omitted.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           }
         ],
