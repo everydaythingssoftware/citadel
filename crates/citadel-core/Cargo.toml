@@ -22,6 +22,7 @@ diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 libcalibre = { path = "../libcalibre" }
 rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10"
+subtle = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
 # Pinned to src-tauri's specta so the `Type` derive emits identical bindings.

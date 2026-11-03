@@ -27,7 +27,7 @@ pub use auth::{AppCredential, SESSION_TTL_SECONDS};
 pub use credentials::{CredentialSecret, ProviderCredential};
 pub use libraries::RegisteredLibrary;
 pub use recovery::Backup;
-pub use users::{User, UserSummary};
+pub use users::{Role, User, UserSummary};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum StoreError {

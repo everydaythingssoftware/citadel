@@ -434,7 +434,7 @@ impl Owner {
     fn new(state: &ApiState, user: &SignedIn) -> Self {
         Self {
             user_id: user.0.id.clone(),
-            library_id: state.access.library_id.clone(),
+            library_id: state.access.served.library_id().unwrap_or_default(),
         }
     }
 

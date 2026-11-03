@@ -5,6 +5,7 @@ diesel::table! {
         password_hash -> Nullable<Text>,
         app_password -> Nullable<Text>,
         created_at -> BigInt,
+        role -> Text,
     }
 }
 diesel::table! {
