@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { LibraryBook, LibraryBookPage } from "@/bindings";
-import { createCitadelHttpClient } from "./client";
+import {
+	createCitadelHttpClient,
+	SERVER_UNREACHABLE_MESSAGE,
+	ServerUnreachableError,
+} from "./client";
 import type { components } from "./schema.generated";
 
 type HttpBook = components["schemas"]["LibraryBook"];
@@ -58,5 +62,34 @@ describe("generated HTTP client", () => {
 			params: { path: { book_id: "999" } },
 		});
 		expect(result.error?.code).toBe("notFound");
+	});
+});
+
+describe("unreachable server", () => {
+	it("explains a failed connection instead of the browser's wording", async () => {
+		const client = createCitadelHttpClient({
+			baseUrl: "https://citadel.test",
+			fetch: async () => {
+				throw new TypeError("Load failed");
+			},
+		});
+		const request = client.GET("/api/books/{book_id}", {
+			params: { path: { book_id: "1" } },
+		});
+		await expect(request).rejects.toBeInstanceOf(ServerUnreachableError);
+		await expect(request).rejects.toThrow(SERVER_UNREACHABLE_MESSAGE);
+	});
+
+	it("leaves cancelled requests as cancellations", async () => {
+		const client = createCitadelHttpClient({
+			baseUrl: "https://citadel.test",
+			fetch: async () => {
+				throw new DOMException("Aborted", "AbortError");
+			},
+		});
+		const request = client.GET("/api/books/{book_id}", {
+			params: { path: { book_id: "1" } },
+		});
+		await expect(request).rejects.toMatchObject({ name: "AbortError" });
 	});
 });
