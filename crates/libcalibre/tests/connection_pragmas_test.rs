@@ -68,13 +68,8 @@ fn book_count(conn: &mut SqliteConnection) -> i32 {
 /// path. The `TempDir` is returned so the caller keeps it alive.
 fn fixture_db() -> (tempfile::TempDir, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
+    drop(libcalibre::Library::create_library_at(temp.path().to_str().unwrap()).unwrap());
     let db_path = temp.path().join("metadata.db");
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join("empty_library")
-        .join("metadata.db");
-    std::fs::copy(&fixture, &db_path).unwrap();
     (temp, db_path)
 }
 
