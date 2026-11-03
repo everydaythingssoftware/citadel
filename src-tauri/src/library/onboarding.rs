@@ -186,45 +186,6 @@ fn cloud_storage_provider(root_folder: &str) -> String {
     }
 }
 
-/// Why `clb_cmd_create_library` refuses a target folder.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CreateTargetBlocker {
-    /// Target already contains a `metadata.db`; the frontend offers "open it
-    /// instead".
-    AlreadyALibrary,
-    /// Target exists and holds real (non-junk) content, or is a file.
-    NotEmpty,
-}
-
-/// OS droppings that don't make a folder "non-empty". Compared
-/// case-insensitively; `Thumbs.db`/`desktop.ini` casing varies on Windows.
-const JUNK_FILES: &[&str] = &[".ds_store", ".localized", "thumbs.db", "desktop.ini"];
-
-fn is_junk(file_name: &str) -> bool {
-    JUNK_FILES.contains(&file_name.to_ascii_lowercase().as_str())
-}
-
-/// A missing target is fine (creation makes the folder); an existing one must
-/// be an empty-ish directory. IO errors (e.g. unreadable folder) propagate —
-/// emptiness can't be verified, so creation must not proceed.
-pub fn create_target_blocker(target: &Path) -> std::io::Result<Option<CreateTargetBlocker>> {
-    if !target.exists() {
-        return Ok(None);
-    }
-    if target.join("metadata.db").exists() {
-        return Ok(Some(CreateTargetBlocker::AlreadyALibrary));
-    }
-    if !target.is_dir() {
-        return Ok(Some(CreateTargetBlocker::NotEmpty));
-    }
-    for entry in std::fs::read_dir(target)? {
-        if !is_junk(&entry?.file_name().to_string_lossy()) {
-            return Ok(Some(CreateTargetBlocker::NotEmpty));
-        }
-    }
-    Ok(None)
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -481,59 +442,5 @@ mod tests {
         // Best-effort by design: Seafile and plain local paths report unsynced.
         assert!(!path_sync_status(Path::new("/Users/test/Seafile/Books")).synced);
         assert!(!path_sync_status(Path::new("/Users/test/Documents/Books")).synced);
-    }
-
-    // ---- create_target_blocker ----------------------------------------------
-
-    #[test]
-    fn create_target_accepts_missing_folder() {
-        let tmp = tempfile::tempdir().unwrap();
-        let target = tmp.path().join("new-library");
-        assert_eq!(create_target_blocker(&target).unwrap(), None);
-    }
-
-    #[test]
-    fn create_target_accepts_empty_folder() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert_eq!(create_target_blocker(tmp.path()).unwrap(), None);
-    }
-
-    #[test]
-    fn create_target_ignores_junk_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        fs::write(tmp.path().join(".DS_Store"), b"").unwrap();
-        fs::write(tmp.path().join("Thumbs.db"), b"").unwrap();
-        assert_eq!(create_target_blocker(tmp.path()).unwrap(), None);
-    }
-
-    #[test]
-    fn create_target_refuses_folder_with_content() {
-        let tmp = tempfile::tempdir().unwrap();
-        fs::write(tmp.path().join("notes.txt"), b"hi").unwrap();
-        assert_eq!(
-            create_target_blocker(tmp.path()).unwrap(),
-            Some(CreateTargetBlocker::NotEmpty)
-        );
-    }
-
-    #[test]
-    fn create_target_flags_existing_library_distinctly() {
-        let tmp = tempfile::tempdir().unwrap();
-        make_library(tmp.path());
-        assert_eq!(
-            create_target_blocker(tmp.path()).unwrap(),
-            Some(CreateTargetBlocker::AlreadyALibrary)
-        );
-    }
-
-    #[test]
-    fn create_target_refuses_file_target() {
-        let tmp = tempfile::tempdir().unwrap();
-        let file = tmp.path().join("plain-file");
-        fs::write(&file, b"").unwrap();
-        assert_eq!(
-            create_target_blocker(&file).unwrap(),
-            Some(CreateTargetBlocker::NotEmpty)
-        );
     }
 }

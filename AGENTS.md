@@ -18,7 +18,7 @@
 - **citadel.db**: `citadel_core::store` owns Citadel's own database (users, sessions, library registry keyed by Calibre UUID, grants, provider credentials sealed by `citadel_core::vault` per ADR 0011). Desktop keeps it in app data with one local user; the server in its state directory. See `docs/adr/0009-citadel-users-and-sessions.md`.
 - **Frontend services**: Library owns selected-library operations, LibraryCatalog owns discovery/opening, Metadata owns provider lookups, and Platform owns native capabilities. Runtime Tauri/generated-command imports are adapter-only (`bun lint:boundaries`). See `docs/adr/0008-frontend-service-boundaries.md`.
 - **Tauri state**: Global state managed via CitadelState in `src-tauri/src/state.rs`
-- **Database**: SQLite Calibre library, schema in `crates/libcalibre/src/schema.rs`, migrations via diesel_migrations
+- **Database**: SQLite Calibre library, Diesel schema in `crates/libcalibre/src/schema.rs`. `crates/libcalibre/src/schema_versions.rs` creates new libraries at Calibre's current schema version and ports Calibre's own upgrade steps; libraries older than its minimum are refused, and nothing upgrades on open.
 
 ## Code Style
 
@@ -86,8 +86,10 @@ before each edit, since the app persists settings on change:
   `~/Calibre Library`, so that must not exist either.
 - Broken path: add a `libraryPaths` entry pointing at a nonexistent folder and
   make it active.
-- A valid throwaway library for adopt/recovery tests: unzip
-  `src-tauri/resources/empty_7_2_calibre_lib.zip` into a temp dir.
+- A valid throwaway library for adopt/recovery tests: copy
+  `crates/libcalibre/tests/fixtures/empty_library/metadata.db` into a temp
+  dir (schema version 26, so it also exercises the upgrade prompt), or create
+  one at the current version with `libcalibre::Library::create_library_at`.
 
 Vite HMR keeps the first-run flow's in-memory state across frontend edits, so
 a running card can be restyled and re-screenshotted without replaying the
