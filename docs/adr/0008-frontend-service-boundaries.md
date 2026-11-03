@@ -7,7 +7,7 @@ belong exclusively to their owning adapters.
 | Boundary | Responsibility | Implementation |
 | --- | --- | --- |
 | Library | Queries and mutations on the selected library, custom fields, genres, covers and import commit | `src/lib/services/library` |
-| LibraryCatalog | Discover, validate, inspect, create, open and register libraries (the citadel.db library list) | `src/lib/services/library-catalog` |
+| LibraryCatalog | Discover, validate, inspect, create, open and register libraries (the citadel.db library list); in the browser, the server's library setup for administrators (ADR 0012) | `src/lib/services/library-catalog` |
 | Metadata | Provider search, ISBN lookup and provider credential/connectivity tests | `src/lib/services/metadata` |
 | Platform | Settings persistence, clipboard, dialogs, paths, menu events, window lifecycle/theme and desktop updates | `src/lib/platform` |
 | OPDS administration | Local listener configuration and credentials | `src/lib/services/opds` |
@@ -30,7 +30,7 @@ and the server (ADR 0010).
 Host detection is isolated in Platform adapter selection. Browser adapters never
 invoke native commands: local library discovery yields no candidate, unsupported
 operations fail explicitly, and native window/menu lifecycle methods are inert.
-The browser LibraryCatalog connects to the serving origin’s configured library;
+The browser LibraryCatalog connects to the serving origin’s configured library, and its `setup` operations (status, inspect, folder listing, create, adopt, reopen, upgrade) back the administrator's setup card in `src/components/organisms/WebSetupFlow.tsx`, driven by the pure machine in `src/lib/web-setup/`; the session service's setup status and administrator creation decide which form `BrowserLibraryGate` shows;
 its HTTP Library uses generated OpenAPI bindings and exposes a read-only
 capability. Unbounded Library queries are assembled from bounded HTTP pages.
 Initial and subsequently fetched pages request thumbnails on demand. When the

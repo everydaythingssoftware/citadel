@@ -9,6 +9,10 @@ const unwrap = <T>(
 	return result.data;
 };
 
+const desktopHasNoServerSetup = async (): Promise<never> => {
+	throw new Error("Server library setup is unavailable on the desktop");
+};
+
 export const tauriLibraryCatalog: LibraryCatalog = {
 	open: async (options) => {
 		if (options.libraryType !== "calibre")
@@ -35,4 +39,12 @@ export const tauriLibraryCatalog: LibraryCatalog = {
 		unwrap(await commands.clbCmdImportLegacyLibraries(entries)),
 	onChange: (listener) =>
 		events.librariesChanged.listen((event) => listener(event.payload)),
+	setup: {
+		status: desktopHasNoServerSetup,
+		inspect: desktopHasNoServerSetup,
+		listDirectory: desktopHasNoServerSetup,
+		choose: desktopHasNoServerSetup,
+		reopen: desktopHasNoServerSetup,
+		upgrade: desktopHasNoServerSetup,
+	},
 };

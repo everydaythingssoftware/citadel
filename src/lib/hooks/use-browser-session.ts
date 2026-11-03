@@ -10,13 +10,21 @@ import {
 	type BrowserSession,
 	createBrowserSession,
 	type SessionInfo,
+	type SetupStatus,
 } from "@/lib/services/session";
 
 export type BrowserSessionState =
 	| { status: "checking" }
 	| { status: "unreachable"; error: string }
-	| { status: "signedOut"; error: string | null; pending: boolean }
-	| { status: "signedIn"; session: SessionInfo };
+	/** A fresh server: nobody can sign in until the administrator exists. */
+	| { status: "needsAdministrator"; error: string | null; pending: boolean }
+	| {
+			status: "signedOut";
+			setup: SetupStatus;
+			error: string | null;
+			pending: boolean;
+	  }
+	| { status: "signedIn"; session: SessionInfo; setup: SetupStatus };
 
 export interface BrowserSessionControls {
 	username: string;
@@ -46,11 +54,16 @@ export const useBrowserSession = (
 
 	const refresh = useCallback(async () => {
 		try {
+			const setup = await session.setupStatus();
+			if (!setup.administratorExists) {
+				setState({ status: "needsAdministrator", error: null, pending: false });
+				return;
+			}
 			const current = await session.current();
 			setState(
 				current
-					? { status: "signedIn", session: current }
-					: { status: "signedOut", error: null, pending: false },
+					? { status: "signedIn", session: current, setup }
+					: { status: "signedOut", setup, error: null, pending: false },
 			);
 		} catch (error) {
 			setState({ status: "unreachable", error: message(error) });
@@ -63,15 +76,40 @@ export const useBrowserSession = (
 
 	const signIn = useCallback(
 		async (username: string, password: string) => {
-			setState({ status: "signedOut", error: null, pending: true });
+			setState((previous) =>
+				previous.status === "signedOut"
+					? { ...previous, error: null, pending: true }
+					: previous,
+			);
 			try {
-				setState({
-					status: "signedIn",
-					session: await session.signIn(username, password),
-				});
+				const signedIn = await session.signIn(username, password);
+				const setup = await session.setupStatus();
+				setState({ status: "signedIn", session: signedIn, setup });
+			} catch (error) {
+				setState((previous) =>
+					previous.status === "signedOut"
+						? { ...previous, error: message(error), pending: false }
+						: previous,
+				);
+			}
+		},
+		[session],
+	);
+
+	const createAdministrator = useCallback(
+		async (setupCode: string, username: string, password: string) => {
+			setState({ status: "needsAdministrator", error: null, pending: true });
+			try {
+				const signedIn = await session.createAdministrator(
+					setupCode,
+					username,
+					password,
+				);
+				const setup = await session.setupStatus();
+				setState({ status: "signedIn", session: signedIn, setup });
 			} catch (error) {
 				setState({
-					status: "signedOut",
+					status: "needsAdministrator",
 					error: message(error),
 					pending: false,
 				});
@@ -94,5 +132,5 @@ export const useBrowserSession = (
 		[state, signOut],
 	);
 
-	return { state, refresh, signIn, signOut, controls };
+	return { state, refresh, signIn, createAdministrator, signOut, controls };
 };

@@ -1,0 +1,189 @@
+/* CDL-39 web setup: the pieces the browser's card adds to the shared setup
+ * card (FirstRunFlow.module.css): a typed path, and a folder browser. */
+
+.field {
+	margin-top: 16px;
+}
+
+.field input {
+	font-family: var(
+		--ctd-font-mono,
+		ui-monospace,
+		SFMono-Regular,
+		Menlo,
+		monospace
+	);
+	font-size: 12.5px;
+}
+
+.browseRow {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 6px;
+}
+
+.pathLine {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	margin: 18px 0 0;
+	padding: 8px 12px;
+	background: var(--ctd-bg);
+	border: 1px solid var(--ctd-border);
+	border-radius: var(--ctd-radius-control);
+	font-size: 12.5px;
+	font-family: var(
+		--ctd-font-mono,
+		ui-monospace,
+		SFMono-Regular,
+		Menlo,
+		monospace
+	);
+	color: var(--ctd-ink);
+	overflow-wrap: anywhere;
+}
+
+.pathLine svg {
+	flex: none;
+	color: var(--ctd-ink-soft);
+}
+
+.okLine {
+	display: flex;
+	align-items: flex-start;
+	gap: 7px;
+	margin: 10px 2px 0;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--ctd-ink-soft);
+	text-align: left;
+}
+
+.okLine strong {
+	color: var(--ctd-ink);
+	font-weight: 600;
+}
+
+.browser {
+	margin-top: 12px;
+	border: 1px solid var(--ctd-border);
+	border-radius: var(--ctd-radius-control);
+	background: var(--ctd-bg);
+	overflow: hidden;
+}
+
+.browserHead {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px 6px 12px;
+	border-bottom: 1px solid var(--ctd-border);
+	font-size: 12px;
+	font-family: var(
+		--ctd-font-mono,
+		ui-monospace,
+		SFMono-Regular,
+		Menlo,
+		monospace
+	);
+	color: var(--ctd-ink);
+}
+
+.browserPath {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.entries {
+	list-style: none;
+	margin: 0;
+	padding: 4px;
+	max-height: 196px;
+	overflow-y: auto;
+}
+
+.entry {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	width: 100%;
+	padding: 7px 8px;
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	color: var(--ctd-ink);
+	background: none;
+	border: none;
+	border-radius: 6px;
+}
+
+.entry:hover {
+	background: var(--ctd-nav-hover-bg);
+}
+
+.entry:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--ctd-focus-ring);
+}
+
+.entry svg {
+	flex: none;
+	color: var(--ctd-ink-soft);
+}
+
+.entryName {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.entryTag {
+	flex: none;
+	font-size: 10.5px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--ctd-ink-soft);
+	border: 1px solid var(--ctd-border);
+	border-radius: 999px;
+	padding: 1px 7px;
+}
+
+.browserEmpty,
+.browserBusy {
+	padding: 16px 12px;
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+	text-align: center;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+}
+
+.browserFoot {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	padding: 8px;
+	border-top: 1px solid var(--ctd-border);
+}
+
+.problem {
+	margin: 10px 2px 0;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--ctd-ink-soft);
+	text-align: left;
+	overflow-wrap: anywhere;
+}
+
+.upgrade {
+	margin-top: 14px;
+	font-size: 12.5px;
+}
