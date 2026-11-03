@@ -77,6 +77,8 @@ pub fn register_triggers(conn: &mut SqliteConnection) -> Result<(), diesel::resu
              DELETE FROM books_tags_link WHERE book=OLD.id;
              DELETE FROM books_languages_link WHERE book=OLD.id;
              DELETE FROM data WHERE book=OLD.id;
+             DELETE FROM last_read_positions WHERE book=OLD.id;
+             DELETE FROM annotations WHERE book=OLD.id;
              DELETE FROM comments WHERE book=OLD.id;
              DELETE FROM conversion_options WHERE book=OLD.id;
              DELETE FROM books_plugin_data WHERE book=OLD.id;

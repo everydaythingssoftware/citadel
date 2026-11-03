@@ -61,7 +61,8 @@ relative). A library may not contain the state directory (the inverse of ADR
 UUID with the given display name, grants the administrator, records the
 choice and opens the library.
 
-**Schema versions.** Adopt reports the library's Calibre schema version and
+**Schema versions.** New libraries carry the schema a Calibre library holds at
+version 28. Adopt reports the library's Calibre schema version and
 whether Calibre's current format is newer. The administrator may upgrade at
 adopt time or later through `POST /api/setup/library/upgrade`; libcalibre
 runs Calibre's own steps after backing the database up beside it (CDL-66).
