@@ -1,9 +1,8 @@
 //! Calibre's `metadata.db` schema versions: the version a new library is
 //! created at, and Calibre's own steps for moving older libraries forward.
 //!
-//! Calibre keeps the version in `PRAGMA user_version` and upgrades with
-//! `upgrade_version_N` (N to N+1) in `src/calibre/db/schema_upgrades.py`.
-//! Citadel supports a window: a library below [`MINIMUM_SCHEMA_VERSION`] is
+//! Calibre keeps the version in `PRAGMA user_version` and upgrades one step
+//! at a time; the steps here do what Calibre's do. Citadel supports a window: a library below [`MINIMUM_SCHEMA_VERSION`] is
 //! refused with advice to open it in Calibre once, and anything from there up
 //! opens unmodified, since libcalibre reads nothing the later steps add.
 //! Nothing upgrades on open; hosts call [`crate::Library::upgrade`] when the
@@ -139,7 +138,7 @@ fn columns_of(
         .collect())
 }
 
-/// Calibre's `upgrade_version_25`: link columns on the standard and
+/// Calibre's step from 25 to 26: link columns on the standard and
 /// normalized custom-column tables. Each is skipped when its table is missing
 /// or already has one.
 fn upgrade_25_to_26(conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
@@ -165,7 +164,7 @@ fn upgrade_25_to_26(conn: &mut SqliteConnection) -> Result<(), diesel::result::E
     Ok(())
 }
 
-/// Calibre's `upgrade_version_26`: page counts, the rebuilt `meta` view, the
+/// Calibre's step from 26 to 27: page counts, the rebuilt `meta` view, the
 /// application id, then the unused `books` columns that still exist.
 fn upgrade_26_to_27(conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
     conn.batch_execute(UPGRADE_26_TO_27)?;

@@ -1,6 +1,6 @@
--- Calibre's fresh-library schema, user_version 28, ported from
--- calibre/resources/metadata_sqlite.sql. Keep it byte-for-byte what Calibre
--- creates so Citadel-made libraries are indistinguishable from Calibre's.
+-- The schema a Calibre library's metadata.db carries at user_version 28, as
+-- SQLite stores it. Keep it exactly what a Calibre-made library holds so
+-- Citadel-made libraries are indistinguishable from Calibre's.
 
 CREATE TABLE authors ( id   INTEGER PRIMARY KEY,
                               name TEXT NOT NULL COLLATE NOCASE,

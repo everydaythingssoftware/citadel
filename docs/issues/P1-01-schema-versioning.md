@@ -33,10 +33,9 @@ Ensure that these migrations are appropriately logged, however possible.
 ## Current State
 
 Progress (CDL-66, 2026-11-03): `crates/libcalibre/src/schema_versions.rs`
-reads `PRAGMA user_version`, creates new libraries at version 28 from a ported
-copy of Calibre's `metadata_sqlite.sql`, ports `upgrade_version_25`, `_26` and
-`_27`, and refuses libraries older than 25 with advice to open them in Calibre
-once. `Library::upgrade` runs the pending steps in one exclusive transaction
+reads `PRAGMA user_version`, creates new libraries from the schema a Calibre
+library carries at version 28, carries Calibre's steps from 25 to 28, and
+refuses libraries older than 25 with advice to open them in Calibre once. `Library::upgrade` runs the pending steps in one exclusive transaction
 after writing `metadata.db.backup-<version>-<unix time>` beside the database
 (newest three kept); nothing upgrades on open. Still open: a libcalibre
 version separate from Calibre's (to live on the `libraries` row in

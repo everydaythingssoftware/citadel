@@ -1,5 +1,4 @@
--- Calibre schema_upgrades.upgrade_version_27: per-book localStorage for the
--- viewers.
+-- Calibre's step from schema 27 to 28: per-book storage for the viewers.
 CREATE TABLE book_storage ( id INTEGER PRIMARY KEY,
     book INTEGER NOT NULL,
     format TEXT NOT NULL COLLATE NOCASE,
