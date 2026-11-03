@@ -3543,12 +3543,12 @@ export interface operations {
     };
     listDirectories: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
+            query?: {
                 /** @description An absolute path on the server; the browse root when omitted. */
-                path: string | null;
+                path?: string;
             };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;

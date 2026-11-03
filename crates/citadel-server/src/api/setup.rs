@@ -62,6 +62,7 @@ pub(super) struct InspectPath {
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ListDirectory {
     /// An absolute path on the server; the browse root when omitted.
