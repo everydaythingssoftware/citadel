@@ -17,7 +17,7 @@ use diesel::{
     SqliteConnection,
 };
 
-use crate::error::CalibreError;
+use crate::{error::CalibreError, util::ValidDbPath};
 
 /// The version Calibre writes today and new libraries are created at.
 pub const SCHEMA_VERSION: i32 = 28;
@@ -64,6 +64,16 @@ pub fn schema_version(conn: &mut SqliteConnection) -> Result<i32, diesel::result
     sql_query("PRAGMA user_version")
         .get_result::<UserVersion>(conn)
         .map(|row| row.user_version)
+}
+
+/// Reads the version of a database the person has only pointed at, through
+/// a read-only connection that changes nothing (see [`crate::library_stats`]).
+pub fn peek_schema_version(db_path: &ValidDbPath) -> Result<i32, CalibreError> {
+    let mut conn =
+        SqliteConnection::establish(&db_path.database_path).map_err(CalibreError::database)?;
+    conn.batch_execute("PRAGMA query_only = ON; PRAGMA busy_timeout = 3000;")
+        .map_err(CalibreError::database)?;
+    Ok(schema_version(&mut conn)?)
 }
 
 /// The schema version, or why this build won't open the database.

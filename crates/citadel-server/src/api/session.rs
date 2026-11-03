@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use super::{ApiFailure, ApiState};
+use crate::served::{no_library_yet, ServedLibrary};
 use citadel_core::store::{CitadelStore, User, SESSION_TTL_SECONDS};
 
 pub const SESSION_COOKIE: &str = "citadel_session";
@@ -67,7 +68,7 @@ impl PublicUrl {
         })
     }
 
-    fn cookie(&self, value: &str, max_age: i64) -> HeaderValue {
+    pub(super) fn cookie(&self, value: &str, max_age: i64) -> HeaderValue {
         let secure = if self.secure { "; Secure" } else { "" };
         HeaderValue::from_str(&format!(
             "{SESSION_COOKIE}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure}"
@@ -78,20 +79,66 @@ impl PublicUrl {
 
 pub(super) struct Access {
     pub accounts: Arc<CitadelStore>,
-    pub library_id: String,
+    pub served: Arc<ServedLibrary>,
     pub public_url: PublicUrl,
+    /// Shared by sign-in and the setup code: a guess at either is a guess.
     backoff: Mutex<Backoff>,
+    /// Printed at startup while no administrator exists; cleared once used.
+    setup_code: Mutex<Option<String>>,
 }
 
 impl Access {
-    pub fn new(accounts: Arc<CitadelStore>, library_id: String, public_url: PublicUrl) -> Self {
+    pub fn new(
+        accounts: Arc<CitadelStore>,
+        served: Arc<ServedLibrary>,
+        public_url: PublicUrl,
+        setup_code: Option<String>,
+    ) -> Self {
         Self {
             accounts,
-            library_id,
+            served,
             public_url,
             backoff: Mutex::default(),
+            setup_code: Mutex::new(setup_code),
         }
     }
+
+    pub fn backoff_refused(&self) -> bool {
+        self.backoff
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .refused(Instant::now())
+    }
+
+    pub fn note_attempt(&self, success: bool) {
+        self.backoff
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .note(success, Instant::now());
+    }
+
+    pub fn setup_code(&self) -> Option<String> {
+        self.setup_code
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    pub fn consume_setup_code(&self) {
+        *self
+            .setup_code
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+}
+
+/// What the session's user may do with the served library.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum LibraryAccess {
+    Granted,
+    Denied,
+    /// No library is set up yet, so there is nothing to grant.
+    NoLibrary,
 }
 
 /// Consecutive failed sign-ins back off exponentially, as OPDS Basic does.
@@ -134,8 +181,24 @@ pub(super) struct SessionUser {
 #[serde(rename_all = "camelCase")]
 pub(super) struct SessionInfo {
     user: SessionUser,
-    /// False when the user exists but has no access to this server's library.
+    /// False when the user exists but has no access to this server's library,
+    /// or no library is set up yet.
     library_access: bool,
+    /// May set the server up and administer it.
+    administrator: bool,
+}
+
+impl SessionInfo {
+    pub fn new(user: &User, library_access: bool) -> Self {
+        Self {
+            user: SessionUser {
+                id: user.id.clone(),
+                username: user.username.clone(),
+            },
+            library_access,
+            administrator: user.is_administrator(),
+        }
+    }
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -153,7 +216,7 @@ fn failure(code: LibraryErrorCode, message: &str) -> ApiFailure {
     .into()
 }
 
-fn cross_origin_refused() -> Response {
+pub(super) fn cross_origin_refused() -> Response {
     let error = LibraryError {
         code: LibraryErrorCode::Unauthorized,
         message: "Cross-origin request refused".into(),
@@ -161,7 +224,7 @@ fn cross_origin_refused() -> Response {
     (StatusCode::FORBIDDEN, Json(error)).into_response()
 }
 
-fn signed_out() -> ApiFailure {
+pub(super) fn signed_out() -> ApiFailure {
     failure(LibraryErrorCode::Unauthorized, "Sign in to Citadel")
 }
 
@@ -178,7 +241,7 @@ fn session_token(headers: &HeaderMap) -> Option<String> {
 
 /// Cookie-authenticated requests that change state must come from the
 /// configured origin. Browsers always send `Origin` on such requests.
-fn cross_origin(access: &Access, request_method: &Method, headers: &HeaderMap) -> bool {
+pub(super) fn cross_origin(access: &Access, request_method: &Method, headers: &HeaderMap) -> bool {
     if matches!(
         *request_method,
         Method::GET | Method::HEAD | Method::OPTIONS
@@ -208,30 +271,37 @@ pub(super) async fn blocking<T: Send + 'static>(
     })
     .await
     .map_err(|_| LibraryError::unavailable())?
-    .map_err(|_| {
-        ApiFailure::from(LibraryError {
-            code: LibraryErrorCode::Internal,
-            message: "Account lookup failed".into(),
-        })
-    })
+    .map_err(|error| ApiFailure::from(crate::served::store_error(error)))
 }
 
-async fn current_user(
+pub(super) async fn current_user(
     state: &ApiState,
     headers: &HeaderMap,
-) -> Result<Option<(User, bool)>, ApiFailure> {
+) -> Result<Option<(User, LibraryAccess)>, ApiFailure> {
     let Some(token) = session_token(headers) else {
         return Ok(None);
     };
-    let library_id = state.access.library_id.clone();
+    let library_id = state.access.served.library_id();
     blocking(state, move |accounts| {
         let Some(user) = accounts.session_user(&token)? else {
             return Ok(None);
         };
-        let access = accounts.can_access(&user.id, &library_id)?;
+        let access = library_access(accounts, &user, library_id.as_deref())?;
         Ok(Some((user, access)))
     })
     .await
+}
+
+fn library_access(
+    accounts: &CitadelStore,
+    user: &User,
+    library_id: Option<&str>,
+) -> Result<LibraryAccess, citadel_core::store::StoreError> {
+    Ok(match library_id {
+        None => LibraryAccess::NoLibrary,
+        Some(library_id) if accounts.can_access(&user.id, library_id)? => LibraryAccess::Granted,
+        Some(_) => LibraryAccess::Denied,
+    })
 }
 
 fn clear_cookie(access: &Access, response: &mut Response) {
@@ -252,15 +322,18 @@ pub(super) async fn require_session(
     }
     let had_cookie = session_token(request.headers()).is_some();
     match current_user(&state, request.headers()).await {
-        Ok(Some((user, true))) => {
+        Ok(Some((user, LibraryAccess::Granted))) => {
             request.extensions_mut().insert(SignedIn(user));
             next.run(request).await
         }
-        Ok(Some((_, false))) => failure(
+        Ok(Some((_, LibraryAccess::Denied))) => failure(
             LibraryErrorCode::NotFound,
             "No library is available to this account",
         )
         .into_response(),
+        Ok(Some((_, LibraryAccess::NoLibrary))) => {
+            ApiFailure::from(no_library_yet()).into_response()
+        }
         Ok(None) => {
             let mut response = signed_out().into_response();
             if had_cookie {
@@ -283,13 +356,10 @@ async fn get_session(
     let (user, library_access) = current_user(&state, &headers)
         .await?
         .ok_or_else(signed_out)?;
-    Ok(Json(SessionInfo {
-        user: SessionUser {
-            id: user.id,
-            username: user.username,
-        },
-        library_access,
-    }))
+    Ok(Json(SessionInfo::new(
+        &user,
+        library_access == LibraryAccess::Granted,
+    )))
 }
 
 #[utoipa::path(post, path = "/api/session", operation_id = "signIn",
@@ -310,13 +380,7 @@ async fn sign_in(
     let Ok(Json(input)) = input else {
         return ApiFailure::from(LibraryError::invalid("Invalid sign-in JSON")).into_response();
     };
-    if state
-        .access
-        .backoff
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .refused(Instant::now())
-    {
+    if state.access.backoff_refused() {
         let mut response =
             failure(LibraryErrorCode::RateLimited, "Too many sign-in attempts").into_response();
         response
@@ -324,13 +388,13 @@ async fn sign_in(
             .insert(header::RETRY_AFTER, HeaderValue::from_static("2"));
         return response;
     }
-    let library_id = state.access.library_id.clone();
+    let library_id = state.access.served.library_id();
     let result = blocking(&state, move |accounts| {
         let Some(user) = accounts.verify_password(&input.username, &input.password)? else {
             return Ok(None);
         };
         let token = accounts.create_session(&user.id)?;
-        let access = accounts.can_access(&user.id, &library_id)?;
+        let access = library_access(accounts, &user, library_id.as_deref())?;
         Ok(Some((user, access, token)))
     })
     .await;
@@ -338,12 +402,7 @@ async fn sign_in(
         Ok(result) => result,
         Err(error) => return error.into_response(),
     };
-    state
-        .access
-        .backoff
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .note(result.is_some(), Instant::now());
+    state.access.note_attempt(result.is_some());
     let Some((user, library_access, token)) = result else {
         return failure(
             LibraryErrorCode::Unauthorized,
@@ -351,13 +410,10 @@ async fn sign_in(
         )
         .into_response();
     };
-    let mut response = Json(SessionInfo {
-        user: SessionUser {
-            id: user.id,
-            username: user.username,
-        },
-        library_access,
-    })
+    let mut response = Json(SessionInfo::new(
+        &user,
+        library_access == LibraryAccess::Granted,
+    ))
     .into_response();
     response.headers_mut().insert(
         header::SET_COOKIE,

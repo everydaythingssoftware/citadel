@@ -2654,6 +2654,574 @@
         }
       }
     },
+    "/api/setup": {
+      "get": {
+        "description": "Whether an administrator exists and a library is set up. Public, so the sign-in page knows which form to show.",
+        "operationId": "getSetupStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup/administrator": {
+      "post": {
+        "description": "Create the first administrator with the setup code the server printed, and sign them in. Refused once an administrator exists.",
+        "operationId": "createAdministrator",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdministrator"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup/directories": {
+      "get": {
+        "description": "Subfolders of a server folder (dotfolders hidden), one level at a time, for choosing a library location. Administrators only.",
+        "operationId": "listDirectories",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "An absolute path on the server; the browse root when omitted.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryListing"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/setup/library": {
+      "get": {
+        "description": "The served library, if one was chosen, and where the directory browser starts. Administrators only.",
+        "operationId": "getLibrarySetup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySetup"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "description": "Create a new library or adopt an existing one at a server path, register it, grant the administrator access and start serving it. 409 while a library is already served. Administrators only.",
+        "operationId": "chooseLibrary",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChooseLibrary"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServedLibraryInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/setup/library/inspect": {
+      "post": {
+        "description": "What is at an absolute server path: a library (with its size and schema version), an empty folder, something else, or a reason it can't be used. Administrators only.",
+        "operationId": "inspectPath",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectPath"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inspection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/setup/library/reopen": {
+      "post": {
+        "description": "Try the registered library's folder again after it was unreachable. Administrators only.",
+        "operationId": "reopenLibrary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServedLibraryInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/setup/library/upgrade": {
+      "post": {
+        "description": "Bring the served library to Calibre's current database format, after backing its database up beside it. Administrators only.",
+        "operationId": "upgradeLibrary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaUpgradeInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/tags": {
       "get": {
         "operationId": "listTags",
@@ -3440,6 +4008,33 @@
           }
         }
       },
+      "ChooseLibrary": {
+        "type": "object",
+        "required": [
+          "mode",
+          "path"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/SetupMode"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name; the folder's name when omitted."
+          },
+          "path": {
+            "type": "string"
+          },
+          "upgrade": {
+            "type": "boolean",
+            "description": "Adopt only: bring an older library to Calibre's current format first.\nA backup is kept beside its database."
+          }
+        },
+        "additionalProperties": false
+      },
       "CommitUpload": {
         "type": "object",
         "description": "The metadata the user reviewed, to add the upload to the library with.",
@@ -3517,6 +4112,27 @@
             "minimum": 0
           }
         }
+      },
+      "CreateAdministrator": {
+        "type": "object",
+        "required": [
+          "setupCode",
+          "username",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "setupCode": {
+            "type": "string",
+            "description": "The code from the server's console, such as `K7QD-M2XV-H9RW`."
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "CreateAuthors": {
         "type": "object",
@@ -3727,6 +4343,50 @@
         },
         "additionalProperties": false
       },
+      "DirectoryEntry": {
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "isLibrary"
+        ],
+        "properties": {
+          "isLibrary": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "DirectoryListing": {
+        "type": "object",
+        "required": [
+          "path",
+          "parent",
+          "entries"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DirectoryEntry"
+            }
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
       "GenreCandidate": {
         "type": "object",
         "required": [
@@ -3771,6 +4431,103 @@
             "type": "string"
           }
         }
+      },
+      "InspectPath": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "An absolute path on the server."
+          }
+        },
+        "additionalProperties": false
+      },
+      "InspectedLibrary": {
+        "type": "object",
+        "required": [
+          "bookCount",
+          "authorCount",
+          "schemaVersion",
+          "upgradeAvailable",
+          "supported"
+        ],
+        "properties": {
+          "authorCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "bookCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "supported": {
+            "type": "boolean",
+            "description": "False when the schema is older than this server opens; `message` says\nwhat to do."
+          },
+          "upgradeAvailable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Inspection": {
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "status",
+          "library",
+          "message"
+        ],
+        "properties": {
+          "library": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InspectedLibrary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the path can't be used as asked, when it can't."
+          },
+          "name": {
+            "type": "string",
+            "description": "The folder's own name, the default display name for a library here."
+          },
+          "path": {
+            "type": "string",
+            "description": "The path as the server resolved it."
+          },
+          "status": {
+            "$ref": "#/components/schemas/InspectionStatus"
+          }
+        }
+      },
+      "InspectionStatus": {
+        "type": "string",
+        "enum": [
+          "library",
+          "empty",
+          "notEmpty",
+          "missing",
+          "notADirectory",
+          "denied",
+          "reserved",
+          "relative"
+        ]
       },
       "LibraryAuthor": {
         "type": "object",
@@ -4078,6 +4835,29 @@
           }
         }
       },
+      "LibrarySetup": {
+        "type": "object",
+        "required": [
+          "library",
+          "browseRoot"
+        ],
+        "properties": {
+          "browseRoot": {
+            "type": "string",
+            "description": "Where the directory browser starts."
+          },
+          "library": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ServedLibraryInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "LibraryTag": {
         "type": "object",
         "required": [
@@ -4292,16 +5072,91 @@
         },
         "additionalProperties": false
       },
+      "SchemaUpgradeInfo": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "backup"
+        ],
+        "properties": {
+          "backup": {
+            "type": "string",
+            "description": "The copy of `metadata.db` taken first, beside the library's database."
+          },
+          "from": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "to": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ServedLibraryInfo": {
+        "type": "object",
+        "description": "What the administrator sees about the served library.",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "readOnly",
+          "available",
+          "problem",
+          "schemaVersion",
+          "upgradeAvailable"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "False when the registered folder can't be opened right now; see `problem`."
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "problem": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "schemaVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "upgradeAvailable": {
+            "type": "boolean"
+          }
+        }
+      },
       "SessionInfo": {
         "type": "object",
         "required": [
           "user",
-          "libraryAccess"
+          "libraryAccess",
+          "administrator"
         ],
         "properties": {
+          "administrator": {
+            "type": "boolean",
+            "description": "May set the server up and administer it."
+          },
           "libraryAccess": {
             "type": "boolean",
-            "description": "False when the user exists but has no access to this server's library."
+            "description": "False when the user exists but has no access to this server's library,\nor no library is set up yet."
           },
           "user": {
             "$ref": "#/components/schemas/SessionUser"
@@ -4342,6 +5197,35 @@
           }
         },
         "additionalProperties": false
+      },
+      "SetupMode": {
+        "type": "string",
+        "enum": [
+          "create",
+          "adopt"
+        ]
+      },
+      "SetupStatus": {
+        "type": "object",
+        "required": [
+          "administratorExists",
+          "libraryConfigured",
+          "libraryAvailable"
+        ],
+        "properties": {
+          "administratorExists": {
+            "type": "boolean",
+            "description": "False until the first administrator is created with the setup code\nthe server printed when it started."
+          },
+          "libraryAvailable": {
+            "type": "boolean",
+            "description": "The chosen library is open and can be browsed."
+          },
+          "libraryConfigured": {
+            "type": "boolean",
+            "description": "A library has been chosen (it may still be unreachable)."
+          }
+        }
       },
       "SignInRequest": {
         "type": "object",

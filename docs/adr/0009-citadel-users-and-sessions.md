@@ -92,7 +92,8 @@ so admin changes apply without a restart.
 The operator is the administrator. `citadel-server --config <path> users …`,
 `grant` and `revoke` edit `citadel.db` from a separate process; `users add`
 grants the configured library and prints generated passwords once. There is no
-onboarding or administration UI.
+onboarding or administration UI. (ADR 0012 later adds an administrator role,
+a printed setup code and setup in the browser.)
 
 Every `LibraryService` write takes an `Actor`. The desktop passes its local
 user; the server will pass the session's user when write routes land. The enum

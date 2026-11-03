@@ -27,7 +27,9 @@ pub use library::{
     CatalogFacetSummary, GenreSummary, Library, PublisherSummary, ResolvedBookAsset, SeriesSummary,
     TagSummary,
 };
-pub use schema_versions::{SchemaUpgrade, MINIMUM_SCHEMA_VERSION, SCHEMA_VERSION};
+pub use schema_versions::{
+    peek_schema_version, SchemaUpgrade, MINIMUM_SCHEMA_VERSION, SCHEMA_VERSION,
+};
 pub use stats::{library_stats, LibraryStats};
 pub use types::{AuthorId, BookFileId, BookId};
 

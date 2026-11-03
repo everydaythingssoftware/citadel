@@ -3,7 +3,14 @@ use std::path::Path;
 
 use diesel::{prelude::*, sqlite::SqliteConnection};
 
-use super::{schema::libraries, unix_now, CitadelStore, Result, StoreError};
+use super::{
+    schema::{libraries, properties},
+    unix_now, CitadelStore, Result, StoreError,
+};
+
+/// Which registered library a server serves. Hosts with one library at a
+/// time keep it here rather than in a config file.
+const ACTIVE_LIBRARY_PROPERTY: &str = "active_library_id";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegisteredLibrary {
@@ -69,6 +76,33 @@ impl CitadelStore {
         known_library(&mut connection, id)?;
         diesel::update(libraries::table.filter(libraries::id.eq(id)))
             .set(libraries::display_name.eq(&display_name))
+            .execute(&mut *connection)?;
+        library(&mut connection, id)
+    }
+
+    /// The library the host serves, if one was chosen and is still registered.
+    pub fn active_library(&self) -> Result<Option<RegisteredLibrary>> {
+        Ok(properties::table
+            .filter(properties::key.eq(ACTIVE_LIBRARY_PROPERTY))
+            .inner_join(libraries::table.on(libraries::id.eq(properties::value)))
+            .select((libraries::id, libraries::path, libraries::display_name))
+            .first::<(String, String, String)>(&mut *self.connection())
+            .optional()?
+            .map(|(id, path, display_name)| RegisteredLibrary {
+                id,
+                path,
+                display_name,
+            }))
+    }
+
+    pub fn set_active_library(&self, id: &str) -> Result<RegisteredLibrary> {
+        let mut connection = self.connection();
+        known_library(&mut connection, id)?;
+        diesel::replace_into(properties::table)
+            .values((
+                properties::key.eq(ACTIVE_LIBRARY_PROPERTY),
+                properties::value.eq(id),
+            ))
             .execute(&mut *connection)?;
         library(&mut connection, id)
     }
@@ -165,5 +199,16 @@ mod tests {
             .register_library(LIBRARY_ID, &directory.path().join("moved"), Some("Shelf"))
             .unwrap();
         assert_eq!(named.display_name, "Shelf");
+    }
+
+    #[test]
+    fn the_active_library_is_a_registered_one() {
+        let (_directory, store, library) = store();
+        assert_eq!(store.active_library().unwrap(), None);
+        assert!(store.set_active_library("unknown").is_err());
+        assert_eq!(store.set_active_library(LIBRARY_ID).unwrap(), library);
+        assert_eq!(store.active_library().unwrap(), Some(library.clone()));
+        let renamed = store.rename_library(LIBRARY_ID, "Shelf").unwrap();
+        assert_eq!(store.active_library().unwrap(), Some(renamed));
     }
 }
