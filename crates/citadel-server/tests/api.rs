@@ -142,16 +142,7 @@ async fn fixture_with_metadata(
     metadata: Arc<api::Metadata>,
 ) -> (tempfile::TempDir, OpdsService, Router, String, String) {
     let directory = tempfile::tempdir().unwrap();
-    std::fs::copy(
-        concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../libcalibre/tests/fixtures/empty_library/metadata.db"
-        ),
-        directory.path().join("metadata.db"),
-    )
-    .unwrap();
-    let database = libcalibre::util::get_db_path(directory.path().to_str().unwrap()).unwrap();
-    let mut library = Library::new(database).unwrap();
+    let mut library = Library::create_library_at(directory.path().to_str().unwrap()).unwrap();
     let source = directory.path().join("source.txt");
     std::fs::write(&source, "HTTP contract").unwrap();
     let book = library

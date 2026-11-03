@@ -40,13 +40,7 @@ fn real_process_serves_authenticated_catalog_and_acquisition_then_stops() {
     let directory = tempfile::tempdir().unwrap();
     let library_path = directory.path().join("library");
     let state_path = directory.path().join("state");
-    std::fs::create_dir_all(&library_path).unwrap();
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../libcalibre/tests/fixtures/empty_library/metadata.db");
-    std::fs::copy(fixture, library_path.join("metadata.db")).unwrap();
-
-    let database = libcalibre::util::get_db_path(library_path.to_str().unwrap()).unwrap();
-    let mut library = Library::new(database).unwrap();
+    let mut library = Library::create_library_at(library_path.to_str().unwrap()).unwrap();
     let source = directory.path().join("source.epub");
     std::fs::write(&source, b"headless-acquisition").unwrap();
     let book = library

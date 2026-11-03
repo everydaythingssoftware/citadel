@@ -166,15 +166,7 @@ mod tests {
 
     fn library(directory: &std::path::Path, name: &str) -> String {
         let path = directory.join(name);
-        std::fs::create_dir(&path).unwrap();
-        std::fs::copy(
-            concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../crates/libcalibre/tests/fixtures/empty_library/metadata.db"
-            ),
-            path.join("metadata.db"),
-        )
-        .unwrap();
+        drop(libcalibre::Library::create_library_at(path.to_str().unwrap()).unwrap());
         path.to_str().unwrap().to_string()
     }
 

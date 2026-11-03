@@ -1297,11 +1297,8 @@ mod tests {
 
     fn test_library() -> (TempDir, Library) {
         let directory = tempfile::tempdir().unwrap();
-        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../crates/libcalibre/tests/fixtures/empty_library/metadata.db");
-        std::fs::copy(fixture, directory.path().join("metadata.db")).unwrap();
-        let db_path = get_db_path(directory.path().to_str().unwrap()).unwrap();
-        (directory, Library::new(db_path).unwrap())
+        let library = Library::create_library_at(directory.path().to_str().unwrap()).unwrap();
+        (directory, library)
     }
 
     async fn loopback(source: Arc<dyn CatalogSource>) -> (String, tokio::task::JoinHandle<()>) {

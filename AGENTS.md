@@ -86,10 +86,11 @@ before each edit, since the app persists settings on change:
   `~/Calibre Library`, so that must not exist either.
 - Broken path: add a `libraryPaths` entry pointing at a nonexistent folder and
   make it active.
-- A valid throwaway library for adopt/recovery tests: copy
-  `crates/libcalibre/tests/fixtures/empty_library/metadata.db` into a temp
-  dir (schema version 26, so it also exercises the upgrade prompt), or create
-  one at the current version with `libcalibre::Library::create_library_at`.
+- A valid throwaway library for adopt/recovery tests: create one at the
+  current schema with `libcalibre::Library::create_library_at`, or build an
+  older one (schema 26, which also exercises the upgrade prompt) by running
+  `crates/libcalibre/tests/fixtures/calibre_schema_26.sql` against an empty
+  `metadata.db` and inserting a `library_id` row.
 
 Vite HMR keeps the first-run flow's in-memory state across frontend edits, so
 a running card can be restyled and re-screenshotted without replaying the

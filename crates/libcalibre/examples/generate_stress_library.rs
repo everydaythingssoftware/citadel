@@ -535,14 +535,6 @@ fn build_stub_epub() -> Vec<u8> {
 // Bootstrapping and pragmas
 // =============================================================================
 
-fn fixture_db_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join("empty_library")
-        .join("metadata.db")
-}
-
 #[derive(diesel::QueryableByName)]
 struct JournalModeRow {
     #[diesel(sql_type = diesel::sql_types::Text)]
@@ -602,15 +594,12 @@ fn run() -> Result<(), String> {
     std::fs::create_dir_all(&args.dest)
         .map_err(|e| format!("failed to create {}: {e}", args.dest.display()))?;
 
-    let fixture = fixture_db_path();
-    if !fixture.exists() {
-        return Err(format!(
-            "empty-library fixture not found at {}",
-            fixture.display()
-        ));
-    }
-    std::fs::copy(&fixture, args.dest.join("metadata.db"))
-        .map_err(|e| format!("failed to copy fixture metadata.db: {e}"))?;
+    drop(
+        libcalibre::Library::create_library_at(
+            args.dest.to_str().ok_or("destination path is not UTF-8")?,
+        )
+        .map_err(|e| format!("failed to create the library: {e}"))?,
+    );
 
     let dest_str = args
         .dest

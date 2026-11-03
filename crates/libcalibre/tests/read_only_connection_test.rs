@@ -20,14 +20,7 @@ fn read_only_open_preserves_database_and_handles_uri_characters() {
     let directory = temp.path().join("library #?% é");
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("metadata.db");
-    std::fs::copy(
-        concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/empty_library/metadata.db"
-        ),
-        &path,
-    )
-    .unwrap();
+    drop(Library::create_library_at(directory.to_str().unwrap()).unwrap());
     let before = std::fs::read(&path).unwrap();
     let mut permissions = std::fs::metadata(&path).unwrap().permissions();
     permissions.set_readonly(true);
