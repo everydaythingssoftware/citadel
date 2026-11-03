@@ -10,7 +10,11 @@ use axum::{
 };
 use citadel_core::store::CitadelStore;
 use citadel_opds::OpdsService;
-use citadel_server::{api, served::ServedLibrary, CalibreCatalogSource};
+use citadel_server::{
+    api,
+    served::{resolve, ServedLibrary},
+    CalibreCatalogSource,
+};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -235,7 +239,7 @@ async fn the_administrator_creates_a_library_and_the_server_serves_it() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(setup["library"], Value::Null);
-    assert!(setup["browseRoot"].as_str().unwrap().starts_with('/'));
+    assert!(std::path::Path::new(setup["browseRoot"].as_str().unwrap()).is_absolute());
 
     let books = directory.path().join("Books");
     let inspect = |path: String| {
@@ -344,7 +348,10 @@ async fn the_administrator_creates_a_library_and_the_server_serves_it() {
     assert_eq!(entries[1]["isLibrary"], false);
     assert_eq!(
         listing["parent"].as_str().unwrap(),
-        directory.path().parent().unwrap().to_string_lossy()
+        resolve(directory.path())
+            .parent()
+            .unwrap()
+            .to_string_lossy()
     );
     let (status, _, _) = request(
         &server.router,
@@ -465,7 +472,7 @@ async fn adopting_an_older_library_offers_and_runs_calibres_upgrade() {
     assert_eq!(upgrade["to"], libcalibre::SCHEMA_VERSION);
     let backup = std::path::PathBuf::from(upgrade["backup"].as_str().unwrap());
     assert!(backup.is_file());
-    assert_eq!(backup.parent().unwrap(), old);
+    assert_eq!(backup.parent().unwrap(), resolve(&old));
     let (_, _, setup) = request(
         &server.router,
         "GET",
@@ -583,6 +590,8 @@ async fn the_chosen_library_survives_restart_and_a_missing_folder_is_reported() 
     assert!(restarted.source.is_open());
     let info = restarted.served.info().unwrap();
     assert_eq!((info.available, info.name.as_str()), (true, "Books"));
+    // Windows won't rename a folder whose database is open.
+    drop(restarted);
 
     let moved = directory.path().join("Moved");
     std::fs::rename(&books, &moved).unwrap();
@@ -651,11 +660,12 @@ async fn the_chosen_library_survives_restart_and_a_missing_folder_is_reported() 
     assert_eq!(info["available"], true);
     assert_eq!(
         info["path"].as_str().unwrap(),
-        moved.canonicalize().unwrap().to_string_lossy()
+        resolve(&moved).to_string_lossy()
     );
     let (status, _, _) = request(&broken.router, "GET", "/api/library", None, Some(&cookie)).await;
     assert_eq!(status, StatusCode::OK);
 
+    broken.source.close();
     std::fs::rename(&moved, &books).unwrap();
     let (status, _, info) = request(
         &broken.router,

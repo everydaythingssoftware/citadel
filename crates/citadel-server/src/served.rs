@@ -276,7 +276,7 @@ impl ServedLibrary {
     pub fn browse_root(&self) -> PathBuf {
         dirs::home_dir()
             .filter(|home| home.is_absolute() && home.is_dir())
-            .unwrap_or_else(|| PathBuf::from("/"))
+            .unwrap_or_else(|| PathBuf::from(if cfg!(windows) { "C:\\" } else { "/" }))
     }
 
     /// Absolute, resolved through whatever part of it exists.
@@ -617,13 +617,15 @@ impl ServedLibrary {
     }
 }
 
-/// Canonicalizes as much of `path` as exists, so a folder that doesn't exist
-/// yet still resolves symlinks and `..` in its parents.
-fn resolve(path: &Path) -> PathBuf {
+/// A path as the server reports and stores it: canonicalized through
+/// whatever part of it exists, so a folder that doesn't exist yet still
+/// resolves symlinks and `..` in its parents (see
+/// [`citadel_core::store::canonical_path`] for the Windows prefix).
+pub fn resolve(path: &Path) -> PathBuf {
     let mut missing = Vec::new();
     let mut current = path.to_path_buf();
     loop {
-        if let Ok(canonical) = current.canonicalize() {
+        if let Ok(canonical) = citadel_core::store::canonical_path(&current) {
             return missing
                 .into_iter()
                 .rev()
