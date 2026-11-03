@@ -11,7 +11,7 @@ use citadel_core::{
     Actor, LibraryAuthor,
 };
 
-use super::onboarding::{self, CreateTargetBlocker};
+use libcalibre::{create_target_blocker, CreateTargetBlocker};
 
 /// Exact error strings `clb_cmd_create_library` returns when it refuses the
 /// target folder. The frontend matches on them to offer alternatives: "open
@@ -63,14 +63,11 @@ pub fn clb_cmd_add_book_genres(
 
 #[tauri::command]
 #[specta::specta]
-pub fn clb_cmd_create_library(
-    handle: tauri::AppHandle,
-    library_root: String,
-) -> Result<(), String> {
-    // Never unpack into a folder that already holds anything real: extraction
-    // into a populated folder silently interleaves library files with the
-    // user's data. A missing folder is fine — extract() creates it.
-    match onboarding::create_target_blocker(std::path::Path::new(&library_root)) {
+pub fn clb_cmd_create_library(library_root: String) -> Result<(), String> {
+    // Never create inside a folder that already holds anything real: library
+    // files would silently interleave with the user's data. A missing folder
+    // is fine; creation makes it.
+    match create_target_blocker(std::path::Path::new(&library_root)) {
         Ok(None) => {}
         Ok(Some(CreateTargetBlocker::AlreadyALibrary)) => {
             return Err(ERR_CREATE_LIBRARY_TARGET_IS_LIBRARY.to_string())
@@ -80,30 +77,9 @@ pub fn clb_cmd_create_library(
         }
         Err(e) => return Err(format!("Failed to inspect '{library_root}': {e}")),
     }
-
-    let resource_path = handle
-        .path()
-        .resolve(
-            "resources/empty_7_2_calibre_lib.zip",
-            tauri::path::BaseDirectory::Resource,
-        )
-        .map_err(|e| format!("Failed to find default empty library: {}", e))?;
-
-    let file = std::fs::File::open(resource_path)
-        .map_err(|e| format!("Failed to open default empty library: {}", e))?;
-
-    let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip archive: {}", e))?;
-    let result = archive.extract(&library_root).map_err(|e| e.to_string());
-
-    // Set a new UUID for the library
-    if let Some(db_path) = libcalibre::util::get_db_path(&library_root) {
-        if let Ok(mut lib) = libcalibre::Library::new(db_path) {
-            let _ = lib.randomize_library_uuid();
-        }
-    }
-
-    result
+    libcalibre::Library::create_library_at(&library_root)
+        .map(drop)
+        .map_err(|error| format!("Failed to create library: {error}"))
 }
 
 #[tauri::command]
@@ -397,21 +373,13 @@ pub fn clb_cmd_create_authors(
 #[cfg(test)]
 mod cover_download_tests {
     use super::*;
-    use std::{path::Path, sync::Arc, time::Duration};
+    use std::{sync::Arc, time::Duration};
     use tokio::sync::Notify;
 
     fn fixture() -> tempfile::TempDir {
         let directory = tempfile::tempdir().unwrap();
-        let archive = std::fs::File::open(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/empty_7_2_calibre_lib.zip"),
-        )
-        .unwrap();
-        zip::ZipArchive::new(archive)
-            .unwrap()
-            .extract(directory.path())
-            .unwrap();
-        let database = libcalibre::util::get_db_path(directory.path().to_str().unwrap()).unwrap();
-        let mut library = libcalibre::Library::new(database).unwrap();
+        let mut library =
+            libcalibre::Library::create_library_at(directory.path().to_str().unwrap()).unwrap();
         library
             .add_book(libcalibre::BookAdd {
                 title: "Cover Target".into(),

@@ -13,6 +13,7 @@ use crate::{
     operations,
     persistence::{establish_connection, establish_read_only_connection},
     queries::{authors as author_queries, book_files, books as book_queries},
+    schema_versions::{self, SchemaUpgrade},
     sorting,
     types::{AuthorId, BookId},
     util::ValidDbPath,
@@ -22,6 +23,7 @@ use crate::{
 pub struct Library {
     db_path: ValidDbPath,
     conn: SqliteConnection,
+    read_only: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -233,22 +235,49 @@ pub struct GenreSummary {
 }
 
 impl Library {
+    /// Opens a library for writing. Its schema must be at least
+    /// [`schema_versions::MINIMUM_SCHEMA_VERSION`]; nothing is upgraded here.
     pub fn new(db_path: ValidDbPath) -> Result<Self, CalibreError> {
-        let conn = establish_connection(&db_path.database_path)?;
-
-        Ok(Self { db_path, conn })
+        let mut conn = establish_connection(&db_path.database_path)?;
+        schema_versions::supported_version(&mut conn)?;
+        Ok(Self {
+            db_path,
+            conn,
+            read_only: false,
+        })
     }
 
     /// Open an existing library for queries without changing its journal mode or triggers.
     /// Mutation methods must not be used with this handle; SQLite rejects database writes.
     pub fn open_read_only(db_path: ValidDbPath) -> Result<Self, CalibreError> {
-        let conn = establish_read_only_connection(&db_path.database_path)?;
-        Ok(Self { db_path, conn })
+        let mut conn = establish_read_only_connection(&db_path.database_path)?;
+        schema_versions::supported_version(&mut conn)?;
+        Ok(Self {
+            db_path,
+            conn,
+            read_only: true,
+        })
     }
 
-    /// Create a new Calibre library in the provided folder.
-    pub fn create_library_at(_path: &str) -> Result<Library, CalibreError> {
-        todo!()
+    /// The database's Calibre schema version (`PRAGMA user_version`).
+    pub fn schema_version(&mut self) -> Result<i32, CalibreError> {
+        Ok(schema_versions::schema_version(&mut self.conn)?)
+    }
+
+    /// True when [`Library::upgrade`] has steps to run.
+    pub fn upgrade_available(&mut self) -> Result<bool, CalibreError> {
+        Ok(self.schema_version()? < schema_versions::SCHEMA_VERSION)
+    }
+
+    /// Moves the library to [`schema_versions::SCHEMA_VERSION`] with Calibre's
+    /// own upgrade steps, in one transaction, after writing a backup beside
+    /// `metadata.db`. `None` when it is already current. Refused on a
+    /// read-only handle before anything is written.
+    pub fn upgrade(&mut self) -> Result<Option<SchemaUpgrade>, CalibreError> {
+        if self.read_only {
+            return Err(CalibreError::ReadOnlyLibrary);
+        }
+        schema_versions::upgrade(&mut self.conn, Path::new(&self.db_path.database_path))
     }
 
     pub fn library_path(&self) -> &str {

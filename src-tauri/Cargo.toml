@@ -36,7 +36,6 @@ tauri-plugin-persisted-scope = { features = ["protocol-asset"] , version = "2" }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 urlencoding = "2.1.3"
 uuid = { version = "1.6.1", features = [ "v4", "fast-rng", ] }
-zip = "0.6"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-shell = "2"

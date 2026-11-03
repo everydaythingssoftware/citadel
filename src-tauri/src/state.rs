@@ -282,13 +282,7 @@ mod tests {
 
     fn extract_empty_library() -> tempfile::TempDir {
         let directory = tempfile::tempdir().unwrap();
-        let zip_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/empty_7_2_calibre_lib.zip");
-        let file = std::fs::File::open(zip_path).unwrap();
-        zip::ZipArchive::new(file)
-            .unwrap()
-            .extract(directory.path())
-            .unwrap();
+        libcalibre::Library::create_library_at(directory.path().to_str().unwrap()).unwrap();
         directory
     }
 

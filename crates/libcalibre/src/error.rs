@@ -66,6 +66,18 @@ pub enum CalibreError {
     #[error("Library not initialized")]
     LibraryNotInitialized,
 
+    /// The database's Calibre schema is older than this build opens.
+    #[error("This library's database is schema version {version}, older than Citadel supports ({minimum}); open it in Calibre once to upgrade it")]
+    UnsupportedSchema { version: i32, minimum: i32 },
+
+    /// The folder already holds a `metadata.db`.
+    #[error("A Calibre library already exists at {0}")]
+    LibraryAlreadyExists(PathBuf),
+
+    /// The handle was opened read-only, so the operation can't write.
+    #[error("The library is open read-only")]
+    ReadOnlyLibrary,
+
     #[error("Not implemented")]
     NotImplemented,
 

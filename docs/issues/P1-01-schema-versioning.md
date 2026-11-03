@@ -32,10 +32,20 @@ Ensure that these migrations are appropriately logged, however possible.
 
 ## Current State
 
-- ❌ No schema version tracking
-- ❌ No migration system
-- ⚠️ Assumes current schema always present
-- ⚠️ P0-01 tries to register triggers without checking version
+Progress (CDL-66, 2026-11-03): `crates/libcalibre/src/schema_versions.rs`
+reads `PRAGMA user_version`, creates new libraries at version 28 from a ported
+copy of Calibre's `metadata_sqlite.sql`, ports `upgrade_version_25`, `_26` and
+`_27`, and refuses libraries older than 25 with advice to open them in Calibre
+once. `Library::upgrade` runs the pending steps in one exclusive transaction
+after writing `metadata.db.backup-<version>-<unix time>` beside the database
+(newest three kept); nothing upgrades on open. Still open: a libcalibre
+version separate from Calibre's (to live on the `libraries` row in
+`citadel.db`, not inside `metadata.db`), older migrations, and logging.
+
+- ✅ Schema version read on open; minimum enforced
+- ✅ Forward migrations 25→28 on explicit request, with backup
+- ❌ No libcalibre-specific version tracking
+- ⚠️ P0-01 registers triggers without checking version
 
 ---
 
