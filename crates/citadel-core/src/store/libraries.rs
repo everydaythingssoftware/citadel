@@ -32,8 +32,7 @@ impl CitadelStore {
         if id.trim().is_empty() {
             return Err(StoreError::Invalid("Library has no Calibre UUID.".into()));
         }
-        let path = path
-            .canonicalize()
+        let path = canonical_path(path)
             .map_err(|error| {
                 StoreError::Invalid(format!("libraryPath {}: {error}", path.display()))
             })?
@@ -120,6 +119,20 @@ impl CitadelStore {
             })
             .collect())
     }
+}
+
+/// `canonicalize` without the `\\?\` prefix Windows adds to plain drive
+/// paths, which people never type and which SQLite doesn't need; UNC paths
+/// keep theirs.
+pub fn canonical_path(path: &Path) -> std::io::Result<std::path::PathBuf> {
+    let canonical = path.canonicalize()?;
+    let text = canonical.to_string_lossy();
+    Ok(match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.len() >= 2 && rest.as_bytes()[1] == b':' => {
+            std::path::PathBuf::from(rest)
+        }
+        _ => canonical,
+    })
 }
 
 fn library(connection: &mut SqliteConnection, id: &str) -> Result<RegisteredLibrary> {

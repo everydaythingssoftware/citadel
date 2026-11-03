@@ -25,7 +25,7 @@ mod users;
 
 pub use auth::{AppCredential, SESSION_TTL_SECONDS};
 pub use credentials::{CredentialSecret, ProviderCredential};
-pub use libraries::RegisteredLibrary;
+pub use libraries::{canonical_path, RegisteredLibrary};
 pub use recovery::Backup;
 pub use users::{Role, User, UserSummary};
 
