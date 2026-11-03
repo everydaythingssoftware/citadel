@@ -4,7 +4,7 @@ import type { Options } from "../library";
 const nativeInvoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: nativeInvoke }));
 
-import { webLibraryCatalog } from "./web";
+import { createWebLibrarySetup, webLibraryCatalog } from "./web";
 
 const remote = (url = "https://citadel.test"): Options => ({
 	libraryType: "calibre",
@@ -107,5 +107,94 @@ describe("browser library catalog", () => {
 			}),
 		).rejects.toThrow("Local library management is unavailable in the browser");
 		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("reaches the setup routes with the session and passes the server's words through", async () => {
+		const requests: Request[] = [];
+		const bodies: unknown[] = [];
+		const served = {
+			id: "f0b2afca",
+			name: "Shelf",
+			path: "/srv/books",
+			readOnly: false,
+			available: true,
+			problem: null,
+			schemaVersion: 28,
+			upgradeAvailable: false,
+		};
+		const inspection = {
+			path: "/srv/books",
+			name: "books",
+			status: "missing",
+			library: null,
+			message: null,
+		};
+		const listing = {
+			path: "/srv",
+			parent: "/",
+			entries: [{ name: "books", path: "/srv/books", isLibrary: false }],
+		};
+		const responses = [
+			json({ library: null, browseRoot: "/home/citadel" }),
+			json(inspection),
+			json(listing),
+			json(listing),
+			json(served),
+			json(
+				{ code: "conflict", message: "This server already serves a library" },
+				409,
+			),
+			json(served),
+			json({ from: 26, to: 28, backup: "/srv/books/metadata.db.backup-26-1" }),
+		];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (request: Request) => {
+				requests.push(request);
+				if (request.method === "POST" && request.headers.get("content-type"))
+					bodies.push(await request.json());
+				return responses.shift();
+			}),
+		);
+		const setup = createWebLibrarySetup("https://citadel.test");
+		expect(await setup.status()).toEqual({
+			library: null,
+			browseRoot: "/home/citadel",
+		});
+		expect(await setup.inspect("/srv/books")).toEqual(inspection);
+		expect(bodies[0]).toEqual({ path: "/srv/books" });
+		expect(await setup.listDirectory("/srv")).toEqual(listing);
+		expect(requests[2]?.url).toBe(
+			"https://citadel.test/api/setup/directories?path=%2Fsrv",
+		);
+		await setup.listDirectory();
+		expect(requests[3]?.url).toBe("https://citadel.test/api/setup/directories");
+		expect(
+			await setup.choose({
+				mode: "create",
+				path: "/srv/books",
+				name: "Shelf",
+				upgrade: false,
+			}),
+		).toEqual(served);
+		expect(bodies[1]).toEqual({
+			mode: "create",
+			path: "/srv/books",
+			name: "Shelf",
+			upgrade: false,
+		});
+		await expect(
+			setup.choose({
+				mode: "adopt",
+				path: "/srv/other",
+				name: null,
+				upgrade: false,
+			}),
+		).rejects.toThrow("This server already serves a library");
+		expect(await setup.reopen()).toEqual(served);
+		expect((await setup.upgrade()).to).toBe(28);
+		expect(
+			requests.every((request) => request.credentials === "same-origin"),
+		).toBe(true);
 	});
 });

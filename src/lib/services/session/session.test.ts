@@ -9,6 +9,7 @@ const json = (data: unknown, status = 200) =>
 const session = {
 	user: { id: "user-1", username: "reader" },
 	libraryAccess: true,
+	administrator: false,
 };
 
 afterEach(() => {
@@ -82,5 +83,64 @@ describe("browser session", () => {
 		await expect(
 			createBrowserSession("https://citadel.test").current(),
 		).rejects.toThrow("Busy");
+	});
+
+	it("reads the public setup status and creates the administrator with the code", async () => {
+		const requests: Request[] = [];
+		const bodies: unknown[] = [];
+		const administrator = {
+			user: { id: "user-2", username: "phil" },
+			libraryAccess: false,
+			administrator: true,
+		};
+		const responses = [
+			json({
+				administratorExists: false,
+				libraryConfigured: false,
+				libraryAvailable: false,
+			}),
+			json(
+				{
+					code: "unauthorized",
+					message:
+						"Incorrect setup code; it is printed where the server started",
+				},
+				401,
+			),
+			json(administrator),
+		];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (request: Request) => {
+				requests.push(request);
+				if (request.method === "POST") bodies.push(await request.json());
+				return responses.shift();
+			}),
+		);
+		const service = createBrowserSession("https://citadel.test");
+		expect(await service.setupStatus()).toEqual({
+			administratorExists: false,
+			libraryConfigured: false,
+			libraryAvailable: false,
+		});
+		expect(requests[0]?.url).toBe("https://citadel.test/api/setup");
+		await expect(
+			service.createAdministrator("WRONG", "phil", "a long password"),
+		).rejects.toThrow("Incorrect setup code");
+		expect(
+			await service.createAdministrator(
+				"K7QD-M2XV-H9RW",
+				"phil",
+				"a long password",
+			),
+		).toEqual(administrator);
+		expect(requests[2]?.url).toBe(
+			"https://citadel.test/api/setup/administrator",
+		);
+		expect(bodies[1]).toEqual({
+			setupCode: "K7QD-M2XV-H9RW",
+			username: "phil",
+			password: "a long password",
+		});
 	});
 });

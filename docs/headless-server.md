@@ -361,4 +361,4 @@ Browser startup uses the server’s configured library and ignores desktop libra
 
 For frontend development, set `publicUrl` to the Vite origin (`http://localhost:1420`) and run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 
-OPDS acquisition routes remain available. Editing book metadata in the browser remains follow-up work (CDL-57), as does the browser's own setup flow over the setup routes above (the last slice of CDL-39); until it lands, use the routes or the command line.
+OPDS acquisition routes remain available. The browser's first run uses the setup routes above: a fresh server shows the setup-code form instead of sign-in, the administrator then chooses the library on a card like the desktop's first run (typed path or folder browser, with Calibre's format upgrade offered for older libraries), and a library whose folder went missing shows the administrator a card to retry or point at its new location while readers see a notice.
