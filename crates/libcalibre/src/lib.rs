@@ -1,5 +1,6 @@
 mod assets;
 pub mod book_file;
+mod create;
 mod custom_columns;
 mod entities;
 pub mod error;
@@ -10,12 +11,14 @@ mod operations;
 pub mod persistence;
 mod queries;
 pub(crate) mod schema;
+pub mod schema_versions;
 pub mod sorting;
 pub mod stats;
 pub mod types;
 pub mod util;
 
 // Re-export the main API types
+pub use create::{create_target_blocker, CreateTargetBlocker};
 pub use custom_columns::{CustomColumn, CustomColumnKind, CustomColumnSpec, CustomValue};
 pub use error::CalibreError;
 pub use library::{
@@ -24,6 +27,7 @@ pub use library::{
     CatalogFacetSummary, GenreSummary, Library, PublisherSummary, ResolvedBookAsset, SeriesSummary,
     TagSummary,
 };
+pub use schema_versions::{SchemaUpgrade, MINIMUM_SCHEMA_VERSION, SCHEMA_VERSION};
 pub use stats::{library_stats, LibraryStats};
 pub use types::{AuthorId, BookFileId, BookId};
 

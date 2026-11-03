@@ -226,14 +226,10 @@ pub fn clb_query_default_new_library_path(handle: tauri::AppHandle) -> Result<St
 mod tests {
     use super::*;
 
-    /// The same artifact `clb_cmd_create_library` extracts, so the stats peek
-    /// is tested against a real freshly-created library.
+    /// The same creation `clb_cmd_create_library` runs, so the stats peek is
+    /// tested against a real freshly-created library.
     fn extract_empty_library(target: &Path) {
-        let zip_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/empty_7_2_calibre_lib.zip");
-        let file = std::fs::File::open(zip_path).unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-        archive.extract(target).unwrap();
+        libcalibre::Library::create_library_at(target.to_str().unwrap()).unwrap();
     }
 
     #[test]
