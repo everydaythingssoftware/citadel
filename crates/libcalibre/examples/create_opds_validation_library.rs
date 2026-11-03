@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
 use chrono::NaiveDate;
-use libcalibre::{util::get_db_path, BookAdd, BookUpdate, Library};
+use libcalibre::{BookAdd, BookUpdate, Library};
 
 const ACQUIRABLE_BOOKS: usize = 105;
 
@@ -38,13 +38,8 @@ fn create_validation_library(
         return Err("SOURCE_EPUB must be a regular file".into());
     }
 
-    fs::create_dir_all(&target)?;
-    let fixture =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/empty_library/metadata.db");
-    fs::copy(fixture, target.join("metadata.db"))?;
-    let database = get_db_path(target.to_str().ok_or("target path is not UTF-8")?)
-        .ok_or("target is not a Calibre library")?;
-    let mut library = Library::new(database)?;
+    let mut library =
+        Library::create_library_at(target.to_str().ok_or("target path is not UTF-8")?)?;
     let large_source = target.join(".validation-large.txt");
     let coverless_source = target.join(".validation-coverless.txt");
     fs::write(&large_source, vec![b'L'; 8 * 1024 * 1024])?;

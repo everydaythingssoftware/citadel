@@ -2,7 +2,9 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use common::{setup_with_library, standard_test_book};
+use common::{
+    setup_with_library, setup_with_schema_26_library, standard_test_book, write_schema_26_library,
+};
 use libcalibre::{
     error::CalibreError, schema_versions, util::get_db_path, Library, MINIMUM_SCHEMA_VERSION,
     SCHEMA_VERSION,
@@ -11,15 +13,8 @@ use rusqlite::Connection;
 
 fn fixture_copy() -> (tempfile::TempDir, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
+    write_schema_26_library(temp.path());
     let database = temp.path().join("metadata.db");
-    std::fs::copy(
-        concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/empty_library/metadata.db"
-        ),
-        &database,
-    )
-    .unwrap();
     (temp, database)
 }
 
@@ -85,8 +80,8 @@ fn create_library_at_makes_a_current_library_with_its_own_uuid() {
 }
 
 #[test]
-fn the_fixture_upgrades_from_26_to_28_with_a_backup_beside_it() {
-    let (temp, mut library) = setup_with_library();
+fn a_calibre_7_2_library_upgrades_from_26_to_28_with_a_backup_beside_it() {
+    let (temp, mut library) = setup_with_schema_26_library();
     let database = temp.path().join("metadata.db");
     let book = library.add_book(standard_test_book()).unwrap();
     assert_eq!(library.schema_version().unwrap(), 26);
@@ -120,6 +115,7 @@ fn the_fixture_upgrades_from_26_to_28_with_a_backup_beside_it() {
     assert_eq!(needs_scan, 1, "existing books are queued for a page count");
     assert!(columns(&database, "book_storage").contains(&"user_type".to_string()));
     for dropped in ["flags", "isbn", "lccn"] {
+        assert!(columns(&upgrade.backup, "books").contains(&dropped.to_string()));
         assert!(!columns(&database, "books").contains(&dropped.to_string()));
     }
 
@@ -139,13 +135,11 @@ fn a_version_25_library_gains_link_columns() {
     {
         let conn = Connection::open(&database).unwrap();
         conn.execute_batch(
-            "DROP VIEW meta;
-             ALTER TABLE tags DROP COLUMN link;
+            "ALTER TABLE tags DROP COLUMN link;
              ALTER TABLE series DROP COLUMN link;
              ALTER TABLE publishers DROP COLUMN link;
              ALTER TABLE languages DROP COLUMN link;
              ALTER TABLE ratings DROP COLUMN link;
-             CREATE VIEW meta AS SELECT id, title FROM books;
              INSERT INTO custom_columns (id, label, name, datatype, normalized)
                  VALUES (7, 'shelf', 'Shelf', 'text', 1);
              CREATE TABLE custom_column_7 (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
@@ -202,7 +196,7 @@ fn libraries_older_than_the_minimum_are_refused_with_calibre_advice() {
 
 #[test]
 fn only_the_newest_three_backups_are_kept() {
-    let (temp, mut library) = setup_with_library();
+    let (temp, mut library) = setup_with_schema_26_library();
     let database = temp.path().join("metadata.db");
     let mut taken = Vec::new();
     for _ in 0..4 {
