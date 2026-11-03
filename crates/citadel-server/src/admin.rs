@@ -1,39 +1,48 @@
 //! Operator commands against `citadel.db`. They run in their own process and
 //! never need the server stopped: a running server picks up OPDS changes
-//! within seconds and checks sessions and grants on every request.
+//! within seconds and checks sessions and grants on every request. The
+//! browser does the same jobs for administrators; the CLI remains for
+//! scripts and for getting back in when nobody can sign in.
 use std::io::BufRead;
 
 use citadel_core::{
     password::generate_sign_in_password,
-    store::{CitadelStore, RegisteredLibrary},
+    store::{CitadelStore, RegisteredLibrary, Role},
 };
+use libcalibre::Library;
 
 use crate::ServerConfig;
 
 pub const USAGE: &str = "commands:
   users list
-  users add <name> [--password-stdin] [--no-grant]
+  users add <name> [--password-stdin] [--no-grant] [--admin]
   users remove <name>
   users reset-password <name> [--password-stdin]
   users app-password <name> [--rotate]
+  users promote <name>
+  users demote <name>
   grant <name> [<library-id>]
   revoke <name> [<library-id>]
   libraries list
+  libraries add <absolute path>
 
 Without a command, the server starts. Generated passwords are printed once;
---password-stdin reads the sign-in password from the first line of stdin.";
+--password-stdin reads the sign-in password from the first line of stdin.
+Administrators set the server up in the browser; `users promote` is the way
+back in when none can sign in.";
 
 /// Runs one command and returns what to print.
 pub fn run(config: &ServerConfig, args: &[String], stdin: impl BufRead) -> Result<String, String> {
-    crate::validate_config(config)?;
-    let source = crate::CalibreCatalogSource::open(&config.library_path)?;
-    let (accounts, library) = crate::open_accounts(config, &source)?;
-    execute(&accounts, &library, args, stdin)
+    let (_, accounts) = crate::open_accounts(config)?;
+    let library = accounts
+        .active_library()
+        .map_err(|error| error.to_string())?;
+    execute(&accounts, library.as_ref(), args, stdin)
 }
 
 fn execute(
     accounts: &CitadelStore,
-    library: &RegisteredLibrary,
+    library: Option<&RegisteredLibrary>,
     args: &[String],
     stdin: impl BufRead,
 ) -> Result<String, String> {
@@ -46,7 +55,7 @@ fn execute(
         .filter(|arg| !arg.starts_with("--"))
         .collect();
     let known_flags: &[&str] = match positional.as_slice() {
-        ["users", "add", _] => &["--password-stdin", "--no-grant"],
+        ["users", "add", _] => &["--password-stdin", "--no-grant", "--admin"],
         ["users", "reset-password", _] => &["--password-stdin"],
         ["users", "app-password", _] => &["--rotate"],
         _ => &[],
@@ -64,6 +73,12 @@ fn execute(
             Ok((generate_sign_in_password(), true))
         }
     };
+    let served = || {
+        library.map(|library| library.id.as_str()).ok_or_else(|| {
+            "No library is set up yet. Set one up in the browser or run `libraries add <path>`."
+                .to_string()
+        })
+    };
 
     match positional.as_slice() {
         ["users", "list"] => {
@@ -74,30 +89,51 @@ fn execute(
             Ok(users
                 .iter()
                 .map(|summary| {
-                    let access = if summary.library_ids.contains(&library.id) {
-                        "has access"
-                    } else {
-                        "no access"
+                    let access = match library {
+                        Some(library) if summary.library_ids.contains(&library.id) => "has access",
+                        Some(_) => "no access",
+                        None => "no library yet",
                     };
-                    format!("{}\t{}\t{access}", summary.user.username, summary.user.id)
+                    format!(
+                        "{}\t{}\t{}\t{access}",
+                        summary.user.username,
+                        summary.user.id,
+                        summary.user.role.as_str()
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join("\n"))
         }
         ["users", "add", name] => {
             let (password, generated) = password(stdin.lines())?;
-            let user = accounts.create_user(name, &password).map_err(error)?;
-            let access = if flag("--no-grant") {
-                "No library access yet; run `grant` to add it.".to_string()
+            let role = if flag("--admin") {
+                Role::Administrator
             } else {
-                accounts.grant(&user.username, &library.id).map_err(error)?;
-                format!("Granted access to library {}.", library.id)
+                Role::Reader
+            };
+            let user = accounts
+                .create_user_with_role(name, &password, role)
+                .map_err(error)?;
+            let access = match (flag("--no-grant"), library) {
+                (true, _) => "No library access yet; run `grant` to add it.".to_string(),
+                (false, Some(library)) => {
+                    accounts.grant(&user.username, &library.id).map_err(error)?;
+                    format!("Granted access to library {}.", library.id)
+                }
+                (false, None) => {
+                    "No library is set up yet; access is granted when one is.".to_string()
+                }
             };
             let app = accounts
                 .rotate_app_password(&user.username)
                 .map_err(error)?;
             let mut output = vec![
-                format!("Created user {} ({}).", user.username, user.id),
+                format!(
+                    "Created {} {} ({}).",
+                    user.role.as_str(),
+                    user.username,
+                    user.id
+                ),
                 access,
             ];
             if generated {
@@ -136,23 +172,80 @@ fn execute(
                 credential.username, credential.password
             ))
         }
+        ["users", "promote", name] => {
+            let user = accounts
+                .set_role(name, Role::Administrator)
+                .map_err(error)?;
+            Ok(format!("{} is now an administrator.", user.username))
+        }
+        ["users", "demote", name] => {
+            let user = accounts.set_role(name, Role::Reader).map_err(error)?;
+            Ok(format!("{} is now a reader.", user.username))
+        }
         ["grant", name, rest @ ..] if rest.len() <= 1 => {
-            let library_id = rest.first().copied().unwrap_or(&library.id);
+            let library_id = match rest.first() {
+                Some(id) => id,
+                None => served()?,
+            };
             accounts.grant(name, library_id).map_err(error)?;
             Ok(format!("{name} can now access library {library_id}."))
         }
         ["revoke", name, rest @ ..] if rest.len() <= 1 => {
-            let library_id = rest.first().copied().unwrap_or(&library.id);
+            let library_id = match rest.first() {
+                Some(id) => id,
+                None => served()?,
+            };
             accounts.revoke(name, library_id).map_err(error)?;
             Ok(format!("{name} can no longer access library {library_id}."))
         }
-        ["libraries", "list"] => Ok(accounts
-            .libraries()
-            .map_err(error)?
-            .iter()
-            .map(|registered| format!("{}\t{}", registered.id, registered.path))
-            .collect::<Vec<_>>()
-            .join("\n")),
+        ["libraries", "list"] => {
+            let libraries = accounts.libraries().map_err(error)?;
+            if libraries.is_empty() {
+                return Ok(
+                    "No libraries. Set one up in the browser or run `libraries add <path>`.".into(),
+                );
+            }
+            Ok(libraries
+                .iter()
+                .map(|registered| {
+                    let served = if library.is_some_and(|served| served.id == registered.id) {
+                        "\tserved"
+                    } else {
+                        ""
+                    };
+                    format!(
+                        "{}\t{}\t{}{served}",
+                        registered.id, registered.display_name, registered.path
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"))
+        }
+        ["libraries", "add", path] => {
+            if let Some(library) = library {
+                return Err(format!(
+                    "This server already serves {} at {}; one library at a time for now.",
+                    library.display_name, library.path
+                ));
+            }
+            let root = std::path::Path::new(path);
+            if !root.is_absolute() {
+                return Err("libraries add needs an absolute path".into());
+            }
+            let database = libcalibre::util::get_db_path(path)
+                .ok_or_else(|| format!("No Calibre library at {path} (no metadata.db inside)."))?;
+            let id = Library::open_read_only(database)
+                .and_then(|mut library| library.library_uuid())
+                .map_err(|error| format!("Could not read the library at {path}: {error}"))?;
+            let registered = accounts
+                .register_library(&id, root, None)
+                .and_then(|library| accounts.set_active_library(&library.id))
+                .map_err(error)?;
+            Ok(format!(
+                "Serving {} ({}) from {}. Give readers access with `grant <name>`.",
+                registered.display_name, registered.id, registered.path
+            ))
+        }
         _ => Err(format!("unknown command\n\n{USAGE}")),
     }
 }
@@ -186,7 +279,7 @@ mod tests {
 
     fn command(
         accounts: &CitadelStore,
-        library: &RegisteredLibrary,
+        library: Option<&RegisteredLibrary>,
         line: &str,
         stdin: &str,
     ) -> Result<String, String> {
@@ -195,9 +288,9 @@ mod tests {
     }
 
     #[test]
-    fn add_grants_the_configured_library_and_prints_generated_passwords_once() {
+    fn add_grants_the_served_library_and_prints_generated_passwords_once() {
         let (_directory, accounts, library) = fixture();
-        let output = command(&accounts, &library, "users add alice", "").unwrap();
+        let output = command(&accounts, Some(&library), "users add alice", "").unwrap();
         let password = output
             .lines()
             .find_map(|line| line.strip_prefix("Sign-in password: "))
@@ -206,11 +299,13 @@ mod tests {
             .verify_password("alice", password)
             .unwrap()
             .unwrap();
+        assert_eq!(alice.role, Role::Reader);
         assert!(accounts.can_access(&alice.id, &library.id).unwrap());
         let app = accounts.app_password("alice").unwrap().unwrap();
         assert!(output.contains(&app.password));
-        let listed = command(&accounts, &library, "users list", "").unwrap();
+        let listed = command(&accounts, Some(&library), "users list", "").unwrap();
         assert!(listed.contains("alice") && listed.contains("has access"));
+        assert!(listed.contains("reader"));
         assert!(!listed.contains(password));
     }
 
@@ -219,7 +314,7 @@ mod tests {
         let (_directory, accounts, library) = fixture();
         let output = command(
             &accounts,
-            &library,
+            Some(&library),
             "users add kid --password-stdin --no-grant",
             "chosen password\n",
         )
@@ -231,17 +326,17 @@ mod tests {
             .unwrap();
         assert!(!accounts.can_access(&kid.id, &library.id).unwrap());
         let session = accounts.create_session(&kid.id).unwrap();
-        command(&accounts, &library, "users reset-password kid", "").unwrap();
+        command(&accounts, Some(&library), "users reset-password kid", "").unwrap();
         assert!(accounts.session_user(&session).unwrap().is_none());
         assert!(accounts
             .verify_password("kid", "chosen password")
             .unwrap()
             .is_none());
-        command(&accounts, &library, "grant kid", "").unwrap();
+        command(&accounts, Some(&library), "grant kid", "").unwrap();
         assert!(accounts.can_access(&kid.id, &library.id).unwrap());
         command(
             &accounts,
-            &library,
+            Some(&library),
             &format!("revoke kid {}", library.id),
             "",
         )
@@ -252,15 +347,89 @@ mod tests {
     #[test]
     fn app_passwords_reveal_and_rotate() {
         let (_directory, accounts, library) = fixture();
-        command(&accounts, &library, "users add alice", "").unwrap();
-        let revealed = command(&accounts, &library, "users app-password alice", "").unwrap();
+        command(&accounts, Some(&library), "users add alice", "").unwrap();
+        let revealed = command(&accounts, Some(&library), "users app-password alice", "").unwrap();
         assert_eq!(
             revealed,
-            command(&accounts, &library, "users app-password alice", "").unwrap()
+            command(&accounts, Some(&library), "users app-password alice", "").unwrap()
         );
-        let rotated =
-            command(&accounts, &library, "users app-password alice --rotate", "").unwrap();
+        let rotated = command(
+            &accounts,
+            Some(&library),
+            "users app-password alice --rotate",
+            "",
+        )
+        .unwrap();
         assert_ne!(revealed, rotated);
+    }
+
+    #[test]
+    fn administrators_are_made_promoted_and_demoted() {
+        let (_directory, accounts, _) = fixture();
+        assert!(!accounts.administrator_exists().unwrap());
+        let output = command(&accounts, None, "users add root --admin", "").unwrap();
+        assert!(output.starts_with("Created administrator root"), "{output}");
+        assert!(output.contains("No library is set up yet"), "{output}");
+        assert!(accounts.administrator_exists().unwrap());
+        command(&accounts, None, "users add alice", "").unwrap();
+        assert!(command(&accounts, None, "users promote alice", "")
+            .unwrap()
+            .contains("administrator"));
+        assert!(accounts.user("alice").unwrap().is_administrator());
+        command(&accounts, None, "users demote alice", "").unwrap();
+        assert!(!accounts.user("alice").unwrap().is_administrator());
+        assert!(command(&accounts, None, "users promote nobody", "").is_err());
+        let listed = command(&accounts, None, "users list", "").unwrap();
+        assert!(listed.contains("no library yet"), "{listed}");
+        assert!(command(&accounts, None, "grant alice", "")
+            .unwrap_err()
+            .contains("libraries add"));
+    }
+
+    #[test]
+    fn libraries_add_registers_and_serves_one_library() {
+        let directory = tempfile::tempdir().unwrap();
+        let accounts = CitadelStore::open(&directory.path().join("citadel.db")).unwrap();
+        let root = directory.path().join("Books");
+        let mut created = Library::create_library_at(root.to_str().unwrap()).unwrap();
+        let id = created.library_uuid().unwrap();
+        drop(created);
+        assert!(command(&accounts, None, "libraries list", "")
+            .unwrap()
+            .contains("No libraries"));
+        assert!(command(&accounts, None, "libraries add relative/path", "").is_err());
+        assert!(command(
+            &accounts,
+            None,
+            &format!("libraries add {}", directory.path().display()),
+            ""
+        )
+        .unwrap_err()
+        .contains("No Calibre library"));
+        let output = command(
+            &accounts,
+            None,
+            &format!("libraries add {}", root.display()),
+            "",
+        )
+        .unwrap();
+        assert!(output.contains(&id), "{output}");
+        let served = accounts.active_library().unwrap().unwrap();
+        assert_eq!(served.id, id);
+        let listed = command(&accounts, Some(&served), "libraries list", "").unwrap();
+        assert!(listed.contains("served"), "{listed}");
+        assert!(command(
+            &accounts,
+            Some(&served),
+            &format!("libraries add {}", root.display()),
+            ""
+        )
+        .unwrap_err()
+        .contains("already serves"));
+        command(&accounts, Some(&served), "users add alice", "").unwrap();
+        assert!(accounts
+            .can_access(&accounts.user("alice").unwrap().id, &id)
+            .unwrap());
     }
 
     #[test]
@@ -273,11 +442,21 @@ mod tests {
             "users remove nobody",
             "grant nobody",
             "frobnicate",
+            "libraries add",
         ] {
-            assert!(command(&accounts, &library, line, "").is_err(), "{line}");
+            assert!(
+                command(&accounts, Some(&library), line, "").is_err(),
+                "{line}"
+            );
         }
-        assert!(command(&accounts, &library, "users add alice --password-stdin", "").is_err());
-        assert!(command(&accounts, &library, "libraries list", "")
+        assert!(command(
+            &accounts,
+            Some(&library),
+            "users add alice --password-stdin",
+            ""
+        )
+        .is_err());
+        assert!(command(&accounts, Some(&library), "libraries list", "")
             .unwrap()
             .contains(&library.id));
     }

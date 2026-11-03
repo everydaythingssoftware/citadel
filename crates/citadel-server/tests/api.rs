@@ -9,8 +9,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use citadel_core::store::CitadelStore;
 use citadel_core::{contracts::LibraryBookQuery, library::LibraryService, HttpUrlBuilder};
 use citadel_opds::{
-    credential_store::OpdsCredentialSecret, CatalogSource, OpdsBindTarget, OpdsService,
-    OpdsStartConfig,
+    credential_store::OpdsCredentialSecret, OpdsBindTarget, OpdsService, OpdsStartConfig,
 };
 use citadel_server::{api, CalibreCatalogSource};
 use libcalibre::{BookAdd, Library};
@@ -19,26 +18,34 @@ use tower::ServiceExt;
 
 const PUBLIC_URL: &str = "https://books.example.com";
 
-fn access(directory: &std::path::Path) -> (Arc<CitadelStore>, api::ApiAccess) {
-    let accounts = Arc::new(CitadelStore::open(&directory.join("citadel.db")).unwrap());
-    let calibre_id = CalibreCatalogSource::open(directory)
-        .unwrap()
-        .active_library_id()
-        .unwrap();
-    let library = accounts
-        .register_library(&calibre_id, directory, None)
-        .unwrap();
+fn accounts(directory: &std::path::Path) -> Arc<CitadelStore> {
+    Arc::new(CitadelStore::open(&directory.join("citadel.db")).unwrap())
+}
+
+/// Serves the library `source` already has open and gives "reader" access.
+fn access(
+    directory: &std::path::Path,
+    source: &Arc<CalibreCatalogSource>,
+) -> (Arc<CitadelStore>, api::ApiAccess) {
+    let accounts = accounts(directory);
+    let served = Arc::new(citadel_server::served::ServedLibrary::new(
+        accounts.clone(),
+        source.clone(),
+        directory.join("state"),
+    ));
+    let library = served.register_open().unwrap();
     if accounts.user("reader").is_err() {
         accounts.create_user("reader", "secret-password").unwrap();
         accounts.grant("reader", &library.id).unwrap();
     }
     let access = api::ApiAccess {
         accounts: accounts.clone(),
-        library_id: library.id,
+        served,
         public_url: api::PublicUrl::parse(PUBLIC_URL).unwrap(),
         secrets: Arc::new(
             citadel_core::vault::Vault::open_or_create(&directory.join("state/secrets")).unwrap(),
         ),
+        setup_code: None,
     };
     (accounts, access)
 }
@@ -171,7 +178,7 @@ async fn fixture_with_metadata(
     library.set_book_cover(book.id, cover_bytes).unwrap();
     drop(library);
     let source = Arc::new(open(directory.path()).unwrap());
-    let (_, access) = access(directory.path());
+    let (_, access) = access(directory.path(), &source);
     let service = OpdsService::with_ephemeral_credentials(
         source.clone(),
         vec![OpdsCredentialSecret {
@@ -589,7 +596,7 @@ async fn browser_hosting_serves_the_frontend_publicly_and_only_falls_back_for_ht
     std::fs::write(web.join("index.html"), "<html>Citadel frontend</html>").unwrap();
     std::fs::write(web.join("assets/app.js"), "window.citadel = true;").unwrap();
     let source = Arc::new(CalibreCatalogSource::open(directory.path()).unwrap());
-    let (_, access) = access(directory.path());
+    let (_, access) = access(directory.path(), &source);
     let staging = api::Staging::open(
         directory.path().join("state/uploads"),
         api::UploadConfig::default(),
@@ -875,8 +882,11 @@ async fn browser_sessions_sign_in_report_the_user_and_sign_out() {
     assert_eq!(session["libraryAccess"], true);
     let (_, _, library) =
         request(&router, "GET", "/api/library", String::new(), Some(&cookie)).await;
-    let (accounts, access) = access(directory.path());
-    assert_eq!(library["id"], access.library_id);
+    let accounts = accounts(directory.path());
+    assert_eq!(
+        library["id"],
+        accounts.active_library().unwrap().unwrap().id
+    );
 
     let (status, _, error) = request(&router, "GET", "/api/session", String::new(), None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -913,7 +923,7 @@ async fn browser_sessions_sign_in_report_the_user_and_sign_out() {
 #[tokio::test]
 async fn users_without_a_grant_cannot_see_the_library_and_cross_origin_sign_in_is_refused() {
     let (directory, service, router, id, _) = fixture().await;
-    let (accounts, _) = access(directory.path());
+    let accounts = accounts(directory.path());
     accounts.create_user("kid", "kid-password").unwrap();
     let (status, cookie, session) = sign_in(&router, "kid", "kid-password").await;
     assert_eq!(status, StatusCode::OK);
@@ -1249,7 +1259,7 @@ async fn uploads_belong_to_their_user_and_require_a_same_origin_session() {
     let (_, upload) = start_upload(&router, &cookie, "mine.txt", 5).await;
     let id = upload["id"].as_str().unwrap().to_string();
 
-    let (accounts, _) = access(directory.path());
+    let accounts = accounts(directory.path());
     let library_id = accounts.libraries().unwrap()[0].id.clone();
     accounts.create_user("other", "other-password").unwrap();
     accounts.grant("other", &library_id).unwrap();
@@ -1435,7 +1445,7 @@ async fn finished_uploads_wait_a_review_window_and_survive_a_restart() {
 
     // A new staging area over the same directory stands in for a restart.
     let source = Arc::new(CalibreCatalogSource::open_writable(directory.path()).unwrap());
-    let (_, access) = access(directory.path());
+    let (_, access) = access(directory.path(), &source);
     let staging =
         api::Staging::open(directory.path().join("state/uploads"), small_uploads()).unwrap();
     let restarted = api::router(source, &service, access, None, staging, metadata());
@@ -1501,7 +1511,7 @@ async fn commits_need_a_finished_upload_a_title_its_owner_and_a_writable_library
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 
-    let (accounts, _) = access(directory.path());
+    let accounts = accounts(directory.path());
     let library_id = accounts.libraries().unwrap()[0].id.clone();
     accounts.create_user("other", "other-password").unwrap();
     accounts.grant("other", &library_id).unwrap();

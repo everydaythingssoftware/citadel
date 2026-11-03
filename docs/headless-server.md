@@ -1,53 +1,87 @@
-# Headless OPDS server
+# Headless server
 
-`citadel-server` serves one Calibre library over the same OPDS runtime used by
-the desktop application. It has no desktop, WebView, or remote management UI.
+`citadel-server` serves one Calibre library to browsers and, over the same
+OPDS runtime as the desktop application, to e-readers. It has no desktop or
+WebView; the browser is its interface.
 
-Copy `crates/citadel-server/example-config.toml`, use absolute paths for the
-library, create the first user, then run the server:
+Copy `crates/citadel-server/example-config.toml`, set the listeners and the
+public URL, and run the server:
 
 ```sh
 CONFIG=/absolute/path/to/citadel-server.toml
-cargo run -p citadel-server -- --config "$CONFIG" users add alice
 cargo run -p citadel-server -- --config "$CONFIG"
+```
+
+## First run
+
+A fresh server has no administrator and no library. It prints a one-time
+setup code when it starts:
+
+```text
+citadel_server setup_code=K7QD-M2XV-H9RW message="No administrator yet. Open http://127.0.0.1:8081 and enter this code to create the administrator account."
+```
+
+Open the public URL, enter the code with a username and password, and you are
+the administrator. Then choose a library: make a new one in an empty folder on
+the server, or use a Calibre library already there, typed as an absolute path
+or picked from a folder browser. The choice is kept in `citadel.db`, so it
+survives restarts; nothing is written to the config file. Until a library is
+chosen, library routes answer 503 and OPDS doesn't listen. A new code is
+printed at every start while no administrator exists, and the code is
+consumed once it has been used.
+
+Deployments that would rather script this use the command line instead:
+
+```sh
+citadel-server --config "$CONFIG" libraries add /srv/calibre-library
+citadel-server --config "$CONFIG" users add alice --admin
 ```
 
 ## Users and access
 
 Citadel users live in `citadel.db` in the state directory, never inside the
-library (see [ADR 0009](adr/0009-citadel-users-and-sessions.md)). The server
+library (see [ADR 0009](adr/0009-citadel-users-and-sessions.md) and
+[ADR 0012](adr/0012-server-administrators-and-web-setup.md)). The server
 always requires sign-in. Each user has:
 
+- a **role**: `reader`, or `administrator` for setting the server up and
+  administering it;
 - a **sign-in password** for the browser, stored as an Argon2id hash;
 - an **OPDS app password** for e-readers, revealable at any time;
 - **library access** (a grant). Users without access to the served library
-  cannot see it in the browser or OPDS. A separate user, such as a child's
+  cannot see it in the browser or OPDS, administrators included: the role
+  gates the server, grants gate books. A separate user, such as a child's
   account, is how to give someone narrower access.
 
-The operator manages users from the command line. Commands edit `citadel.db`
-directly and do not require stopping the server; OPDS picks up changes within a
-few seconds, and browser sessions are checked on every request.
+Users can also be managed from the command line, which is how to get back in
+when no administrator can sign in. Commands edit `citadel.db` directly and do
+not require stopping the server; OPDS picks up changes within a few seconds,
+and browser sessions are checked on every request.
 
 ```text
 citadel-server --config <path> users list
-citadel-server --config <path> users add <name> [--password-stdin] [--no-grant]
+citadel-server --config <path> users add <name> [--password-stdin] [--no-grant] [--admin]
 citadel-server --config <path> users remove <name>
 citadel-server --config <path> users reset-password <name> [--password-stdin]
 citadel-server --config <path> users app-password <name> [--rotate]
+citadel-server --config <path> users promote <name>
+citadel-server --config <path> users demote <name>
 citadel-server --config <path> grant <name> [<library-id>]
 citadel-server --config <path> revoke <name> [<library-id>]
 citadel-server --config <path> libraries list
+citadel-server --config <path> libraries add <absolute path>
 ```
 
-`users add` grants access to the configured library unless `--no-grant` is
-given, and prints a generated sign-in password and the OPDS app password. Generated
-sign-in passwords are shown only once; `--password-stdin` reads one from the
-first line of standard input instead (at least 8 characters). `reset-password`
-also signs the user out of every browser. `app-password` reveals the OPDS
-password again, and `--rotate` replaces it. `grant` and `revoke` default to the
-configured library. Usernames are case-insensitive and can't contain a colon.
-
-The server refuses to start until at least one user can access the library.
+`users add` grants access to the served library unless `--no-grant` is given
+(or no library is served yet), and prints a generated sign-in password and the
+OPDS app password. Generated sign-in passwords are shown only once;
+`--password-stdin` reads one from the first line of standard input instead (at
+least 8 characters). `reset-password` also signs the user out of every
+browser. `app-password` reveals the OPDS password again, and `--rotate`
+replaces it. `promote` and `demote` change the role. `grant` and `revoke`
+default to the served library. `libraries add` registers an existing Calibre
+library and serves it; one library at a time for now. Usernames are
+case-insensitive and can't contain a colon.
 
 ### Upgrading from `CITADEL_OPDS_USERS`
 
@@ -68,11 +102,22 @@ to re-enter their provider keys.
 
 ### Library access
 
-The server opens `libraryPath` for writing, as the desktop app does. Opening it
-switches the database to SQLite's WAL journal and installs Citadel's triggers.
-If the library can't be opened for writing (for example, a read-only file or
-folder), the server logs `library=read-only` with the reason and serves it
-read-only: browsing and OPDS work, and writes answer 403 `readOnly`.
+The server opens the served library for writing, as the desktop app does.
+Opening it switches the database to SQLite's WAL journal and installs
+Citadel's triggers. If the library can't be opened for writing (for example, a
+read-only file or folder), the server logs `library=read-only` with the reason
+and serves it read-only: browsing and OPDS work, and writes answer 403
+`readOnly`. If the folder can't be opened at all (it moved, or a drive isn't
+mounted) the server still starts: readers see that the library is unavailable,
+and the administrator can retry or point Citadel at the new location.
+
+A library is refused when its Calibre database schema is older than this
+build supports; opening it in Calibre once upgrades it. Newer-than-minimum
+libraries open as they are; the administrator can bring them to Calibre's
+current format from setup, which keeps a backup of `metadata.db` beside it.
+
+`libraryPath` in the config file has been removed and is rejected with the
+replacement spelled out.
 
 Only one program should write to a library at a time. Running Calibre desktop,
 the Citadel desktop app or another server against the same library while this
@@ -116,8 +161,9 @@ The fixture includes 105 downloadable books, multiple pages, Unicode/XML metadat
 
 ## Browser library and HTTP API
 
-The optional JSON listener exposes the same `citadel-core` book queries used by
-Tauri. The browser uses this listener for browsing; the desktop client continues to use IPC. Add this top-level table to the server config to enable it:
+The JSON listener exposes the same `citadel-core` book queries used by Tauri
+and is where the server is set up. The browser uses this listener; the desktop
+client continues to use IPC. The `[api]` table is required:
 
 ```toml
 [api]
@@ -128,7 +174,7 @@ publicUrl = "https://books.example.com"
 webDirectory = "/absolute/path/to/citadel/dist"
 ```
 
-Omitting `[api]` leaves the listener disabled. `publicUrl` is required: when it is
+`publicUrl` is required: when it is
 https the session cookie is marked `Secure`, and state-changing requests must come
 from that origin. Citadel itself serves plain HTTP; terminate TLS at a reverse
 proxy for connections beyond a trusted local network. The address must pass the same
@@ -143,9 +189,29 @@ Session routes:
 
 - `POST /api/session` with `{"username": "…", "password": "…"}`: signs in and
   sets the cookie. Repeated failures back off (429).
-- `GET /api/session`: the signed-in user and whether they can access the
-  library, or 401.
+- `GET /api/session`: the signed-in user, whether they can access the
+  library and whether they are an administrator, or 401.
 - `DELETE /api/session`: signs out and clears the cookie.
+
+Setup routes:
+
+- `GET /api/setup` (public): whether an administrator exists and whether a
+  library is configured and available, so the sign-in page knows which form
+  to show.
+- `POST /api/setup/administrator` with `{"setupCode": "…", "username": "…",
+  "password": "…"}` (public while no administrator exists): creates the
+  administrator and signs them in. Wrong codes back off like sign-in; 409
+  once an administrator exists.
+- The rest require an administrator's session; readers get 403.
+  `GET /api/setup/library` describes the served library (path, availability,
+  schema version, whether an upgrade is available) and where the folder
+  browser starts. `GET /api/setup/directories?path=…` lists a folder's
+  subfolders. `POST /api/setup/library/inspect` with `{"path": "…"}` says what
+  is there. `POST /api/setup/library` with `{"mode": "create" | "adopt",
+  "path": "…", "name": "…", "upgrade": false}` chooses the library (409 while
+  one is served). `POST /api/setup/library/reopen` retries an unavailable
+  folder, and `POST /api/setup/library/upgrade` brings the library to
+  Calibre's current database format.
 
 Library routes (all require a session for a user with access; users without
 access receive 404):
@@ -154,7 +220,7 @@ access receive 404):
   `limit` between 0 and 200. Zero returns only the count. Desktop retains its
   existing unbounded-query behavior.
 - `GET /api/books/{book_id}`: one book, using the existing numeric string ID.
-- `GET /api/library`: the library's Calibre UUID, display name, and whether it is open read-only; no server filesystem path.
+- `GET /api/library`: the library's Calibre UUID, display name, and whether it is open read-only; no server filesystem path. 503 until a library is set up.
 - `GET /api/authors`, `/api/series`, `/api/tags`, `/api/publishers`: browse facets and counts.
 - `GET /api/custom-columns` and `/api/books/{book_id}/custom-values`: custom-field definitions and values.
 - `POST /api/books/delete` (`{"book_ids": ["1"]}`) and `DELETE /api/authors/{author_id}`: permanently delete books (and their files) or an author with no books. Read-only libraries answer 403 `readOnly`.
@@ -295,4 +361,4 @@ Browser startup uses the server’s configured library and ignores desktop libra
 
 For frontend development, set `publicUrl` to the Vite origin (`http://localhost:1420`) and run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 
-OPDS acquisition routes remain available. Editing book metadata and setting up a library through the browser remain follow-up work (CDL-57, CDL-39). Until web setup lands, configure the library using the server configuration described above.
+OPDS acquisition routes remain available. Editing book metadata in the browser remains follow-up work (CDL-57), as does the browser's own setup flow over the setup routes above (the last slice of CDL-39); until it lands, use the routes or the command line.

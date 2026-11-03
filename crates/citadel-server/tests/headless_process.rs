@@ -77,9 +77,7 @@ fn real_process_serves_authenticated_catalog_and_acquisition_then_stops() {
     std::fs::write(
         &config_path,
         format!(
-            r#"libraryPath = "{}"
-
-[api]
+            r#"[api]
 listen = "127.0.0.1:{api_port}"
 publicUrl = "http://127.0.0.1:{api_port}"
 
@@ -89,8 +87,7 @@ port = {port}
 [sharing.target.addresses]
 addresses = ["127.0.0.1"]
 
-"#,
-            library_path.display()
+"#
         ),
     )
     .unwrap();
@@ -127,9 +124,9 @@ addresses = ["127.0.0.1"]
             .to_string()
     };
 
-    let without_users = server(&[]).output().unwrap();
-    assert!(!without_users.status.success());
-    assert!(String::from_utf8_lossy(&without_users.stderr).contains("users add <name>"));
+    // The library is registered in citadel.db, not the config file.
+    let registered = admin(&["libraries", "add", library_path.to_str().unwrap()], "");
+    assert!(registered.starts_with("Serving library"), "{registered}");
     let state_directory = state_path.join("citadel");
     assert!(state_directory.join("citadel.db").is_file());
 
@@ -215,11 +212,16 @@ addresses = ["127.0.0.1"]
         401
     );
 
-    // OPDS reports Running before the optional API listener starts.
+    // The API listens from the start; OPDS followed once the library and a
+    // reader existed. No administrator was made, so the setup code was printed.
     while !observed.iter().any(|line| line.contains("api=http://")) {
         assert!(Instant::now() < deadline, "API did not start: {observed:?}");
         observed.push(lines_rx.recv_timeout(Duration::from_secs(5)).unwrap());
     }
+    assert!(
+        observed.iter().any(|line| line.contains("setup_code=")),
+        "{observed:?}"
+    );
     let api_origin = format!("http://127.0.0.1:{api_port}");
     assert_eq!(
         client

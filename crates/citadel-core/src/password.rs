@@ -1,8 +1,45 @@
 //! Generated passwords. App passwords (OPDS) are short and typeable on
 //! e-readers; sign-in passwords are long because they guard a whole account.
 use rand_core::{OsRng, RngCore};
+use subtle::ConstantTimeEq;
 
 use crate::words::WORD_POOL;
+
+/// Letters and digits that can't be misread from a terminal: no 0/O, 1/I/L.
+const SETUP_CODE_ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const SETUP_CODE_GROUPS: usize = 3;
+const SETUP_CODE_GROUP_LENGTH: usize = 4;
+
+/// A one-time code the server prints so whoever can read its console can
+/// create the first administrator: three groups of four, like
+/// `K7QD-M2XV-H9RW`. About 59 bits; attempts are rate-limited like sign-in.
+pub fn generate_setup_code() -> String {
+    (0..SETUP_CODE_GROUPS)
+        .map(|_| {
+            (0..SETUP_CODE_GROUP_LENGTH)
+                .map(|_| {
+                    SETUP_CODE_ALPHABET[OsRng.next_u32() as usize % SETUP_CODE_ALPHABET.len()]
+                        as char
+                })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+/// Whether `given` is `expected`, ignoring case, dashes and spaces, in time
+/// that doesn't depend on where they differ.
+pub fn setup_code_matches(expected: &str, given: &str) -> bool {
+    let normalize = |code: &str| -> Vec<u8> {
+        code.bytes()
+            .filter(|byte| !matches!(byte, b'-' | b' '))
+            .map(|byte| byte.to_ascii_uppercase())
+            .collect()
+    };
+    let expected = normalize(expected);
+    let given = normalize(given);
+    expected.len() == given.len() && expected.ct_eq(&given).into()
+}
 
 /// Symbols that survive e-reader input fields and `user:pass@host` logins.
 const PASSWORD_SYMBOLS: &[char] = &['!', '*', '-', '=', '~', '$'];
@@ -113,5 +150,22 @@ mod tests {
         assert_eq!(password.len(), 23);
         assert_eq!(password.matches('-').count(), 3);
         assert_ne!(password, generate_sign_in_password());
+    }
+
+    #[test]
+    fn setup_codes_are_grouped_and_compared_leniently() {
+        let code = generate_setup_code();
+        assert_eq!(code.len(), 14);
+        assert!(code.split('-').all(
+            |group| group.len() == 4 && group.bytes().all(|b| SETUP_CODE_ALPHABET.contains(&b))
+        ));
+        assert!(setup_code_matches(&code, &code));
+        assert!(setup_code_matches(
+            &code,
+            &code.to_lowercase().replace('-', " ")
+        ));
+        assert!(setup_code_matches(&code, &code.replace('-', "")));
+        assert!(!setup_code_matches(&code, &code[1..]));
+        assert!(!setup_code_matches(&code, &generate_setup_code()));
     }
 }

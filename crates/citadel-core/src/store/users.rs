@@ -14,10 +14,39 @@ use crate::Actor;
 const USERNAME_MAX_CHARS: usize = 64;
 const LOCAL_USER_PROPERTY: &str = "local_user_id";
 
+/// What a user may do beyond reading the libraries they are granted.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Role {
+    Reader,
+    /// May set the server up and administer it. Grants still decide which
+    /// libraries they see.
+    Administrator,
+}
+
+impl Role {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Reader => "reader",
+            Role::Administrator => "administrator",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        match value {
+            "reader" => Ok(Role::Reader),
+            "administrator" => Ok(Role::Administrator),
+            other => Err(StoreError::Storage(format!(
+                "citadel.db: unknown user role '{other}'"
+            ))),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct User {
     pub id: String,
     pub username: String,
+    pub role: Role,
 }
 
 impl User {
@@ -26,6 +55,20 @@ impl User {
             id: self.id.clone(),
         }
     }
+
+    pub fn is_administrator(&self) -> bool {
+        self.role == Role::Administrator
+    }
+}
+
+pub(super) type UserRow = (String, String, String);
+
+pub(super) fn user_from_row((id, username, role): UserRow) -> Result<User> {
+    Ok(User {
+        id,
+        username,
+        role: Role::parse(&role)?,
+    })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,14 +79,24 @@ pub struct UserSummary {
 }
 
 impl CitadelStore {
-    /// Creates a user with a sign-in password and a generated OPDS app password.
+    /// Creates a reader with a sign-in password and a generated OPDS app password.
     pub fn create_user(&self, username: &str, password: &str) -> Result<User> {
+        self.create_user_with_role(username, password, Role::Reader)
+    }
+
+    pub fn create_user_with_role(
+        &self,
+        username: &str,
+        password: &str,
+        role: Role,
+    ) -> Result<User> {
         let username = validate_username(username)?;
         validate_password(password)?;
         let hash = hash_password(password)?;
         let user = User {
             id: uuid::Uuid::new_v4().to_string(),
             username,
+            role,
         };
         let mut connection = self.connection();
         connection.immediate_transaction(|connection| {
@@ -60,11 +113,27 @@ impl CitadelStore {
                     users::password_hash.eq(Some(hash)),
                     users::app_password.eq(crate::password::generate_app_password()),
                     users::created_at.eq(unix_now()),
+                    users::role.eq(user.role.as_str()),
                 ))
                 .execute(connection)?;
             Ok(())
         })?;
         Ok(user)
+    }
+
+    pub fn set_role(&self, username: &str, role: Role) -> Result<User> {
+        let user = self.user(username)?;
+        diesel::update(users::table.filter(users::id.eq(&user.id)))
+            .set(users::role.eq(role.as_str()))
+            .execute(&mut *self.connection())?;
+        Ok(User { role, ..user })
+    }
+
+    pub fn administrator_exists(&self) -> Result<bool> {
+        Ok(diesel::select(diesel::dsl::exists(
+            users::table.filter(users::role.eq(Role::Administrator.as_str())),
+        ))
+        .get_result(&mut *self.connection())?)
     }
 
     pub fn users(&self) -> Result<Vec<UserSummary>> {
@@ -74,25 +143,27 @@ impl CitadelStore {
             .select((
                 users::id,
                 users::username,
+                users::role,
                 users::password_hash.is_not_null(),
             ))
-            .load::<(String, String, bool)>(&mut *connection)?;
+            .load::<(String, String, String, bool)>(&mut *connection)?;
         let grants = library_grants::table
             .order(library_grants::created_at)
             .select((library_grants::user_id, library_grants::library_id))
             .load::<(String, String)>(&mut *connection)?;
-        Ok(rows
-            .into_iter()
-            .map(|(id, username, has_password)| UserSummary {
-                library_ids: grants
-                    .iter()
-                    .filter(|(user_id, _)| *user_id == id)
-                    .map(|(_, library_id)| library_id.clone())
-                    .collect(),
-                user: User { id, username },
-                has_password,
+        rows.into_iter()
+            .map(|(id, username, role, has_password)| {
+                Ok(UserSummary {
+                    library_ids: grants
+                        .iter()
+                        .filter(|(user_id, _)| *user_id == id)
+                        .map(|(_, library_id)| library_id.clone())
+                        .collect(),
+                    user: user_from_row((id, username, role))?,
+                    has_password,
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub fn user(&self, username: &str) -> Result<User> {
@@ -137,8 +208,8 @@ impl CitadelStore {
             Ok(())
         })?;
         Ok(User {
-            id: user.id,
             username: new_username,
+            ..user
         })
     }
 
@@ -150,11 +221,11 @@ impl CitadelStore {
             let existing = properties::table
                 .filter(properties::key.eq(LOCAL_USER_PROPERTY))
                 .inner_join(users::table.on(users::id.eq(properties::value)))
-                .select((users::id, users::username))
-                .first::<(String, String)>(connection)
+                .select((users::id, users::username, users::role))
+                .first::<UserRow>(connection)
                 .optional()?;
-            if let Some((id, username)) = existing {
-                return Ok(User { id, username });
+            if let Some(row) = existing {
+                return user_from_row(row);
             }
             let mut username =
                 validate_username(default_username).unwrap_or_else(|_| "Citadel".to_string());
@@ -167,12 +238,14 @@ impl CitadelStore {
             let user = User {
                 id: uuid::Uuid::new_v4().to_string(),
                 username,
+                role: Role::Administrator,
             };
             diesel::insert_into(users::table)
                 .values((
                     users::id.eq(&user.id),
                     users::username.eq(&user.username),
                     users::created_at.eq(unix_now()),
+                    users::role.eq(user.role.as_str()),
                 ))
                 .execute(connection)?;
             diesel::replace_into(properties::table)
@@ -187,12 +260,13 @@ impl CitadelStore {
 }
 
 fn find_user(connection: &mut SqliteConnection, username: &str) -> Result<Option<User>> {
-    Ok(users::table
+    users::table
         .filter(users::username.eq(username.trim()))
-        .select((users::id, users::username))
-        .first::<(String, String)>(connection)
+        .select((users::id, users::username, users::role))
+        .first::<UserRow>(connection)
         .optional()?
-        .map(|(id, username)| User { id, username }))
+        .map(user_from_row)
+        .transpose()
 }
 
 fn unknown_user(username: &str) -> StoreError {
@@ -294,5 +368,43 @@ mod tests {
         store.grant("reader", &library.id).unwrap();
         assert!(store.can_access(&local.id, &library.id).unwrap());
         assert_eq!(store.local_user("").unwrap().id, local.id);
+    }
+
+    #[test]
+    fn roles_gate_administration_and_follow_the_user_everywhere() {
+        let (_directory, store, _) = store();
+        assert!(!store.administrator_exists().unwrap());
+        let reader = store.create_user("reader", "reader password").unwrap();
+        assert_eq!(reader.role, Role::Reader);
+        assert!(!store.administrator_exists().unwrap());
+        let admin = store
+            .create_user_with_role("admin", "admin password", Role::Administrator)
+            .unwrap();
+        assert!(admin.is_administrator());
+        assert!(store.administrator_exists().unwrap());
+        let token = store.create_session(&admin.id).unwrap();
+        assert_eq!(store.session_user(&token).unwrap(), Some(admin.clone()));
+        assert_eq!(
+            store.verify_password("admin", "admin password").unwrap(),
+            Some(admin.clone())
+        );
+        let promoted = store.set_role("reader", Role::Administrator).unwrap();
+        assert_eq!(
+            promoted,
+            User {
+                role: Role::Administrator,
+                ..reader
+            }
+        );
+        assert_eq!(store.user("reader").unwrap(), promoted);
+        assert!(store
+            .users()
+            .unwrap()
+            .iter()
+            .all(|summary| summary.user.is_administrator()));
+        store.set_role("admin", Role::Reader).unwrap();
+        assert!(store.administrator_exists().unwrap());
+        assert!(store.local_user("desk").unwrap().is_administrator());
+        assert!(store.set_role("nobody", Role::Reader).is_err());
     }
 }

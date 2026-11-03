@@ -385,6 +385,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Whether an administrator exists and a library is set up. Public, so the sign-in page knows which form to show. */
+        get: operations["getSetupStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/administrator": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Create the first administrator with the setup code the server printed, and sign them in. Refused once an administrator exists. */
+        post: operations["createAdministrator"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/directories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Subfolders of a server folder (dotfolders hidden), one level at a time, for choosing a library location. Administrators only. */
+        get: operations["listDirectories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The served library, if one was chosen, and where the directory browser starts. Administrators only. */
+        get: operations["getLibrarySetup"];
+        put?: never;
+        /** @description Create a new library or adopt an existing one at a server path, register it, grant the administrator access and start serving it. 409 while a library is already served. Administrators only. */
+        post: operations["chooseLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/library/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What is at an absolute server path: a library (with its size and schema version), an empty folder, something else, or a reason it can't be used. Administrators only. */
+        post: operations["inspectPath"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/library/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Try the registered library's folder again after it was unreachable. Administrators only. */
+        post: operations["reopenLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/library/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Bring the served library to Calibre's current database format, after backing its database up beside it. Administrators only. */
+        post: operations["upgradeLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -540,6 +660,17 @@ export interface components {
         };
         /** @enum {string} */
         BookSortOrder: "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc";
+        ChooseLibrary: {
+            mode: components["schemas"]["SetupMode"];
+            /** @description Display name; the folder's name when omitted. */
+            name?: string | null;
+            path: string;
+            /**
+             * @description Adopt only: bring an older library to Calibre's current format first.
+             *     A backup is kept beside its database.
+             */
+            upgrade?: boolean;
+        };
         /** @description The metadata the user reviewed, to add the upload to the library with. */
         CommitUpload: {
             authorNames?: string[];
@@ -562,6 +693,12 @@ export interface components {
             url: string;
             /** Format: int32 */
             width: number;
+        };
+        CreateAdministrator: {
+            password: string;
+            /** @description The code from the server's console, such as `K7QD-M2XV-H9RW`. */
+            setupCode: string;
+            username: string;
         };
         CreateUpload: {
             /** @description The file's name, which decides its format by extension. */
@@ -627,6 +764,16 @@ export interface components {
         DeleteBooksRequest: {
             book_ids: string[];
         };
+        DirectoryEntry: {
+            isLibrary: boolean;
+            name: string;
+            path: string;
+        };
+        DirectoryListing: {
+            entries: components["schemas"]["DirectoryEntry"][];
+            parent: string | null;
+            path: string;
+        };
         GenreCandidate: {
             name: string;
             /**
@@ -644,6 +791,36 @@ export interface components {
             label: string;
             value: string;
         };
+        InspectPath: {
+            /** @description An absolute path on the server. */
+            path: string;
+        };
+        InspectedLibrary: {
+            /** Format: int64 */
+            authorCount: number;
+            /** Format: int64 */
+            bookCount: number;
+            /** Format: int32 */
+            schemaVersion: number;
+            /**
+             * @description False when the schema is older than this server opens; `message` says
+             *     what to do.
+             */
+            supported: boolean;
+            upgradeAvailable: boolean;
+        };
+        Inspection: {
+            library: components["schemas"]["InspectedLibrary"] | null;
+            /** @description Why the path can't be used as asked, when it can't. */
+            message: string | null;
+            /** @description The folder's own name, the default display name for a library here. */
+            name: string;
+            /** @description The path as the server resolved it. */
+            path: string;
+            status: components["schemas"]["InspectionStatus"];
+        };
+        /** @enum {string} */
+        InspectionStatus: "library" | "empty" | "notEmpty" | "missing" | "notADirectory" | "denied" | "reserved" | "relative";
         LibraryAuthor: {
             /**
              * Format: int32
@@ -734,6 +911,11 @@ export interface components {
             id: number;
             name: string;
         };
+        LibrarySetup: {
+            /** @description Where the directory browser starts. */
+            browseRoot: string;
+            library: components["schemas"]["ServedLibraryInfo"] | null;
+        };
         LibraryTag: {
             /** Format: int32 */
             book_count: number;
@@ -803,14 +985,53 @@ export interface components {
             /** @description The provider API key. It is checked with the provider before saving. */
             secret: string;
         };
+        SchemaUpgradeInfo: {
+            /** @description The copy of `metadata.db` taken first, beside the library's database. */
+            backup: string;
+            /** Format: int32 */
+            from: number;
+            /** Format: int32 */
+            to: number;
+        };
+        /** @description What the administrator sees about the served library. */
+        ServedLibraryInfo: {
+            /** @description False when the registered folder can't be opened right now; see `problem`. */
+            available: boolean;
+            id: string;
+            name: string;
+            path: string;
+            problem: string | null;
+            readOnly: boolean;
+            /** Format: int32 */
+            schemaVersion: number | null;
+            upgradeAvailable: boolean;
+        };
         SessionInfo: {
-            /** @description False when the user exists but has no access to this server's library. */
+            /** @description May set the server up and administer it. */
+            administrator: boolean;
+            /**
+             * @description False when the user exists but has no access to this server's library,
+             *     or no library is set up yet.
+             */
             libraryAccess: boolean;
             user: components["schemas"]["SessionUser"];
         };
         SessionUser: {
             id: string;
             username: string;
+        };
+        /** @enum {string} */
+        SetupMode: "create" | "adopt";
+        SetupStatus: {
+            /**
+             * @description False until the first administrator is created with the setup code
+             *     the server printed when it started.
+             */
+            administratorExists: boolean;
+            /** @description The chosen library is open and can be browsed. */
+            libraryAvailable: boolean;
+            /** @description A library has been chosen (it may still be unreachable). */
+            libraryConfigured: boolean;
         };
         SignInRequest: {
             password: string;
@@ -2558,6 +2779,493 @@ export interface operations {
                 content?: never;
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    createAdministrator: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAdministrator"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInfo"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    listDirectories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description An absolute path on the server; the browse root when omitted. */
+                path: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryListing"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getLibrarySetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySetup"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    chooseLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChooseLibrary"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServedLibraryInfo"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    inspectPath: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InspectPath"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Inspection"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    reopenLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServedLibraryInfo"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    upgradeLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaUpgradeInfo"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -24,12 +24,13 @@ use utoipa::openapi::{
 };
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::CalibreCatalogSource;
+use crate::{served::ServedLibrary, CalibreCatalogSource};
 use citadel_core::{store::CitadelStore, vault::Vault};
 
 mod account;
 mod metadata;
 mod session;
+mod setup;
 mod thumbnails;
 mod uploads;
 pub(crate) mod web;
@@ -50,14 +51,17 @@ pub struct ApiConfig {
     pub metadata: MetadataConfig,
 }
 
-/// Who may use the API: the accounts database, the Citadel ID of the library
-/// this server serves, and the origin browsers sign in from.
+/// Who may use the API: the accounts database, the library this server
+/// serves (or will, once set up), and the origin browsers sign in from.
 pub struct ApiAccess {
     pub accounts: Arc<CitadelStore>,
-    pub library_id: String,
+    pub served: Arc<ServedLibrary>,
     pub public_url: PublicUrl,
     /// Seals users' provider keys in `citadel.db` (ADR 0011).
     pub secrets: Arc<Vault>,
+    /// The one-time code for creating the first administrator, while none
+    /// exists.
+    pub setup_code: Option<String>,
 }
 
 #[derive(Clone)]
@@ -105,12 +109,7 @@ async fn run_library<T: Send + 'static>(
         .map_err(|_| LibraryError::unavailable())?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let mut library = state
-            .source
-            .library
-            .lock()
-            .map_err(|_| LibraryError::unavailable())?;
-        operation(&mut library)
+        state.source.with_library(operation)
     })
     .await
     .map_err(|_| LibraryError::unavailable())?
@@ -202,12 +201,16 @@ struct LibraryDescriptor {
 async fn library_descriptor(
     State(state): State<ApiState>,
 ) -> Result<Json<LibraryDescriptor>, ApiFailure> {
-    let id = state.access.library_id.clone();
+    let registered = state
+        .access
+        .served
+        .registered()
+        .ok_or_else(crate::served::no_library_yet)?;
     let read_only = state.source.read_only();
     run_library(state, |library| Ok(library.library_uuid()?)).await?;
     Ok(Json(LibraryDescriptor {
-        id,
-        name: "Citadel Library".into(),
+        id: registered.id,
+        name: registered.display_name,
         read_only,
     }))
 }
@@ -441,6 +444,8 @@ pub fn openapi() -> OpenApi {
     let (_, mut schema) = routes()
         .merge(chunk_routes())
         .merge(session::routes())
+        .merge(setup::public_routes())
+        .merge(setup::administrator_routes())
         .split_for_parts();
     // These handlers are mounted from OPDS so byte streaming, range support and
     // containment checks have one implementation across both transports.
@@ -519,8 +524,9 @@ pub fn router(
         source: source.clone(),
         access: Arc::new(session::Access::new(
             access.accounts,
-            access.library_id,
+            access.served,
             access.public_url,
+            access.setup_code,
         )),
         work: Arc::new(Semaphore::new(64)),
         thumbnails: Default::default(),
@@ -529,7 +535,17 @@ pub fn router(
         secrets,
     };
     let (library, _) = routes().split_for_parts();
-    let (session, _) = session::routes().split_for_parts();
+    let (session, _) = session::routes()
+        .merge(setup::public_routes())
+        .split_for_parts();
+    let (administration, _) = setup::administrator_routes().split_for_parts();
+    let administration =
+        administration
+            .with_state(state.clone())
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                setup::require_administrator,
+            ));
     let (chunks, _) = chunk_routes().split_for_parts();
     let chunks = chunks
         .with_state(state.clone())
@@ -555,7 +571,10 @@ pub fn router(
         ));
     // The frontend build is public so a signed-out browser can load the
     // sign-in page; everything it reads afterwards goes through the API.
-    let router = session.with_state(state).merge(library);
+    let router = session
+        .with_state(state)
+        .merge(administration)
+        .merge(library);
     let router = match web_directory {
         Some(directory) => router.fallback_service(web::router(directory)),
         None => router,

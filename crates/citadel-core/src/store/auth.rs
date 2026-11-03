@@ -12,7 +12,7 @@ use super::{
     libraries::known_library,
     schema::{library_grants, sessions, users},
     unix_now,
-    users::{hash_password, User},
+    users::{hash_password, user_from_row, User, UserRow},
     CitadelStore, Result, StoreError,
 };
 
@@ -32,11 +32,18 @@ impl CitadelStore {
     pub fn verify_password(&self, username: &str, password: &str) -> Result<Option<User>> {
         let found = users::table
             .filter(users::username.eq(username.trim()))
-            .select((users::id, users::username, users::password_hash))
-            .first::<(String, String, Option<String>)>(&mut *self.connection())
+            .select((
+                users::id,
+                users::username,
+                users::role,
+                users::password_hash,
+            ))
+            .first::<(String, String, String, Option<String>)>(&mut *self.connection())
             .optional()?;
         let (user, hash) = match found {
-            Some((id, username, Some(hash))) => (Some(User { id, username }), hash),
+            Some((id, username, role, Some(hash))) => {
+                (Some(user_from_row((id, username, role))?), hash)
+            }
             _ => (None, dummy_hash().to_string()),
         };
         let matches = PasswordHash::new(&hash)
@@ -86,10 +93,13 @@ impl CitadelStore {
             .inner_join(users::table)
             .filter(sessions::token_hash.eq(&hash))
             .filter(sessions::expires_at.gt(now))
-            .select((users::id, users::username, sessions::expires_at))
-            .first::<(String, String, i64)>(&mut *connection)
+            .select((
+                (users::id, users::username, users::role),
+                sessions::expires_at,
+            ))
+            .first::<(UserRow, i64)>(&mut *connection)
             .optional()?;
-        let Some((id, username, expires_at)) = found else {
+        let Some((row, expires_at)) = found else {
             return Ok(None);
         };
         if expires_at - now < SESSION_TTL_SECONDS - SESSION_REFRESH_SECONDS {
@@ -97,7 +107,7 @@ impl CitadelStore {
                 .set(sessions::expires_at.eq(now + SESSION_TTL_SECONDS))
                 .execute(&mut *connection)?;
         }
-        Ok(Some(User { id, username }))
+        Ok(Some(user_from_row(row)?))
     }
 
     pub fn delete_session(&self, token: &str) -> Result<()> {
