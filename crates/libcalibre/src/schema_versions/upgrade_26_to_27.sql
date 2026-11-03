@@ -1,4 +1,4 @@
--- Calibre schema_upgrades.upgrade_version_26: page counts per book, a
+-- Calibre's step from schema 26 to 27: page counts per book, a
 -- rebuilt meta view and the "cali" application id. The unused books columns
 -- it drops (flags, isbn, lccn) are handled in Rust, since dropping needs to
 -- know which still exist.
