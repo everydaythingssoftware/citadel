@@ -117,6 +117,12 @@ impl CalibreCatalogSource {
 
     /// Serves the library at `library_path` from now on, preferring writes.
     pub fn replace_from_path(&self, library_path: &Path) -> Result<(), String> {
+        let path_text = library_path
+            .to_str()
+            .ok_or_else(|| "library path must be valid UTF-8".to_string())?;
+        if libcalibre::util::get_db_path(path_text).is_none() {
+            return Err(format!("not a Calibre library: {path_text}"));
+        }
         match open_library(library_path, Library::new) {
             Ok(opened) => {
                 self.replace(opened, false);
@@ -553,10 +559,14 @@ pub async fn run(config: ServerConfig, _config_path: &Path) -> Result<(), String
             }
             _ = interval.tick() => {
                 let readers = refresh_opds_users(&service, &accounts, served.library_id()).await;
-                if let Err(error) = ensure_opds_started(&service, &config, source.is_open() && readers > 0, &mut opds_started).await {
-                    api.stop().await;
-                    service.stop().await;
-                    return Err(error);
+                match ensure_opds_started(&service, &config, source.is_open() && readers > 0, &mut opds_started).await {
+                    Ok(true) => last_status = service.status().await,
+                    Ok(false) => {}
+                    Err(error) => {
+                        api.stop().await;
+                        service.stop().await;
+                        return Err(error);
+                    }
                 }
                 let status = service.status().await;
                 if status != last_status {
