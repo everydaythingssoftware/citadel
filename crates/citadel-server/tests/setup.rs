@@ -32,15 +32,24 @@ struct Server {
 /// A server over `directory/state` with no library and no administrator, as
 /// a fresh installation starts; `code` is what it would have printed.
 fn fresh(directory: &std::path::Path, code: Option<&str>) -> Server {
+    fresh_with_roots(directory, code, Vec::new())
+}
+
+/// [`fresh`], looking for libraries under `roots` as the container does
+/// under `/library` and `/libraries`.
+fn fresh_with_roots(
+    directory: &std::path::Path,
+    code: Option<&str>,
+    roots: Vec<std::path::PathBuf>,
+) -> Server {
     let state = directory.join("state");
     std::fs::create_dir_all(&state).unwrap();
     let accounts = Arc::new(CitadelStore::open(&state.join("citadel.db")).unwrap());
     let source = Arc::new(CalibreCatalogSource::empty());
-    let served = Arc::new(ServedLibrary::new(
-        accounts.clone(),
-        source.clone(),
-        state.clone(),
-    ));
+    let served = Arc::new(
+        ServedLibrary::new(accounts.clone(), source.clone(), state.clone())
+            .with_library_roots(roots),
+    );
     served.open_registered().unwrap();
     let service = OpdsService::with_ephemeral_credentials(source.clone(), Vec::new()).unwrap();
     let access = api::ApiAccess {
@@ -769,5 +778,127 @@ async fn administrators_see_whether_updates_are_checked_and_readers_see_the_vers
     assert_eq!(
         update,
         json!({"currentVersion": citadel_server::release::VERSION, "details": null})
+    );
+}
+
+fn copy_folder(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_folder(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn setup_offers_each_library_in_the_mounted_folders_once() {
+    let directory = tempfile::tempdir().unwrap();
+    let single = directory.path().join("library");
+    let many = directory.path().join("libraries");
+    drop(libcalibre::Library::create_library_at(single.to_str().unwrap()).unwrap());
+    drop(libcalibre::Library::create_library_at(many.join("Comics").to_str().unwrap()).unwrap());
+    // The same library reached a second way is listed once.
+    copy_folder(&single, &many.join("Copy of library"));
+    std::fs::create_dir_all(many.join("Not a library")).unwrap();
+    let empty = directory.path().join("empty");
+    std::fs::create_dir(&empty).unwrap();
+    let server = fresh_with_roots(
+        directory.path(),
+        Some(SETUP_CODE),
+        vec![
+            single.clone(),
+            many.clone(),
+            empty,
+            directory.path().join("absent"),
+        ],
+    );
+    let administrator = bootstrap(&server.router).await;
+    let (status, _, setup) = request(
+        &server.router,
+        "GET",
+        "/api/setup/library",
+        None,
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{setup}");
+    let paths: Vec<&str> = setup["found"]["libraries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|library| library["path"].as_str().unwrap())
+        .collect();
+    let resolved = |path: &std::path::Path| resolve(path).to_string_lossy().into_owned();
+    assert_eq!(
+        paths,
+        vec![resolved(&single), resolved(&many.join("Comics"))],
+        "{setup}"
+    );
+    assert_eq!(setup["found"]["libraries"][0]["library"]["writable"], true);
+    assert_eq!(setup["found"]["libraries"][0]["library"]["bookCount"], 0);
+    // An empty folder that isn't a mount is never offered: a missing volume
+    // would otherwise put books inside the container.
+    assert_eq!(setup["found"]["createIn"], json!([]));
+    assert_eq!(setup["browseRoot"], single.to_string_lossy().as_ref());
+
+    let (status, _, info) = request(
+        &server.router,
+        "POST",
+        "/api/setup/library",
+        Some(json!({"mode": "adopt", "path": single.to_string_lossy()})),
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{info}");
+    assert_eq!(
+        server.accounts.libraries().unwrap().len(),
+        2,
+        "every library found is registered for later"
+    );
+}
+
+#[tokio::test]
+async fn a_library_can_be_served_read_only_and_stays_so_after_a_restart() {
+    let directory = tempfile::tempdir().unwrap();
+    let library = directory.path().join("Books");
+    drop(libcalibre::Library::create_library_at(library.to_str().unwrap()).unwrap());
+    let server = fresh(directory.path(), Some(SETUP_CODE));
+    let administrator = bootstrap(&server.router).await;
+    let (status, _, refused) = request(
+        &server.router,
+        "POST",
+        "/api/setup/library",
+        Some(json!({"mode": "adopt", "path": library.to_string_lossy(), "readOnly": true, "upgrade": true})),
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    let (status, _, info) = request(
+        &server.router,
+        "POST",
+        "/api/setup/library",
+        Some(json!({"mode": "adopt", "path": library.to_string_lossy(), "readOnly": true})),
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{info}");
+    assert_eq!(info["readOnly"], true);
+    assert_eq!(info["readOnlyChosen"], true);
+    assert_eq!(
+        info["readOnlyReason"],
+        Value::Null,
+        "nobody needs to fix anything"
+    );
+    assert!(server.source.read_only());
+
+    let restarted = fresh(directory.path(), None);
+    assert!(restarted.source.is_open());
+    assert!(
+        restarted.source.read_only(),
+        "the choice survives a restart"
     );
 }

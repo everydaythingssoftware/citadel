@@ -140,6 +140,9 @@ export interface ChooserViewProps {
 	lede?: string;
 	adoptDescription?: string;
 	createDescription?: string;
+	/** Choices offered ahead of the two general ones, such as libraries
+	 * already found; the first takes focus. */
+	found?: ReactNode;
 }
 
 export const ChooserView = ({
@@ -149,6 +152,7 @@ export const ChooserView = ({
 	lede = "Citadel keeps your books in a Calibre-compatible library.",
 	adoptDescription = "Open your existing library folder.",
 	createDescription = "Create an empty library at ~/Citadel.",
+	found,
 }: ChooserViewProps) => (
 	<>
 		<div className={styles.mark} aria-hidden="true">
@@ -157,11 +161,17 @@ export const ChooserView = ({
 		<h1 className={styles.title}>Set up your library</h1>
 		<p className={styles.lede}>{lede}</p>
 		<div className={styles.choices}>
+			{found && (
+				<>
+					{found}
+					<p className={styles.choicesLabel}>Or another folder</p>
+				</>
+			)}
 			<button
 				type="button"
 				className={styles.choice}
 				disabled={disabled}
-				data-autofocus="true"
+				data-autofocus={found ? undefined : "true"}
 				onClick={onAdopt}
 			>
 				<span className={styles.choiceIcon}>

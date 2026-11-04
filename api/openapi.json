@@ -4073,6 +4073,10 @@
           "path": {
             "type": "string"
           },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Adopt only: serve the library without changing it, for libraries\nstill managed in Calibre elsewhere. Adding, editing and upgrading are\noff."
+          },
           "upgrade": {
             "type": "boolean",
             "description": "Adopt only: bring an older library to Calibre's current format first.\nA backup is kept beside its database."
@@ -4432,6 +4436,29 @@
           }
         }
       },
+      "FoundLibraries": {
+        "type": "object",
+        "description": "Libraries already in the folders mounted for them, and empty mounted\nfolders a new library could start in.",
+        "required": [
+          "libraries",
+          "createIn"
+        ],
+        "properties": {
+          "createIn": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Inspection"
+            }
+          },
+          "libraries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Inspection"
+            },
+            "description": "One per Calibre library, however many paths reach it."
+          }
+        }
+      },
       "GenreCandidate": {
         "type": "object",
         "required": [
@@ -4497,7 +4524,9 @@
           "authorCount",
           "schemaVersion",
           "upgradeAvailable",
-          "supported"
+          "supported",
+          "writable",
+          "readOnlyReason"
         ],
         "properties": {
           "authorCount": {
@@ -4507,6 +4536,13 @@
           "bookCount": {
             "type": "integer",
             "format": "int64"
+          },
+          "readOnlyReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why not, when it can't, and how to fix it."
           },
           "schemaVersion": {
             "type": "integer",
@@ -4518,6 +4554,10 @@
           },
           "upgradeAvailable": {
             "type": "boolean"
+          },
+          "writable": {
+            "type": "boolean",
+            "description": "The server can change it: add, edit and upgrade."
           }
         }
       },
@@ -4884,12 +4924,17 @@
         "type": "object",
         "required": [
           "library",
-          "browseRoot"
+          "browseRoot",
+          "found"
         ],
         "properties": {
           "browseRoot": {
             "type": "string",
             "description": "Where the directory browser starts."
+          },
+          "found": {
+            "$ref": "#/components/schemas/FoundLibraries",
+            "description": "Libraries in the folders mounted for them, and empty mounts a new one\ncould start in."
           },
           "library": {
             "oneOf": [
@@ -5171,6 +5216,8 @@
           "name",
           "path",
           "readOnly",
+          "readOnlyChosen",
+          "readOnlyReason",
           "available",
           "problem",
           "schemaVersion",
@@ -5198,6 +5245,17 @@
           },
           "readOnly": {
             "type": "boolean"
+          },
+          "readOnlyChosen": {
+            "type": "boolean",
+            "description": "The administrator chose to serve it read-only."
+          },
+          "readOnlyReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is read-only when nobody chose that: the folder can't be\nchanged by the server, and how to fix it."
           },
           "schemaVersion": {
             "type": [

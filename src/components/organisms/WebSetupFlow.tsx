@@ -11,12 +11,23 @@ import type {
 	SetupMode,
 	SetupSnapshot,
 } from "@/lib/web-setup/machine";
-import { UPGRADE_PROMPT, verdict } from "@/lib/web-setup/machine";
-import type { ServedLibrary } from "@/lib/services/library-catalog/types";
+import {
+	mustBeReadOnly,
+	READ_ONLY_DESCRIPTION,
+	READ_ONLY_PROMPT,
+	UPGRADE_PROMPT,
+	verdict,
+} from "@/lib/web-setup/machine";
+import type {
+	FoundLibraries,
+	ServedLibrary,
+} from "@/lib/services/library-catalog/types";
 import card from "./FirstRunFlow.module.css";
 import {
 	BackButton,
+	BookGlyph,
 	BusyLabel,
+	ChevronRight,
 	ChooserView,
 	ErrLine,
 	FolderGlyph,
@@ -318,16 +329,87 @@ const PathView = ({
 	);
 };
 
+interface FoundChoicesProps {
+	found: FoundLibraries;
+	onUse: (path: string) => void;
+	onCreateIn: (path: string) => void;
+}
+
+/** What the server found in the folders mounted for libraries. */
+const FoundChoices = ({ found, onUse, onCreateIn }: FoundChoicesProps) => (
+	<>
+		{found.libraries.map((library, index) => {
+			const books = library.library?.bookCount ?? 0;
+			const details = [
+				`${fmt(books)} ${plural(books, "book")}`,
+				library.path,
+				library.library?.writable === false ? "read-only" : null,
+			].filter(Boolean);
+			return (
+				<button
+					key={library.path}
+					type="button"
+					className={card.choice}
+					data-autofocus={index === 0 ? "true" : undefined}
+					onClick={() => onUse(library.path)}
+				>
+					<span className={card.choiceIcon}>
+						<BookGlyph />
+					</span>
+					<span className={styles.choiceText}>
+						<span className={card.choiceTitle}>{library.name}</span>
+						<br />
+						<span className={card.choiceDesc}>{details.join(" · ")}</span>
+					</span>
+					<span className={card.choiceChevron}>
+						<ChevronRight />
+					</span>
+				</button>
+			);
+		})}
+		{found.createIn.map((spot, index) => (
+			<button
+				key={spot.path}
+				type="button"
+				className={card.choice}
+				data-autofocus={
+					found.libraries.length === 0 && index === 0 ? "true" : undefined
+				}
+				onClick={() => onCreateIn(spot.path)}
+			>
+				<span className={card.choiceIcon}>
+					<FolderGlyph />
+				</span>
+				<span className={styles.choiceText}>
+					<span className={card.choiceTitle}>
+						Start a new library in {spot.path}
+					</span>
+					<br />
+					<span className={card.choiceDesc}>This folder is empty.</span>
+				</span>
+				<span className={card.choiceChevron}>
+					<ChevronRight />
+				</span>
+			</button>
+		))}
+	</>
+);
+
 interface ConfirmViewProps {
 	mode: SetupMode;
 	path: string;
 	name: string;
 	upgradeAvailable: boolean;
 	upgrade: boolean;
+	readOnly: boolean;
+	/** The server can't write this library; `readOnlyReason` says why. */
+	readOnlyForced: boolean;
+	readOnlyReason: string | null;
 	busy: boolean;
 	error: string | null;
 	onNameChange: (name: string) => void;
 	onUpgradeChange: (upgrade: boolean) => void;
+	onReadOnlyChange: (readOnly: boolean) => void;
 	onCommit: () => void;
 	onBack: () => void;
 }
@@ -338,10 +420,14 @@ const ConfirmView = ({
 	name,
 	upgradeAvailable,
 	upgrade,
+	readOnly,
+	readOnlyForced,
+	readOnlyReason,
 	busy,
 	error,
 	onNameChange,
 	onUpgradeChange,
+	onReadOnlyChange,
 	onCommit,
 	onBack,
 }: ConfirmViewProps) => {
@@ -370,7 +456,22 @@ const ConfirmView = ({
 					onChange={(event) => onNameChange(event.currentTarget.value)}
 				/>
 			</div>
-			{mode === "adopt" && upgradeAvailable && (
+			{mode === "adopt" && (
+				<div className={styles.option}>
+					<Checkbox
+						checked={readOnly}
+						disabled={busy || readOnlyForced}
+						label={READ_ONLY_PROMPT}
+						onCheckedChange={onReadOnlyChange}
+					/>
+					<p className={styles.optionNote}>
+						{readOnlyForced && readOnlyReason
+							? readOnlyReason
+							: READ_ONLY_DESCRIPTION}
+					</p>
+				</div>
+			)}
+			{mode === "adopt" && upgradeAvailable && !readOnly && (
 				<div className={styles.upgrade}>
 					<Checkbox
 						checked={upgrade}
@@ -474,6 +575,8 @@ const resolveView = (
 	reduced: boolean,
 ): ResolvedView | null => {
 	const { step } = snapshot;
+	const hasFound =
+		snapshot.found.libraries.length > 0 || snapshot.found.createIn.length > 0;
 	switch (step.id) {
 		case "loading":
 			return {
@@ -502,11 +605,24 @@ const resolveView = (
 				node: (
 					<ChooserView
 						disabled={false}
-						lede="This server keeps books in a Calibre-compatible library on its own disk."
+						lede={
+							hasFound
+								? "Found in the folders mounted for libraries:"
+								: "This server keeps books in a Calibre-compatible library on its own disk."
+						}
 						adoptDescription="Use a Calibre library already on the server."
 						createDescription="Create an empty library in a folder on the server."
 						onAdopt={() => send({ type: "CHOOSE_ADOPT" })}
 						onStartNew={() => send({ type: "CHOOSE_CREATE" })}
+						found={
+							hasFound ? (
+								<FoundChoices
+									found={snapshot.found}
+									onUse={(path) => send({ type: "USE_FOUND", path })}
+									onCreateIn={(path) => send({ type: "CREATE_IN", path })}
+								/>
+							) : undefined
+						}
 					/>
 				),
 			};
@@ -568,11 +684,17 @@ const resolveView = (
 							step.inspection.library?.upgradeAvailable ?? false
 						}
 						upgrade={step.upgrade}
+						readOnly={step.readOnly}
+						readOnlyForced={mustBeReadOnly(step.inspection)}
+						readOnlyReason={step.inspection.library?.readOnlyReason ?? null}
 						busy={step.busy}
 						error={step.error}
 						onNameChange={(name) => send({ type: "NAME_CHANGED", name })}
 						onUpgradeChange={(upgrade) =>
 							send({ type: "UPGRADE_CHANGED", upgrade })
+						}
+						onReadOnlyChange={(readOnly) =>
+							send({ type: "READ_ONLY_CHANGED", readOnly })
 						}
 						onCommit={() => send({ type: "COMMIT" })}
 						onBack={() => send({ type: "BACK" })}

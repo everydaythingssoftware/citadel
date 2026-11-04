@@ -801,6 +801,12 @@ export interface components {
             name?: string | null;
             path: string;
             /**
+             * @description Adopt only: serve the library without changing it, for libraries
+             *     still managed in Calibre elsewhere. Adding, editing and upgrading are
+             *     off.
+             */
+            readOnly?: boolean;
+            /**
              * @description Adopt only: bring an older library to Calibre's current format first.
              *     A backup is kept beside its database.
              */
@@ -912,6 +918,15 @@ export interface components {
             parent: string | null;
             path: string;
         };
+        /**
+         * @description Libraries already in the folders mounted for them, and empty mounted
+         *     folders a new library could start in.
+         */
+        FoundLibraries: {
+            createIn: components["schemas"]["Inspection"][];
+            /** @description One per Calibre library, however many paths reach it. */
+            libraries: components["schemas"]["Inspection"][];
+        };
         GenreCandidate: {
             name: string;
             /**
@@ -938,6 +953,8 @@ export interface components {
             authorCount: number;
             /** Format: int64 */
             bookCount: number;
+            /** @description Why not, when it can't, and how to fix it. */
+            readOnlyReason: string | null;
             /** Format: int32 */
             schemaVersion: number;
             /**
@@ -946,6 +963,8 @@ export interface components {
              */
             supported: boolean;
             upgradeAvailable: boolean;
+            /** @description The server can change it: add, edit and upgrade. */
+            writable: boolean;
         };
         Inspection: {
             library: components["schemas"]["InspectedLibrary"] | null;
@@ -1052,6 +1071,11 @@ export interface components {
         LibrarySetup: {
             /** @description Where the directory browser starts. */
             browseRoot: string;
+            /**
+             * @description Libraries in the folders mounted for them, and empty mounts a new one
+             *     could start in.
+             */
+            found: components["schemas"]["FoundLibraries"];
             library: components["schemas"]["ServedLibraryInfo"] | null;
         };
         LibraryTag: {
@@ -1152,6 +1176,13 @@ export interface components {
             path: string;
             problem: string | null;
             readOnly: boolean;
+            /** @description The administrator chose to serve it read-only. */
+            readOnlyChosen: boolean;
+            /**
+             * @description Why it is read-only when nobody chose that: the folder can't be
+             *     changed by the server, and how to fix it.
+             */
+            readOnlyReason: string | null;
             /** Format: int32 */
             schemaVersion: number | null;
             upgradeAvailable: boolean;

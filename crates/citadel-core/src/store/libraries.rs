@@ -17,7 +17,32 @@ pub struct RegisteredLibrary {
     pub id: String,
     pub path: String,
     pub display_name: String,
+    /// Served without changes, for libraries managed elsewhere.
+    pub read_only: bool,
 }
+
+type LibraryRow = (String, String, String, bool);
+
+fn from_row((id, path, display_name, read_only): LibraryRow) -> RegisteredLibrary {
+    RegisteredLibrary {
+        id,
+        path,
+        display_name,
+        read_only,
+    }
+}
+
+const LIBRARY_COLUMNS: (
+    libraries::id,
+    libraries::path,
+    libraries::display_name,
+    libraries::read_only,
+) = (
+    libraries::id,
+    libraries::path,
+    libraries::display_name,
+    libraries::read_only,
+);
 
 impl CitadelStore {
     /// Records where the library with this Calibre UUID lives. Idempotent; a
@@ -69,6 +94,16 @@ impl CitadelStore {
         library(&mut connection, id)
     }
 
+    /// Serve this library without changing it, or allow changes again.
+    pub fn set_library_read_only(&self, id: &str, read_only: bool) -> Result<RegisteredLibrary> {
+        let mut connection = self.connection();
+        known_library(&mut connection, id)?;
+        diesel::update(libraries::table.filter(libraries::id.eq(id)))
+            .set(libraries::read_only.eq(read_only))
+            .execute(&mut *connection)?;
+        library(&mut connection, id)
+    }
+
     pub fn rename_library(&self, id: &str, display_name: &str) -> Result<RegisteredLibrary> {
         let display_name = validate_library_name(display_name)?;
         let mut connection = self.connection();
@@ -84,14 +119,10 @@ impl CitadelStore {
         Ok(properties::table
             .filter(properties::key.eq(ACTIVE_LIBRARY_PROPERTY))
             .inner_join(libraries::table.on(libraries::id.eq(properties::value)))
-            .select((libraries::id, libraries::path, libraries::display_name))
-            .first::<(String, String, String)>(&mut *self.connection())
+            .select(LIBRARY_COLUMNS)
+            .first::<LibraryRow>(&mut *self.connection())
             .optional()?
-            .map(|(id, path, display_name)| RegisteredLibrary {
-                id,
-                path,
-                display_name,
-            }))
+            .map(from_row))
     }
 
     pub fn set_active_library(&self, id: &str) -> Result<RegisteredLibrary> {
@@ -109,14 +140,10 @@ impl CitadelStore {
     pub fn libraries(&self) -> Result<Vec<RegisteredLibrary>> {
         Ok(libraries::table
             .order(libraries::created_at)
-            .select((libraries::id, libraries::path, libraries::display_name))
-            .load::<(String, String, String)>(&mut *self.connection())?
+            .select(LIBRARY_COLUMNS)
+            .load::<LibraryRow>(&mut *self.connection())?
             .into_iter()
-            .map(|(id, path, display_name)| RegisteredLibrary {
-                id,
-                path,
-                display_name,
-            })
+            .map(from_row)
             .collect())
     }
 }
@@ -138,14 +165,10 @@ pub fn canonical_path(path: &Path) -> std::io::Result<std::path::PathBuf> {
 fn library(connection: &mut SqliteConnection, id: &str) -> Result<RegisteredLibrary> {
     libraries::table
         .filter(libraries::id.eq(id))
-        .select((libraries::id, libraries::path, libraries::display_name))
-        .first::<(String, String, String)>(connection)
+        .select(LIBRARY_COLUMNS)
+        .first::<LibraryRow>(connection)
         .optional()?
-        .map(|(id, path, display_name)| RegisteredLibrary {
-            id,
-            path,
-            display_name,
-        })
+        .map(from_row)
         .ok_or_else(|| StoreError::NotFound(format!("No library has ID '{id}'.")))
 }
 
@@ -223,5 +246,30 @@ mod tests {
         assert_eq!(store.active_library().unwrap(), Some(library.clone()));
         let renamed = store.rename_library(LIBRARY_ID, "Shelf").unwrap();
         assert_eq!(store.active_library().unwrap(), Some(renamed));
+    }
+
+    #[test]
+    fn a_library_can_be_served_read_only_and_keeps_that_when_moved() {
+        let (directory, store, library) = store();
+        assert!(!library.read_only, "libraries start writable");
+        assert!(store.set_library_read_only("unknown", true).is_err());
+        assert!(
+            store
+                .set_library_read_only(LIBRARY_ID, true)
+                .unwrap()
+                .read_only
+        );
+        let again = store
+            .register_library(LIBRARY_ID, &directory.path().join("library"), Some("Shelf"))
+            .unwrap();
+        assert!(again.read_only, "registering again keeps the choice");
+        store.set_active_library(LIBRARY_ID).unwrap();
+        assert!(store.active_library().unwrap().unwrap().read_only);
+        assert!(
+            !store
+                .set_library_read_only(LIBRARY_ID, false)
+                .unwrap()
+                .read_only
+        );
     }
 }

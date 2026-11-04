@@ -1,6 +1,7 @@
 import type {
 	ChooseLibrary,
 	DirectoryListing,
+	FoundLibraries,
 	PathInspection,
 	ServedLibrary,
 } from "@/lib/services/library-catalog/types";
@@ -24,6 +25,11 @@ export const NOT_A_LIBRARY_ERROR =
 	"No metadata.db inside. If your library lives in a subfolder, choose that folder instead.";
 export const UPGRADE_PROMPT =
 	"Upgrade this library to Calibre's current format? A backup is kept.";
+export const READ_ONLY_PROMPT = "Read-only";
+export const READ_ONLY_DESCRIPTION =
+	"For a library you keep managing in Calibre on another computer. Citadel won't change it, so adding and editing books is off.";
+
+const NOTHING_FOUND: FoundLibraries = { libraries: [], createIn: [] };
 
 export type SetupMode = "create" | "adopt";
 /** Which root screen the user came from; Back returns here. */
@@ -77,6 +83,10 @@ export type SetupStep =
 			inspection: PathInspection;
 			name: string;
 			upgrade: boolean;
+			/** Serve it without changes; forced on when the server can't write it. */
+			readOnly: boolean;
+			/** Picked from the chooser's found libraries, so Back returns there. */
+			fromChooser: boolean;
 			busy: boolean;
 			error: string | null;
 	  }
@@ -86,6 +96,8 @@ export type SetupStep =
 export interface SetupSnapshot {
 	/** Where the folder browser opens when the path field is empty. */
 	browseRoot: string | null;
+	/** What the server found in the folders mounted for libraries. */
+	found: FoundLibraries;
 	/** The registered library as last reported, open or not. */
 	library: ServedLibrary | null;
 	step: SetupStep;
@@ -103,6 +115,7 @@ export type SetupEvent =
 			type: "STATUS_LOADED";
 			library: ServedLibrary | null;
 			browseRoot: string;
+			found: FoundLibraries;
 	  }
 	| { type: "STATUS_FAILED"; message: string }
 	| { type: "RETRY" }
@@ -110,6 +123,10 @@ export type SetupEvent =
 	| { type: "REOPEN_FAILED"; message: string }
 	| { type: "CHOOSE_CREATE" }
 	| { type: "CHOOSE_ADOPT" }
+	/** A library the server found, by path. */
+	| { type: "USE_FOUND"; path: string }
+	/** An empty mounted folder the server found, by path. */
+	| { type: "CREATE_IN"; path: string }
 	| { type: "PATH_CHANGED"; path: string }
 	| { type: "CONTINUE" }
 	| { type: "INSPECTED"; path: string; inspection: PathInspection }
@@ -123,6 +140,7 @@ export type SetupEvent =
 	| { type: "CLOSE_BROWSER" }
 	| { type: "NAME_CHANGED"; name: string }
 	| { type: "UPGRADE_CHANGED"; upgrade: boolean }
+	| { type: "READ_ONLY_CHANGED"; readOnly: boolean }
 	| { type: "COMMIT" }
 	| { type: "COMMITTED"; library: ServedLibrary }
 	| { type: "COMMIT_FAILED"; message: string }
@@ -136,7 +154,12 @@ export interface TransitionResult {
 }
 
 export const initSetup = (): TransitionResult => ({
-	snapshot: { browseRoot: null, library: null, step: { id: "loading" } },
+	snapshot: {
+		browseRoot: null,
+		found: NOTHING_FOUND,
+		library: null,
+		step: { id: "loading" },
+	},
 	effects: [{ kind: "load-status" }],
 });
 
@@ -203,23 +226,32 @@ const rootStep = (snapshot: SetupSnapshot, root: SetupRoot): SetupStep =>
 		? { id: "broken", library: snapshot.library, retry: "idle" }
 		: { id: "chooser" };
 
+/** The server can't write this library, so it can only be read-only. */
+export const mustBeReadOnly = (inspection: PathInspection): boolean =>
+	inspection.library?.writable === false;
+
 /** Enter the confirm step from an inspection that passed. */
 const confirm = (
 	snapshot: SetupSnapshot,
-	step: Extract<SetupStep, { id: "path" }>,
+	from: { mode: SetupMode; root: SetupRoot },
 	inspection: PathInspection,
-): TransitionResult =>
-	to(snapshot, {
+	fromChooser = false,
+): TransitionResult => {
+	const readOnly = mustBeReadOnly(inspection);
+	return to(snapshot, {
 		id: "confirm",
-		mode: step.mode,
-		root: step.root,
+		mode: from.mode,
+		root: from.root,
 		path: inspection.path,
 		inspection,
 		name: inspection.name,
-		upgrade: inspection.library?.upgradeAvailable ?? false,
+		upgrade: !readOnly && (inspection.library?.upgradeAvailable ?? false),
+		readOnly,
+		fromChooser,
 		busy: false,
 		error: null,
 	});
+};
 
 export const transition = (
 	snapshot: SetupSnapshot,
@@ -233,6 +265,7 @@ export const transition = (
 				const base = {
 					...snapshot,
 					browseRoot: event.browseRoot,
+					found: event.found,
 					library: event.library,
 				};
 				if (!event.library) return to(base, { id: "chooser" });
@@ -262,6 +295,35 @@ export const transition = (
 					return to(snapshot, freshPath("create", "chooser"));
 				case "CHOOSE_ADOPT":
 					return to(snapshot, freshPath("adopt", "chooser"));
+				case "USE_FOUND": {
+					const found = snapshot.found.libraries.find(
+						(library) => library.path === event.path,
+					);
+					if (!found || verdict("adopt", found, false).kind !== "ok") {
+						return to(snapshot, {
+							...freshPath("adopt", "chooser", event.path),
+							inspection: found ?? null,
+						});
+					}
+					return confirm(
+						snapshot,
+						{ mode: "adopt", root: "chooser" },
+						found,
+						true,
+					);
+				}
+				case "CREATE_IN": {
+					const found = snapshot.found.createIn.find(
+						(spot) => spot.path === event.path,
+					);
+					if (!found) return same(snapshot);
+					return confirm(
+						snapshot,
+						{ mode: "create", root: "chooser" },
+						found,
+						true,
+					);
+				}
 				default:
 					return same(snapshot);
 			}
@@ -443,8 +505,21 @@ export const transition = (
 					if (step.busy) return same(snapshot);
 					return to(snapshot, { ...step, name: event.name });
 				case "UPGRADE_CHANGED":
-					if (step.busy) return same(snapshot);
+					if (step.busy || step.readOnly) return same(snapshot);
 					return to(snapshot, { ...step, upgrade: event.upgrade });
+				case "READ_ONLY_CHANGED":
+					if (step.busy || mustBeReadOnly(step.inspection)) {
+						return same(snapshot);
+					}
+					return to(snapshot, {
+						...step,
+						readOnly: event.readOnly,
+						// Upgrading writes, so it goes with read-only and comes back
+						// with writable.
+						upgrade:
+							!event.readOnly &&
+							(step.inspection.library?.upgradeAvailable ?? false),
+					});
 				case "COMMIT": {
 					if (step.busy) return same(snapshot);
 					const name = step.name.trim();
@@ -455,7 +530,9 @@ export const transition = (
 								mode: step.mode,
 								path: step.path,
 								name: name === "" ? null : name,
-								upgrade: step.mode === "adopt" && step.upgrade,
+								upgrade:
+									step.mode === "adopt" && step.upgrade && !step.readOnly,
+								readOnly: step.mode === "adopt" && step.readOnly,
 							},
 						},
 					]);
@@ -477,6 +554,7 @@ export const transition = (
 				case "BACK":
 				case "ESCAPE":
 					if (step.busy) return same(snapshot);
+					if (step.fromChooser) return to(snapshot, { id: "chooser" });
 					return to(snapshot, {
 						...freshPath(step.mode, step.root, step.path),
 						inspection: step.inspection,

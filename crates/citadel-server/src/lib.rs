@@ -1,3 +1,4 @@
+pub mod access;
 pub mod admin;
 pub mod api;
 pub mod environment;
@@ -35,6 +36,10 @@ pub struct ServerConfig {
     /// Removed setting, kept only to explain the migration.
     library_path: Option<PathBuf>,
     pub state_directory: Option<PathBuf>,
+    /// Folders where libraries are mounted, each a library itself or holding
+    /// one per subfolder; setup offers what it finds there.
+    #[serde(default)]
+    pub library_roots: Vec<PathBuf>,
     pub sharing: SharingConfig,
     pub api: api::ApiConfig,
     #[serde(default)]
@@ -150,11 +155,20 @@ impl CalibreCatalogSource {
                 Ok(())
             }
             Err(error) => {
-                eprintln!("citadel_server library=read-only reason={error}");
+                match access::explain(library_path, true) {
+                    Some(fix) => eprintln!("citadel_server library=read-only reason=\"{fix}\""),
+                    None => eprintln!("citadel_server library=read-only reason={error}"),
+                }
                 self.replace(open_library(library_path, Library::open_read_only)?, true);
                 Ok(())
             }
         }
+    }
+
+    /// Serves the library at `library_path` from now on, never changing it.
+    pub fn replace_read_only_from_path(&self, library_path: &Path) -> Result<(), String> {
+        self.replace(open_library(library_path, Library::open_read_only)?, true);
+        Ok(())
     }
 
     fn replace(&self, opened: Opened, read_only: bool) {
@@ -437,6 +451,12 @@ pub(crate) fn validate_config(config: &ServerConfig) -> Result<(), String> {
     {
         return Err("stateDirectory must be absolute".to_string());
     }
+    if let Some(root) = config.library_roots.iter().find(|root| !root.is_absolute()) {
+        return Err(format!(
+            "libraryRoots must be absolute paths (got {})",
+            root.display()
+        ));
+    }
     if config.sharing.authentication_enabled.is_some() {
         return Err(
             "sharing.authenticationEnabled has been removed: Citadel server always \
@@ -479,19 +499,38 @@ pub(crate) fn state_directory(config: &ServerConfig) -> Result<PathBuf, String> 
         .map(Ok)
         .unwrap_or_else(default_state_directory)?;
     std::fs::create_dir_all(&state_directory).map_err(|error| {
-        format!(
-            "could not create stateDirectory {}: {error}",
-            state_directory.display()
+        with_fix(
+            format!(
+                "could not create stateDirectory {}: {error}",
+                state_directory.display()
+            ),
+            nearest_existing(&state_directory),
         )
     })?;
     Ok(state_directory)
+}
+
+/// `message`, then how to let the server write `path`, when that is the
+/// problem.
+fn with_fix(message: String, path: &Path) -> String {
+    match access::explain(path, true) {
+        Some(fix) => format!("{message}. {fix}"),
+        None => message,
+    }
+}
+
+/// `path`, or the closest folder above it that exists.
+fn nearest_existing(path: &Path) -> &Path {
+    path.ancestors()
+        .find(|ancestor| ancestor.exists())
+        .unwrap_or(path)
 }
 
 /// The accounts database in the state directory.
 pub(crate) fn open_accounts(config: &ServerConfig) -> Result<(PathBuf, CitadelStore), String> {
     let state_directory = state_directory(config)?;
     let accounts = CitadelStore::open(&state_directory.join(ACCOUNTS_DATABASE))
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| with_fix(error.to_string(), &state_directory))?;
     Ok((state_directory, accounts))
 }
 
@@ -547,11 +586,10 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     let (state_directory, accounts) = open_accounts(&config)?;
     let accounts = Arc::new(accounts);
     let source = Arc::new(CalibreCatalogSource::empty());
-    let served = Arc::new(ServedLibrary::new(
-        accounts.clone(),
-        source.clone(),
-        state_directory.clone(),
-    ));
+    let served = Arc::new(
+        ServedLibrary::new(accounts.clone(), source.clone(), state_directory.clone())
+            .with_library_roots(config.library_roots.clone()),
+    );
     match served.open_registered()? {
         Some(info) if info.available => println!(
             "citadel_server library={} path={}",
