@@ -82,6 +82,12 @@ pub fn explain(path: &Path, write: bool) -> Option<String> {
     }
 }
 
+/// Why the server can't change the Calibre library in `folder`: the folder
+/// itself, or its `metadata.db`.
+pub fn explain_library(folder: &Path) -> Option<String> {
+    explain(folder, true).or_else(|| explain(&folder.join("metadata.db"), true))
+}
+
 #[cfg(unix)]
 fn ownership_hint(path: &Path, denied: bool) -> String {
     let shown = path.display();

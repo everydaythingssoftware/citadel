@@ -902,3 +902,40 @@ async fn a_library_can_be_served_read_only_and_stays_so_after_a_restart() {
         "the choice survives a restart"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_library_the_server_cant_write_is_served_read_only_with_the_reason() {
+    use std::os::unix::fs::PermissionsExt;
+    // SAFETY: no preconditions.
+    if unsafe { libc::geteuid() } == 0 {
+        // Root ignores file modes, so there is nothing to observe.
+        return;
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let library = directory.path().join("Books");
+    drop(libcalibre::Library::create_library_at(library.to_str().unwrap()).unwrap());
+    let protect = |mode| {
+        std::fs::set_permissions(
+            library.join("metadata.db"),
+            std::fs::Permissions::from_mode(mode),
+        )
+        .unwrap()
+    };
+    protect(0o444);
+    let server = fresh(directory.path(), Some(SETUP_CODE));
+    let administrator = bootstrap(&server.router).await;
+    let (status, _, info) = request(
+        &server.router,
+        "POST",
+        "/api/setup/library",
+        Some(json!({"mode": "adopt", "path": library.to_string_lossy()})),
+        Some(&administrator),
+    )
+    .await;
+    protect(0o644);
+    assert_eq!(status, StatusCode::OK, "{info}");
+    assert_eq!(info["readOnly"], true, "{info}");
+    assert_eq!(info["readOnlyChosen"], false);
+    assert!(info["readOnlyReason"].is_string(), "{info}");
+}

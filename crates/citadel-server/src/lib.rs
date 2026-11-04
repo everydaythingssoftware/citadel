@@ -149,13 +149,20 @@ impl CalibreCatalogSource {
         if libcalibre::util::get_db_path(path_text).is_none() {
             return Err(format!("not a Calibre library: {path_text}"));
         }
+        // SQLite opens a write-protected database read-only without saying
+        // so, which would leave writes to fail later. Ask first.
+        if let Some(fix) = access::explain_library(library_path) {
+            eprintln!("citadel_server library=read-only reason=\"{fix}\"");
+            self.replace(open_library(library_path, Library::open_read_only)?, true);
+            return Ok(());
+        }
         match open_library(library_path, Library::new) {
             Ok(opened) => {
                 self.replace(opened, false);
                 Ok(())
             }
             Err(error) => {
-                match access::explain(library_path, true) {
+                match access::explain_library(library_path) {
                     Some(fix) => eprintln!("citadel_server library=read-only reason=\"{fix}\""),
                     None => eprintln!("citadel_server library=read-only reason={error}"),
                 }
