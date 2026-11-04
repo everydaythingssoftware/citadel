@@ -48,6 +48,11 @@
 	cursor: default;
 }
 
+.hint {
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+}
+
 .inputError {
 	border-color: var(--ctd-danger-border);
 }

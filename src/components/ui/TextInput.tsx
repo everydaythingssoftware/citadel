@@ -4,6 +4,8 @@ import styles from "./TextInput.module.css";
 
 export type TextInputProps = React.InputHTMLAttributes<HTMLInputElement> & {
 	label?: string;
+	/** Help text rendered below the field and read out with it. */
+	hint?: string;
 	/** Validation message rendered below the field. */
 	error?: React.ReactNode;
 };
@@ -12,6 +14,7 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
 	(
 		{
 			label,
+			hint,
 			error,
 			className,
 			id,
@@ -24,6 +27,7 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
 		const inputId = id ?? fallbackId;
 		const hasError = error !== undefined && error !== null && error !== false;
 		const errorId = `${inputId}-error`;
+		const hintId = `${inputId}-hint`;
 
 		const input = (
 			<input
@@ -32,13 +36,14 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
 				className={clsx(styles.input, hasError && styles.inputError, className)}
 				aria-invalid={hasError || undefined}
 				aria-describedby={
-					clsx(ariaDescribedby, hasError && errorId) || undefined
+					clsx(ariaDescribedby, hint && hintId, hasError && errorId) ||
+					undefined
 				}
 				{...rest}
 			/>
 		);
 
-		if (!label && !hasError) {
+		if (!label && !hint && !hasError) {
 			return input;
 		}
 
@@ -50,6 +55,11 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
 					</label>
 				)}
 				{input}
+				{hint && (
+					<div id={hintId} className={styles.hint}>
+						{hint}
+					</div>
+				)}
 				{hasError && (
 					<div id={errorId} className={styles.error}>
 						{error}

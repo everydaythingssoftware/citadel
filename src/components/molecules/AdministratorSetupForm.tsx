@@ -25,13 +25,10 @@ export const AdministratorSetupForm = ({
 		<main className={styles.root}>
 			<form className={styles.card} onSubmit={submit} aria-busy={pending}>
 				<h1 className={styles.title}>Set up Citadel</h1>
-				<p className={styles.lede}>
-					To create the first administrator, enter the setup code printed in the
-					server's output, then choose your name and password.
-				</p>
 				<TextInput
 					label="Setup code"
 					name="setupCode"
+					hint="Printed in the server's output when it started."
 					autoComplete="one-time-code"
 					autoCapitalize="characters"
 					spellCheck={false}

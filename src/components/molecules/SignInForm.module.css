@@ -31,10 +31,3 @@
 	color: var(--ctd-danger-bg);
 	font-size: 12px;
 }
-
-.lede {
-	margin: 0 0 4px;
-	font-size: 12.5px;
-	line-height: 1.45;
-	color: var(--ctd-ink-soft);
-}
