@@ -87,6 +87,12 @@ fn ownership_hint(path: &Path, denied: bool) -> String {
     let shown = path.display();
     let verb = if denied { "read" } else { "change" };
     match identities(path) {
+        // Running Citadel as root to fix this would be worse than the problem.
+        Some(((uid, gid), (0, _))) if uid != 0 => format!(
+            "{shown} belongs to root, so Citadel, running as user {uid} (group {gid}), can't \
+             {verb} it. Give user {uid} access to the folder on the host, for example with \
+             chown -R {uid}:{gid} on the folder you mounted."
+        ),
         Some(((uid, gid), (owner, group))) if uid != owner => format!(
             "Citadel runs as user {uid} (group {gid}), but {shown} belongs to user {owner} \
              (group {group}), so Citadel can't {verb} it. Run Citadel as that user (with \
