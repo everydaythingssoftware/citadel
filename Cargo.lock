@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "citadel-server"
-version = "0.1.0"
+version = "0.7.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -816,6 +816,7 @@ dependencies = [
  "nix",
  "reqwest 0.12.28",
  "rusqlite",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",

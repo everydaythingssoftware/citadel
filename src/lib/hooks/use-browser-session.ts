@@ -28,6 +28,8 @@ export type BrowserSessionState =
 
 export interface BrowserSessionControls {
 	username: string;
+	/** May administer the server; sees update notices. */
+	administrator: boolean;
 	signOut: () => Promise<void>;
 }
 
@@ -127,7 +129,11 @@ export const useBrowserSession = (
 	const controls = useMemo<BrowserSessionControls | null>(
 		() =>
 			state.status === "signedIn"
-				? { username: state.session.user.username, signOut }
+				? {
+						username: state.session.user.username,
+						administrator: state.session.administrator,
+						signOut,
+					}
 				: null,
 		[state, signOut],
 	);

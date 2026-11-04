@@ -2497,6 +2497,46 @@
         ]
       }
     },
+    "/api/server/update": {
+      "get": {
+        "description": "Whether a newer Citadel has been released. The server asks GitHub once a day. Administrators only.",
+        "operationId": "getServerUpdate",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/session": {
       "get": {
         "description": "The signed-in user, or 401 when the browser has no valid session.",
@@ -3710,6 +3750,23 @@
             "session": []
           }
         ]
+      }
+    },
+    "/api/version": {
+      "get": {
+        "description": "Which Citadel this server is. Public.",
+        "operationId": "getServerVersion",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerVersion"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -5045,6 +5102,30 @@
           }
         }
       },
+      "Release": {
+        "type": "object",
+        "description": "A published Citadel release.",
+        "required": [
+          "version",
+          "url"
+        ],
+        "properties": {
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string",
+            "description": "The release notes page."
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
       "RemoteFile": {
         "type": "object",
         "required": [
@@ -5136,6 +5217,28 @@
           },
           "upgradeAvailable": {
             "type": "boolean"
+          }
+        }
+      },
+      "ServerVersion": {
+        "type": "object",
+        "required": [
+          "version",
+          "commit",
+          "build"
+        ],
+        "properties": {
+          "build": {
+            "type": "string",
+            "description": "Version and commit together; also sent as the `Citadel-Build` header."
+          },
+          "commit": {
+            "type": "string",
+            "description": "The commit the server was built from, abbreviated."
+          },
+          "version": {
+            "type": "string",
+            "description": "The release version, such as `0.8.0`."
           }
         }
       },
@@ -5361,6 +5464,50 @@
           }
         },
         "additionalProperties": false
+      },
+      "UpdateChecks": {
+        "type": "string",
+        "description": "Whether this server looks for new releases.",
+        "enum": [
+          "on",
+          "off",
+          "notForThisBuild"
+        ]
+      },
+      "UpdateStatus": {
+        "type": "object",
+        "description": "What administrators see about updates.",
+        "required": [
+          "currentVersion",
+          "checks"
+        ],
+        "properties": {
+          "available": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Release",
+                "description": "A release newer than this server, once a check has found one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checkedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the server last heard from GitHub."
+          },
+          "checks": {
+            "$ref": "#/components/schemas/UpdateChecks"
+          },
+          "currentVersion": {
+            "type": "string"
+          }
+        }
       },
       "UploadList": {
         "type": "object",

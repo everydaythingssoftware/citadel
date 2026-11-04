@@ -15,3 +15,9 @@ port = 8080
 
 [sharing.target.addresses]
 addresses = ["127.0.0.1"]
+
+# Optional. Release builds ask GitHub for the latest Citadel release once a
+# day and tell administrators in the browser; nothing about this server is
+# sent. Set to false to turn that off.
+# [updates]
+# check = false

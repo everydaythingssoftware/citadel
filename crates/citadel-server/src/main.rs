@@ -5,6 +5,10 @@ use citadel_server::Invocation;
 #[tokio::main]
 async fn main() -> ExitCode {
     let result = match citadel_server::invocation_from_args(std::env::args_os()) {
+        Ok(Invocation::Version) => {
+            println!("{}", citadel_server::release::describe());
+            Ok(())
+        }
         Ok(Invocation::Serve(path)) => match citadel_server::load_config(&path) {
             Ok(config) => citadel_server::run(config, &path).await,
             Err(error) => Err(error),

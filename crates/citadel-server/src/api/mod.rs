@@ -30,6 +30,7 @@ use citadel_core::{store::CitadelStore, vault::Vault};
 mod account;
 mod edits;
 mod metadata;
+mod server;
 mod session;
 mod setup;
 mod thumbnails;
@@ -63,6 +64,8 @@ pub struct ApiAccess {
     /// The one-time code for creating the first administrator, while none
     /// exists.
     pub setup_code: Option<String>,
+    /// What administrators are told about new releases.
+    pub updates: Arc<crate::updates::Updates>,
 }
 
 #[derive(Clone)]
@@ -74,6 +77,7 @@ struct ApiState {
     uploads: Arc<Staging>,
     metadata: Arc<Metadata>,
     secrets: Arc<Vault>,
+    updates: Arc<crate::updates::Updates>,
 }
 
 // Keep slots inside blocking tasks so timed-out HTTP requests cannot queue
@@ -451,6 +455,8 @@ pub fn openapi() -> OpenApi {
         .merge(session::routes())
         .merge(setup::public_routes())
         .merge(setup::administrator_routes())
+        .merge(server::public_routes())
+        .merge(server::administrator_routes())
         .split_for_parts();
     // These handlers are mounted from OPDS so byte streaming, range support and
     // containment checks have one implementation across both transports.
@@ -525,6 +531,7 @@ pub fn router(
 ) -> Router {
     uploads.spawn_sweeper();
     let secrets = access.secrets;
+    let updates = access.updates;
     let state = ApiState {
         source: source.clone(),
         access: Arc::new(session::Access::new(
@@ -538,12 +545,16 @@ pub fn router(
         uploads,
         metadata,
         secrets,
+        updates,
     };
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes()
         .merge(setup::public_routes())
+        .merge(server::public_routes())
         .split_for_parts();
-    let (administration, _) = setup::administrator_routes().split_for_parts();
+    let (administration, _) = setup::administrator_routes()
+        .merge(server::administrator_routes())
+        .split_for_parts();
     let administration =
         administration
             .with_state(state.clone())
@@ -591,6 +602,7 @@ pub fn router(
                 .merge(chunks),
         )
         .layer(axum::middleware::from_fn(normalize_errors))
+        .layer(axum::middleware::from_fn(server::name_the_build))
 }
 
 const JSON_BODY_BYTES: usize = 1024 * 1024;

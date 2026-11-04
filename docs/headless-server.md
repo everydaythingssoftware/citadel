@@ -144,6 +144,28 @@ behind an externally managed TLS reverse proxy and firewall. Service
 supervision, certificates, public-exposure controls, and container or operating
 system packages are not provided by this initial server.
 
+## Versions and updates
+
+`citadel-server --version` prints the release version and the commit it was
+built from. The server and the desktop app share one version. Browsers can
+read the same from `GET /api/version` without signing in, and every API
+response names the build in a `Citadel-Build` header, so a page loaded before
+an upgrade can tell the server changed.
+
+Release builds ask GitHub for the latest Citadel release when they start and
+then once a day. When a newer one is out, the server logs
+`update_available=<version>`, and administrators see a badge on the settings
+gear and the new version, with its release notes, under Settings → General in
+the browser. Readers never see it. The request carries no version or other
+detail about the server. Turn it off with:
+
+```toml
+[updates]
+check = false
+```
+
+Nightly and development builds don't check.
+
 ## Validation and deployment
 
 Build the host with `cargo build --release -p citadel-server`. This selects the headless package and does not build Tauri. Its configuration uses `sharing.target = "localNetworks"` or `"allInterfaces"`, or the explicit-address table shown above; do not combine those forms.
@@ -357,7 +379,7 @@ perUserPerMinute = 30
 
 Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open `publicUrl` in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 
-Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. When the library is open for writing, books can be added from the browser: drop files anywhere on the window or use Add Book, watch them upload, then review each one (or add them all with the metadata read from their files). Uploads keep going while the sheet is closed, and finished ones wait out the review window across reloads and restarts. Editing existing books is still hidden in the browser. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
+Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. When the library is open for writing, books can be added from the browser: drop files anywhere on the window or use Add Book, watch them upload, then review each one (or add them all with the metadata read from their files). Uploads keep going while the sheet is closed, and finished ones wait out the review window across reloads and restarts. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
 
 For frontend development, set `publicUrl` to the Vite origin (`http://localhost:1420`) and run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 
