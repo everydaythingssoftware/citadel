@@ -199,7 +199,7 @@ async fn create_administrator(
     if !matches {
         return ApiFailure::from(LibraryError::new(
             LibraryErrorCode::Unauthorized,
-            "Incorrect setup code; it is printed where the server started",
+            "Incorrect setup code",
         ))
         .into_response();
     }

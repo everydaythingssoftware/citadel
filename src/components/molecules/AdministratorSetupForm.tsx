@@ -26,8 +26,8 @@ export const AdministratorSetupForm = ({
 			<form className={styles.card} onSubmit={submit} aria-busy={pending}>
 				<h1 className={styles.title}>Set up Citadel</h1>
 				<p className={styles.lede}>
-					This server has no administrator yet. Enter the setup code it printed
-					when it started, then choose your name and password.
+					To create the first administrator, enter the setup code printed in the
+					server's output, then choose your name and password.
 				</p>
 				<TextInput
 					label="Setup code"
