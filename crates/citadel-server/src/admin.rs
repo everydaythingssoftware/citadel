@@ -24,7 +24,8 @@ pub const USAGE: &str = "commands:
   grant <name> [<library-id>]
   revoke <name> [<library-id>]
   libraries list
-  libraries add <absolute path>
+  libraries add <absolute path> [--read-only]
+  libraries read-only <on|off> [<library-id>]
 
 Without a command, the server starts. Generated passwords are printed once;
 --password-stdin reads the sign-in password from the first line of stdin.
@@ -58,6 +59,7 @@ fn execute(
         ["users", "add", _] => &["--password-stdin", "--no-grant", "--admin"],
         ["users", "reset-password", _] => &["--password-stdin"],
         ["users", "app-password", _] => &["--rotate"],
+        ["libraries", "add", _] => &["--read-only"],
         _ => &[],
     };
     if let Some(unknown) = args
@@ -213,8 +215,13 @@ fn execute(
                     } else {
                         ""
                     };
+                    let read_only = if registered.read_only {
+                        "\tread-only"
+                    } else {
+                        ""
+                    };
                     format!(
-                        "{}\t{}\t{}{served}",
+                        "{}\t{}\t{}{served}{read_only}",
                         registered.id, registered.display_name, registered.path
                     )
                 })
@@ -239,11 +246,44 @@ fn execute(
                 .map_err(|error| format!("Could not read the library at {path}: {error}"))?;
             let registered = accounts
                 .register_library(&id, root, None)
+                .and_then(|library| {
+                    accounts.set_library_read_only(&library.id, flag("--read-only"))
+                })
                 .and_then(|library| accounts.set_active_library(&library.id))
                 .map_err(error)?;
+            let how = if registered.read_only {
+                " read-only"
+            } else {
+                ""
+            };
             Ok(format!(
-                "Serving {} ({}) from {}. Give readers access with `grant <name>`.",
+                "Serving {} ({}){how} from {}. Give readers access with `grant <name>`.",
                 registered.display_name, registered.id, registered.path
+            ))
+        }
+        ["libraries", "read-only", setting, rest @ ..] if rest.len() <= 1 => {
+            let read_only = match *setting {
+                "on" => true,
+                "off" => false,
+                _ => return Err(format!("libraries read-only takes on or off\n\n{USAGE}")),
+            };
+            let library_id = match rest.first() {
+                Some(id) => *id,
+                None => library
+                    .map(|library| library.id.as_str())
+                    .ok_or("No library is set up yet.")?,
+            };
+            let registered = accounts
+                .set_library_read_only(library_id, read_only)
+                .map_err(error)?;
+            Ok(format!(
+                "{} is {}. Restart the server for it to take effect.",
+                registered.display_name,
+                if read_only {
+                    "now served read-only"
+                } else {
+                    "no longer read-only"
+                }
             ))
         }
         _ => Err(format!("unknown command\n\n{USAGE}")),
@@ -430,6 +470,44 @@ mod tests {
         assert!(accounts
             .can_access(&accounts.user("alice").unwrap().id, &id)
             .unwrap());
+        assert!(!served.read_only);
+        let output = command(&accounts, Some(&served), "libraries read-only on", "").unwrap();
+        assert!(output.contains("now served read-only"), "{output}");
+        let listed = command(&accounts, Some(&served), "libraries list", "").unwrap();
+        assert!(listed.ends_with("served\tread-only"), "{listed}");
+        assert!(command(&accounts, Some(&served), "libraries read-only maybe", "").is_err());
+        assert!(command(
+            &accounts,
+            Some(&served),
+            "libraries read-only on unknown-id",
+            ""
+        )
+        .is_err());
+        command(
+            &accounts,
+            Some(&served),
+            &format!("libraries read-only off {id}"),
+            "",
+        )
+        .unwrap();
+        assert!(!accounts.active_library().unwrap().unwrap().read_only);
+    }
+
+    #[test]
+    fn libraries_add_can_serve_read_only() {
+        let directory = tempfile::tempdir().unwrap();
+        let accounts = CitadelStore::open(&directory.path().join("citadel.db")).unwrap();
+        let root = directory.path().join("Books");
+        drop(Library::create_library_at(root.to_str().unwrap()).unwrap());
+        let output = command(
+            &accounts,
+            None,
+            &format!("libraries add {} --read-only", root.display()),
+            "",
+        )
+        .unwrap();
+        assert!(output.contains("read-only from"), "{output}");
+        assert!(accounts.active_library().unwrap().unwrap().read_only);
     }
 
     #[test]

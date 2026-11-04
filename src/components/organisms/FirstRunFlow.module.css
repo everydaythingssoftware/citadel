@@ -315,6 +315,13 @@
 	cursor: default;
 }
 
+.choicesLabel {
+	margin: 6px 0 -2px;
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+	text-align: center;
+}
+
 .choiceIcon {
 	flex: none;
 	color: var(--ctd-ink-soft);

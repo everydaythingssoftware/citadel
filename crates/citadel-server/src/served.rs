@@ -15,7 +15,7 @@ use libcalibre::{
 };
 use serde::Serialize;
 
-use crate::CalibreCatalogSource;
+use crate::{access, CalibreCatalogSource};
 
 /// Folders in the state directory that are Citadel's own; a library may not
 /// be created or adopted inside them.
@@ -32,6 +32,9 @@ pub struct ServedLibrary {
     accounts: Arc<CitadelStore>,
     source: Arc<CalibreCatalogSource>,
     state_directory: PathBuf,
+    /// Where libraries are mounted, such as `/library` and `/libraries` in
+    /// the container: each holds a library itself or one per subfolder.
+    library_roots: Vec<PathBuf>,
     served: Mutex<Served>,
 }
 
@@ -43,6 +46,12 @@ pub struct ServedLibraryInfo {
     pub name: String,
     pub path: String,
     pub read_only: bool,
+    /// The administrator chose to serve it read-only.
+    pub read_only_chosen: bool,
+    /// Why it is read-only when nobody chose that: the folder can't be
+    /// changed by the server, and how to fix it.
+    #[schema(required = true)]
+    pub read_only_reason: Option<String>,
     /// False when the registered folder can't be opened right now; see `problem`.
     pub available: bool,
     #[schema(required = true)]
@@ -81,6 +90,11 @@ pub struct InspectedLibrary {
     /// False when the schema is older than this server opens; `message` says
     /// what to do.
     pub supported: bool,
+    /// The server can change it: add, edit and upgrade.
+    pub writable: bool,
+    /// Why not, when it can't, and how to fix it.
+    #[schema(required = true)]
+    pub read_only_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, utoipa::ToSchema)]
@@ -96,6 +110,16 @@ pub struct Inspection {
     /// Why the path can't be used as asked, when it can't.
     #[schema(required = true)]
     pub message: Option<String>,
+}
+
+/// Libraries already in the folders mounted for them, and empty mounted
+/// folders a new library could start in.
+#[derive(Clone, Debug, Default, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundLibraries {
+    /// One per Calibre library, however many paths reach it.
+    pub libraries: Vec<Inspection>,
+    pub create_in: Vec<Inspection>,
 }
 
 #[derive(Clone, Debug, Serialize, utoipa::ToSchema)]
@@ -162,8 +186,15 @@ impl ServedLibrary {
             accounts,
             source,
             state_directory,
+            library_roots: Vec::new(),
             served: Mutex::default(),
         }
+    }
+
+    /// Looks for libraries under `roots` (see [`ServedLibrary::found`]).
+    pub fn with_library_roots(mut self, roots: Vec<PathBuf>) -> Self {
+        self.library_roots = roots;
+        self
     }
 
     pub fn accounts(&self) -> &Arc<CitadelStore> {
@@ -208,7 +239,7 @@ impl ServedLibrary {
             *self.served() = Served::default();
             return Ok(None);
         };
-        let problem = match self.source.replace_from_path(Path::new(&registered.path)) {
+        let problem = match self.open(Path::new(&registered.path), registered.read_only) {
             Ok(()) => None,
             Err(error) => {
                 self.source.close();
@@ -260,11 +291,17 @@ impl ServedLibrary {
         } else {
             (None, false)
         };
+        let read_only = self.source.read_only();
+        let read_only_reason = (read_only && !registered.read_only && served.problem.is_none())
+            .then(|| access::explain(Path::new(&registered.path), true))
+            .flatten();
         Some(ServedLibraryInfo {
+            read_only_chosen: registered.read_only,
+            read_only_reason,
             id: registered.id,
             name: registered.display_name,
             path: registered.path,
-            read_only: self.source.read_only(),
+            read_only,
             available: served.problem.is_none(),
             problem: served.problem,
             schema_version,
@@ -272,8 +309,12 @@ impl ServedLibrary {
         })
     }
 
-    /// Where the directory browser opens: the process's home, else the root.
+    /// Where the directory browser opens: the first library mount, else the
+    /// process's home, else the root.
     pub fn browse_root(&self) -> PathBuf {
+        if let Some(root) = self.library_roots.iter().find(|root| root.is_dir()) {
+            return root.clone();
+        }
         dirs::home_dir()
             .filter(|home| home.is_absolute() && home.is_dir())
             .unwrap_or_else(|| PathBuf::from(if cfg!(windows) { "C:\\" } else { "/" }))
@@ -346,11 +387,7 @@ impl ServedLibrary {
                 return describe(InspectionStatus::Missing, None, None)
             }
             Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-                return describe(
-                    InspectionStatus::Denied,
-                    None,
-                    Some(format!("The server can't read {}", resolved.display())),
-                )
+                return describe(InspectionStatus::Denied, None, Some(cant_read(&resolved)))
             }
             Err(error) => return describe(InspectionStatus::Denied, None, Some(error.to_string())),
             Ok(metadata) if !metadata.is_dir() => {
@@ -363,7 +400,7 @@ impl ServedLibrary {
             Ok(_) => {}
         }
         if let Some(database) = libcalibre::util::get_db_path(&resolved.to_string_lossy()) {
-            return match inspect_library(&database) {
+            return match inspect_library(&resolved, &database) {
                 Ok(library) => {
                     let message = (!library.supported).then(|| {
                         format!(
@@ -396,11 +433,9 @@ impl ServedLibrary {
                 None,
                 Some("This folder is already a Calibre library.".into()),
             ),
-            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => describe(
-                InspectionStatus::Denied,
-                None,
-                Some(format!("The server can't read {}", resolved.display())),
-            ),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                describe(InspectionStatus::Denied, None, Some(cant_read(&resolved)))
+            }
             Err(error) => describe(InspectionStatus::Denied, None, Some(error.to_string())),
         }
     }
@@ -419,9 +454,7 @@ impl ServedLibrary {
                 LibraryErrorCode::NotFound,
                 format!("{} doesn't exist", path.display()),
             ),
-            std::io::ErrorKind::PermissionDenied => {
-                LibraryError::invalid(format!("The server can't read {}", path.display()))
-            }
+            std::io::ErrorKind::PermissionDenied => LibraryError::invalid(cant_read(&path)),
             _ => LibraryError::invalid(format!("Couldn't read {}: {error}", path.display())),
         })?;
         let mut entries: Vec<DirectoryEntry> = read
@@ -474,7 +507,7 @@ impl ServedLibrary {
             }
         }
         drop(Library::create_library_at(&inspection.path).map_err(calibre_error)?);
-        self.serve(Path::new(&inspection.path), name, administrator)
+        self.serve(Path::new(&inspection.path), name, false, administrator)
     }
 
     /// Serves the existing library at `raw`, upgrading its schema first when
@@ -485,9 +518,15 @@ impl ServedLibrary {
         raw: &str,
         name: Option<&str>,
         upgrade: bool,
+        read_only: bool,
         administrator: &User,
     ) -> Result<ServedLibraryInfo, LibraryError> {
         self.refuse_if_serving()?;
+        if upgrade && read_only {
+            return Err(LibraryError::invalid(
+                "A library served read-only can't be upgraded; serve it writable to upgrade it",
+            ));
+        }
         let inspection = self.inspect(raw);
         let library = match (inspection.status, inspection.library) {
             (InspectionStatus::Library, Some(library)) => library,
@@ -536,7 +575,7 @@ impl ServedLibrary {
                 .and_then(|mut library| library.upgrade())
                 .map_err(calibre_error)?;
         }
-        self.serve(path, name, administrator)
+        self.serve(path, name, read_only, administrator)
     }
 
     fn refuse_if_serving(&self) -> Result<(), LibraryError> {
@@ -550,14 +589,24 @@ impl ServedLibrary {
         Ok(())
     }
 
+    /// Opens the library at `path`: read-only when asked, otherwise for
+    /// writing where the folder allows it.
+    fn open(&self, path: &Path, read_only: bool) -> Result<(), String> {
+        if read_only {
+            self.source.replace_read_only_from_path(path)
+        } else {
+            self.source.replace_from_path(path)
+        }
+    }
+
     fn serve(
         &self,
         path: &Path,
         name: Option<&str>,
+        read_only: bool,
         administrator: &User,
     ) -> Result<ServedLibraryInfo, LibraryError> {
-        self.source
-            .replace_from_path(path)
+        self.open(path, read_only)
             .map_err(|error| LibraryError::new(LibraryErrorCode::Internal, error))?;
         let id = self
             .source
@@ -570,6 +619,7 @@ impl ServedLibrary {
                 path,
                 name.map(str::trim).filter(|name| !name.is_empty()),
             )
+            .and_then(|library| self.accounts.set_library_read_only(&library.id, read_only))
             .and_then(|library| self.accounts.set_active_library(&library.id))
             .and_then(|library| {
                 self.accounts
@@ -581,7 +631,71 @@ impl ServedLibrary {
             registered: Some(registered),
             problem: None,
         };
+        self.register_found();
         Ok(self.info().expect("a library was just registered"))
+    }
+
+    /// The libraries under the library roots: each root that is itself a
+    /// library, else each of its subfolders that is one, each library listed
+    /// once however many paths reach it. An empty root is offered for a new
+    /// library only when something is mounted there, so a forgotten volume
+    /// never puts books inside a container.
+    pub fn found(&self) -> FoundLibraries {
+        let mut found = FoundLibraries::default();
+        let mut seen = std::collections::HashSet::new();
+        for root in &self.library_roots {
+            if !root.is_dir() {
+                continue;
+            }
+            let candidates: Vec<PathBuf> = if root.join("metadata.db").is_file() {
+                vec![root.clone()]
+            } else {
+                let mut children: Vec<PathBuf> = std::fs::read_dir(root)
+                    .map(|entries| {
+                        entries
+                            .filter_map(Result::ok)
+                            .map(|entry| entry.path())
+                            .filter(|path| path.join("metadata.db").is_file())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                children.sort();
+                if children.is_empty() && is_mount_point(root) {
+                    let inspection = self.inspect(&root.to_string_lossy());
+                    if inspection.status == InspectionStatus::Empty {
+                        found.create_in.push(inspection);
+                    }
+                }
+                children
+            };
+            for path in candidates {
+                let inspection = self.inspect(&path.to_string_lossy());
+                if inspection.status != InspectionStatus::Library || inspection.library.is_none() {
+                    continue;
+                }
+                let key = library_uuid(&path).unwrap_or_else(|| inspection.path.clone());
+                if seen.insert(key) {
+                    found.libraries.push(inspection);
+                }
+            }
+        }
+        found
+    }
+
+    /// Records every found library in the registry, so serving another later
+    /// (CDL-71) finds it already known. Best effort.
+    fn register_found(&self) {
+        for inspection in self.found().libraries {
+            let path = Path::new(&inspection.path);
+            if let Some(id) = library_uuid(path) {
+                if let Err(error) = self.accounts.register_library(&id, path, None) {
+                    eprintln!(
+                        "citadel_server warning=\"could not record the library at {}: {error}\"",
+                        path.display()
+                    );
+                }
+            }
+        }
     }
 
     /// Tries the registered folder again, for a library that was unreachable.
@@ -642,15 +756,50 @@ pub fn resolve(path: &Path) -> PathBuf {
 }
 
 fn inspect_library(
+    folder: &Path,
     database: &libcalibre::util::ValidDbPath,
 ) -> Result<InspectedLibrary, CalibreError> {
     let stats = libcalibre::library_stats(database)?;
     let schema_version = libcalibre::peek_schema_version(database)?;
+    let read_only_reason = access::explain(folder, true)
+        .or_else(|| access::explain(&folder.join("metadata.db"), true));
     Ok(InspectedLibrary {
         book_count: stats.book_count,
         author_count: stats.author_count,
         schema_version,
         upgrade_available: schema_version < libcalibre::SCHEMA_VERSION,
         supported: schema_version >= libcalibre::MINIMUM_SCHEMA_VERSION,
+        writable: read_only_reason.is_none(),
+        read_only_reason,
     })
+}
+
+/// Says the folder can't be read, and how to fix that when we can tell.
+fn cant_read(path: &Path) -> String {
+    access::explain(path, false)
+        .unwrap_or_else(|| format!("The server can't read {}", path.display()))
+}
+
+fn library_uuid(folder: &Path) -> Option<String> {
+    let database = libcalibre::util::get_db_path(&folder.to_string_lossy())?;
+    Library::open_read_only(database)
+        .and_then(|mut library| library.library_uuid())
+        .ok()
+}
+
+/// Something is mounted at `path`: it is on a different device than its
+/// parent.
+#[cfg(unix)]
+fn is_mount_point(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let parent = path.parent().unwrap_or(path);
+    match (std::fs::metadata(path), std::fs::metadata(parent)) {
+        (Ok(here), Ok(above)) => here.dev() != above.dev() || here.ino() == above.ino(),
+        _ => false,
+    }
+}
+
+#[cfg(not(unix))]
+fn is_mount_point(_path: &Path) -> bool {
+    false
 }

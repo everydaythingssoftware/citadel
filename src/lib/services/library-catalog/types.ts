@@ -12,6 +12,8 @@ import type { Library, Options } from "../library";
 export type ServedLibrary = components["schemas"]["ServedLibraryInfo"];
 export type LibrarySetup = components["schemas"]["LibrarySetup"];
 export type PathInspection = components["schemas"]["Inspection"];
+/** Libraries in the folders mounted for them, and empty mounts to start one in. */
+export type FoundLibraries = components["schemas"]["FoundLibraries"];
 export type InspectionStatus = components["schemas"]["InspectionStatus"];
 export type InspectedLibrary = components["schemas"]["InspectedLibrary"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];

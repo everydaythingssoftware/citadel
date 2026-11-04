@@ -46,6 +46,7 @@ ENV CITADEL_LISTEN=0.0.0.0:8081 \
     CITADEL_OPDS_ADDRESSES=all \
     CITADEL_STATE_DIRECTORY=/var/lib/citadel \
     CITADEL_WEB_DIRECTORY=/usr/share/citadel/web \
+    CITADEL_LIBRARY_ROOTS=/library,/libraries \
     PUID=1000 \
     PGID=1000
 VOLUME ["/var/lib/citadel"]

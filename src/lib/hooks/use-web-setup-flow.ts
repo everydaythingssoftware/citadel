@@ -60,6 +60,7 @@ const runEffect = async (
 					type: "STATUS_LOADED",
 					library: status.library,
 					browseRoot: status.browseRoot,
+					found: status.found,
 				});
 			} catch (error) {
 				send({ type: "STATUS_FAILED", message: message(error) });

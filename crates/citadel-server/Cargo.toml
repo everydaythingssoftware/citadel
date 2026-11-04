@@ -30,6 +30,9 @@ tower = { version = "0.5", features = ["util"] }
 reqwest = { version = "0.12", features = ["json"] }
 semver = "1"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 base64 = "0.22"
 nix = { version = "0.30", features = ["signal"] }

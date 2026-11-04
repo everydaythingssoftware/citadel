@@ -21,7 +21,8 @@ use super::{
     ApiFailure, ApiState,
 };
 use crate::served::{
-    DirectoryListing, Inspection, SchemaUpgradeInfo, ServedLibrary, ServedLibraryInfo,
+    DirectoryListing, FoundLibraries, Inspection, SchemaUpgradeInfo, ServedLibrary,
+    ServedLibraryInfo,
 };
 
 #[derive(Serialize, utoipa::ToSchema)]
@@ -52,6 +53,9 @@ pub(super) struct LibrarySetup {
     library: Option<ServedLibraryInfo>,
     /// Where the directory browser starts.
     browse_root: String,
+    /// Libraries in the folders mounted for them, and empty mounts a new one
+    /// could start in.
+    found: FoundLibraries,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -89,6 +93,11 @@ pub(super) struct ChooseLibrary {
     /// A backup is kept beside its database.
     #[serde(default)]
     upgrade: bool,
+    /// Adopt only: serve the library without changing it, for libraries
+    /// still managed in Calibre elsewhere. Adding, editing and upgrading are
+    /// off.
+    #[serde(default)]
+    read_only: bool,
 }
 
 fn forbidden(message: &str) -> Response {
@@ -237,6 +246,7 @@ async fn library_setup(State(state): State<ApiState>) -> Result<Json<LibrarySetu
             Ok(LibrarySetup {
                 library: served.info(),
                 browse_root: served.browse_root().to_string_lossy().into_owned(),
+                found: served.found(),
             })
         })
         .await?,
@@ -293,9 +303,13 @@ async fn choose_library(
     Ok(Json(
         served(&state, move |served| match input.mode {
             SetupMode::Create => served.create(&input.path, input.name.as_deref(), &user),
-            SetupMode::Adopt => {
-                served.adopt(&input.path, input.name.as_deref(), input.upgrade, &user)
-            }
+            SetupMode::Adopt => served.adopt(
+                &input.path,
+                input.name.as_deref(),
+                input.upgrade,
+                input.read_only,
+                &user,
+            ),
         })
         .await?,
     ))

@@ -187,3 +187,22 @@
 	margin-top: 14px;
 	font-size: 12.5px;
 }
+
+/* A choice on the confirm card, with a line saying what it means. */
+.option {
+	margin-top: 14px;
+	font-size: 12.5px;
+}
+
+.optionNote {
+	margin: 4px 0 0 24px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--ctd-ink-soft);
+}
+
+/* Long server paths wrap inside a found library's description. */
+.choiceText {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}

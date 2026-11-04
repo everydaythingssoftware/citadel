@@ -30,6 +30,7 @@ diesel::table! {
         path -> Text,
         display_name -> Text,
         created_at -> BigInt,
+        read_only -> Bool,
     }
 }
 diesel::table! {

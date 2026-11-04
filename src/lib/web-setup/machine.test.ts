@@ -9,6 +9,7 @@ import type {
 	SetupSnapshot,
 	TransitionResult,
 } from "./machine";
+import type { FoundLibraries } from "@/lib/services/library-catalog/types";
 import {
 	ALREADY_A_LIBRARY_ERROR,
 	EMPTY_PATH_ERROR,
@@ -26,6 +27,8 @@ const served = (patch: Partial<ServedLibrary> = {}): ServedLibrary => ({
 	name: "Shelf",
 	path: BOOKS,
 	readOnly: false,
+	readOnlyChosen: false,
+	readOnlyReason: null,
 	available: true,
 	problem: null,
 	schemaVersion: 28,
@@ -52,6 +55,8 @@ const library = (patch: Partial<PathInspection["library"]> = {}) =>
 			schemaVersion: 26,
 			upgradeAvailable: true,
 			supported: true,
+			writable: true,
+			readOnlyReason: null,
 			...patch,
 		},
 	});
@@ -70,10 +75,14 @@ const run = (
 	return { snapshot, effects };
 };
 
-const loaded = (library: ServedLibrary | null = null): SetupEvent => ({
+const loaded = (
+	library: ServedLibrary | null = null,
+	found: FoundLibraries = { libraries: [], createIn: [] },
+): SetupEvent => ({
 	type: "STATUS_LOADED",
 	library,
 	browseRoot: ROOT,
+	found,
 });
 
 describe("web setup machine", () => {
@@ -288,6 +297,7 @@ describe("web setup machine", () => {
 				path: BOOKS,
 				name: "Phil's Shelf",
 				upgrade: false,
+				readOnly: false,
 			},
 		});
 		expect(confirmed.snapshot.step).toMatchObject({
@@ -335,7 +345,13 @@ describe("web setup machine", () => {
 		]);
 		expect(effects.at(-1)).toEqual({
 			kind: "commit",
-			request: { mode: "create", path: BOOKS, name: null, upgrade: false },
+			request: {
+				mode: "create",
+				path: BOOKS,
+				name: null,
+				upgrade: false,
+				readOnly: false,
+			},
 		});
 		expect(snapshot.step).toEqual({ id: "done" });
 	});
@@ -389,6 +405,120 @@ describe("web setup machine", () => {
 			mode: "adopt",
 			path: BOOKS,
 			inspection: library(),
+		});
+	});
+
+	describe("libraries found in the mounted folders", () => {
+		const MOUNT = "/library";
+		const mounted = library({ upgradeAvailable: false });
+		const foundHere = { ...mounted, path: MOUNT, name: "library" };
+		const emptyMount = inspection({
+			status: "empty",
+			path: "/libraries",
+			name: "libraries",
+		});
+		const found: FoundLibraries = {
+			libraries: [foundHere],
+			createIn: [emptyMount],
+		};
+
+		it("opens a found library in one step, and Back returns to the chooser", () => {
+			const { snapshot } = run(initSetup(), [
+				loaded(null, found),
+				{ type: "USE_FOUND", path: MOUNT },
+			]);
+			expect(snapshot.found).toEqual(found);
+			expect(snapshot.step).toMatchObject({
+				id: "confirm",
+				mode: "adopt",
+				path: MOUNT,
+				name: "library",
+				readOnly: false,
+				fromChooser: true,
+			});
+			const back = transition(snapshot, { type: "BACK" });
+			expect(back.snapshot.step).toEqual({ id: "chooser" });
+		});
+
+		it("starts a new library in an empty mount", () => {
+			const { snapshot } = run(initSetup(), [
+				loaded(null, found),
+				{ type: "CREATE_IN", path: "/libraries" },
+			]);
+			expect(snapshot.step).toMatchObject({
+				id: "confirm",
+				mode: "create",
+				path: "/libraries",
+				fromChooser: true,
+			});
+		});
+
+		it("ignores paths it wasn't offered", () => {
+			const { snapshot } = run(initSetup(), [
+				loaded(null, found),
+				{ type: "CREATE_IN", path: "/elsewhere" },
+			]);
+			expect(snapshot.step).toEqual({ id: "chooser" });
+		});
+	});
+
+	describe("read-only", () => {
+		const reachConfirm = (target = library()) =>
+			run(initSetup(), [
+				loaded(),
+				{ type: "CHOOSE_ADOPT" },
+				{ type: "PATH_CHANGED", path: BOOKS },
+				{ type: "CONTINUE" },
+				{ type: "INSPECTED", path: BOOKS, inspection: target },
+			]);
+
+		it("can be chosen, and takes the upgrade with it", () => {
+			const confirmed = reachConfirm();
+			expect(confirmed.snapshot.step).toMatchObject({
+				readOnly: false,
+				upgrade: true,
+			});
+			const chosen = run(confirmed, [
+				{ type: "READ_ONLY_CHANGED", readOnly: true },
+				{ type: "UPGRADE_CHANGED", upgrade: true },
+				{ type: "COMMIT" },
+			]);
+			expect(chosen.snapshot.step).toMatchObject({
+				readOnly: true,
+				upgrade: false,
+			});
+			expect(chosen.effects.at(-1)).toEqual({
+				kind: "commit",
+				request: {
+					mode: "adopt",
+					path: BOOKS,
+					name: "books",
+					upgrade: false,
+					readOnly: true,
+				},
+			});
+			const undone = run(confirmed, [
+				{ type: "READ_ONLY_CHANGED", readOnly: true },
+				{ type: "READ_ONLY_CHANGED", readOnly: false },
+			]);
+			expect(undone.snapshot.step).toMatchObject({
+				readOnly: false,
+				upgrade: true,
+			});
+		});
+
+		it("is forced on when the server can't write the library", () => {
+			const unwritable = library({
+				writable: false,
+				readOnlyReason: "/srv/books is mounted read-only.",
+			});
+			const confirmed = run(reachConfirm(unwritable), [
+				{ type: "READ_ONLY_CHANGED", readOnly: false },
+			]);
+			expect(confirmed.snapshot.step).toMatchObject({
+				readOnly: true,
+				upgrade: false,
+			});
 		});
 	});
 });

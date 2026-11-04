@@ -46,7 +46,25 @@ Settings come from environment variables; all are optional:
 | `CITADEL_STATE_DIRECTORY` | `/var/lib/citadel` | Where `citadel.db` and uploads live. Keep it on a volume. |
 | `CITADEL_WEB_DIRECTORY` | `/usr/share/citadel/web` | The web app the image carries. |
 | `CITADEL_UPDATE_CHECK` | on | `false` stops the daily check for new releases. |
+| `CITADEL_LIBRARY_ROOTS` | `/library,/libraries` | Folders where libraries are mounted. Setup offers each library it finds there. |
 | `PUID`, `PGID` | `1000` | The user and group the server runs as. Match the owner of your books folder. |
+
+Mount one library at `/library`, or several as folders inside `/libraries`
+(`-v /path/to/fiction:/libraries/fiction`). Setup lists every library it finds
+in either, once each, and starts its folder browser there. An empty volume
+mounted at either is offered as the place to start a new library; an empty
+folder that isn't a mount never is, so a forgotten `-v` can't put books inside
+the container. Every library found is recorded; the server serves the one you
+choose.
+
+To keep managing a library in Calibre on another computer, tick **Read-only**
+when you choose it (or mount it with `:ro`, which Citadel notices). Citadel
+then never changes it, and adding and editing books is off.
+`citadel-server libraries read-only on|off` changes this later; restart the
+server afterwards.
+
+When the server can't read or change a folder, setup and the log say which
+user Citadel runs as, who owns the folder, and the `PUID`/`PGID` that fixes it.
 
 A config file mounted at `/etc/citadel/server.toml` replaces all of these
 (`CITADEL_CONFIG` names a different path); the server says so if both are set,
@@ -132,7 +150,8 @@ citadel-server --config <path> users demote <name>
 citadel-server --config <path> grant <name> [<library-id>]
 citadel-server --config <path> revoke <name> [<library-id>]
 citadel-server --config <path> libraries list
-citadel-server --config <path> libraries add <absolute path>
+citadel-server --config <path> libraries add <absolute path> [--read-only]
+citadel-server --config <path> libraries read-only <on|off> [<library-id>]
 ```
 
 `users add` grants access to the served library unless `--no-grant` is given

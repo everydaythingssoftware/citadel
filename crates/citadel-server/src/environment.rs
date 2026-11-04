@@ -17,6 +17,7 @@ pub const OPDS_ADDRESSES: &str = "CITADEL_OPDS_ADDRESSES";
 pub const STATE_DIRECTORY: &str = "CITADEL_STATE_DIRECTORY";
 pub const WEB_DIRECTORY: &str = "CITADEL_WEB_DIRECTORY";
 pub const UPDATE_CHECK: &str = "CITADEL_UPDATE_CHECK";
+pub const LIBRARY_ROOTS: &str = "CITADEL_LIBRARY_ROOTS";
 
 /// The variables that configure the server.
 pub const SETTINGS: &[&str] = &[
@@ -27,6 +28,7 @@ pub const SETTINGS: &[&str] = &[
     STATE_DIRECTORY,
     WEB_DIRECTORY,
     UPDATE_CHECK,
+    LIBRARY_ROOTS,
 ];
 
 /// `CITADEL_*` variables that mean something elsewhere: the config file,
@@ -89,6 +91,18 @@ pub fn config_from(var: impl Fn(&str) -> Option<String>) -> Result<ServerConfig,
     if let Some(directory) = var(STATE_DIRECTORY) {
         root.insert("stateDirectory".into(), Value::String(directory));
     }
+    if let Some(list) = var(LIBRARY_ROOTS) {
+        root.insert(
+            "libraryRoots".into(),
+            Value::Array(
+                list.split(',')
+                    .map(str::trim)
+                    .filter(|root| !root.is_empty())
+                    .map(|root| Value::String(root.into()))
+                    .collect(),
+            ),
+        );
+    }
     if let Some(text) = var(UPDATE_CHECK) {
         let check = match text.to_ascii_lowercase().as_str() {
             "true" | "1" | "yes" | "on" => true,
@@ -141,6 +155,7 @@ fn in_variable_terms(error: &str) -> String {
         ("api.webDirectory", WEB_DIRECTORY),
         ("stateDirectory", STATE_DIRECTORY),
         ("sharing.port", OPDS_PORT),
+        ("libraryRoots", LIBRARY_ROOTS),
     ]
     .iter()
     .fold(error.to_string(), |message, (key, variable)| {
@@ -208,8 +223,19 @@ mod tests {
             (OPDS_ADDRESSES, "all"),
             (STATE_DIRECTORY, &state),
             (UPDATE_CHECK, "off"),
+            (
+                LIBRARY_ROOTS,
+                &format!("{}, {}", absolute("/library"), absolute("/libraries")),
+            ),
         ])
         .unwrap();
+        assert_eq!(
+            config.library_roots,
+            vec![
+                std::path::PathBuf::from(absolute("/library")),
+                std::path::PathBuf::from(absolute("/libraries"))
+            ]
+        );
         assert_eq!(config.api.public_url, "http://localhost:8081");
         assert_eq!(config.sharing.target, OpdsBindTarget::AllInterfaces);
         assert_eq!(
@@ -258,6 +284,7 @@ mod tests {
             (vec![(UPDATE_CHECK, "maybe")], UPDATE_CHECK),
             (vec![(STATE_DIRECTORY, "relative/state")], STATE_DIRECTORY),
             (vec![(WEB_DIRECTORY, "/no/such/web/build")], WEB_DIRECTORY),
+            (vec![(LIBRARY_ROOTS, "/library,books")], LIBRARY_ROOTS),
         ] {
             let error = settings(&vars).unwrap_err();
             assert!(error.contains(expected), "{vars:?}: {error}");
