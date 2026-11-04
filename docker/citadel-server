@@ -1,0 +1,37 @@
+#!/bin/sh
+# Every citadel-server in the image goes through here, `docker run` and
+# `docker exec` alike: started as root, it runs as PUID:PGID (1000:1000 by
+# default) so the state volume's files always belong to one user.
+set -eu
+server=/usr/lib/citadel/citadel-server
+
+if [ -z "${CITADEL_CONFIG:-}" ] && [ -f /etc/citadel/server.toml ]; then
+	export CITADEL_CONFIG=/etc/citadel/server.toml
+fi
+
+if [ "$(id -u)" != 0 ]; then
+	exec "$server" "$@"
+fi
+
+uid=${PUID:-1000}
+gid=${PGID:-1000}
+case "$uid:$gid" in
+*[!0-9:]* | :* | *:)
+	echo "citadel_server error=\"PUID and PGID must be numbers, such as 1000 (got PUID=$uid PGID=$gid)\"" >&2
+	exit 1
+	;;
+esac
+
+# A new volume belongs to root: give it to the server's user. Only the state
+# directory itself; library folders are never changed.
+state=${CITADEL_STATE_DIRECTORY:-/var/lib/citadel}
+if [ ! -e "$state" ]; then
+	mkdir -p "$state"
+	chown "$uid:$gid" "$state"
+elif [ "$uid" != 0 ] && [ "$(stat -c %u "$state")" = 0 ]; then
+	chown "$uid:$gid" "$state"
+fi
+
+# root's home isn't readable once privileges are dropped.
+export HOME=/
+exec setpriv --reuid="$uid" --regid="$gid" --clear-groups -- "$server" "$@"

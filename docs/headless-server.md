@@ -4,6 +4,65 @@
 OPDS runtime as the desktop application, to e-readers. It has no desktop or
 WebView; the browser is its interface.
 
+## Run it with Docker
+
+The image holds the server and the web app:
+
+```sh
+docker run -d --name citadel \
+  -p 8081:8081 -p 8080:8080 \
+  -v citadel-state:/var/lib/citadel \
+  -v /path/to/your/books:/library \
+  ghcr.io/everydaythingssoftware/citadel-server
+docker logs citadel   # shows the setup code
+```
+
+Open port 8081 in a browser and continue with [First run](#first-run). Port
+8080 is OPDS for e-readers. Or with Compose:
+
+```yaml
+services:
+  citadel:
+    image: ghcr.io/everydaythingssoftware/citadel-server
+    ports: ["8081:8081", "8080:8080"]
+    environment:
+      CITADEL_PUBLIC_URL: http://nas.local:8081
+    volumes:
+      - citadel-state:/var/lib/citadel
+      - /path/to/your/books:/library
+    restart: unless-stopped
+volumes:
+  citadel-state:
+```
+
+Settings come from environment variables; all are optional:
+
+| Variable | Default in the image | Meaning |
+| --- | --- | --- |
+| `CITADEL_PUBLIC_URL` | `http://localhost:8081` | The address browsers use to reach Citadel. Set it to the address you type, such as `http://nas.local:8081`. |
+| `CITADEL_LISTEN` | `0.0.0.0:8081` | Where the browser and API listen. |
+| `CITADEL_OPDS_PORT` | `8080` | The OPDS port. |
+| `CITADEL_OPDS_ADDRESSES` | `all` | `all`, `local` (private networks only) or a comma-separated list of addresses. |
+| `CITADEL_STATE_DIRECTORY` | `/var/lib/citadel` | Where `citadel.db` and uploads live. Keep it on a volume. |
+| `CITADEL_WEB_DIRECTORY` | `/usr/share/citadel/web` | The web app the image carries. |
+| `CITADEL_UPDATE_CHECK` | on | `false` stops the daily check for new releases. |
+| `PUID`, `PGID` | `1000` | The user and group the server runs as. Match the owner of your books folder. |
+
+A config file mounted at `/etc/citadel/server.toml` replaces all of these
+(`CITADEL_CONFIG` names a different path); the server says so if both are set,
+and warns about `CITADEL_` variables it doesn't know, which are usually typos.
+The image starts as root only to hand a new state volume to `PUID:PGID`, then
+drops to that user; it never changes your books folder. Commands run the same
+way:
+
+```sh
+docker exec citadel citadel-server users list
+```
+
+The container reports its health to Docker through `citadel-server health`.
+
+## Run it from source
+
 Copy `crates/citadel-server/example-config.toml`, set the listeners and the
 public URL, and run the server:
 
@@ -11,6 +70,10 @@ public URL, and run the server:
 CONFIG=/absolute/path/to/citadel-server.toml
 cargo run -p citadel-server -- --config "$CONFIG"
 ```
+
+Without `--config`, the server reads the variables above, with defaults for
+running on this machine: the browser at `http://127.0.0.1:8081`, OPDS on
+`127.0.0.1:8080`.
 
 ## First run
 
@@ -136,13 +199,16 @@ concrete addresses without depending on interface discovery:
 addresses = ["127.0.0.1", "::1"]
 ```
 
-Wildcard, link-local and non-unicast addresses are rejected. Configure every
-concrete address on which the process should listen.
+For OPDS, wildcard, link-local and non-unicast addresses are rejected; configure
+every concrete address it should listen on. The browser and API listener
+(`api.listen`) may be a wildcard such as `0.0.0.0:8081`, as it is in the
+container: it always requires sign-in, and there the published ports decide
+what is reachable. Link-local and non-unicast addresses are rejected there too.
 
 Citadel serves plain HTTP. For access beyond a trusted local network, place it
 behind an externally managed TLS reverse proxy and firewall. Service
-supervision, certificates, public-exposure controls, and container or operating
-system packages are not provided by this initial server.
+supervision, certificates and public-exposure controls are up to you; the
+image above is the supported package.
 
 ## Versions and updates
 

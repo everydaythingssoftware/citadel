@@ -9,11 +9,15 @@ async fn main() -> ExitCode {
             println!("{}", citadel_server::release::describe());
             Ok(())
         }
-        Ok(Invocation::Serve(path)) => match citadel_server::load_config(&path) {
-            Ok(config) => citadel_server::run(config, &path).await,
+        Ok(Invocation::Serve(source)) => match citadel_server::load(&source) {
+            Ok(config) => citadel_server::run(config).await,
             Err(error) => Err(error),
         },
-        Ok(Invocation::Admin(path, args)) => citadel_server::load_config(&path)
+        Ok(Invocation::Health(source)) => match citadel_server::load(&source) {
+            Ok(config) => citadel_server::health(&config).await,
+            Err(error) => Err(error),
+        },
+        Ok(Invocation::Admin(source, args)) => citadel_server::load(&source)
             .and_then(|config| citadel_server::admin::run(&config, &args, std::io::stdin().lock()))
             .map(|output| println!("{output}")),
         Err(error) => Err(error),
