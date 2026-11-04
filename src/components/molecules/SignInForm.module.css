@@ -28,7 +28,6 @@
 
 .error {
 	margin: 0;
-	padding-inline-start: calc(var(--ctd-control-border-width) + 8px);
 	color: var(--ctd-danger-bg);
 	font-size: 12px;
 }

@@ -1,6 +1,4 @@
 .field {
-	/* Text beside the box lines up with the text inside it. */
-	--text-input-inset: calc(var(--ctd-control-border-width) + 8px);
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
@@ -8,7 +6,6 @@
 
 /* A tight line box keeps the label nearer its own field than the one above. */
 .label {
-	padding-inline-start: var(--text-input-inset);
 	font-size: 13px;
 	line-height: 1;
 	color: var(--ctd-ink-soft);
@@ -54,7 +51,6 @@
 }
 
 .hint {
-	padding-inline-start: var(--text-input-inset);
 	font-size: 12px;
 	line-height: 1.2;
 	color: var(--ctd-ink-soft);
@@ -65,7 +61,6 @@
 }
 
 .error {
-	padding-inline-start: var(--text-input-inset);
 	font-size: 12px;
 	line-height: 1.2;
 	color: var(--ctd-danger-bg);
