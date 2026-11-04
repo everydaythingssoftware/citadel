@@ -293,7 +293,7 @@ impl ServedLibrary {
         };
         let read_only = self.source.read_only();
         let read_only_reason = (read_only && !registered.read_only && served.problem.is_none())
-            .then(|| access::explain(Path::new(&registered.path), true))
+            .then(|| access::explain_library(Path::new(&registered.path)))
             .flatten();
         Some(ServedLibraryInfo {
             read_only_chosen: registered.read_only,
@@ -761,8 +761,7 @@ fn inspect_library(
 ) -> Result<InspectedLibrary, CalibreError> {
     let stats = libcalibre::library_stats(database)?;
     let schema_version = libcalibre::peek_schema_version(database)?;
-    let read_only_reason = access::explain(folder, true)
-        .or_else(|| access::explain(&folder.join("metadata.db"), true));
+    let read_only_reason = access::explain_library(folder);
     Ok(InspectedLibrary {
         book_count: stats.book_count,
         author_count: stats.author_count,
