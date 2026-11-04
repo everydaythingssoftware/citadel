@@ -67,3 +67,11 @@
 	align-items: center;
 	justify-content: center;
 }
+
+/* A ticked box stays ticked when it can't be changed: keep the accent fill
+   behind the white tick, faded like other disabled controls. */
+.box[data-state="checked"]:disabled {
+	background-color: var(--ctd-accent);
+	border-color: var(--ctd-accent-strong);
+	opacity: 0.45;
+}
