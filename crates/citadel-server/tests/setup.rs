@@ -51,6 +51,7 @@ fn fresh(directory: &std::path::Path, code: Option<&str>) -> Server {
             citadel_core::vault::Vault::open_or_create(&state.join("secrets")).unwrap(),
         ),
         setup_code: code.map(String::from),
+        updates: citadel_server::updates::Updates::off(),
     };
     let staging = api::Staging::open(state.join("uploads"), api::UploadConfig::default()).unwrap();
     let metadata = Arc::new(
@@ -397,6 +398,7 @@ async fn readers_never_reach_the_setup_routes() {
             Some(json!({"mode": "adopt", "path": "/"})),
         ),
         ("POST", "/api/setup/library/upgrade", None),
+        ("GET", "/api/server/update", None),
         ("POST", "/api/setup/library/reopen", None),
     ] {
         let (status, _, error) =
@@ -690,4 +692,57 @@ async fn the_chosen_library_survives_restart_and_a_missing_folder_is_reported() 
     )
     .await;
     assert_eq!(info["available"], true);
+}
+
+#[tokio::test]
+async fn every_answer_names_the_build_and_the_version_is_public() {
+    let directory = tempfile::tempdir().unwrap();
+    let server = fresh(directory.path(), Some(SETUP_CODE));
+    let (status, headers, version) =
+        request(&server.router, "GET", "/api/version", None, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(version["version"], citadel_server::release::VERSION);
+    assert_eq!(version["commit"], citadel_server::release::COMMIT);
+    assert_eq!(version["build"], citadel_server::release::BUILD);
+    assert_eq!(headers["citadel-build"], citadel_server::release::BUILD);
+    // Refusals carry it too: a stale page learns from any answer.
+    for (path, expected) in [
+        ("/api/books", StatusCode::UNAUTHORIZED),
+        ("/api/setup", StatusCode::OK),
+    ] {
+        let (status, headers, _) = request(&server.router, "GET", path, None, None).await;
+        assert_eq!(status, expected, "{path}");
+        assert_eq!(
+            headers["citadel-build"],
+            citadel_server::release::BUILD,
+            "{path}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn administrators_see_whether_updates_are_checked() {
+    let directory = tempfile::tempdir().unwrap();
+    let server = fresh(directory.path(), Some(SETUP_CODE));
+    let (status, _, _) = request(&server.router, "GET", "/api/server/update", None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let administrator = bootstrap(&server.router).await;
+    let (status, _, update) = request(
+        &server.router,
+        "GET",
+        "/api/server/update",
+        None,
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{update}");
+    assert_eq!(
+        update,
+        json!({
+            "currentVersion": citadel_server::release::VERSION,
+            "checks": "off",
+            "available": null,
+            "checkedAt": null,
+        })
+    );
 }

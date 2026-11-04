@@ -435,6 +435,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/server/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Whether a newer Citadel has been released. The server asks GitHub once a day. Administrators only. */
+        get: operations["getServerUpdate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -662,6 +679,23 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getUploadCover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Which Citadel this server is. Public. */
+        get: operations["getServerVersion"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1086,6 +1120,14 @@ export interface components {
             message: string;
             provider: components["schemas"]["MetadataProvider"];
         };
+        /** @description A published Citadel release. */
+        Release: {
+            /** Format: date-time */
+            publishedAt?: string | null;
+            /** @description The release notes page. */
+            url: string;
+            version: string;
+        };
         RemoteFile: {
             url: string;
         };
@@ -1113,6 +1155,14 @@ export interface components {
             /** Format: int32 */
             schemaVersion: number | null;
             upgradeAvailable: boolean;
+        };
+        ServerVersion: {
+            /** @description Version and commit together; also sent as the `Citadel-Build` header. */
+            build: string;
+            /** @description The commit the server was built from, abbreviated. */
+            commit: string;
+            /** @description The release version, such as `0.8.0`. */
+            version: string;
         };
         SessionInfo: {
             /** @description May set the server up and administer it. */
@@ -1180,6 +1230,22 @@ export interface components {
         };
         ThumbnailQuery: {
             book_ids: string[];
+        };
+        /**
+         * @description Whether this server looks for new releases.
+         * @enum {string}
+         */
+        UpdateChecks: "on" | "off" | "notForThisBuild";
+        /** @description What administrators see about updates. */
+        UpdateStatus: {
+            available?: components["schemas"]["Release"] | null;
+            /**
+             * Format: date-time
+             * @description When the server last heard from GitHub.
+             */
+            checkedAt?: string | null;
+            checks: components["schemas"]["UpdateChecks"];
+            currentVersion: string;
         };
         UploadList: {
             /** Format: int64 */
@@ -3272,6 +3338,41 @@ export interface operations {
             };
         };
     };
+    getServerUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
     getSession: {
         parameters: {
             query?: never;
@@ -4292,6 +4393,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getServerVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerVersion"];
                 };
             };
         };

@@ -1,6 +1,8 @@
 pub mod admin;
 pub mod api;
+pub mod release;
 pub mod served;
+pub mod updates;
 
 use std::{
     ffi::OsString,
@@ -34,6 +36,8 @@ pub struct ServerConfig {
     pub state_directory: Option<PathBuf>,
     pub sharing: SharingConfig,
     pub api: api::ApiConfig,
+    #[serde(default)]
+    pub updates: updates::UpdateConfig,
 }
 
 /// OPDS listener settings. Reader sign-in is always required: each Citadel
@@ -60,6 +64,8 @@ impl SharingConfig {
 /// What the process was asked to do: serve, or administer `citadel.db`.
 #[derive(Debug, Eq, PartialEq)]
 pub enum Invocation {
+    /// `--version`: print what this build is and exit.
+    Version,
     Serve(PathBuf),
     Admin(PathBuf, Vec<String>),
 }
@@ -279,12 +285,13 @@ where
         .unwrap_or_else(|| OsString::from("citadel-server"));
     let usage = || {
         format!(
-            "usage: {program} --config <path> [command]\n\n{}",
+            "usage: {program} --config <path> [command]\n       {program} --version\n\n{}",
             admin::USAGE,
             program = program.to_string_lossy()
         )
     };
     match (args.next(), args.next()) {
+        (Some(flag), None) if flag == "--version" || flag == "-V" => Ok(Invocation::Version),
         (Some(flag), Some(path)) if flag == "--config" => {
             let rest = args
                 .map(|arg| arg.into_string().map_err(|_| usage()))
@@ -434,6 +441,11 @@ fn opds_users(
 
 pub async fn run(config: ServerConfig, _config_path: &Path) -> Result<(), String> {
     validate_config(&config)?;
+    println!(
+        "citadel_server version={} commit={}",
+        release::VERSION,
+        release::COMMIT
+    );
     let (state_directory, accounts) = open_accounts(&config)?;
     let accounts = Arc::new(accounts);
     let source = Arc::new(CalibreCatalogSource::empty());
@@ -503,7 +515,16 @@ pub async fn run(config: ServerConfig, _config_path: &Path) -> Result<(), String
         public_url: api::PublicUrl::parse(&config.api.public_url)?,
         secrets,
         setup_code,
+        updates: updates::Updates::new(
+            release::VERSION,
+            updates::UpdateChecks::for_build(
+                &config.updates,
+                release::VERSION,
+                !cfg!(debug_assertions),
+            ),
+        ),
     };
+    access.updates.spawn();
     let staging = match api::Staging::open(
         state_directory.join(UPLOADS_DIRECTORY),
         config.api.uploads.clone(),
@@ -718,6 +739,11 @@ mod tests {
             )
         );
         assert!(invocation_from_args(["citadel-server"]).is_err());
+        assert_eq!(
+            invocation_from_args(["citadel-server", "--version"]).unwrap(),
+            Invocation::Version
+        );
+        assert!(invocation_from_args(["citadel-server", "--version", "extra"]).is_err());
         assert!(invocation_from_args(["citadel-server", "server.toml"]).is_err());
     }
 

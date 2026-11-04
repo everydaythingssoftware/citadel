@@ -25,6 +25,15 @@ File: `.github/workflows/release.yml`
 - `createUpdaterArtifacts` is enabled by the release workflow only; local builds keep it off.
 - `tauri-action` publishes signed updater metadata (`latest.json`).
 
+## Versions
+
+The desktop app and `citadel-server` share one version, kept in the root
+`Cargo.toml` under `[workspace.package]` and mirrored in `package.json` and
+`src-tauri/tauri.conf.json`. The release workflow bumps all of them together.
+The server also records the commit it was built from (`CITADEL_BUILD_COMMIT`
+overrides git, `CITADEL_VERSION` overrides the version, for builds without a
+checkout).
+
 ## Runtime behavior
 
 - Updater runs only in production builds under Tauri (not in dev).

@@ -14,6 +14,7 @@ import {
 	useBrowserSessionControls,
 } from "@/lib/hooks/use-browser-session";
 import { useOpenSettings } from "@/lib/hooks/use-open-settings";
+import { useServerUpdate } from "@/lib/hooks/use-server-update";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import {
 	type BookRouteFilters,
@@ -39,9 +40,12 @@ export const Sidebar = () => {
 	const openSettings = useOpenSettings();
 	const session = useBrowserSessionControls();
 	const softwareUpdate = useSoftwareUpdate();
-	const updateVersion = softwareUpdate
+	const desktopUpdateVersion = softwareUpdate
 		? pendingUpdateVersion(softwareUpdate.state.status)
 		: null;
+	// In the browser, administrators are told about a newer server release.
+	const serverUpdateVersion =
+		useServerUpdate().update?.available?.version ?? null;
 
 	if (state !== LibraryState.ready) {
 		return null;
@@ -52,11 +56,11 @@ export const Sidebar = () => {
 			currentPathname={location.pathname}
 			routeFilters={routeFiltersFromSearch(location.search)}
 			openSettings={
-				updateVersion
+				desktopUpdateVersion
 					? safeAsyncEventHandler(platform.updates.showInSettings)
 					: openSettings
 			}
-			updateVersion={updateVersion}
+			updateVersion={desktopUpdateVersion ?? serverUpdateVersion}
 			session={session}
 			settingsShowing={location.pathname === "/settings"}
 		/>

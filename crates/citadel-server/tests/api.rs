@@ -46,6 +46,7 @@ fn access(
             citadel_core::vault::Vault::open_or_create(&directory.join("state/secrets")).unwrap(),
         ),
         setup_code: None,
+        updates: citadel_server::updates::Updates::off(),
     };
     (accounts, access)
 }
@@ -615,6 +616,11 @@ async fn browser_hosting_serves_the_frontend_publicly_and_only_falls_back_for_ht
             .unwrap();
         assert_eq!(response.status().as_u16(), expected, "{path}");
         assert!(!response.headers().contains_key("www-authenticate"));
+        assert_eq!(
+            response.headers()["citadel-build"],
+            citadel_server::release::BUILD,
+            "{path}"
+        );
         let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
         if let Some(expected) = expected_body {
             assert_eq!(body, expected, "{path}");

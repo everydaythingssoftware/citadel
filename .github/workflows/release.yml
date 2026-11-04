@@ -147,10 +147,15 @@ jobs:
             fs.writeFileSync(tauriConfigPath, JSON.stringify(tauriConfig, null, 2) + '\\n');
           " "$VERSION"
 
-          perl -0pi -e "s/^version = \"[^\"]+\"/version = \"$VERSION\"/m" src-tauri/Cargo.toml
-          perl -0pi -e "s/(\nname = \"citadel-desktop\"\nversion = )\"[^\"]+\"/\$1\"$VERSION\"/" Cargo.lock
-          grep -A1 '^name = "citadel-desktop"$' Cargo.lock | grep -qx "version = \"$VERSION\"" \
-            || { echo "Failed to bump citadel-desktop in Cargo.lock"; exit 1; }
+          # citadel-desktop and citadel-server share the workspace version.
+          perl -0pi -e "s/(\[workspace\.package\][^\[]*?\nversion = )\"[^\"]+\"/\$1\"$VERSION\"/" Cargo.toml
+          grep -qx "version = \"$VERSION\"" Cargo.toml \
+            || { echo "Failed to bump the workspace version in Cargo.toml"; exit 1; }
+          for package in citadel-desktop citadel-server; do
+            perl -0pi -e "s/(\nname = \"$package\"\nversion = )\"[^\"]+\"/\$1\"$VERSION\"/" Cargo.lock
+            grep -A1 "^name = \"$package\"$" Cargo.lock | grep -qx "version = \"$VERSION\"" \
+              || { echo "Failed to bump $package in Cargo.lock"; exit 1; }
+          done
 
       - uses: oven-sh/setup-bun@v1
         with:
@@ -246,11 +251,11 @@ jobs:
 
             Files updated:
             - Cargo.lock
+            - Cargo.toml
             - package.json
-            - src-tauri/Cargo.toml
             - src-tauri/tauri.conf.json
           add-paths: |
             Cargo.lock
+            Cargo.toml
             package.json
-            src-tauri/Cargo.toml
             src-tauri/tauri.conf.json
