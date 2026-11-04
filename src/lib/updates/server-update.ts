@@ -26,11 +26,18 @@ export const serverUpdateRowView = (
 		};
 	switch (update.checks) {
 		case "on":
-			return {
-				label: `${current} is up to date`,
-				description: update.checkedAt ? null : "Checking for updates…",
-				releaseNotesUrl: null,
-			};
+			// Only a check that answered can say the server is current.
+			return update.checkedAt
+				? {
+						label: `${current} is up to date`,
+						description: null,
+						releaseNotesUrl: null,
+					}
+				: {
+						label: current,
+						description: "Checking for updates…",
+						releaseNotesUrl: null,
+					};
 		case "off":
 			return {
 				label: current,

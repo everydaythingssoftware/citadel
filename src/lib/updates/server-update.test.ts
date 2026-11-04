@@ -47,9 +47,11 @@ describe("serverUpdateRowView", () => {
 		expect(serverUpdateRowView(version, update({})).label).toBe(
 			"Citadel 0.7.1 is up to date",
 		);
-		expect(
-			serverUpdateRowView(version, update({ checkedAt: null })).description,
-		).toBe("Checking for updates…");
+		expect(serverUpdateRowView(version, update({ checkedAt: null }))).toEqual({
+			label: "Citadel 0.7.1",
+			description: "Checking for updates…",
+			releaseNotesUrl: null,
+		});
 		expect(
 			serverUpdateRowView(version, update({ checks: "off" })).description,
 		).toBe("Update checks are turned off on this server.");
