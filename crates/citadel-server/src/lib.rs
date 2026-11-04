@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod api;
+pub mod environment;
 pub mod release;
 pub mod served;
 pub mod updates;
@@ -61,13 +62,27 @@ impl SharingConfig {
     }
 }
 
-/// What the process was asked to do: serve, or administer `citadel.db`.
+/// Where the server's settings come from.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ConfigSource {
+    /// `--config <path>`.
+    File(PathBuf),
+    /// `CITADEL_CONFIG` names a file, or else `CITADEL_*` variables and
+    /// defaults (see [`environment`]).
+    Environment,
+}
+
+/// What the process was asked to do.
 #[derive(Debug, Eq, PartialEq)]
 pub enum Invocation {
     /// `--version`: print what this build is and exit.
     Version,
-    Serve(PathBuf),
-    Admin(PathBuf, Vec<String>),
+    Serve(ConfigSource),
+    /// `health`: ask the running server whether it is up, for container
+    /// health checks.
+    Health(ConfigSource),
+    /// Administer `citadel.db`.
+    Admin(ConfigSource, Vec<String>),
 }
 
 /// The library the server serves, or nothing yet. It starts empty in a fresh
@@ -285,25 +300,103 @@ where
         .unwrap_or_else(|| OsString::from("citadel-server"));
     let usage = || {
         format!(
-            "usage: {program} --config <path> [command]\n       {program} --version\n\n{}",
+            "usage: {program} [--config <path>] [command]\n       {program} --version\n\n\
+             Without --config, settings come from the file named by {config} or else from\n\
+             {settings} (all optional).\n\n{}",
             admin::USAGE,
-            program = program.to_string_lossy()
+            program = program.to_string_lossy(),
+            config = environment::CONFIG_FILE,
+            settings = environment::SETTINGS.join(", "),
         )
     };
-    match (args.next(), args.next()) {
-        (Some(flag), None) if flag == "--version" || flag == "-V" => Ok(Invocation::Version),
-        (Some(flag), Some(path)) if flag == "--config" => {
-            let rest = args
-                .map(|arg| arg.into_string().map_err(|_| usage()))
-                .collect::<Result<Vec<_>, _>>()?;
-            let path = PathBuf::from(path);
-            Ok(if rest.is_empty() {
-                Invocation::Serve(path)
-            } else {
-                Invocation::Admin(path, rest)
-            })
-        }
-        _ => Err(usage()),
+    let mut args = args.peekable();
+    if args
+        .peek()
+        .is_some_and(|arg| arg == "--version" || arg == "-V")
+    {
+        args.next();
+        return match args.next() {
+            None => Ok(Invocation::Version),
+            Some(_) => Err(usage()),
+        };
+    }
+    let source = if args.peek().is_some_and(|arg| arg == "--config") {
+        args.next();
+        ConfigSource::File(PathBuf::from(args.next().ok_or_else(usage)?))
+    } else {
+        ConfigSource::Environment
+    };
+    let rest = args
+        .map(|arg| arg.into_string().map_err(|_| usage()))
+        .collect::<Result<Vec<_>, _>>()?;
+    if rest.first().is_some_and(|arg| arg.starts_with('-')) {
+        return Err(usage());
+    }
+    Ok(match rest.as_slice() {
+        [] => Invocation::Serve(source),
+        [command] if command == "health" => Invocation::Health(source),
+        _ => Invocation::Admin(source, rest),
+    })
+}
+
+/// The settings `source` names. Also says which file they came from, if any.
+pub fn load(source: &ConfigSource) -> Result<ServerConfig, String> {
+    match source {
+        ConfigSource::File(path) => load_config(path),
+        ConfigSource::Environment => match std::env::var_os(environment::CONFIG_FILE) {
+            Some(path) if !path.is_empty() => {
+                let ignored: Vec<&str> = environment::SETTINGS
+                    .iter()
+                    .copied()
+                    .filter(|name| std::env::var_os(name).is_some())
+                    .collect();
+                if !ignored.is_empty() {
+                    eprintln!(
+                        "citadel_server warning=\"{} ignored: the config file {} is used instead\"",
+                        ignored.join(", "),
+                        Path::new(&path).display()
+                    );
+                }
+                load_config(Path::new(&path))
+            }
+            _ => {
+                let unrecognized =
+                    environment::unrecognized(std::env::vars().map(|(name, _)| name));
+                if !unrecognized.is_empty() {
+                    eprintln!(
+                        "citadel_server warning=\"{} configure nothing; settings are {}\"",
+                        unrecognized.join(", "),
+                        environment::SETTINGS.join(", ")
+                    );
+                }
+                environment::config_from(|name| std::env::var(name).ok())
+            }
+        },
+    }
+}
+
+/// Asks the server listening where `config` says whether it answers.
+pub async fn health(config: &ServerConfig) -> Result<(), String> {
+    let mut address = config.api.listen;
+    if address.ip().is_unspecified() {
+        address.set_ip(match address {
+            std::net::SocketAddr::V4(_) => std::net::Ipv4Addr::LOCALHOST.into(),
+            std::net::SocketAddr::V6(_) => std::net::Ipv6Addr::LOCALHOST.into(),
+        });
+    }
+    let url = format!("http://{address}/api/version");
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|error| error.to_string())?
+        .get(&url)
+        .send()
+        .await
+        .map_err(|error| format!("no answer from {url}: {error}"))?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("{url} answered {}", response.status()))
     }
 }
 
@@ -328,7 +421,7 @@ pub fn load_config(path: &Path) -> Result<ServerConfig, String> {
     Ok(config)
 }
 
-fn validate_config(config: &ServerConfig) -> Result<(), String> {
+pub(crate) fn validate_config(config: &ServerConfig) -> Result<(), String> {
     if config.library_path.is_some() {
         return Err(
             "libraryPath has been removed: Citadel keeps the library it serves in citadel.db. \
@@ -363,7 +456,12 @@ fn validate_config(config: &ServerConfig) -> Result<(), String> {
     if api.listen.port() == 0 {
         return Err("api.listen must use a nonzero port".into());
     }
-    citadel_opds::network::validate_explicit_addresses(&[api.listen.ip().to_string()], true)?;
+    // Unlike OPDS (ADR 0002), the API may listen on every interface: it
+    // always requires sign-in, and in a container the published ports, not
+    // the listener, decide what is reachable.
+    if !api.listen.ip().is_unspecified() {
+        citadel_opds::network::validate_explicit_addresses(&[api.listen.ip().to_string()], true)?;
+    }
     api::PublicUrl::parse(&api.public_url)?;
     api.uploads.validate()?;
     api.metadata.validate()?;
@@ -439,7 +537,7 @@ fn opds_users(
         .collect())
 }
 
-pub async fn run(config: ServerConfig, _config_path: &Path) -> Result<(), String> {
+pub async fn run(config: ServerConfig) -> Result<(), String> {
     validate_config(&config)?;
     println!(
         "citadel_server version={} commit={}",
@@ -725,26 +823,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn arguments_require_one_explicit_config_path() {
+    fn arguments_take_a_config_file_or_fall_back_to_the_environment() {
+        let file = || ConfigSource::File(PathBuf::from("/tmp/s.toml"));
         assert_eq!(
-            invocation_from_args(["citadel-server", "--config", "/tmp/server.toml"]).unwrap(),
-            Invocation::Serve(PathBuf::from("/tmp/server.toml"))
+            invocation_from_args(["citadel-server", "--config", "/tmp/s.toml"]).unwrap(),
+            Invocation::Serve(file())
         );
         assert_eq!(
             invocation_from_args(["citadel-server", "--config", "/tmp/s.toml", "users", "list"])
                 .unwrap(),
+            Invocation::Admin(file(), vec!["users".into(), "list".into()])
+        );
+        assert_eq!(
+            invocation_from_args(["citadel-server"]).unwrap(),
+            Invocation::Serve(ConfigSource::Environment)
+        );
+        assert_eq!(
+            invocation_from_args(["citadel-server", "users", "list"]).unwrap(),
             Invocation::Admin(
-                PathBuf::from("/tmp/s.toml"),
+                ConfigSource::Environment,
                 vec!["users".into(), "list".into()]
             )
         );
-        assert!(invocation_from_args(["citadel-server"]).is_err());
+        assert_eq!(
+            invocation_from_args(["citadel-server", "health"]).unwrap(),
+            Invocation::Health(ConfigSource::Environment)
+        );
+        assert_eq!(
+            invocation_from_args(["citadel-server", "--config", "/tmp/s.toml", "health"]).unwrap(),
+            Invocation::Health(file())
+        );
         assert_eq!(
             invocation_from_args(["citadel-server", "--version"]).unwrap(),
             Invocation::Version
         );
         assert!(invocation_from_args(["citadel-server", "--version", "extra"]).is_err());
-        assert!(invocation_from_args(["citadel-server", "server.toml"]).is_err());
+        assert!(invocation_from_args(["citadel-server", "--config"]).is_err());
+        assert!(invocation_from_args(["citadel-server", "--help"]).is_err());
     }
 
     const API: &str =
@@ -761,7 +876,15 @@ mod tests {
         .is_err());
         let with_api = format!("{SHARING}{API}");
         assert!(validate_config(&toml::from_str::<ServerConfig>(&with_api).unwrap()).is_ok());
+        for everywhere in ["0.0.0.0:8081", "[::]:8081"] {
+            let text = with_api.replace("127.0.0.1:8081", everywhere);
+            assert!(
+                validate_config(&toml::from_str::<ServerConfig>(&text).unwrap()).is_ok(),
+                "{everywhere}"
+            );
+        }
         for invalid in [
+            with_api.replace("127.0.0.1:8081", "169.254.10.1:8081"),
             with_api.replace("127.0.0.1:8081", "127.0.0.1:0"),
             with_api.replace("https://books.example.com", "books.example.com"),
         ] {
