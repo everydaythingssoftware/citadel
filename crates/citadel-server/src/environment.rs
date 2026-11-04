@@ -166,6 +166,15 @@ mod tests {
 
     use super::*;
 
+    /// `path` written as an absolute path on this platform.
+    fn absolute(path: &str) -> String {
+        if cfg!(windows) {
+            format!("C:{}", path.replace('/', "\\"))
+        } else {
+            path.to_string()
+        }
+    }
+
     fn settings(vars: &[(&str, &str)]) -> Result<ServerConfig, String> {
         let vars: HashMap<String, String> = vars
             .iter()
@@ -193,10 +202,11 @@ mod tests {
 
     #[test]
     fn a_container_listens_everywhere_and_is_reached_at_localhost_by_default() {
+        let state = absolute("/var/lib/citadel");
         let config = settings(&[
             (LISTEN, "0.0.0.0:8081"),
             (OPDS_ADDRESSES, "all"),
-            (STATE_DIRECTORY, "/var/lib/citadel"),
+            (STATE_DIRECTORY, &state),
             (UPDATE_CHECK, "off"),
         ])
         .unwrap();
@@ -204,7 +214,7 @@ mod tests {
         assert_eq!(config.sharing.target, OpdsBindTarget::AllInterfaces);
         assert_eq!(
             config.state_directory.as_deref(),
-            Some(std::path::Path::new("/var/lib/citadel"))
+            Some(std::path::Path::new(&state))
         );
         assert_eq!(config.updates.check, Some(false));
     }
