@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod assets;
 pub mod book_file;
 mod create;
