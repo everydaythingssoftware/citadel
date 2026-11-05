@@ -7,7 +7,7 @@ use std::{
 };
 
 use chrono::NaiveDate;
-use libcalibre::{book_file, mime_type::MIMETYPE};
+use libcalibre::{book_file, mime_type::MimeType};
 use serde::{Deserialize, Serialize};
 
 use crate::error::LibraryError;
@@ -92,13 +92,13 @@ impl CommitUpload {
 
 /// A file's lowercase extension and the format it names, or why Citadel
 /// can't add it.
-pub fn book_format(file_name: &str) -> Result<(String, MIMETYPE), LibraryError> {
+pub fn book_format(file_name: &str) -> Result<(String, MimeType), LibraryError> {
     let extension = Path::new(file_name)
         .extension()
         .and_then(|extension| extension.to_str())
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
-    let format = MIMETYPE::from_file_extension(&extension).ok_or_else(|| {
+    let format = MimeType::from_file_extension(&extension).ok_or_else(|| {
         LibraryError::invalid("Citadel can import EPUB, MOBI, AZW, AZW3, PDF and TXT files")
     })?;
     Ok((extension, format))
@@ -127,7 +127,7 @@ pub fn read_book_file(path: &Path, file_name: &str, extension: String) -> ReadBo
         .unwrap_or(file_name)
         .to_string();
     let metadata = metadata.unwrap_or(book_file::BookFileMetadata {
-        format: MIMETYPE::UNKNOWN,
+        format: MimeType::UNKNOWN,
         title: None,
         author_names: Vec::new(),
         identifier: None,
@@ -138,7 +138,7 @@ pub fn read_book_file(path: &Path, file_name: &str, extension: String) -> ReadBo
         has_cover: false,
     });
     let title = match metadata.format {
-        MIMETYPE::PDF | MIMETYPE::TXT => None,
+        MimeType::PDF | MimeType::TXT => None,
         _ => metadata.title,
     };
     ReadBook {

@@ -1001,7 +1001,7 @@ mod tests {
     use chrono::{DateTime, NaiveDate};
     use diesel::{Connection, RunQueryDsl};
     use libcalibre::{
-        library::Book, BookAdd, BookFileInfo, BookIdentifier, BookUpdate, Library, LibraryAuthor,
+        Author as LibraryAuthor, Book, BookAdd, BookFileInfo, BookIdentifier, BookUpdate, Library,
     };
     use quick_xml::{events::Event, name::ResolveResult, NsReader};
     use std::{collections::HashMap, path::PathBuf, sync::Mutex};

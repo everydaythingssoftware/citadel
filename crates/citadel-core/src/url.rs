@@ -19,7 +19,7 @@ pub trait BookUrlBuilder {
     /// the URL change when the cover bytes change.
     fn cover_url(
         &self,
-        book: &libcalibre::library::Book,
+        book: &libcalibre::Book,
         cover_path: &Path,
         cache_bust: bool,
     ) -> LocalOrRemoteUrl;
@@ -28,7 +28,7 @@ pub trait BookUrlBuilder {
     /// path on the host; `file` is the `libcalibre` record (name, format, …).
     fn file_url(
         &self,
-        book: &libcalibre::library::Book,
+        book: &libcalibre::Book,
         file: &libcalibre::BookFileInfo,
         file_path: &Path,
     ) -> BookFile;
@@ -42,7 +42,7 @@ pub struct AssetUrlBuilder;
 impl BookUrlBuilder for AssetUrlBuilder {
     fn cover_url(
         &self,
-        _book: &libcalibre::library::Book,
+        _book: &libcalibre::Book,
         cover_path: &Path,
         cache_bust: bool,
     ) -> LocalOrRemoteUrl {
@@ -69,7 +69,7 @@ impl BookUrlBuilder for AssetUrlBuilder {
 
     fn file_url(
         &self,
-        _book: &libcalibre::library::Book,
+        _book: &libcalibre::Book,
         file: &libcalibre::BookFileInfo,
         file_path: &Path,
     ) -> BookFile {
@@ -100,7 +100,7 @@ impl HttpUrlBuilder {
 impl BookUrlBuilder for HttpUrlBuilder {
     fn cover_url(
         &self,
-        book: &libcalibre::library::Book,
+        book: &libcalibre::Book,
         cover_path: &Path,
         cache_bust: bool,
     ) -> LocalOrRemoteUrl {
@@ -121,7 +121,7 @@ impl BookUrlBuilder for HttpUrlBuilder {
 
     fn file_url(
         &self,
-        book: &libcalibre::library::Book,
+        book: &libcalibre::Book,
         file: &libcalibre::BookFileInfo,
         _file_path: &Path,
     ) -> BookFile {
@@ -166,11 +166,8 @@ mod tests {
 
     use super::*;
 
-    fn test_book(
-        has_cover: bool,
-        files: Vec<libcalibre::BookFileInfo>,
-    ) -> libcalibre::library::Book {
-        libcalibre::library::Book {
+    fn test_book(has_cover: bool, files: Vec<libcalibre::BookFileInfo>) -> libcalibre::Book {
+        libcalibre::Book {
             id: libcalibre::BookId::from(1),
             uuid: Some("test-uuid".to_string()),
             title: "Title".to_string(),

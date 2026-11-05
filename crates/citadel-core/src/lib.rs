@@ -2,7 +2,7 @@
 //!
 //! Owns the frontend-facing DTOs ([`LibraryBook`], [`LibraryAuthor`],
 //! [`LocalOrRemoteUrl`], the file list) and the conversion from a `libcalibre`
-//! [`Book`](libcalibre::library::Book) into them. None of this depends on
+//! [`Book`](libcalibre::Book) into them. None of this depends on
 //! Tauri. Shared queries and mutations live in [`library::LibraryService`], with
 //! serializable inputs in [`contracts`] and transport-independent [`error`] codes.
 //! Every write names the [`Actor`] it is performed for. [`store`] owns

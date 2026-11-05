@@ -27,7 +27,7 @@ use citadel_core::{
 };
 use futures_util::StreamExt;
 use image::ImageReader;
-use libcalibre::{book_file, mime_type::MIMETYPE};
+use libcalibre::{book_file, mime_type::MimeType};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
@@ -108,7 +108,7 @@ struct Upload {
     library_id: String,
     file_name: String,
     extension: String,
-    format: MIMETYPE,
+    format: MimeType,
     size: u64,
     received: u64,
     last_active: SystemTime,
@@ -243,7 +243,7 @@ impl Staging {
     /// Rebuilds an upload from its record and file, or `None` when it can't
     /// continue: its file is missing or inconsistent, or its time is up.
     fn restore(&self, id: &str, record: UploadRecord) -> Option<Upload> {
-        let format = MIMETYPE::from_file_extension(&record.extension)?;
+        let format = MimeType::from_file_extension(&record.extension)?;
         let path = self.book_path(id, &record.extension);
         let mut received = std::fs::metadata(&path).ok()?.len();
         if received > record.size || (record.book.is_some() && received != record.size) {
@@ -456,7 +456,7 @@ fn is_upload_id(id: &str) -> bool {
 }
 
 /// The name a browser gave the file, reduced to its final component.
-fn file_name(raw: &str) -> Result<(String, String, MIMETYPE), ApiFailure> {
+fn file_name(raw: &str) -> Result<(String, String, MimeType), ApiFailure> {
     let name = raw.rsplit(['/', '\\']).next().unwrap_or_default().trim();
     if name.is_empty() || name.chars().count() > MAX_FILE_NAME_CHARS || name.contains('\0') {
         return Err(LibraryError::invalid("Invalid file name").into());
@@ -983,7 +983,7 @@ mod tests {
             library_id: "library".into(),
             file_name: "book.txt".into(),
             extension: "txt".into(),
-            format: MIMETYPE::TXT,
+            format: MimeType::TXT,
             size: 4,
             received: 0,
             last_active,
@@ -1179,7 +1179,7 @@ mod tests {
         let (name, extension, format) = file_name("../../etc/Notes.TXT").ok().unwrap();
         assert_eq!(
             (name.as_str(), extension.as_str(), format),
-            ("Notes.TXT", "txt", MIMETYPE::TXT)
+            ("Notes.TXT", "txt", MimeType::TXT)
         );
         assert!(file_name("folder/").is_err());
         assert!(file_name("book").is_err());
