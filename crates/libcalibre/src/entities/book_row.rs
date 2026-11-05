@@ -1,8 +1,6 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use serde::Deserialize;
-
 use crate::schema::books;
 
 #[derive(Clone, Debug, Queryable, Selectable, Identifiable, AsChangeset)]
@@ -33,7 +31,7 @@ pub struct NewBook {
     pub has_cover: Option<bool>,
 }
 
-#[derive(Deserialize, AsChangeset, Default, Debug)]
+#[derive(AsChangeset, Default, Debug)]
 #[diesel(table_name = books)]
 pub struct UpdateBookData {
     pub author_sort: Option<String>,

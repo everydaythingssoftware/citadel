@@ -1,6 +1,5 @@
 use diesel::prelude::*;
 use diesel::query_builder::AsChangeset;
-use serde::Deserialize;
 
 use crate::mime_type::MimeType;
 use crate::schema::data;
@@ -39,7 +38,7 @@ pub struct NewBookFile {
     pub name: String,
 }
 
-#[derive(Deserialize, AsChangeset, Default, Debug)]
+#[derive(AsChangeset, Default, Debug)]
 #[diesel(table_name = data)]
 pub struct UpdateBookFile {
     pub(crate) book: Option<i32>,

@@ -1,16 +1,23 @@
 //! Reads metadata and cover images from book files before they are added to a
 //! library. Every host shares this, so file-format quirks live in one place.
+//!
+//! EPUB and MOBI files are parsed with the `epub` and `mobi` features (both on
+//! by default). Without one, files of that format are read like PDFs: a title
+//! from the file name and no cover.
 use std::{ffi::OsStr, path::Path};
 
 use chrono::NaiveDate;
 
 use crate::mime_type::MimeType;
 
+#[cfg(feature = "epub")]
 mod epub;
+#[cfg(feature = "mobi")]
 mod mobi;
 
 /// Covers larger than this are ignored rather than read into memory; a
 /// compressed EPUB entry can otherwise expand without bound.
+#[cfg(any(feature = "epub", feature = "mobi"))]
 pub(crate) const MAX_COVER_BYTES: u64 = 16 * 1024 * 1024;
 
 /// What a book file says about itself. Formats without embedded metadata
@@ -55,14 +62,14 @@ fn format_of(path: &Path) -> Option<MimeType> {
 /// parsed.
 pub fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
     match format_of(path)? {
+        #[cfg(feature = "epub")]
         MimeType::EPUB => epub::read_metadata(path),
+        #[cfg(feature = "mobi")]
         format @ (MimeType::MOBI | MimeType::KF7 | MimeType::KF8) => {
             mobi::read_metadata(path, format)
         }
-        format @ (MimeType::PDF | MimeType::TXT) => {
-            BookFileMetadata::titled_from_file_name(format, path)
-        }
         MimeType::UNKNOWN => None,
+        format => BookFileMetadata::titled_from_file_name(format, path),
     }
 }
 
@@ -70,7 +77,9 @@ pub fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
 /// larger than [`MAX_COVER_BYTES`].
 pub fn cover_image_data(path: &Path) -> Option<Vec<u8>> {
     match format_of(path)? {
+        #[cfg(feature = "epub")]
         MimeType::EPUB => epub::cover_image_data(path),
+        #[cfg(feature = "mobi")]
         MimeType::MOBI | MimeType::KF7 | MimeType::KF8 => mobi::cover_image_data(path),
         _ => None,
     }
