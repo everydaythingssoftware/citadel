@@ -403,8 +403,8 @@ impl ServedLibrary {
             }
             Ok(_) => {}
         }
-        if let Some(database) = libcalibre::util::get_db_path(&resolved.to_string_lossy()) {
-            return match inspect_library(&resolved, &database) {
+        if libcalibre::is_library(&resolved) {
+            return match inspect_library(&resolved) {
                 Ok(library) => {
                     let message = (!library.supported).then(|| {
                         format!(
@@ -424,18 +424,18 @@ impl ServedLibrary {
         }
         match create_target_blocker(&resolved) {
             Ok(None) => describe(InspectionStatus::Empty, None, None),
-            Ok(Some(CreateTargetBlocker::NotEmpty)) => describe(
+            Ok(Some(CreateTargetBlocker::AlreadyALibrary)) => describe(
+                InspectionStatus::Library,
+                None,
+                Some("This folder is already a Calibre library.".into()),
+            ),
+            Ok(Some(_)) => describe(
                 InspectionStatus::NotEmpty,
                 None,
                 Some(
                     "This folder already contains files. Pick an empty folder for a new library."
                         .into(),
                 ),
-            ),
-            Ok(Some(CreateTargetBlocker::AlreadyALibrary)) => describe(
-                InspectionStatus::Library,
-                None,
-                Some("This folder is already a Calibre library.".into()),
             ),
             Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
                 describe(InspectionStatus::Denied, None, Some(cant_read(&resolved)))
@@ -555,10 +555,10 @@ impl ServedLibrary {
         }
         let path = Path::new(&inspection.path);
         if let Some(registered) = self.registered() {
-            let database = libcalibre::util::get_db_path(&inspection.path).ok_or_else(|| {
-                LibraryError::new(LibraryErrorCode::NotFound, "No Calibre library there")
-            })?;
-            let id = Library::open_read_only(database)
+            if !libcalibre::is_library(path) {
+                return Err(no_library_there());
+            }
+            let id = Library::open_read_only(path)
                 .and_then(|mut library| library.library_uuid())
                 .map_err(calibre_error)?;
             if id != registered.id {
@@ -572,10 +572,10 @@ impl ServedLibrary {
             }
         }
         if upgrade && library.upgrade_available {
-            let database = libcalibre::util::get_db_path(&inspection.path).ok_or_else(|| {
-                LibraryError::new(LibraryErrorCode::NotFound, "No Calibre library there")
-            })?;
-            Library::new(database)
+            if !libcalibre::is_library(path) {
+                return Err(no_library_there());
+            }
+            Library::open(path)
                 .and_then(|mut library| library.upgrade())
                 .map_err(calibre_error)?;
         }
@@ -721,7 +721,9 @@ impl ServedLibrary {
         if self.source.read_only() {
             return Err(LibraryError::read_only());
         }
-        let SchemaUpgrade { from, to, backup } = self
+        let SchemaUpgrade {
+            from, to, backup, ..
+        } = self
             .source
             .with(|library| library.upgrade())
             .map_err(calibre_error)?
@@ -763,12 +765,13 @@ pub fn resolve(path: &Path) -> PathBuf {
     }
 }
 
-fn inspect_library(
-    folder: &Path,
-    database: &libcalibre::util::ValidDbPath,
-) -> Result<InspectedLibrary, CalibreError> {
-    let stats = libcalibre::library_stats(database)?;
-    let schema_version = libcalibre::peek_schema_version(database)?;
+fn no_library_there() -> LibraryError {
+    LibraryError::new(LibraryErrorCode::NotFound, "No Calibre library there")
+}
+
+fn inspect_library(folder: &Path) -> Result<InspectedLibrary, CalibreError> {
+    let stats = libcalibre::library_stats(folder)?;
+    let schema_version = libcalibre::peek_schema_version(folder)?;
     let read_only_reason = access::explain_library(folder);
     Ok(InspectedLibrary {
         book_count: stats.book_count,
@@ -788,8 +791,7 @@ fn cant_read(path: &Path) -> String {
 }
 
 fn library_uuid(folder: &Path) -> Option<String> {
-    let database = libcalibre::util::get_db_path(&folder.to_string_lossy())?;
-    Library::open_read_only(database)
+    Library::open_read_only(folder)
         .and_then(|mut library| library.library_uuid())
         .ok()
 }

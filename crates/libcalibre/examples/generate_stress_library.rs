@@ -20,8 +20,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use libcalibre::persistence::establish_connection;
-use libcalibre::util::get_db_path;
+use libcalibre::__internals::establish_connection;
 use libcalibre::{BookAdd, Library};
 
 const DEFAULT_BOOKS: usize = 5000;
@@ -617,9 +616,8 @@ fn run() -> Result<(), String> {
     // restored to Calibre's default (DELETE) before the summary prints.
     set_journal_mode(&db_path_str, "WAL")?;
 
-    let valid_path = get_db_path(&dest_str).ok_or("metadata.db missing after bootstrap")?;
     let mut library =
-        Library::new(valid_path).map_err(|e| format!("failed to open library: {e}"))?;
+        Library::open(&dest_str).map_err(|e| format!("failed to open library: {e}"))?;
 
     // Deterministic content pools.
     let author_pool = build_author_pool(&mut rng, (args.books / 8).max(1));

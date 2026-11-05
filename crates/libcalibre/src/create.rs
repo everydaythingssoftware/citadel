@@ -4,10 +4,11 @@ use std::path::Path;
 
 use diesel::{Connection, SqliteConnection};
 
-use crate::{error::CalibreError, schema_versions, util::get_db_path, Library};
+use crate::{error::CalibreError, schema_versions, Library};
 
 /// Why a folder can't take a new library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CreateTargetBlocker {
     /// Target already contains a `metadata.db`; hosts offer "open it instead".
     AlreadyALibrary,
@@ -50,8 +51,8 @@ impl Library {
     /// opens it for writing. Refuses a folder that already holds a
     /// `metadata.db`; callers wanting the fuller emptiness check use
     /// [`create_target_blocker`] first.
-    pub fn create_library_at(path: &str) -> Result<Library, CalibreError> {
-        let root = Path::new(path);
+    pub fn create_library_at(library_root: impl AsRef<Path>) -> Result<Library, CalibreError> {
+        let root = library_root.as_ref();
         let database = root.join("metadata.db");
         if database.exists() {
             return Err(CalibreError::LibraryAlreadyExists(root.to_path_buf()));
@@ -70,10 +71,7 @@ impl Library {
             let _ = std::fs::remove_file(&database);
             return Err(error);
         }
-        let valid = get_db_path(path).ok_or_else(|| {
-            CalibreError::FileSystem(format!("could not find the library just created at {path}"))
-        })?;
-        Library::new(valid)
+        Library::open(root)
     }
 }
 

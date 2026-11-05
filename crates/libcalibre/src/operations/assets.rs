@@ -72,6 +72,7 @@ pub(crate) fn validated_book_delete_dir(
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct ResolvedBookAsset {
     canonical_path: PathBuf,
     download_name: String,
