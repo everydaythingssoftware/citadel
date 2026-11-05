@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MIMETYPE {
+#[non_exhaustive]
+pub enum MimeType {
     EPUB,
     MOBI,
     PDF,
@@ -9,64 +10,62 @@ pub enum MIMETYPE {
     UNKNOWN,
 }
 
-impl MIMETYPE {
-    #[allow(dead_code)]
+impl MimeType {
     pub fn as_str(&self) -> &'static str {
         match *self {
-            MIMETYPE::EPUB => "application/epub+zip",
-            MIMETYPE::MOBI => "application/x-mobipocket-ebook",
-            MIMETYPE::PDF => "application/pdf",
-            MIMETYPE::KF7 => "application/vnd.amazon.ebook",
-            MIMETYPE::KF8 => "application/vnd.amazon.ebook-kf8", // Not a real MIME type, Amazon hasn't registered it
-            MIMETYPE::TXT => "text/plain",
-            MIMETYPE::UNKNOWN => "application/octet-stream",
+            MimeType::EPUB => "application/epub+zip",
+            MimeType::MOBI => "application/x-mobipocket-ebook",
+            MimeType::PDF => "application/pdf",
+            MimeType::KF7 => "application/vnd.amazon.ebook",
+            MimeType::KF8 => "application/vnd.amazon.ebook-kf8", // Not a real MIME type, Amazon hasn't registered it
+            MimeType::TXT => "text/plain",
+            MimeType::UNKNOWN => "application/octet-stream",
         }
     }
 
-    #[allow(dead_code)]
-    pub fn from_str(mimetype: &str) -> Option<Self> {
+    pub fn from_mime_type(mimetype: &str) -> Option<Self> {
         match mimetype {
-            "application/epub+zip" => Some(MIMETYPE::EPUB),
-            "application/x-mobipocket-ebook" => Some(MIMETYPE::MOBI),
-            "application/vnd.amazon.ebook" => Some(MIMETYPE::KF7),
-            "application/pdf" => Some(MIMETYPE::PDF),
-            "application/octet-stream" => Some(MIMETYPE::UNKNOWN),
-            "text/plain" => Some(MIMETYPE::TXT),
+            "application/epub+zip" => Some(MimeType::EPUB),
+            "application/x-mobipocket-ebook" => Some(MimeType::MOBI),
+            "application/vnd.amazon.ebook" => Some(MimeType::KF7),
+            "application/pdf" => Some(MimeType::PDF),
+            "application/octet-stream" => Some(MimeType::UNKNOWN),
+            "text/plain" => Some(MimeType::TXT),
             _ => None,
         }
     }
 
     pub fn to_file_extension(&self) -> &'static str {
         match *self {
-            MIMETYPE::EPUB => "epub",
-            MIMETYPE::MOBI => "mobi",
-            MIMETYPE::PDF => "pdf",
-            MIMETYPE::KF7 => "azw",
-            MIMETYPE::KF8 => "azw3",
-            MIMETYPE::TXT => "txt",
-            MIMETYPE::UNKNOWN => "",
+            MimeType::EPUB => "epub",
+            MimeType::MOBI => "mobi",
+            MimeType::PDF => "pdf",
+            MimeType::KF7 => "azw",
+            MimeType::KF8 => "azw3",
+            MimeType::TXT => "txt",
+            MimeType::UNKNOWN => "",
         }
     }
 
     pub fn from_file_extension(extension: &str) -> Option<Self> {
         match extension.to_lowercase().as_str() {
-            "epub" => Some(MIMETYPE::EPUB),
-            "mobi" => Some(MIMETYPE::MOBI),
-            "pdf" => Some(MIMETYPE::PDF),
-            "azw" => Some(MIMETYPE::KF7),
-            "azw3" => Some(MIMETYPE::KF8),
-            "txt" => Some(MIMETYPE::TXT),
+            "epub" => Some(MimeType::EPUB),
+            "mobi" => Some(MimeType::MOBI),
+            "pdf" => Some(MimeType::PDF),
+            "azw" => Some(MimeType::KF7),
+            "azw3" => Some(MimeType::KF8),
+            "txt" => Some(MimeType::TXT),
             _ => None,
         }
     }
 }
 
 /// Authoritative extension → MIME mapping for every format Citadel serves,
-/// shared by book downloads and OPDS asset responses. [`MIMETYPE`] covers the
+/// shared by book downloads and OPDS asset responses. [`MimeType`] covers the
 /// formats Citadel imports; the remaining entries exist because adopted
 /// Calibre libraries can hold those book formats (served as-is) and because
 /// cover files are images. `txt` carries a charset here for HTTP responses;
-/// [`MIMETYPE::as_str`] stays bare for non-HTTP use.
+/// [`MimeType::as_str`] stays bare for non-HTTP use.
 pub fn mime_type_from_extension(extension: &str) -> &'static str {
     match extension.to_ascii_lowercase().as_str() {
         "epub" => "application/epub+zip",

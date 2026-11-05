@@ -96,7 +96,7 @@ fn cover_preview(cover: Vec<u8>) -> Option<Vec<u8>> {
 }
 
 /// Whether the file's first bytes look like the format its name claims.
-fn content_matches(path: &Path, format: libcalibre::mime_type::MIMETYPE) -> bool {
+fn content_matches(path: &Path, format: libcalibre::mime_type::MimeType) -> bool {
     let mut head = Vec::with_capacity(book_file::CONTENT_CHECK_BYTES);
     fs::File::open(path)
         .and_then(|file| {

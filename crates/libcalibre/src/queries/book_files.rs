@@ -10,10 +10,7 @@ use diesel::{QueryDsl, RunQueryDsl, SqliteConnection};
 
 use crate::entities::book_file::NewBookFile;
 use crate::BookFile;
-use crate::{
-    types::{BookFileId, BookId},
-    CalibreError,
-};
+use crate::{types::BookId, CalibreError};
 
 pub(crate) fn create(
     conn: &mut SqliteConnection,
@@ -25,15 +22,6 @@ pub(crate) fn create(
         .values(new_file)
         .returning(BookFile::as_returning())
         .get_result(conn)
-        .map(|_| ())
-        .map_err(CalibreError::from)
-}
-
-pub(crate) fn delete(conn: &mut SqliteConnection, file_id: BookFileId) -> Result<(), CalibreError> {
-    use crate::schema::data::dsl::*;
-
-    diesel::delete(data.filter(id.eq(file_id.as_i32())))
-        .execute(conn)
         .map(|_| ())
         .map_err(CalibreError::from)
 }

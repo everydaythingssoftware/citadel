@@ -66,11 +66,7 @@ impl<'a> LibraryService<'a> {
         self.books(&books, false)
     }
 
-    fn books(
-        &mut self,
-        books: &[libcalibre::library::Book],
-        cache_bust: bool,
-    ) -> Result<Vec<LibraryBook>> {
+    fn books(&mut self, books: &[libcalibre::Book], cache_bust: bool) -> Result<Vec<LibraryBook>> {
         let counts = self.library.author_book_counts()?;
         Ok(books
             .iter()
@@ -351,7 +347,7 @@ impl<'a> LibraryService<'a> {
 impl LibraryService<'_> {
     /// The author with this name, matched as Calibre's unique index does
     /// (ASCII case-insensitive).
-    fn author_named(&mut self, name: &str) -> Result<Option<libcalibre::LibraryAuthor>> {
+    fn author_named(&mut self, name: &str) -> Result<Option<libcalibre::Author>> {
         Ok(self
             .library
             .authors()?
@@ -360,12 +356,12 @@ impl LibraryService<'_> {
     }
 
     /// The book, or `NotFound`, before a write changes anything.
-    fn existing_book(&mut self, id: &str) -> Result<libcalibre::library::Book> {
+    fn existing_book(&mut self, id: &str) -> Result<libcalibre::Book> {
         Ok(self.library.get_book(book_id(id)?)?)
     }
 }
 
-fn require_identifier(book: &libcalibre::library::Book, identifier_id: i32) -> Result<()> {
+fn require_identifier(book: &libcalibre::Book, identifier_id: i32) -> Result<()> {
     if book.identifiers.iter().any(|each| each.id == identifier_id) {
         Ok(())
     } else {

@@ -3,7 +3,7 @@ mod common;
 use std::fs;
 
 use common::{setup_with_library, standard_test_book};
-use libcalibre::{error::CalibreError, BookId, Library};
+use libcalibre::{BookId, CalibreError, Library};
 use rusqlite::{params, Connection};
 
 fn reopen(temp: &tempfile::TempDir) -> Library {
