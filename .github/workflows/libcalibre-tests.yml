@@ -32,6 +32,10 @@ jobs:
         working-directory: crates/libcalibre
         run: cargo build --all-features
 
+      - name: Build without optional features
+        working-directory: crates/libcalibre
+        run: cargo build --no-default-features
+
   report-coverage:
     needs: setup
     runs-on: ubuntu-latest
