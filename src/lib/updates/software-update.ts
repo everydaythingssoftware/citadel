@@ -1,10 +1,52 @@
-import type { SoftwareUpdateState, SoftwareUpdateStatus } from "@/bindings";
-
 /**
- * The desktop backend owns this state and broadcasts it to every window
- * (CDL-51), so the gear badge and the Settings row always agree.
+ * Whether a newer Citadel is out, and what can be done about it here. One
+ * model for both platforms: on the desktop it's the app, which updates
+ * itself (CDL-51); in the browser it's the server, which an administrator
+ * updates however they run it (CDL-73). Each platform's updates adapter
+ * maps its own answer into this, and says which actions it can perform.
  */
-export type { SoftwareUpdateState, SoftwareUpdateStatus };
+export type UpdateSubject = "app" | "server";
+
+export type SoftwareUpdateStatus =
+	| { kind: "idle" }
+	| { kind: "checking" }
+	| { kind: "upToDate" }
+	| {
+			kind: "available";
+			version: string;
+			/** Where to read about it, when the platform links there. */
+			releaseNotesUrl?: string | null;
+	  }
+	| { kind: "downloading"; version: string; progress: number | null }
+	/** Downloaded and verified; installs when Citadel quits. */
+	| { kind: "ready"; version: string }
+	| { kind: "checkFailed"; message: string }
+	| { kind: "updateFailed"; version: string; message: string }
+	/** Turned off where Citadel runs. */
+	| { kind: "checksOff" }
+	/** Nightly and development builds have no release to compare with. */
+	| { kind: "notForThisBuild" };
+
+/** What this platform can do about updates. */
+export interface UpdateActions {
+	check: boolean;
+	install: boolean;
+	/** Install when Citadel quits (not for installs that need a password). */
+	installOnQuit: boolean;
+}
+
+export const NO_UPDATE_ACTIONS: UpdateActions = {
+	check: false,
+	install: false,
+	installOnQuit: false,
+};
+
+export interface SoftwareUpdateState {
+	subject: UpdateSubject;
+	currentVersion: string;
+	status: SoftwareUpdateStatus;
+	actions: UpdateActions;
+}
 
 /** The version a pending update offers, if there is one to badge. */
 export const pendingUpdateVersion = (
@@ -28,43 +70,71 @@ export type SoftwareUpdateControl =
 	| { kind: "progress"; version: string; value: number | null }
 	| { kind: "restartNow" }
 	| { kind: "retryCheck" }
-	| { kind: "retryUpdate" };
+	| { kind: "retryUpdate" }
+	| { kind: "releaseNotes"; url: string };
 
 export interface SoftwareUpdateRowView {
 	label: string;
+	/** A line under the label, for what the label alone can't say. */
+	description?: string;
 	/** Error text, shown on hover rather than taking up space. */
 	detail?: string;
 	controls: SoftwareUpdateControl[];
 }
 
+const SERVER_DESCRIPTIONS: Partial<
+	Record<SoftwareUpdateStatus["kind"], string>
+> = {
+	checking: "Checking for updates…",
+	checksOff: "Update checks are turned off on this server.",
+	notForThisBuild: "Nightly and development builds don't check for updates.",
+};
+
 /** What Settings → Software Update shows for a state. */
 export const softwareUpdateRowView = ({
+	subject,
 	currentVersion,
 	status,
-	canInstallOnQuit,
+	actions,
 }: SoftwareUpdateState): SoftwareUpdateRowView => {
+	const current = `Citadel ${currentVersion}`;
+	const check = (checking: boolean): SoftwareUpdateControl[] =>
+		actions.check ? [{ kind: "check", checking }] : [];
+	// A server can't be updated from the browser: it says what's out, and
+	// the administrator updates however they run it.
+	if (subject === "server") {
+		if (status.kind === "available")
+			return {
+				label: `Citadel ${status.version} is available`,
+				description: `This server runs ${currentVersion}.`,
+				controls: status.releaseNotesUrl
+					? [{ kind: "releaseNotes", url: status.releaseNotesUrl }]
+					: [],
+			};
+		if (status.kind === "upToDate")
+			return { label: `${current} is up to date`, controls: [] };
+		const description = SERVER_DESCRIPTIONS[status.kind];
+		return description
+			? { label: current, description, controls: [] }
+			: { label: current, controls: [] };
+	}
 	switch (status.kind) {
 		case "idle":
-			return {
-				label: `Citadel ${currentVersion}`,
-				controls: [{ kind: "check", checking: false }],
-			};
+		case "checksOff":
+		case "notForThisBuild":
+			return { label: current, controls: check(false) };
 		case "checking":
-			return {
-				label: `Citadel ${currentVersion}`,
-				controls: [{ kind: "check", checking: true }],
-			};
+			return { label: current, controls: check(true) };
 		case "upToDate":
-			return {
-				label: `Citadel ${currentVersion} is up to date`,
-				controls: [{ kind: "check", checking: false }],
-			};
+			return { label: `${current} is up to date`, controls: check(false) };
 		case "available":
 			return {
 				label: `Update available: ${status.version}`,
-				controls: canInstallOnQuit
-					? [{ kind: "later" }, { kind: "updateNow" }]
-					: [{ kind: "updateNow" }],
+				controls: !actions.install
+					? []
+					: actions.installOnQuit
+						? [{ kind: "later" }, { kind: "updateNow" }]
+						: [{ kind: "updateNow" }],
 			};
 		case "downloading":
 			return {
@@ -76,19 +146,19 @@ export const softwareUpdateRowView = ({
 		case "ready":
 			return {
 				label: `${status.version} installs when you quit`,
-				controls: [{ kind: "restartNow" }],
+				controls: actions.install ? [{ kind: "restartNow" }] : [],
 			};
 		case "checkFailed":
 			return {
 				label: "Couldn't check for updates",
 				detail: status.message,
-				controls: [{ kind: "retryCheck" }],
+				controls: actions.check ? [{ kind: "retryCheck" }] : [],
 			};
 		case "updateFailed":
 			return {
 				label: `Couldn't install ${status.version}`,
 				detail: status.message,
-				controls: [{ kind: "retryUpdate" }],
+				controls: actions.install ? [{ kind: "retryUpdate" }] : [],
 			};
 	}
 };

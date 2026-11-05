@@ -2,9 +2,9 @@ import type {
 	DatabaseBackup,
 	DatabaseProblem,
 	RecoveryStep,
-	SoftwareUpdateState,
 	UpdateNowOutcome,
 } from "@/bindings";
+import type { SoftwareUpdateState } from "@/lib/updates/software-update";
 import type { SettingsManager } from "./settings/types";
 
 export interface PlatformAdapter {
@@ -64,9 +64,14 @@ export interface WindowAdapter {
 	hideOnClose(): Promise<() => void>;
 }
 
-/** Citadel's own updates; the desktop backend owns the state (CDL-51). */
+/**
+ * Whether a newer Citadel is out: the app itself on the desktop, whose
+ * backend owns the state (CDL-51); the server in the browser (CDL-73). The
+ * state lists which of the actions below this platform performs.
+ */
 export interface UpdatesAdapter {
-	state(): Promise<SoftwareUpdateState>;
+	/** Null when there is nothing to show, such as signed out in a browser. */
+	state(): Promise<SoftwareUpdateState | null>;
 	/** Every state change, in every window. */
 	onChange(handler: (state: SoftwareUpdateState) => void): Promise<() => void>;
 	/** Settings is asked to show Software Update. */

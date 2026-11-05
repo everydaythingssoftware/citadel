@@ -13,8 +13,10 @@ import {
 	type BrowserSessionControls,
 	useBrowserSessionControls,
 } from "@/lib/hooks/use-browser-session";
-import { useOpenSettings } from "@/lib/hooks/use-open-settings";
-import { useServerUpdate } from "@/lib/hooks/use-server-update";
+import {
+	useOpenSettings,
+	useOpenSoftwareUpdate,
+} from "@/lib/hooks/use-open-settings";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import {
 	type BookRouteFilters,
@@ -34,18 +36,15 @@ import { LibraryPicker } from "./LibraryPicker";
 import styles from "./Sidebar.module.css";
 
 export const Sidebar = () => {
-	const platform = usePlatform();
 	const state = useLibraryState();
 	const { location } = useRouterState();
 	const openSettings = useOpenSettings();
+	const openSoftwareUpdate = useOpenSoftwareUpdate();
 	const session = useBrowserSessionControls();
 	const softwareUpdate = useSoftwareUpdate();
-	const desktopUpdateVersion = softwareUpdate
+	const updateVersion = softwareUpdate
 		? pendingUpdateVersion(softwareUpdate.state.status)
 		: null;
-	// In the browser, administrators are told about a newer server release.
-	const serverUpdateVersion =
-		useServerUpdate().update?.available?.version ?? null;
 
 	if (state !== LibraryState.ready) {
 		return null;
@@ -55,12 +54,8 @@ export const Sidebar = () => {
 		<SidebarPure
 			currentPathname={location.pathname}
 			routeFilters={routeFiltersFromSearch(location.search)}
-			openSettings={
-				desktopUpdateVersion
-					? safeAsyncEventHandler(platform.updates.showInSettings)
-					: openSettings
-			}
-			updateVersion={desktopUpdateVersion ?? serverUpdateVersion}
+			openSettings={updateVersion ? openSoftwareUpdate : openSettings}
+			updateVersion={updateVersion}
 			session={session}
 			settingsShowing={location.pathname === "/settings"}
 		/>

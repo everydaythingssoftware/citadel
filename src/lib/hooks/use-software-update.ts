@@ -15,8 +15,9 @@ export interface SoftwareUpdate {
 }
 
 /**
- * Citadel's update state, kept in step with the backend in every window.
- * Null where updates aren't supported, or until the state first arrives.
+ * Whether a newer Citadel is out, kept in step with the platform: the app on
+ * the desktop, the server in the browser. Null until the state first
+ * arrives, and wherever there is nothing to show.
  */
 export const useSoftwareUpdate = (): SoftwareUpdate | null => {
 	const platform = usePlatform();
@@ -34,7 +35,6 @@ export const useSoftwareUpdate = (): SoftwareUpdate | null => {
 	}, [attempt]);
 
 	useEffect(() => {
-		if (!platform.capabilities.supportsAutoUpdates) return;
 		let cancelled = false;
 		let unlisten: (() => void) | undefined;
 

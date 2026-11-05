@@ -442,7 +442,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Whether a newer Citadel has been released. The server asks GitHub once a day. Administrators only. */
+        /** @description Which Citadel this server runs, and for administrators whether a newer release is out. The server asks GitHub once a day. */
         get: operations["getServerUpdate"];
         put?: never;
         post?: never;
@@ -1236,16 +1236,22 @@ export interface components {
          * @enum {string}
          */
         UpdateChecks: "on" | "off" | "notForThisBuild";
-        /** @description What administrators see about updates. */
-        UpdateStatus: {
-            available?: components["schemas"]["Release"] | null;
+        UpdateDetails: {
+            available: components["schemas"]["Release"] | null;
             /**
              * Format: date-time
              * @description When the server last heard from GitHub.
              */
-            checkedAt?: string | null;
+            checkedAt: string | null;
             checks: components["schemas"]["UpdateChecks"];
+        };
+        /**
+         * @description Which Citadel the server runs, and for administrators whether a newer
+         *     release is out.
+         */
+        UpdateStatus: {
             currentVersion: string;
+            details: components["schemas"]["UpdateDetails"] | null;
         };
         UploadList: {
             /** Format: int64 */
@@ -3356,14 +3362,6 @@ export interface operations {
                 };
             };
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LibraryError"];
-                };
-            };
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };

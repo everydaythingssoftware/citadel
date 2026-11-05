@@ -8,6 +8,26 @@
 	padding: 0.4375rem 0.875rem;
 }
 
+.labels {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	min-width: 0;
+}
+
+.description {
+	font-size: 0.75rem;
+	line-height: 1.35;
+	color: var(--ctd-ink-soft);
+}
+
+/* A link standing in for a control: the row's own size, on one line. */
+.link {
+	flex-shrink: 0;
+	font-size: 0.8125rem;
+	white-space: nowrap;
+}
+
 .label {
 	display: inline-flex;
 	align-items: center;

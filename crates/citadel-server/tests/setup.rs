@@ -398,7 +398,6 @@ async fn readers_never_reach_the_setup_routes() {
             Some(json!({"mode": "adopt", "path": "/"})),
         ),
         ("POST", "/api/setup/library/upgrade", None),
-        ("GET", "/api/server/update", None),
         ("POST", "/api/setup/library/reopen", None),
     ] {
         let (status, _, error) =
@@ -721,7 +720,7 @@ async fn every_answer_names_the_build_and_the_version_is_public() {
 }
 
 #[tokio::test]
-async fn administrators_see_whether_updates_are_checked() {
+async fn administrators_see_whether_updates_are_checked_and_readers_see_the_version() {
     let directory = tempfile::tempdir().unwrap();
     let server = fresh(directory.path(), Some(SETUP_CODE));
     let (status, _, _) = request(&server.router, "GET", "/api/server/update", None, None).await;
@@ -740,9 +739,35 @@ async fn administrators_see_whether_updates_are_checked() {
         update,
         json!({
             "currentVersion": citadel_server::release::VERSION,
-            "checks": "off",
-            "available": null,
-            "checkedAt": null,
+            "details": {"checks": "off", "available": null, "checkedAt": null},
         })
+    );
+
+    // Readers see which Citadel the server runs, and nothing about updates.
+    server
+        .accounts
+        .create_user("reader", "reader-password")
+        .unwrap();
+    let (_, headers, _) = request(
+        &server.router,
+        "POST",
+        "/api/session",
+        Some(json!({"username": "reader", "password": "reader-password"})),
+        None,
+    )
+    .await;
+    let reader = cookie(&headers);
+    let (status, _, update) = request(
+        &server.router,
+        "GET",
+        "/api/server/update",
+        None,
+        Some(&reader),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{update}");
+    assert_eq!(
+        update,
+        json!({"currentVersion": citadel_server::release::VERSION, "details": null})
     );
 }

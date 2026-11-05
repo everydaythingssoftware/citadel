@@ -156,7 +156,7 @@ Release builds ask GitHub for the latest Citadel release when they start and
 then once a day. When a newer one is out, the server logs
 `update_available=<version>`, and administrators see a badge on the settings
 gear and the new version, with its release notes, under Settings → General in
-the browser. Readers never see it. The request carries no version or other
+the browser. Readers see only the version. The request carries no version or other
 detail about the server. Turn it off with:
 
 ```toml

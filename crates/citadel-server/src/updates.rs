@@ -61,15 +61,26 @@ pub struct Release {
     pub published_at: Option<DateTime<Utc>>,
 }
 
-/// What administrators see about updates.
+/// Which Citadel the server runs, and for administrators whether a newer
+/// release is out.
 #[derive(Clone, Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateStatus {
     pub current_version: String,
+    /// Administrators only: readers can't act on it.
+    #[schema(required = true)]
+    pub details: Option<UpdateDetails>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDetails {
     pub checks: UpdateChecks,
     /// A release newer than this server, once a check has found one.
+    #[schema(required = true)]
     pub available: Option<Release>,
     /// When the server last heard from GitHub.
+    #[schema(required = true)]
     pub checked_at: Option<DateTime<Utc>>,
 }
 
@@ -124,10 +135,17 @@ impl Updates {
         self.checks
     }
 
-    pub fn status(&self) -> UpdateStatus {
-        let found = self.lock();
+    /// What `administrator` may see: readers get only the version.
+    pub fn status(&self, administrator: bool) -> UpdateStatus {
         UpdateStatus {
             current_version: self.current_text.clone(),
+            details: administrator.then(|| self.details()),
+        }
+    }
+
+    pub fn details(&self) -> UpdateDetails {
+        let found = self.lock();
+        UpdateDetails {
             checks: self.checks,
             available: found
                 .latest
@@ -275,7 +293,7 @@ mod tests {
                 url: String::new(),
                 published_at: None,
             });
-            assert_eq!(updates.status().available.is_some(), offered, "{latest}");
+            assert_eq!(updates.details().available.is_some(), offered, "{latest}");
         }
     }
 }

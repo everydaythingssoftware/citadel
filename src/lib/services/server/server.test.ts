@@ -7,32 +7,21 @@ const json = (data: unknown, status = 200) =>
 		headers: { "content-type": "application/json" },
 	});
 
-describe("Web server service", () => {
-	it("reads the server's version without signing in", async () => {
-		const server = createWebServerService({
-			baseUrl: "https://citadel.test",
-			fetch: async (request) => {
-				expect(new URL(request.url).pathname).toBe("/api/version");
-				return json({
-					version: "0.8.0",
-					commit: "abc123",
-					build: "0.8.0+abc123",
-				});
-			},
-		});
-		await expect(server.version()).resolves.toEqual({
-			version: "0.8.0",
-			commit: "abc123",
-			build: "0.8.0+abc123",
-		});
+const serverAnswering = (response: () => Response) =>
+	createWebServerService({
+		baseUrl: "https://citadel.test",
+		fetch: async (request) => {
+			expect(new URL(request.url).pathname).toBe("/api/server/update");
+			return response();
+		},
 	});
 
-	it("turns the update answer's dates into dates", async () => {
-		const server = createWebServerService({
-			baseUrl: "https://citadel.test",
-			fetch: async () =>
-				json({
-					currentVersion: "0.7.1",
+describe("Web server service", () => {
+	it("turns an administrator's update details' dates into dates", async () => {
+		const server = serverAnswering(() =>
+			json({
+				currentVersion: "0.7.1",
+				details: {
 					checks: "on",
 					available: {
 						version: "0.8.0",
@@ -40,23 +29,38 @@ describe("Web server service", () => {
 						publishedAt: "2026-11-04T12:00:00Z",
 					},
 					checkedAt: "2026-11-04T13:00:00Z",
-				}),
-		});
+				},
+			}),
+		);
 		const update = await server.update();
-		expect(update?.available?.publishedAt).toEqual(
+		expect(update?.details?.available?.publishedAt).toEqual(
 			new Date("2026-11-04T12:00:00Z"),
 		);
-		expect(update?.checkedAt).toEqual(new Date("2026-11-04T13:00:00Z"));
+		expect(update?.details?.checkedAt).toEqual(
+			new Date("2026-11-04T13:00:00Z"),
+		);
 	});
 
-	it("tells readers nothing about updates", async () => {
-		for (const status of [401, 403]) {
-			const server = createWebServerService({
-				baseUrl: "https://citadel.test",
-				fetch: async () =>
-					json({ code: "unauthorized", message: "No" }, status),
-			});
-			await expect(server.update()).resolves.toBeNull();
-		}
+	it("passes a reader's version-only answer through", async () => {
+		const server = serverAnswering(() =>
+			json({ currentVersion: "0.7.1", details: null }),
+		);
+		await expect(server.update()).resolves.toEqual({
+			currentVersion: "0.7.1",
+			details: null,
+		});
+	});
+
+	it("has nothing to say signed out, and reports other failures", async () => {
+		await expect(
+			serverAnswering(() =>
+				json({ code: "unauthorized", message: "Sign in" }, 401),
+			).update(),
+		).resolves.toBeNull();
+		await expect(
+			serverAnswering(() =>
+				json({ code: "unavailable", message: "Busy" }, 503),
+			).update(),
+		).rejects.toThrow("Busy");
 	});
 });

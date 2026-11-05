@@ -8,17 +8,21 @@ type UpdateStatus = components["schemas"]["UpdateStatus"];
 const dateOrNull = (value: string | null | undefined): Date | null =>
 	value ? new Date(value) : null;
 
-const toUpdate = (status: UpdateStatus): ServerUpdate => ({
-	currentVersion: status.currentVersion,
-	checks: status.checks,
-	available: status.available
+const toUpdate = ({ currentVersion, details }: UpdateStatus): ServerUpdate => ({
+	currentVersion,
+	details: details
 		? {
-				version: status.available.version,
-				url: status.available.url,
-				publishedAt: dateOrNull(status.available.publishedAt),
+				checks: details.checks,
+				available: details.available
+					? {
+							version: details.available.version,
+							url: details.available.url,
+							publishedAt: dateOrNull(details.available.publishedAt),
+						}
+					: null,
+				checkedAt: dateOrNull(details.checkedAt),
 			}
 		: null,
-	checkedAt: dateOrNull(status.checkedAt),
 });
 
 export const createWebServerService = (
@@ -26,15 +30,9 @@ export const createWebServerService = (
 ): ServerService => {
 	const client = createCitadelHttpClient(options);
 	return {
-		version: async () => {
-			const { data, response } = await client.GET("/api/version");
-			if (!data)
-				throw new Error(`Could not reach Citadel (${response.status})`);
-			return data;
-		},
 		update: async () => {
 			const { data, error, response } = await client.GET("/api/server/update");
-			if (response.status === 401 || response.status === 403) return null;
+			if (response.status === 401) return null;
 			if (error || !data)
 				throw new Error(
 					error?.message ?? `Could not check for updates (${response.status})`,

@@ -24,7 +24,6 @@ import {
 } from "@/components/ui";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
-import { useServerUpdate } from "@/lib/hooks/use-server-update";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
@@ -35,7 +34,6 @@ import {
 	type TSettingsSection,
 } from "@/lib/settings-sections";
 import { applyColorScheme } from "@/lib/theme-manager";
-import { serverUpdateRowView } from "@/lib/updates/server-update";
 import {
 	providerKeysOnServer,
 	useAnySourceEnabled,
@@ -275,10 +273,6 @@ const GeneralTab = () => {
 	const platform = usePlatform();
 	const supportsAutoUpdates = platform.capabilities.supportsAutoUpdates;
 	const softwareUpdate = useSoftwareUpdate();
-	const server = useServerUpdate();
-	const serverRow = server.version
-		? serverUpdateRowView(server.version, server.update)
-		: null;
 
 	const applyTheme = useCallback(
 		(value: string) => {
@@ -309,43 +303,25 @@ const GeneralTab = () => {
 					}
 				/>
 			</div>
-			{/* In the browser, the server's version; administrators also learn of
-			    newer releases, which they install by updating the server. */}
-			{serverRow && (
+			{/* The app checks on its own schedule only on the desktop; a server's
+			    checks are set where it runs. */}
+			{(supportsAutoUpdates || softwareUpdate) && (
 				<div className={classes.group}>
-					<SettingsRow
-						label={serverRow.label}
-						description={serverRow.description ?? undefined}
-						control={
-							serverRow.releaseNotesUrl && (
-								<InlineLink
-									href={serverRow.releaseNotesUrl}
-									isExternal
-									className={classes.rowLink}
-								>
-									Release notes
-								</InlineLink>
-							)
-						}
-					/>
-				</div>
-			)}
-			{/* A browser can't install anything; the server updates on its own. */}
-			{supportsAutoUpdates && (
-				<div className={classes.group}>
-					<SettingsRow
-						label="Check for updates automatically"
-						htmlFor={autoUpdateSwitchId}
-						control={
-							<Switch
-								id={autoUpdateSwitchId}
-								checked={autoUpdateCheckingEnabled}
-								onCheckedChange={(checked) =>
-									void setAutoUpdateCheckingEnabled(checked)
-								}
-							/>
-						}
-					/>
+					{supportsAutoUpdates && (
+						<SettingsRow
+							label="Check for updates automatically"
+							htmlFor={autoUpdateSwitchId}
+							control={
+								<Switch
+									id={autoUpdateSwitchId}
+									checked={autoUpdateCheckingEnabled}
+									onCheckedChange={(checked) =>
+										void setAutoUpdateCheckingEnabled(checked)
+									}
+								/>
+							}
+						/>
+					)}
 					{softwareUpdate && (
 						<SoftwareUpdateRow
 							state={softwareUpdate.state}

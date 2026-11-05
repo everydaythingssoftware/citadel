@@ -2499,7 +2499,7 @@
     },
     "/api/server/update": {
       "get": {
-        "description": "Whether a newer Citadel has been released. The server asks GitHub once a day. Administrators only.",
+        "description": "Which Citadel this server runs, and for administrators whether a newer release is out. The server asks GitHub once a day.",
         "operationId": "getServerUpdate",
         "responses": {
           "200": {
@@ -2512,15 +2512,6 @@
             }
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LibraryError"
-                }
-              }
-            }
-          },
-          "403": {
             "content": {
               "application/json": {
                 "schema": {
@@ -5474,12 +5465,12 @@
           "notForThisBuild"
         ]
       },
-      "UpdateStatus": {
+      "UpdateDetails": {
         "type": "object",
-        "description": "What administrators see about updates.",
         "required": [
-          "currentVersion",
-          "checks"
+          "checks",
+          "available",
+          "checkedAt"
         ],
         "properties": {
           "available": {
@@ -5503,9 +5494,30 @@
           },
           "checks": {
             "$ref": "#/components/schemas/UpdateChecks"
-          },
+          }
+        }
+      },
+      "UpdateStatus": {
+        "type": "object",
+        "description": "Which Citadel the server runs, and for administrators whether a newer\nrelease is out.",
+        "required": [
+          "currentVersion",
+          "details"
+        ],
+        "properties": {
           "currentVersion": {
             "type": "string"
+          },
+          "details": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UpdateDetails",
+                "description": "Administrators only: readers can't act on it."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },

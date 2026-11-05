@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	displayedStatus,
+	NO_UPDATE_ACTIONS,
 	pendingUpdateVersion,
 	type SoftwareUpdateState,
 	type SoftwareUpdateStatus,
@@ -9,11 +10,19 @@ import {
 
 const state = (
 	status: SoftwareUpdateStatus,
-	canInstallOnQuit = true,
+	installOnQuit = true,
 ): SoftwareUpdateState => ({
+	subject: "app",
 	currentVersion: "0.7.1",
 	status,
-	canInstallOnQuit,
+	actions: { check: true, install: true, installOnQuit },
+});
+
+const server = (status: SoftwareUpdateStatus): SoftwareUpdateState => ({
+	subject: "server",
+	currentVersion: "0.7.1",
+	status,
+	actions: NO_UPDATE_ACTIONS,
 });
 
 describe("softwareUpdateRowView", () => {
@@ -73,6 +82,49 @@ describe("softwareUpdateRowView", () => {
 			detail: "Offline",
 			controls: [{ kind: "retryUpdate" }],
 		});
+	});
+});
+
+describe("softwareUpdateRowView for a server", () => {
+	it("shows readers only the version", () => {
+		expect(softwareUpdateRowView(server({ kind: "idle" }))).toEqual({
+			label: "Citadel 0.7.1",
+			controls: [],
+		});
+	});
+
+	it("names a newer release, what the server runs, and its notes", () => {
+		expect(
+			softwareUpdateRowView(
+				server({
+					kind: "available",
+					version: "0.8.0",
+					releaseNotesUrl: "https://notes",
+				}),
+			),
+		).toEqual({
+			label: "Citadel 0.8.0 is available",
+			description: "This server runs 0.7.1.",
+			controls: [{ kind: "releaseNotes", url: "https://notes" }],
+		});
+	});
+
+	it("says why nothing is offered, and never offers to install", () => {
+		expect(softwareUpdateRowView(server({ kind: "upToDate" }))).toEqual({
+			label: "Citadel 0.7.1 is up to date",
+			controls: [],
+		});
+		expect(softwareUpdateRowView(server({ kind: "checking" }))).toEqual({
+			label: "Citadel 0.7.1",
+			description: "Checking for updates…",
+			controls: [],
+		});
+		expect(
+			softwareUpdateRowView(server({ kind: "checksOff" })).description,
+		).toBe("Update checks are turned off on this server.");
+		expect(
+			softwareUpdateRowView(server({ kind: "notForThisBuild" })).description,
+		).toBe("Nightly and development builds don't check for updates.");
 	});
 });
 

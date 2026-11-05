@@ -1,4 +1,4 @@
-import { Button, ProgressBar, Spinner } from "@/components/ui";
+import { Button, InlineLink, ProgressBar, Spinner } from "@/components/ui";
 import {
 	type SoftwareUpdateControl,
 	type SoftwareUpdateState,
@@ -14,12 +14,15 @@ export interface SoftwareUpdateRowProps {
 	onRestartNow: () => void;
 }
 
-/** Settings → General → Software Update: one row that shows the current state. */
+/**
+ * Settings → General: one row that shows the update state, for the desktop
+ * app or, in the browser, the server.
+ */
 export const SoftwareUpdateRow = ({
 	state,
 	...handlers
 }: SoftwareUpdateRowProps) => {
-	const { label, detail, controls } = softwareUpdateRowView(state);
+	const { label, description, detail, controls } = softwareUpdateRowView(state);
 
 	return (
 		// Keyed by the label so the row fades in only when its text changes.
@@ -27,8 +30,13 @@ export const SoftwareUpdateRow = ({
 		// controls in place.
 		<div key={label} className={styles.enter}>
 			<div className={styles.row}>
-				<span className={styles.label} title={detail}>
-					{label}
+				<span className={styles.labels}>
+					<span className={styles.label} title={detail}>
+						{label}
+					</span>
+					{description && (
+						<span className={styles.description}>{description}</span>
+					)}
 				</span>
 				<div className={styles.controls}>
 					{controls.map((control) => (
@@ -98,6 +106,12 @@ const Control = ({
 				<Button size="sm" onClick={onUpdateNow}>
 					Try Again
 				</Button>
+			);
+		case "releaseNotes":
+			return (
+				<InlineLink href={control.url} isExternal className={styles.link}>
+					Release notes
+				</InlineLink>
 			);
 	}
 };
