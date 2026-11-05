@@ -28,10 +28,16 @@ describe("browser Platform", () => {
 		});
 		add();
 	});
-	it("rejects unsupported desktop updates without invoking IPC", async () => {
+	it("offers no way to install updates from the browser", async () => {
 		const platform = createWebPlatform();
-		await expect(platform.updates.state()).rejects.toThrow("unavailable");
-		await expect(platform.updates.check()).rejects.toThrow("unavailable");
-		await expect(platform.updates.updateNow()).rejects.toThrow("unavailable");
+		await expect(platform.updates.check()).rejects.toThrow(
+			"not from the browser",
+		);
+		await expect(platform.updates.later()).rejects.toThrow(
+			"not from the browser",
+		);
+		await expect(platform.updates.updateNow()).rejects.toThrow(
+			"not from the browser",
+		);
 	});
 });

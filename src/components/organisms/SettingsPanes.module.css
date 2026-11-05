@@ -284,10 +284,3 @@
 .providerBody .inlineNote {
 	margin: 0;
 }
-
-/* A link standing in for a row's control: the row's own size, on one line. */
-.rowLink {
-	flex-shrink: 0;
-	font-size: 0.8125rem;
-	white-space: nowrap;
-}

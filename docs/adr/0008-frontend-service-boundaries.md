@@ -9,7 +9,7 @@ belong exclusively to their owning adapters.
 | Library | Queries and mutations on the selected library, custom fields, genres, covers and import commit | `src/lib/services/library` |
 | LibraryCatalog | Discover, validate, inspect, create, open and register libraries (the citadel.db library list); in the browser, the server's library setup for administrators (ADR 0012) | `src/lib/services/library-catalog` |
 | Metadata | Provider search, ISBN lookup and provider credential/connectivity tests | `src/lib/services/metadata` |
-| Platform | Settings persistence, clipboard, dialogs, paths, menu events, window lifecycle/theme and desktop updates | `src/lib/platform` |
+| Platform | Settings persistence, clipboard, dialogs, paths, menu events, window lifecycle/theme and update notices (the desktop app's own updater; the server's release check in the browser) | `src/lib/platform` |
 | OPDS administration | Local listener configuration and credentials | `src/lib/services/opds` |
 
 LibraryCatalog opens the backend before constructing its Library handle. The

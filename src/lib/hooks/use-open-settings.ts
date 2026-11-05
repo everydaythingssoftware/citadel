@@ -19,3 +19,19 @@ export const useOpenSettings = (): (() => void) => {
 		}
 	}, [navigate, platform]);
 };
+
+/**
+ * Opens Settings where updates are shown: the desktop's Software Update
+ * section, or in the browser the Settings page, which opens on General.
+ */
+export const useOpenSoftwareUpdate = (): (() => void) => {
+	const platform = usePlatform();
+	const openSettings = useOpenSettings();
+	return useCallback(() => {
+		if (platform.capabilities.supportsNativeWindows) {
+			void platform.updates.showInSettings();
+		} else {
+			openSettings();
+		}
+	}, [openSettings, platform]);
+};

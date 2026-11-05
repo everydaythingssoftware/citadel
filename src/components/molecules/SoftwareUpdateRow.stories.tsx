@@ -1,19 +1,29 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-	SoftwareUpdateState,
-	SoftwareUpdateStatus,
+import {
+	NO_UPDATE_ACTIONS,
+	type SoftwareUpdateState,
+	type SoftwareUpdateStatus,
 } from "@/lib/updates/software-update";
 import { SoftwareUpdateRow } from "./SoftwareUpdateRow";
 
+/** The desktop app's row; `installOnQuit` is false for .deb/.rpm installs. */
 const state = (
 	status: SoftwareUpdateStatus,
-	overrides: Partial<SoftwareUpdateState> = {},
+	{ installOnQuit = true }: { installOnQuit?: boolean } = {},
 ): SoftwareUpdateState => ({
+	subject: "app",
 	currentVersion: "0.7.1",
-	canInstallOnQuit: true,
 	status,
-	...overrides,
+	actions: { check: true, install: true, installOnQuit },
+});
+
+/** A server's row in the browser, as an administrator sees it. */
+const server = (status: SoftwareUpdateStatus): SoftwareUpdateState => ({
+	subject: "server",
+	currentVersion: "0.7.1",
+	status,
+	actions: NO_UPDATE_ACTIONS,
 });
 
 // Same card as a settings group (SettingsPanes.module.css .group).
@@ -64,7 +74,7 @@ export const AvailablePackageInstall: Story = {
 	args: {
 		state: state(
 			{ kind: "available", version: "0.7.2" },
-			{ canInstallOnQuit: false },
+			{ installOnQuit: false },
 		),
 	},
 };
@@ -112,7 +122,7 @@ const ALL_STATES: [string, SoftwareUpdateState][] = [
 	["Available", state({ kind: "available", version: "0.7.2" })],
 	[
 		"Available (.deb/.rpm)",
-		state({ kind: "available", version: "0.7.2" }, { canInstallOnQuit: false }),
+		state({ kind: "available", version: "0.7.2" }, { installOnQuit: false }),
 	],
 	[
 		"Downloading",
@@ -160,7 +170,7 @@ const useSimulatedUpdater = ({
 	packageInstall,
 }: WalkthroughProps) => {
 	const initial = useCallback(
-		() => state({ kind: "idle" }, { canInstallOnQuit: !packageInstall }),
+		() => state({ kind: "idle" }, { installOnQuit: !packageInstall }),
 		[packageInstall],
 	);
 	const [current, setCurrent] = useState(initial);
@@ -253,4 +263,29 @@ export const Walkthrough: StoryObj<WalkthroughProps> = {
 	},
 	parameters: { controls: { include: ["checkFinds", "packageInstall"] } },
 	render: (args) => <WalkthroughRow {...args} />,
+};
+
+/** In the browser: an administrator learns a newer release is out. */
+export const ServerAvailable: Story = {
+	args: {
+		state: server({
+			kind: "available",
+			version: "0.8.0",
+			releaseNotesUrl:
+				"https://github.com/everydaythingssoftware/citadel/releases/tag/v0.8.0",
+		}),
+	},
+};
+
+export const ServerUpToDate: Story = {
+	args: { state: server({ kind: "upToDate" }) },
+};
+
+export const ServerChecksOff: Story = {
+	args: { state: server({ kind: "checksOff" }) },
+};
+
+/** A reader sees only the version. */
+export const ServerReader: Story = {
+	args: { state: server({ kind: "idle" }) },
 };

@@ -1,11 +1,3 @@
-/** Which Citadel a server is. */
-export interface ServerVersion {
-	version: string;
-	commit: string;
-	/** Version and commit; every response also carries it as `Citadel-Build`. */
-	build: string;
-}
-
 export const UPDATE_CHECKS = {
 	on: "on",
 	off: "off",
@@ -20,18 +12,23 @@ export interface ServerRelease {
 	publishedAt: Date | null;
 }
 
-/** What administrators are told about new releases. */
-export interface ServerUpdate {
-	currentVersion: string;
+/** Administrators only: whether a newer release is out. */
+export interface ServerUpdateDetails {
 	checks: UpdateChecks;
 	/** A release newer than the server, once a check has found one. */
 	available: ServerRelease | null;
+	/** When the server last heard from GitHub. */
 	checkedAt: Date | null;
+}
+
+/** Which Citadel the server runs; details only for administrators. */
+export interface ServerUpdate {
+	currentVersion: string;
+	details: ServerUpdateDetails | null;
 }
 
 /** The server itself, rather than its library. */
 export interface ServerService {
-	version(): Promise<ServerVersion>;
-	/** Administrators only; null for anyone else. */
+	/** Null when signed out. */
 	update(): Promise<ServerUpdate | null>;
 }

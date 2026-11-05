@@ -2,16 +2,19 @@
 //! is out (administrators only).
 use axum::{
     extract::{Request, State},
-    http::HeaderValue,
+    http::{HeaderMap, HeaderValue},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
     Json,
 };
 use citadel_core::error::LibraryError;
 use serde::Serialize;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use super::ApiState;
+use super::{
+    session::{current_user, signed_out},
+    ApiState,
+};
 use crate::{release, updates::UpdateStatus};
 
 /// Names the build on every response, so a page loaded from an older build
@@ -41,11 +44,15 @@ async fn version() -> Json<ServerVersion> {
 }
 
 #[utoipa::path(get, path = "/api/server/update", operation_id = "getServerUpdate",
-    description = "Whether a newer Citadel has been released. The server asks GitHub once a day. Administrators only.",
-    responses((status = 200, body = UpdateStatus), (status = 401, body = LibraryError), (status = 403, body = LibraryError)),
+    description = "Which Citadel this server runs, and for administrators whether a newer release is out. The server asks GitHub once a day.",
+    responses((status = 200, body = UpdateStatus), (status = 401, body = LibraryError)),
     security(("session" = [])))]
-async fn update(State(state): State<ApiState>) -> Json<UpdateStatus> {
-    Json(state.updates.status())
+async fn update(State(state): State<ApiState>, headers: HeaderMap) -> Response {
+    match current_user(&state, &headers).await {
+        Ok(Some((user, _))) => Json(state.updates.status(user.is_administrator())).into_response(),
+        Ok(None) => signed_out().into_response(),
+        Err(error) => error.into_response(),
+    }
 }
 
 pub(super) async fn name_the_build(request: Request, next: Next) -> Response {
@@ -57,9 +64,11 @@ pub(super) async fn name_the_build(request: Request, next: Next) -> Response {
 }
 
 pub(super) fn public_routes() -> OpenApiRouter<ApiState> {
-    OpenApiRouter::new().routes(routes!(version))
+    OpenApiRouter::new()
+        .routes(routes!(version))
+        .routes(routes!(update))
 }
 
 pub(super) fn administrator_routes() -> OpenApiRouter<ApiState> {
-    OpenApiRouter::new().routes(routes!(update))
+    OpenApiRouter::new()
 }

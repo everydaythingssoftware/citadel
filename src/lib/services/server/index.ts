@@ -2,7 +2,7 @@ export type {
 	ServerRelease,
 	ServerService,
 	ServerUpdate,
-	ServerVersion,
+	ServerUpdateDetails,
 	UpdateChecks,
 } from "./types";
 export { UPDATE_CHECKS } from "./types";

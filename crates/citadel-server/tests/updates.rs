@@ -40,7 +40,7 @@ async fn a_newer_release_is_offered_and_kept_through_a_failed_check() {
     let client = reqwest::Client::new();
 
     updates.check_now(&client).await.unwrap();
-    let status = updates.status();
+    let status = updates.details();
     assert!(
         status.available.is_none(),
         "the same version isn't an update"
@@ -49,7 +49,7 @@ async fn a_newer_release_is_offered_and_kept_through_a_failed_check() {
 
     *answer.lock().unwrap() = (StatusCode::OK, release("v0.8.0"));
     updates.check_now(&client).await.unwrap();
-    let available = updates.status().available.expect("0.8.0 is newer");
+    let available = updates.details().available.expect("0.8.0 is newer");
     assert_eq!(available.version, "0.8.0");
     assert_eq!(
         available.url,
@@ -59,7 +59,7 @@ async fn a_newer_release_is_offered_and_kept_through_a_failed_check() {
     *answer.lock().unwrap() = (StatusCode::SERVICE_UNAVAILABLE, json!({}));
     assert!(updates.check_now(&client).await.is_err());
     assert_eq!(
-        updates.status().available.map(|release| release.version),
+        updates.details().available.map(|release| release.version),
         Some("0.8.0".into()),
         "a failed check keeps what the last one found"
     );
@@ -78,6 +78,6 @@ async fn drafts_prereleases_and_odd_tags_are_not_offered() {
     ] {
         *answer.lock().unwrap() = (StatusCode::OK, body.clone());
         updates.check_now(&client).await.unwrap();
-        assert!(updates.status().available.is_none(), "{body}");
+        assert!(updates.details().available.is_none(), "{body}");
     }
 }
