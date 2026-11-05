@@ -1,23 +1,30 @@
 //! Reads metadata and cover images from book files before they are added to a
 //! library. Every host shares this, so file-format quirks live in one place.
+//!
+//! EPUB and MOBI files are parsed with the `epub` and `mobi` features (both on
+//! by default). Without one, files of that format are read like PDFs: a title
+//! from the file name and no cover.
 use std::{ffi::OsStr, path::Path};
 
 use chrono::NaiveDate;
 
-use crate::mime_type::MIMETYPE;
+use crate::mime_type::MimeType;
 
+#[cfg(feature = "epub")]
 mod epub;
+#[cfg(feature = "mobi")]
 mod mobi;
 
 /// Covers larger than this are ignored rather than read into memory; a
 /// compressed EPUB entry can otherwise expand without bound.
-pub const MAX_COVER_BYTES: u64 = 16 * 1024 * 1024;
+#[cfg(any(feature = "epub", feature = "mobi"))]
+pub(crate) const MAX_COVER_BYTES: u64 = 16 * 1024 * 1024;
 
 /// What a book file says about itself. Formats without embedded metadata
 /// (PDF, TXT) report only a title taken from the file name.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BookFileMetadata {
-    pub format: MIMETYPE,
+    pub format: MimeType,
     pub title: Option<String>,
     pub author_names: Vec<String>,
     pub identifier: Option<String>,
@@ -29,7 +36,7 @@ pub struct BookFileMetadata {
 }
 
 impl BookFileMetadata {
-    fn titled_from_file_name(format: MIMETYPE, path: &Path) -> Option<Self> {
+    fn titled_from_file_name(format: MimeType, path: &Path) -> Option<Self> {
         Some(Self {
             format,
             title: non_empty(path.file_stem()?.to_str()?),
@@ -44,10 +51,10 @@ impl BookFileMetadata {
     }
 }
 
-fn format_of(path: &Path) -> Option<MIMETYPE> {
+fn format_of(path: &Path) -> Option<MimeType> {
     path.extension()
         .and_then(OsStr::to_str)
-        .and_then(MIMETYPE::from_file_extension)
+        .and_then(MimeType::from_file_extension)
 }
 
 /// Reads the metadata of the book file at `path`, choosing the reader by file
@@ -55,14 +62,14 @@ fn format_of(path: &Path) -> Option<MIMETYPE> {
 /// parsed.
 pub fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
     match format_of(path)? {
-        MIMETYPE::EPUB => epub::read_metadata(path),
-        format @ (MIMETYPE::MOBI | MIMETYPE::KF7 | MIMETYPE::KF8) => {
+        #[cfg(feature = "epub")]
+        MimeType::EPUB => epub::read_metadata(path),
+        #[cfg(feature = "mobi")]
+        format @ (MimeType::MOBI | MimeType::KF7 | MimeType::KF8) => {
             mobi::read_metadata(path, format)
         }
-        format @ (MIMETYPE::PDF | MIMETYPE::TXT) => {
-            BookFileMetadata::titled_from_file_name(format, path)
-        }
-        MIMETYPE::UNKNOWN => None,
+        MimeType::UNKNOWN => None,
+        format => BookFileMetadata::titled_from_file_name(format, path),
     }
 }
 
@@ -70,8 +77,10 @@ pub fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
 /// larger than [`MAX_COVER_BYTES`].
 pub fn cover_image_data(path: &Path) -> Option<Vec<u8>> {
     match format_of(path)? {
-        MIMETYPE::EPUB => epub::cover_image_data(path),
-        MIMETYPE::MOBI | MIMETYPE::KF7 | MIMETYPE::KF8 => mobi::cover_image_data(path),
+        #[cfg(feature = "epub")]
+        MimeType::EPUB => epub::cover_image_data(path),
+        #[cfg(feature = "mobi")]
+        MimeType::MOBI | MimeType::KF7 | MimeType::KF8 => mobi::cover_image_data(path),
         _ => None,
     }
 }
@@ -82,19 +91,19 @@ pub const CONTENT_CHECK_BYTES: usize = 1024;
 /// Whether `head` (the first bytes of a file, up to [`CONTENT_CHECK_BYTES`])
 /// looks like a `format` file, so a file can't be imported under a format it
 /// isn't. TXT has no signature; it only has to look like text.
-pub fn content_matches(format: MIMETYPE, head: &[u8]) -> bool {
+pub fn content_matches(format: MimeType, head: &[u8]) -> bool {
     match format {
         // Strictly the first entry is a stored `mimetype`, but many EPUBs
         // in the wild get that wrong; the reader validates the rest.
-        MIMETYPE::EPUB => head.starts_with(b"PK\x03\x04"),
-        MIMETYPE::PDF => head
+        MimeType::EPUB => head.starts_with(b"PK\x03\x04"),
+        MimeType::PDF => head
             .windows(5)
             .take(CONTENT_CHECK_BYTES)
             .any(|window| window == b"%PDF-"),
         // PalmDB type and creator.
-        MIMETYPE::MOBI | MIMETYPE::KF7 | MIMETYPE::KF8 => head.get(60..68) == Some(b"BOOKMOBI"),
-        MIMETYPE::TXT => !head.contains(&0),
-        MIMETYPE::UNKNOWN => false,
+        MimeType::MOBI | MimeType::KF7 | MimeType::KF8 => head.get(60..68) == Some(b"BOOKMOBI"),
+        MimeType::TXT => !head.contains(&0),
+        MimeType::UNKNOWN => false,
     }
 }
 
@@ -139,12 +148,12 @@ mod tests {
     #[test]
     fn plain_formats_are_titled_from_their_file_name() {
         let metadata = read_metadata(Path::new("/books/The Odyssey.pdf")).unwrap();
-        assert_eq!(metadata.format, MIMETYPE::PDF);
+        assert_eq!(metadata.format, MimeType::PDF);
         assert_eq!(metadata.title.as_deref(), Some("The Odyssey"));
         assert!(!metadata.has_cover);
         assert_eq!(
             read_metadata(Path::new("/books/notes.TXT")).unwrap().format,
-            MIMETYPE::TXT
+            MimeType::TXT
         );
     }
 
@@ -152,19 +161,19 @@ mod tests {
     fn content_must_match_the_format() {
         let mut mobi = vec![0u8; 68];
         mobi[60..68].copy_from_slice(b"BOOKMOBI");
-        assert!(content_matches(MIMETYPE::EPUB, b"PK\x03\x04mimetype"));
-        assert!(content_matches(MIMETYPE::PDF, b"\xEF\xBB\xBF%PDF-1.7"));
-        assert!(content_matches(MIMETYPE::KF8, &mobi));
+        assert!(content_matches(MimeType::EPUB, b"PK\x03\x04mimetype"));
+        assert!(content_matches(MimeType::PDF, b"\xEF\xBB\xBF%PDF-1.7"));
+        assert!(content_matches(MimeType::KF8, &mobi));
         assert!(content_matches(
-            MIMETYPE::TXT,
+            MimeType::TXT,
             "Call me Ishmael. ✓".as_bytes()
         ));
 
-        assert!(!content_matches(MIMETYPE::EPUB, b"%PDF-1.7"));
-        assert!(!content_matches(MIMETYPE::PDF, b"PK\x03\x04"));
-        assert!(!content_matches(MIMETYPE::MOBI, &mobi[..67]));
-        assert!(!content_matches(MIMETYPE::TXT, b"MZ\x90\x00"));
-        assert!(!content_matches(MIMETYPE::UNKNOWN, b"anything"));
+        assert!(!content_matches(MimeType::EPUB, b"%PDF-1.7"));
+        assert!(!content_matches(MimeType::PDF, b"PK\x03\x04"));
+        assert!(!content_matches(MimeType::MOBI, &mobi[..67]));
+        assert!(!content_matches(MimeType::TXT, b"MZ\x90\x00"));
+        assert!(!content_matches(MimeType::UNKNOWN, b"anything"));
     }
 
     #[test]

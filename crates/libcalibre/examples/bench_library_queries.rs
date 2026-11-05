@@ -22,8 +22,7 @@ use std::time::Instant;
 use diesel::sql_types::{BigInt, Integer, Text};
 use diesel::{sql_query, RunQueryDsl, SqliteConnection};
 
-use libcalibre::persistence::establish_connection;
-use libcalibre::util::get_db_path;
+use libcalibre::__internals::establish_connection;
 use libcalibre::{AuthorId, BookQuery, BookSortOrder, CustomColumnKind, Library};
 
 const PAGE_SIZE: i64 = 100;
@@ -286,10 +285,8 @@ fn run() -> Result<(), String> {
         .ok_or("library path is not valid UTF-8")?
         .to_string();
 
-    let valid_path = get_db_path(&library_str)
-        .ok_or_else(|| format!("no metadata.db found under {library_str}"))?;
     let mut library =
-        Library::new(valid_path).map_err(|e| format!("failed to open library: {e}"))?;
+        Library::open(&library_str).map_err(|e| format!("failed to open library: {e}"))?;
 
     // A second connection for raw-SQL discovery and EXPLAIN; it never runs
     // while a timed scenario is in flight.

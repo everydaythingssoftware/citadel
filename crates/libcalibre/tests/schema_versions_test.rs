@@ -5,10 +5,7 @@ use std::path::{Path, PathBuf};
 use common::{
     setup_with_library, setup_with_schema_26_library, standard_test_book, write_schema_26_library,
 };
-use libcalibre::{
-    error::CalibreError, schema_versions, util::get_db_path, Library, MINIMUM_SCHEMA_VERSION,
-    SCHEMA_VERSION,
-};
+use libcalibre::{upgrade_backups, CalibreError, Library, MINIMUM_SCHEMA_VERSION, SCHEMA_VERSION};
 use rusqlite::Connection;
 
 fn fixture_copy() -> (tempfile::TempDir, PathBuf) {
@@ -45,7 +42,7 @@ fn columns(database: &Path, table: &str) -> Vec<String> {
 }
 
 fn open(root: &Path) -> Library {
-    Library::new(get_db_path(root.to_str().unwrap()).unwrap()).unwrap()
+    Library::open(root).unwrap()
 }
 
 #[test]
@@ -121,7 +118,7 @@ fn a_calibre_7_2_library_upgrades_from_26_to_28_with_a_backup_beside_it() {
 
     library.add_book(standard_test_book()).unwrap();
     assert_eq!(library.upgrade().unwrap(), None);
-    assert_eq!(schema_versions::backups(&database).unwrap().len(), 1);
+    assert_eq!(upgrade_backups(&database).unwrap().len(), 1);
 
     drop(library);
     let mut reopened = open(temp.path());
@@ -171,8 +168,10 @@ fn a_version_25_library_gains_link_columns() {
 fn libraries_older_than_the_minimum_are_refused_with_calibre_advice() {
     let (temp, database) = fixture_copy();
     set_user_version(&database, MINIMUM_SCHEMA_VERSION - 1);
-    let valid = get_db_path(temp.path().to_str().unwrap()).unwrap();
-    for result in [Library::new(valid.clone()), Library::open_read_only(valid)] {
+    for result in [
+        Library::open(temp.path()),
+        Library::open_read_only(temp.path()),
+    ] {
         let error = result.err().expect("an old schema is refused");
         assert!(
             matches!(
@@ -187,9 +186,8 @@ fn libraries_older_than_the_minimum_are_refused_with_calibre_advice() {
         assert!(error.to_string().contains("open it in Calibre"), "{error}");
     }
     std::fs::write(temp.path().join("metadata.db"), b"").unwrap();
-    let valid = get_db_path(temp.path().to_str().unwrap()).unwrap();
     assert!(matches!(
-        Library::new(valid),
+        Library::open(temp.path()),
         Err(CalibreError::DatabaseIntegrity(_))
     ));
 }
@@ -206,7 +204,7 @@ fn only_the_newest_three_backups_are_kept() {
             .unwrap();
         taken.push(library.upgrade().unwrap().unwrap().backup);
     }
-    let kept = schema_versions::backups(&database).unwrap();
+    let kept = upgrade_backups(&database).unwrap();
     assert_eq!(kept.len(), 3);
     assert_eq!(kept[0], taken[3], "newest first");
     assert!(!taken[0].exists(), "the oldest copy was pruned");
@@ -217,13 +215,12 @@ fn only_the_newest_three_backups_are_kept() {
 fn read_only_handles_refuse_to_upgrade_without_touching_the_file() {
     let (temp, database) = fixture_copy();
     let before = std::fs::read(&database).unwrap();
-    let valid = get_db_path(temp.path().to_str().unwrap()).unwrap();
-    let mut library = Library::open_read_only(valid).unwrap();
+    let mut library = Library::open_read_only(temp.path()).unwrap();
     assert!(library.upgrade_available().unwrap());
     assert!(matches!(
         library.upgrade(),
         Err(CalibreError::ReadOnlyLibrary)
     ));
     assert_eq!(std::fs::read(&database).unwrap(), before);
-    assert!(schema_versions::backups(&database).unwrap().is_empty());
+    assert!(upgrade_backups(&database).unwrap().is_empty());
 }

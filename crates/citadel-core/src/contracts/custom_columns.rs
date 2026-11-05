@@ -69,6 +69,7 @@ impl TryFrom<libcalibre::CustomValue> for CustomValueDto {
             libcalibre::CustomValue::TextMultiple(values) => Ok(Self::TextMultiple(values)),
             libcalibre::CustomValue::Datetime(dt) => Ok(Self::Datetime(dt.to_rfc3339())),
             libcalibre::CustomValue::Enumeration(s) => Ok(Self::Enumeration(s)),
+            other => Err(format!("unsupported custom value {other:?}")),
         }
     }
 }

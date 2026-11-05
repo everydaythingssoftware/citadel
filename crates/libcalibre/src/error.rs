@@ -3,6 +3,7 @@ use std::{fmt, path::PathBuf};
 use crate::types::{AuthorId, BookId};
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CalibreError {
     #[error("Database error: {0}")]
     Database(String),
@@ -58,6 +59,10 @@ pub enum CalibreError {
     #[error("Invalid custom column: {0}")]
     InvalidCustomColumn(String),
 
+    /// Read state was written on a library opened without a read column.
+    #[error("This library has no read column")]
+    NoReadColumn,
+
     /// Custom column value is invalid (type mismatch, value not in an
     /// enumeration's allowed values, or an unparseable stored value).
     #[error("Invalid custom column value: {0}")]
@@ -73,6 +78,14 @@ pub enum CalibreError {
     /// The folder already holds a `metadata.db`.
     #[error("A Calibre library already exists at {0}")]
     LibraryAlreadyExists(PathBuf),
+
+    /// The folder has no `metadata.db`.
+    #[error("Not a Calibre library (no metadata.db): {0}")]
+    NotALibrary(PathBuf),
+
+    /// libcalibre stores paths as UTF-8 and can't open this one.
+    #[error("Path is not valid UTF-8: {0}")]
+    NonUtf8Path(PathBuf),
 
     /// The handle was opened read-only, so the operation can't write.
     #[error("The library is open read-only")]
@@ -116,6 +129,7 @@ impl From<Box<dyn std::error::Error>> for CalibreError {
     }
 }
 
+#[doc(hidden)]
 impl From<diesel::result::Error> for CalibreError {
     fn from(error: diesel::result::Error) -> Self {
         CalibreError::Database(error.to_string())

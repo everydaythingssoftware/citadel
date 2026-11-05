@@ -245,8 +245,7 @@ async fn http_reads_match_shared_operations_without_changing_database() {
     let (directory, service, router, id, cookie) = fixture().await;
     let database_path = directory.path().join("metadata.db");
     let before = std::fs::read(&database_path).unwrap();
-    let database = libcalibre::util::get_db_path(directory.path().to_str().unwrap()).unwrap();
-    let mut library = Library::open_read_only(database).unwrap();
+    let mut library = Library::open_read_only(directory.path()).unwrap();
     let urls = HttpUrlBuilder::new("");
     let mut core = LibraryService::new(&mut library, &urls);
     let input = query(json!(50));
@@ -632,8 +631,7 @@ async fn browser_hosting_serves_the_frontend_publicly_and_only_falls_back_for_ht
 }
 
 fn book_count(directory: &std::path::Path) -> usize {
-    let database = libcalibre::util::get_db_path(directory.to_str().unwrap()).unwrap();
-    Library::open_read_only(database)
+    Library::open_read_only(directory)
         .unwrap()
         .books()
         .unwrap()
@@ -1226,8 +1224,7 @@ fn committed_openapi_matches_routes() {
 #[tokio::test]
 async fn missing_cover_does_not_fail_other_thumbnails() {
     let (directory, service, router, valid_id, cookie) = fixture().await;
-    let database = libcalibre::util::get_db_path(directory.path().to_str().unwrap()).unwrap();
-    let mut library = Library::new(database).unwrap();
+    let mut library = Library::open(directory.path()).unwrap();
     let missing = library
         .add_book(BookAdd {
             title: "Missing cover".into(),

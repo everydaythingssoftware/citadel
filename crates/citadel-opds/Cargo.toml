@@ -1,6 +1,7 @@
 [package]
 name = "citadel-opds"
 version = "0.1.0"
+publish = false
 edition = "2021"
 rust-version.workspace = true
 description = "OPDS catalog, authentication, and networking runtime for Citadel"
@@ -26,6 +27,7 @@ urlencoding = "2.1.3"
 uuid = { version = "1.6.1", features = ["v4", "fast-rng"] }
 
 [dev-dependencies]
+libcalibre = { path = "../libcalibre", features = ["__internals"] }
 diesel = { version = "2.2.4", features = ["sqlite"] }
 reqwest = { version = "0.12", features = ["json"] }
 tempfile = "3.8"

@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use epub::doc::EpubDoc;
 
 use super::{non_empty, BookFileMetadata, MAX_COVER_BYTES};
-use crate::mime_type::MIMETYPE;
+use crate::mime_type::MimeType;
 
 pub(super) fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
     let doc = EpubDoc::new(path).ok()?;
@@ -18,7 +18,7 @@ pub(super) fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
     let value = |property: &str| doc.mdata(property).and_then(|item| non_empty(&item.value));
 
     Some(BookFileMetadata {
-        format: MIMETYPE::EPUB,
+        format: MimeType::EPUB,
         title: value("title"),
         author_names: values("creator"),
         identifier: value("identifier"),
@@ -141,7 +141,7 @@ mod tests {
         assert_eq!(
             metadata,
             BookFileMetadata {
-                format: MIMETYPE::EPUB,
+                format: MimeType::EPUB,
                 title: Some("The Odyssey".into()),
                 author_names: vec!["Homer".into(), "Emily Wilson".into()],
                 identifier: Some("urn:isbn:9780140449136".into()),

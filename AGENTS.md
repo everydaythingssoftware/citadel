@@ -11,7 +11,7 @@
 
 ## Architecture
 - **Tauri app**: Backend in Rust (src-tauri/), frontend in React/TypeScript (src/)
-- **libcalibre**: Internal library for Calibre database operations (SQLite via Diesel ORM)
+- **libcalibre**: Calibre library crate (SQLite via Diesel ORM), publishable on its own (`crates/libcalibre/README.md`). Keep Citadel out of it: genres live in `citadel_core::genres`, and Citadel's handle settings (OPF producer) in `citadel_core::configure_library`. Diesel stays out of its public API; tests reach connection helpers through the hidden `__internals` feature.
 - **Main binary**: citadel-desktop, runs embedded in Tauri
 - **Shared library API**: `crates/citadel-core` owns shared DTOs, errors and `LibraryService` operations. Tauri adapters in `src-tauri/src/library/{command,query}.rs` and Axum routes in `crates/citadel-server/src/api` delegate to it. See `docs/adr/0007-shared-library-contract.md`.
 - **Metadata providers**: `crates/citadel-metadata` owns Open Library / Hardcover / SRU lookups, shared by the desktop and server, with per-provider rate limits and a circuit breaker. See `docs/adr/0010-metadata-lookup-on-the-server.md`.

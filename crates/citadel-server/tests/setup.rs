@@ -553,7 +553,7 @@ async fn adopt_can_upgrade_first_and_refuses_unsupported_or_missing_libraries() 
     assert_eq!(info["schemaVersion"], libcalibre::SCHEMA_VERSION);
     assert_eq!(info["upgradeAvailable"], false);
     assert!(
-        libcalibre::schema_versions::backups(&old.join("metadata.db"))
+        libcalibre::upgrade_backups(&old.join("metadata.db"))
             .unwrap()
             .len()
             == 1

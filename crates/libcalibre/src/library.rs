@@ -24,7 +24,14 @@ pub struct Library {
     db_path: ValidDbPath,
     conn: SqliteConnection,
     read_only: bool,
+    read_column: Option<String>,
+    opf_producer: Option<String>,
 }
+
+/// The label of the bool custom column that read state uses unless
+/// [`Library::with_read_column`] or [`Library::without_read_column`] says
+/// otherwise. `#read` is the common Calibre convention.
+pub const DEFAULT_READ_COLUMN: &str = "read";
 
 #[derive(Clone, Debug)]
 pub struct Book {
@@ -149,6 +156,7 @@ pub struct AuthorUpdate {
 /// sort columns (`books.sort` for titles, the primary linked author's
 /// `authors.sort` for authors), with `books.id` as a stable tiebreak.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BookSortOrder {
     #[default]
     TitleAsc,
@@ -176,10 +184,12 @@ pub struct BookQuery {
     pub tag_id: Option<i32>,
     /// Only books linked to this publisher.
     pub publisher_id: Option<i32>,
-    /// Only books linked to this resolved Citadel genre value.
-    pub genre_id: Option<i32>,
-    /// Exclude books marked read (filtered in SQL, so paging and totals stay
-    /// correct).
+    /// Only books linked to one value of a text, series or enumeration
+    /// custom column. A column that doesn't exist matches no books.
+    pub custom_value: Option<CustomValueFilter>,
+    /// Exclude books marked read in the library's read column (filtered in
+    /// SQL, so paging and totals stay correct). Ignored when there is no read
+    /// column.
     pub hide_read: bool,
     pub sort: BookSortOrder,
     /// Maximum number of books to return. `None` returns all matches.
@@ -202,6 +212,7 @@ pub struct BookPage {
 /// [`Library::list_series`]; series ids are what [`BookQuery::series_id`]
 /// filters on.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SeriesSummary {
     pub id: i32,
     pub name: String,
@@ -211,6 +222,7 @@ pub struct SeriesSummary {
 /// One tag in the library. Returned by [`Library::list_tags`]; the full
 /// vocabulary feeds tag autocomplete in clients.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TagSummary {
     pub id: i32,
     pub name: String,
@@ -221,42 +233,90 @@ pub struct TagSummary {
 /// [`Library::list_publishers`]; publisher ids are what
 /// [`BookQuery::publisher_id`] filters on.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PublisherSummary {
     pub id: i32,
     pub name: String,
     pub book_count: i64,
 }
 
+/// Books linked to value `value_id` of the custom column labelled
+/// `column_label` (without the `#`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GenreSummary {
+pub struct CustomValueFilter {
+    pub column_label: String,
+    pub value_id: i32,
+}
+
+/// One value of a text, series or enumeration custom column, with its
+/// linked-book count. Returned by [`Library::list_custom_column_values`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CustomValueSummary {
     pub id: i32,
     pub name: String,
     pub book_count: i64,
 }
 
 impl Library {
-    /// Opens a library for writing. Its schema must be at least
-    /// [`schema_versions::MINIMUM_SCHEMA_VERSION`]; nothing is upgraded here.
-    pub fn new(db_path: ValidDbPath) -> Result<Self, CalibreError> {
+    /// Opens the library rooted at `library_root` (the folder holding
+    /// `metadata.db`) for writing. Its schema must be at least
+    /// [`MINIMUM_SCHEMA_VERSION`](crate::MINIMUM_SCHEMA_VERSION); nothing is
+    /// upgraded here.
+    ///
+    /// Opening for writing switches the database to WAL mode and installs
+    /// Calibre's triggers. Use [`Library::open_read_only`] to only read.
+    pub fn open(library_root: impl AsRef<Path>) -> Result<Self, CalibreError> {
+        let db_path = ValidDbPath::locate(library_root.as_ref())?;
         let mut conn = establish_connection(&db_path.database_path)?;
         schema_versions::supported_version(&mut conn)?;
         Ok(Self {
             db_path,
             conn,
             read_only: false,
+            read_column: Some(DEFAULT_READ_COLUMN.to_string()),
+            opf_producer: None,
         })
     }
 
-    /// Open an existing library for queries without changing its journal mode or triggers.
-    /// Mutation methods must not be used with this handle; SQLite rejects database writes.
-    pub fn open_read_only(db_path: ValidDbPath) -> Result<Self, CalibreError> {
+    /// Opens the library rooted at `library_root` for reading only. The
+    /// database is never changed: not its journal mode, triggers or schema.
+    /// Writes fail, and it is safe to read while Calibre has the library
+    /// open.
+    pub fn open_read_only(library_root: impl AsRef<Path>) -> Result<Self, CalibreError> {
+        let db_path = ValidDbPath::locate(library_root.as_ref())?;
         let mut conn = establish_read_only_connection(&db_path.database_path)?;
         schema_versions::supported_version(&mut conn)?;
         Ok(Self {
             db_path,
             conn,
             read_only: true,
+            read_column: Some(DEFAULT_READ_COLUMN.to_string()),
+            opf_producer: None,
         })
+    }
+
+    /// Track read state in the bool custom column labelled `label` (without
+    /// the `#`). It is created on the first [`Library::set_book_read_state`].
+    pub fn with_read_column(mut self, label: impl Into<String>) -> Self {
+        self.read_column = Some(label.into());
+        self
+    }
+
+    /// Don't track read state: every book reads as unread,
+    /// [`BookQuery::hide_read`] is ignored and
+    /// [`Library::set_book_read_state`] fails.
+    pub fn without_read_column(mut self) -> Self {
+        self.read_column = None;
+        self
+    }
+
+    /// The `<dc:contributor opf:role="bkp">` written into each book's
+    /// `metadata.opf`, naming the program that produced it (Calibre writes
+    /// `calibre (7.2.0) [https://calibre-ebook.com]`). Omitted by default.
+    pub fn with_opf_producer(mut self, producer: impl Into<String>) -> Self {
+        self.opf_producer = Some(producer.into());
+        self
     }
 
     /// The database's Calibre schema version (`PRAGMA user_version`).
@@ -280,12 +340,14 @@ impl Library {
         schema_versions::upgrade(&mut self.conn, Path::new(&self.db_path.database_path))
     }
 
-    pub fn library_path(&self) -> &str {
-        &self.db_path.library_path
+    /// The library's root folder.
+    pub fn library_path(&self) -> &Path {
+        Path::new(&self.db_path.library_path)
     }
 
-    pub fn database_path(&self) -> &str {
-        &self.db_path.database_path
+    /// The library's `metadata.db`.
+    pub fn database_path(&self) -> &Path {
+        Path::new(&self.db_path.database_path)
     }
 
     pub fn library_uuid(&mut self) -> Result<String, CalibreError> {
@@ -563,30 +625,19 @@ impl Library {
         let language_codes =
             crate::queries::languages::find_codes_for_book(&mut self.conn, book_id)?;
 
-        let contents = format_metadata_opf(&book_row, &authors, &language_codes)
-            .map_err(|_| CalibreError::DatabaseIntegrity("Failed to render metadata.opf".into()))?;
+        let contents = format_metadata_opf(
+            &book_row,
+            &authors,
+            &language_codes,
+            self.opf_producer.as_deref(),
+        )
+        .map_err(|_| CalibreError::DatabaseIntegrity("Failed to render metadata.opf".into()))?;
 
         let opf_path = Path::new(&self.db_path.library_path)
             .join(&book_row.path)
             .join("metadata.opf");
         std::fs::write(&opf_path, contents.as_bytes())
             .map_err(|e| CalibreError::FileSystem(e.to_string()))
-    }
-
-    pub fn remove_books(&mut self, book_ids: Vec<BookId>) -> Result<Vec<BookId>, CalibreError> {
-        let mut removed = Vec::new();
-        for book_id in book_ids {
-            let book = book_queries::get(&mut self.conn, book_id)?
-                .ok_or(CalibreError::BookNotFound(book_id))?;
-            operations::assets::delete_entire_book(
-                &self.db_path.library_path,
-                &mut self.conn,
-                book_id,
-                &book.path,
-            )?;
-            removed.push(book_id);
-        }
-        Ok(removed)
     }
 
     /// Delete books from the library database, all-or-nothing in one
@@ -659,10 +710,6 @@ impl Library {
         )
     }
 
-    pub fn remove_book_cover(&mut self, _book_id: BookId) -> Result<(), CalibreError> {
-        todo!()
-    }
-
     pub fn get_book_file(
         &mut self,
         book_id: BookId,
@@ -673,19 +720,6 @@ impl Library {
             &mut self.conn,
             book_id,
             file_format,
-        )
-    }
-
-    pub fn get_book_file_path(
-        &mut self,
-        id: BookId,
-        format: &str,
-    ) -> Result<PathBuf, CalibreError> {
-        operations::assets::get_book_file_path(
-            &self.db_path.library_path,
-            &mut self.conn,
-            id,
-            format,
         )
     }
 
@@ -704,45 +738,6 @@ impl Library {
 
     pub fn resolve_book_cover(&mut self, id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
         operations::assets::resolve_book_cover(&self.db_path.library_path, &mut self.conn, id)
-    }
-
-    pub fn remove_book_file(&mut self, book_id: BookId, format: &str) -> Result<(), CalibreError> {
-        operations::assets::remove_book_file(
-            &self.db_path.library_path,
-            &mut self.conn,
-            book_id,
-            format,
-        )
-    }
-
-    pub fn add_book_file_from_bytes(
-        &mut self,
-        book_id: BookId,
-        file_format: String,
-        file_data: Vec<u8>,
-    ) -> Result<(), CalibreError> {
-        operations::assets::add_book_file_from_bytes(
-            &self.db_path.library_path,
-            &mut self.conn,
-            book_id,
-            file_format,
-            file_data,
-        )
-    }
-
-    pub fn add_book_file_from_path(
-        &mut self,
-        book_id: BookId,
-        file_format: String,
-        file_path: String,
-    ) -> Result<(), CalibreError> {
-        operations::assets::add_book_file_from_path(
-            &self.db_path.library_path,
-            &mut self.conn,
-            book_id,
-            file_format,
-            file_path,
-        )
     }
 
     // =========================================================================
@@ -920,21 +915,37 @@ impl Library {
     }
 
     // =========================================================================
-    // Read state (the `read` bool custom column)
+    // Read state (a bool custom column, `#read` by default)
     // =========================================================================
 
-    pub(crate) fn get_or_create_read_state_column(&mut self) -> Result<CustomColumn, CalibreError> {
-        if let Some(column) =
-            custom_columns::find_by_label_and_kind(&mut self.conn, "read", &CustomColumnKind::Bool)?
-        {
+    /// The read column's label, if read state is tracked.
+    pub fn read_column(&self) -> Option<&str> {
+        self.read_column.as_deref()
+    }
+
+    fn find_read_column(&mut self) -> Result<Option<CustomColumn>, CalibreError> {
+        let Some(label) = self.read_column.as_deref() else {
+            return Ok(None);
+        };
+        custom_columns::find_by_label_and_kind(&mut self.conn, label, &CustomColumnKind::Bool)
+    }
+
+    fn get_or_create_read_state_column(&mut self) -> Result<CustomColumn, CalibreError> {
+        let Some(label) = self.read_column.clone() else {
+            return Err(CalibreError::NoReadColumn);
+        };
+        if let Some(column) = self.find_read_column()? {
             return Ok(column);
         }
-
+        let mut name = label.replace('_', " ");
+        if let Some(first) = name.get_mut(..1) {
+            first.make_ascii_uppercase();
+        }
         custom_columns::create(
             &mut self.conn,
             &CustomColumnSpec {
-                label: "read".to_string(),
-                name: "Read".to_string(),
+                label,
+                name,
                 kind: CustomColumnKind::Bool,
                 is_multiple: false,
                 enum_values: vec![],
@@ -944,12 +955,7 @@ impl Library {
     }
 
     pub fn get_book_read_state(&mut self, book_id: BookId) -> Result<bool, CalibreError> {
-        let Some(column) = custom_columns::find_by_label_and_kind(
-            &mut self.conn,
-            "read",
-            &CustomColumnKind::Bool,
-        )?
-        else {
+        let Some(column) = self.find_read_column()? else {
             return Ok(false);
         };
         let value = custom_columns::get_value(&mut self.conn, &column, book_id)?;
@@ -975,12 +981,7 @@ impl Library {
             return Ok(HashMap::new());
         }
 
-        let Some(column) = custom_columns::find_by_label_and_kind(
-            &mut self.conn,
-            "read",
-            &CustomColumnKind::Bool,
-        )?
-        else {
+        let Some(column) = self.find_read_column()? else {
             return Ok(HashMap::new());
         };
         let values = custom_columns::batch_get_values(&mut self.conn, &column, book_ids)?;
@@ -1010,40 +1011,11 @@ impl Library {
     /// Run a paged, sorted, filtered book query. Returns one page of
     /// hydrated books plus the total match count (ignoring limit/offset).
     pub fn query_books(&mut self, query: BookQuery) -> Result<BookPage, CalibreError> {
-        // The read state lives in the `read` bool custom column. When the
-        // column does not exist yet, no book has been marked read, so there
-        // is nothing to hide.
-        let hide_read_column = if query.hide_read {
-            custom_columns::find_by_label_and_kind(&mut self.conn, "read", &CustomColumnKind::Bool)?
-                .map(|column| column.id)
-        } else {
-            None
-        };
-        let genre_column = match query.genre_id {
-            Some(genre_id) => match self.genres_column(false)? {
-                Some(column) => Some((column.id, genre_id)),
-                None => {
-                    return Ok(BookPage {
-                        items: Vec::new(),
-                        total: 0,
-                    })
-                }
-            },
-            None => None,
-        };
-
-        let filters = book_queries::BookPageFilters {
-            text: query
-                .text
-                .as_deref()
-                .map(str::trim)
-                .filter(|text| !text.is_empty()),
-            author_id: query.author_id,
-            series_id: query.series_id,
-            tag_id: query.tag_id,
-            publisher_id: query.publisher_id,
-            genre_column,
-            hide_read_column,
+        let Some(filters) = self.page_filters(&query)? else {
+            return Ok(BookPage {
+                items: Vec::new(),
+                total: 0,
+            });
         };
 
         let total = book_queries::query_count(&mut self.conn, &filters)?;
@@ -1082,36 +1054,11 @@ impl Library {
         &mut self,
         query: BookQuery,
     ) -> Result<BookPage, CalibreError> {
-        let hide_read_column = if query.hide_read {
-            custom_columns::find_by_label_and_kind(&mut self.conn, "read", &CustomColumnKind::Bool)?
-                .map(|column| column.id)
-        } else {
-            None
-        };
-        let genre_column = match query.genre_id {
-            Some(genre_id) => match self.genres_column(false)? {
-                Some(column) => Some((column.id, genre_id)),
-                None => {
-                    return Ok(BookPage {
-                        items: Vec::new(),
-                        total: 0,
-                    })
-                }
-            },
-            None => None,
-        };
-        let filters = book_queries::BookPageFilters {
-            text: query
-                .text
-                .as_deref()
-                .map(str::trim)
-                .filter(|text| !text.is_empty()),
-            author_id: query.author_id,
-            series_id: query.series_id,
-            tag_id: query.tag_id,
-            publisher_id: query.publisher_id,
-            genre_column,
-            hide_read_column,
+        let Some(filters) = self.page_filters(&query)? else {
+            return Ok(BookPage {
+                items: Vec::new(),
+                total: 0,
+            });
         };
         let mut resolvable_ids = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -1179,87 +1126,76 @@ impl Library {
         crate::queries::publishers::list_with_book_counts(&mut self.conn)
     }
 
-    pub fn list_genres(&mut self) -> Result<Vec<GenreSummary>, CalibreError> {
-        let Some(column) = self.genres_column(false)? else {
+    /// The live custom column labelled `label` (without the `#`), if any.
+    pub fn custom_column(&mut self, label: &str) -> Result<Option<CustomColumn>, CalibreError> {
+        custom_columns::find_by_label(&mut self.conn, label)
+    }
+
+    /// Every value of the text, series or enumeration custom column
+    /// labelled `label`, with its linked-book count, sorted by value. Empty
+    /// when the column doesn't exist. The ids feed
+    /// [`BookQuery::custom_value`].
+    pub fn list_custom_column_values(
+        &mut self,
+        label: &str,
+    ) -> Result<Vec<CustomValueSummary>, CalibreError> {
+        let Some(column) = self.value_column(label)? else {
             return Ok(Vec::new());
         };
-        crate::queries::genres::list_with_book_counts(&mut self.conn, column.id)
+        crate::queries::custom_values::list_with_book_counts(&mut self.conn, column.id)
     }
 
-    pub fn set_book_genres(
-        &mut self,
-        book_id: BookId,
-        genres: Vec<String>,
-    ) -> Result<(), CalibreError> {
-        let genres = normalize_genre_names(genres);
-        if genres.is_empty() && self.genres_column(false)?.is_none() {
-            return Ok(());
-        }
-        let column = self
-            .genres_column(true)?
-            .expect("genre column is created when requested");
-        custom_columns::set_value(
-            &mut self.conn,
-            &column,
-            book_id,
-            Some(CustomValue::TextMultiple(genres)),
-        )?;
-        book_queries::touch(&mut self.conn, book_id).map(|_| ())
-    }
-
-    pub fn add_book_genres(
-        &mut self,
-        book_id: BookId,
-        genres: Vec<String>,
-    ) -> Result<(), CalibreError> {
-        let additions = normalize_genre_names(genres);
-        if additions.is_empty() {
-            return Ok(());
-        }
-        let mut merged = match self.genres_column(false)? {
-            Some(column) => match custom_columns::get_value(&mut self.conn, &column, book_id)? {
-                Some(CustomValue::TextMultiple(values)) => values,
-                None => Vec::new(),
-                Some(_) => unreachable!("genre column compatibility is checked"),
-            },
-            None => Vec::new(),
-        };
-        for addition in additions {
-            if !merged
-                .iter()
-                .any(|existing| existing.eq_ignore_ascii_case(&addition))
-            {
-                merged.push(addition);
-            }
-        }
-        self.set_book_genres(book_id, merged)
-    }
-
-    fn genres_column(&mut self, create: bool) -> Result<Option<CustomColumn>, CalibreError> {
-        const LABEL: &str = "citadel_genres";
-        if let Some(column) = custom_columns::find_by_label(&mut self.conn, LABEL)? {
-            if column.kind != CustomColumnKind::Text || !column.is_multiple {
-                return Err(CalibreError::InvalidCustomColumn(format!(
-                    "#{LABEL} must be a multiple-value text column"
-                )));
-            }
-            return Ok(Some(column));
-        }
-        if !create {
+    /// A text, series or enumeration column: one whose values live in their
+    /// own table, so books can be filtered and faceted by value id.
+    fn value_column(&mut self, label: &str) -> Result<Option<CustomColumn>, CalibreError> {
+        let Some(column) = custom_columns::find_by_label(&mut self.conn, label)? else {
             return Ok(None);
+        };
+        if !matches!(
+            column.kind,
+            CustomColumnKind::Text | CustomColumnKind::Series | CustomColumnKind::Enumeration
+        ) {
+            return Err(CalibreError::UnsupportedCustomColumn(format!(
+                "#{label} is a {} column; only text, series and enumeration columns have values to list",
+                column.kind.datatype()
+            )));
         }
-        custom_columns::create(
-            &mut self.conn,
-            &CustomColumnSpec {
-                label: LABEL.to_string(),
-                name: "Genres".to_string(),
-                kind: CustomColumnKind::Text,
-                is_multiple: true,
-                enum_values: Vec::new(),
-                display: None,
+        Ok(Some(column))
+    }
+
+    /// `None` when the query can match no books (its custom column is
+    /// missing).
+    fn page_filters<'q>(
+        &mut self,
+        query: &'q BookQuery,
+    ) -> Result<Option<book_queries::BookPageFilters<'q>>, CalibreError> {
+        // Without a read column, no book has been marked read, so there is
+        // nothing to hide.
+        let hide_read_column = if query.hide_read {
+            self.find_read_column()?.map(|column| column.id)
+        } else {
+            None
+        };
+        let custom_value = match &query.custom_value {
+            Some(filter) => match self.value_column(&filter.column_label)? {
+                Some(column) => Some((column.id, filter.value_id)),
+                None => return Ok(None),
             },
-        )
-        .map(Some)
+            None => None,
+        };
+        Ok(Some(book_queries::BookPageFilters {
+            text: query
+                .text
+                .as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty()),
+            author_id: query.author_id,
+            series_id: query.series_id,
+            tag_id: query.tag_id,
+            publisher_id: query.publisher_id,
+            custom_value,
+            hide_read_column,
+        }))
     }
 
     pub fn search_books(&mut self, query: &str) -> Result<Vec<Book>, CalibreError> {
@@ -1299,21 +1235,6 @@ impl Library {
     }
 }
 
-fn normalize_genre_names(genres: Vec<String>) -> Vec<String> {
-    let mut normalized = Vec::<String>::new();
-    for genre in genres {
-        let genre = genre.split_whitespace().collect::<Vec<_>>().join(" ");
-        if !genre.is_empty()
-            && !normalized
-                .iter()
-                .any(|existing| existing.eq_ignore_ascii_case(&genre))
-        {
-            normalized.push(genre);
-        }
-    }
-    normalized
-}
-
 /// Compares the stored value before and after the write, so no-op edits and
 /// values `set_value` normalises to what's already stored leave
 /// `last_modified` alone, as Calibre does.
@@ -1339,6 +1260,7 @@ fn format_metadata_opf(
     book: &crate::entities::book_row::BookRow,
     authors: &[crate::entities::author::Author],
     language_codes: &[String],
+    producer: Option<&str>,
 ) -> Result<String, ()> {
     let author_sort = book.author_sort.clone().unwrap_or_else(|| {
         authors
@@ -1370,6 +1292,15 @@ fn format_metadata_opf(
             .collect()
     };
 
+    let producer_string = producer
+        .map(|producer| {
+            format!(
+                "\n    <dc:contributor opf:file-as=\"calibre\" opf:role=\"bkp\">{}</dc:contributor>",
+                escape_xml_text(producer)
+            )
+        })
+        .unwrap_or_default();
+
     Ok(format!(
         r#"<?xml version='1.0' encoding='utf-8'?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
@@ -1377,8 +1308,7 @@ fn format_metadata_opf(
     <dc:identifier opf:scheme="calibre" id="calibre_id">{calibre_id}</dc:identifier>
     <dc:identifier opf:scheme="uuid" id="uuid_id">{calibre_uuid}</dc:identifier>
     <dc:title>{book_title}</dc:title>
-    {authors}
-    <dc:contributor opf:file-as="calibre" opf:role="bkp">citadel (1.0.0) [https://github.com/every-day-things/citadel]</dc:contributor>
+    {authors}{producer}
     <dc:date>{pub_date}</dc:date>
     {languages}
     <meta name="calibre:timestamp" content="{now}"/>
@@ -1392,6 +1322,7 @@ fn format_metadata_opf(
         calibre_uuid = book.uuid.as_deref().unwrap_or(""),
         book_title = book.title,
         authors = authors_string,
+        producer = producer_string,
         languages = languages_string,
         pub_date = book
             .pubdate
@@ -1400,6 +1331,12 @@ fn format_metadata_opf(
         now = chrono::Utc::now().to_string(),
         book_title_sortable = book.sort.as_deref().unwrap_or("")
     ))
+}
+
+fn escape_xml_text(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn unique_tag_names<'a>(tag_names: &'a [String]) -> Vec<&'a str> {
@@ -1417,15 +1354,19 @@ fn unique_tag_names<'a>(tag_names: &'a [String]) -> Vec<&'a str> {
     unique
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum CatalogFacetKind {
     Authors,
     Series,
     Tags,
-    Genres,
+    /// Values of the text, series or enumeration custom column with this
+    /// label (without the `#`). Empty when the column doesn't exist.
+    CustomColumn(String),
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct CatalogFacetSummary {
     pub id: i32,
     pub name: String,
@@ -1449,7 +1390,7 @@ impl Library {
             #[diesel(sql_type = Integer)]
             book: i32,
         }
-        let (table, links, value) = match kind {
+        let (table, links, value) = match &kind {
             CatalogFacetKind::Authors => (
                 "authors".to_string(),
                 "books_authors_link".to_string(),
@@ -1461,8 +1402,8 @@ impl Library {
                 "series",
             ),
             CatalogFacetKind::Tags => ("tags".to_string(), "books_tags_link".to_string(), "tag"),
-            CatalogFacetKind::Genres => {
-                let Some(column) = self.genres_column(false)? else {
+            CatalogFacetKind::CustomColumn(label) => {
+                let Some(column) = self.value_column(label)? else {
                     return Ok(Vec::new());
                 };
                 (
@@ -1472,7 +1413,7 @@ impl Library {
                 )
             }
         };
-        let name = if matches!(kind, CatalogFacetKind::Genres) {
+        let name = if matches!(kind, CatalogFacetKind::CustomColumn(_)) {
             "value"
         } else {
             "name"
@@ -1484,7 +1425,7 @@ impl Library {
             series_id: None,
             tag_id: None,
             publisher_id: None,
-            genre_column: None,
+            custom_value: None,
             hide_read_column: None,
         };
         let mut eligible = std::collections::HashSet::new();

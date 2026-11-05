@@ -5,7 +5,7 @@ use diesel::{sql_query, RunQueryDsl};
 use libcalibre::{BookId, Library};
 
 fn set_path(lib: &Library, id: BookId, path: &str) {
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path()).unwrap();
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path()).unwrap();
     sql_query("UPDATE books SET path = ? WHERE id = ?")
         .bind::<Text, _>(path)
         .bind::<Integer, _>(id.as_i32())

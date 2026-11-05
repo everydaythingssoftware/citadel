@@ -42,7 +42,7 @@ impl<'a> LibraryService<'a> {
             series_id: query.series_id,
             tag_id: query.tag_id,
             publisher_id: query.publisher_id,
-            genre_id: None,
+            custom_value: None,
             hide_read: query.hide_read,
             sort: query.sort.into(),
             limit: query.limit.map(i64::from),
@@ -66,18 +66,14 @@ impl<'a> LibraryService<'a> {
         self.books(&books, false)
     }
 
-    fn books(
-        &mut self,
-        books: &[libcalibre::library::Book],
-        cache_bust: bool,
-    ) -> Result<Vec<LibraryBook>> {
+    fn books(&mut self, books: &[libcalibre::Book], cache_bust: bool) -> Result<Vec<LibraryBook>> {
         let counts = self.library.author_book_counts()?;
         Ok(books
             .iter()
             .map(|book| {
                 LibraryBook::from_library_book(
                     book,
-                    self.library.library_path(),
+                    &self.library.library_path().to_string_lossy(),
                     &counts,
                     self.urls,
                     cache_bust,
@@ -339,7 +335,7 @@ impl<'a> LibraryService<'a> {
         // Checked first: the genre column is created (and isn't rolled back)
         // before libcalibre finds out the book is missing.
         let id = self.existing_book(id)?.id;
-        self.library.add_book_genres(id, genres)?;
+        crate::genres::add_book_genres(self.library, id, genres)?;
         Ok(())
     }
     pub fn set_cover(&mut self, _actor: &Actor, id: &str, bytes: Vec<u8>) -> Result<()> {
@@ -351,7 +347,7 @@ impl<'a> LibraryService<'a> {
 impl LibraryService<'_> {
     /// The author with this name, matched as Calibre's unique index does
     /// (ASCII case-insensitive).
-    fn author_named(&mut self, name: &str) -> Result<Option<libcalibre::LibraryAuthor>> {
+    fn author_named(&mut self, name: &str) -> Result<Option<libcalibre::Author>> {
         Ok(self
             .library
             .authors()?
@@ -360,12 +356,12 @@ impl LibraryService<'_> {
     }
 
     /// The book, or `NotFound`, before a write changes anything.
-    fn existing_book(&mut self, id: &str) -> Result<libcalibre::library::Book> {
+    fn existing_book(&mut self, id: &str) -> Result<libcalibre::Book> {
         Ok(self.library.get_book(book_id(id)?)?)
     }
 }
 
-fn require_identifier(book: &libcalibre::library::Book, identifier_id: i32) -> Result<()> {
+fn require_identifier(book: &libcalibre::Book, identifier_id: i32) -> Result<()> {
     if book.identifiers.iter().any(|each| each.id == identifier_id) {
         Ok(())
     } else {

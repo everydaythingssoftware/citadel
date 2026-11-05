@@ -172,7 +172,7 @@ fn test_update_book_language_replace_clear_and_untouched() {
 #[test]
 fn test_metadata_opf_emits_language_codes() {
     let (_temp, mut lib) = setup_with_library();
-    let library_path = lib.library_path().to_string();
+    let library_path = lib.library_path().to_str().unwrap().to_string();
 
     let book = lib
         .add_book(BookAdd {
@@ -451,20 +451,6 @@ fn test_delete_book_identifier() {
 }
 
 #[test]
-fn test_remove_books() {
-    let (_temp, mut lib) = setup_with_library();
-
-    let book1 = lib.add_book(empty_book("Book 1")).unwrap();
-    let book2 = lib.add_book(empty_book("Book 2")).unwrap();
-
-    assert_eq!(lib.books().unwrap().len(), 2);
-
-    lib.remove_books(vec![book1.id, book2.id]).unwrap();
-
-    assert_eq!(lib.books().unwrap().len(), 0);
-}
-
-#[test]
 fn test_add_book_with_authors() {
     let (_temp, mut lib) = setup_with_library();
 
@@ -627,7 +613,7 @@ fn test_tag_creation_reuses_case_insensitive_matches() {
 
     let db_path = temp.path().join("metadata.db");
     let mut conn =
-        libcalibre::persistence::establish_connection(db_path.to_str().unwrap()).unwrap();
+        libcalibre::__internals::establish_connection(db_path.to_str().unwrap()).unwrap();
     let count = crate_tag_count(&mut conn);
     assert_eq!(count, 1);
 }

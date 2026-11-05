@@ -9,7 +9,7 @@ use diesel::sql_query;
 use diesel::sql_types::{Integer, Text};
 use libcalibre::{
     BookAdd, BookId, BookPage, BookQuery, BookSortOrder, CustomColumnKind, CustomColumnSpec,
-    Library,
+    CustomValue, CustomValueFilter, Library,
 };
 use std::collections::HashMap;
 
@@ -45,7 +45,7 @@ fn series_id_by_name(lib: &mut Library, name: &str) -> i32 {
         id: i32,
     }
 
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path())
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path())
         .expect("failed to open test db");
     let row: IdRow = sql_query("SELECT id FROM series WHERE name = ?")
         .bind::<Text, _>(name)
@@ -577,53 +577,53 @@ fn test_list_tags_empty_library() {
     assert!(lib.list_tags().unwrap().is_empty());
 }
 
+fn text_column(lib: &mut Library, label: &str, kind: CustomColumnKind) -> i32 {
+    lib.create_custom_column(CustomColumnSpec {
+        label: label.to_string(),
+        name: label.to_string(),
+        kind,
+        is_multiple: true,
+        enum_values: Vec::new(),
+        display: None,
+    })
+    .unwrap()
+    .id
+}
+
 #[test]
-fn test_genres_are_distinct_persistent_and_queryable() {
+fn test_custom_column_values_are_listed_and_queryable() {
     let (_temp, mut lib) = setup_with_library();
-    let first = lib
-        .add_book(BookAdd {
-            tags: Some(vec!["Not a Genre".to_string()]),
-            ..book("First", &[])
-        })
-        .unwrap();
+    let first = lib.add_book(book("First", &[])).unwrap();
     let second = lib.add_book(book("Second", &[])).unwrap();
-
-    assert!(lib.list_genres().unwrap().is_empty());
-    assert!(lib
-        .custom_columns()
-        .unwrap()
-        .iter()
-        .all(|column| column.label != "citadel_genres"));
-
-    lib.set_book_genres(
-        first.id,
-        vec![" Science   Fiction ".to_string(), "Mystery".to_string()],
-    )
-    .unwrap();
-    lib.set_book_genres(second.id, vec!["science fiction".to_string()])
+    let column = text_column(&mut lib, "genre", CustomColumnKind::Text);
+    let values = |names: &[&str]| {
+        Some(CustomValue::TextMultiple(
+            names.iter().map(|name| (*name).to_string()).collect(),
+        ))
+    };
+    lib.set_custom_value(first.id, column, values(&["Science Fiction", "Mystery"]))
         .unwrap();
-    lib.add_book_genres(first.id, vec!["Fantasy".to_string(), "mystery".to_string()])
+    lib.set_custom_value(second.id, column, values(&["Science Fiction"]))
         .unwrap();
 
-    let genres = lib.list_genres().unwrap();
-    let summary: Vec<_> = genres
+    let listed = lib.list_custom_column_values("genre").unwrap();
+    let summary: Vec<_> = listed
         .iter()
-        .map(|genre| (genre.name.as_str(), genre.book_count))
+        .map(|value| (value.name.as_str(), value.book_count))
         .collect();
-    assert_eq!(
-        summary,
-        [("Fantasy", 1), ("Mystery", 1), ("Science Fiction", 2)]
-    );
-    assert!(!genres.iter().any(|genre| genre.name == "Not a Genre"));
+    assert_eq!(summary, [("Mystery", 1), ("Science Fiction", 2)]);
 
-    let science_fiction = genres
+    let science_fiction = listed
         .iter()
-        .find(|genre| genre.name == "Science Fiction")
+        .find(|value| value.name == "Science Fiction")
         .unwrap();
     let page = query(
         &mut lib,
         BookQuery {
-            genre_id: Some(science_fiction.id),
+            custom_value: Some(CustomValueFilter {
+                column_label: "genre".to_string(),
+                value_id: science_fiction.id,
+            }),
             limit: Some(1),
             offset: 1,
             ..BookQuery::default()
@@ -634,12 +634,31 @@ fn test_genres_are_distinct_persistent_and_queryable() {
 }
 
 #[test]
-fn test_incompatible_citadel_genres_column_fails_actionably() {
+fn test_custom_value_filter_on_missing_column_matches_nothing() {
     let (_temp, mut lib) = setup_with_library();
-    let book_id = lib.add_book(book("Book", &[])).unwrap().id;
+    lib.add_book(book("Book", &[])).unwrap();
+
+    assert!(lib.list_custom_column_values("genre").unwrap().is_empty());
+    let page = query(
+        &mut lib,
+        BookQuery {
+            custom_value: Some(CustomValueFilter {
+                column_label: "genre".to_string(),
+                value_id: 1,
+            }),
+            ..BookQuery::default()
+        },
+    );
+    assert!(page.items.is_empty());
+    assert_eq!(page.total, 0);
+}
+
+#[test]
+fn test_custom_values_of_a_bool_column_are_refused() {
+    let (_temp, mut lib) = setup_with_library();
     lib.create_custom_column(CustomColumnSpec {
-        label: "citadel_genres".to_string(),
-        name: "Genres".to_string(),
+        label: "owned".to_string(),
+        name: "Owned".to_string(),
         kind: CustomColumnKind::Bool,
         is_multiple: false,
         enum_values: Vec::new(),
@@ -647,10 +666,8 @@ fn test_incompatible_citadel_genres_column_fails_actionably() {
     })
     .unwrap();
 
-    let error = lib
-        .set_book_genres(book_id, vec!["Fantasy".to_string()])
-        .unwrap_err();
-    assert!(error.to_string().contains("multiple-value text column"));
+    let error = lib.list_custom_column_values("owned").unwrap_err();
+    assert!(error.to_string().contains("bool column"));
 }
 
 // =============================================================================
@@ -695,7 +712,7 @@ fn test_list_series_returns_counts_sorted_by_name() {
 
 /// `add_book` does not persist publishers yet, so link one directly.
 fn link_publisher(lib: &mut Library, book_id: BookId, name: &str) {
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path())
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path())
         .expect("failed to open test db");
     sql_query("INSERT OR IGNORE INTO publishers (name) VALUES (?)")
         .bind::<Text, _>(name)
@@ -849,7 +866,7 @@ fn test_sort_updated_desc_uses_id_as_stable_tiebreaker() {
     let newer_first = lib.add_book(book("Newer First", &[])).unwrap();
     let newer_second = lib.add_book(book("Newer Second", &[])).unwrap();
 
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path()).unwrap();
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path()).unwrap();
     sql_query("UPDATE books SET last_modified = '2024-01-01 00:00:00' WHERE id = ?")
         .bind::<Integer, _>(older.id.as_i32())
         .execute(&mut conn)

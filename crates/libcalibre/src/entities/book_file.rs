@@ -1,8 +1,7 @@
 use diesel::prelude::*;
 use diesel::query_builder::AsChangeset;
-use serde::Deserialize;
 
-use crate::mime_type::MIMETYPE;
+use crate::mime_type::MimeType;
 use crate::schema::data;
 
 #[derive(Clone, Debug, Queryable, Selectable, Identifiable, AsChangeset)]
@@ -18,7 +17,7 @@ pub struct BookFile {
 
 impl BookFile {
     pub fn as_filename(&self) -> String {
-        let mimetype = MIMETYPE::from_file_extension(&self.format).unwrap_or(MIMETYPE::UNKNOWN);
+        let mimetype = MimeType::from_file_extension(&self.format).unwrap_or(MimeType::UNKNOWN);
         let ext = mimetype.to_file_extension();
 
         if ext.is_empty() {
@@ -39,7 +38,7 @@ pub struct NewBookFile {
     pub name: String,
 }
 
-#[derive(Deserialize, AsChangeset, Default, Debug)]
+#[derive(AsChangeset, Default, Debug)]
 #[diesel(table_name = data)]
 pub struct UpdateBookFile {
     pub(crate) book: Option<i32>,

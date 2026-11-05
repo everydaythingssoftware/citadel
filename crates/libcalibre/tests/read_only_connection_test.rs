@@ -1,5 +1,5 @@
 use diesel::{prelude::*, sql_query, sql_types::BigInt};
-use libcalibre::{persistence::establish_read_only_connection, Library};
+use libcalibre::{__internals::establish_read_only_connection, Library};
 
 #[derive(QueryableByName)]
 struct Count {
@@ -26,8 +26,7 @@ fn read_only_open_preserves_database_and_handles_uri_characters() {
     permissions.set_readonly(true);
     std::fs::set_permissions(&path, permissions).unwrap();
     {
-        let database = libcalibre::util::get_db_path(directory.to_str().unwrap()).unwrap();
-        let mut library = Library::open_read_only(database).unwrap();
+        let mut library = Library::open_read_only(directory).unwrap();
         assert!(!library.library_uuid().unwrap().is_empty());
         assert!(!library.get_book_read_state(libcalibre::BookId(1)).unwrap());
         assert!(library

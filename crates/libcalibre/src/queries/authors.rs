@@ -15,7 +15,7 @@ use diesel::{QueryDsl, RunQueryDsl, SqliteConnection};
 use crate::entities::author::{NewAuthor, UpdateAuthorData};
 use crate::sorting;
 use crate::types::BookId;
-use crate::{types::AuthorId, Author, CalibreError};
+use crate::{entities::author::Author, types::AuthorId, CalibreError};
 
 pub(crate) fn get(
     conn: &mut SqliteConnection,

@@ -39,12 +39,12 @@ pub fn sort_book_title(title: &str) -> String {
 }
 
 /// These titles are moved to the end of an author's name when sorting.
-pub static GENERATIONAL_TITLES: [&str; 10] = [
+static GENERATIONAL_TITLES: [&str; 10] = [
     "Jr.", "Sr.", "Jr", "Sr", "Junior", "Senior", "I", "II", "III", "IV",
 ];
 
 /// These letters are removed from the end of an author's name when sorting.
-pub static POST_NOMINAL_LETTERS: [&str; 43] = [
+static POST_NOMINAL_LETTERS: [&str; 43] = [
     "BA", "B.A", // Bachelor of Arts
     "MA", "M.A", "AM", "A.M.", // Master of Arts
     "BS", "BSc", "B. sc.", "B.sc", "SB", "ScB", // Bachelor of Science
@@ -60,13 +60,13 @@ pub static POST_NOMINAL_LETTERS: [&str; 43] = [
 ];
 
 /// These words are removed from the beginning of an author's name when sorting.
-pub static PREFIX_TITLE: [&str; 10] = [
+static PREFIX_TITLE: [&str; 10] = [
     "Mr", "Mrs", "Ms", "Dr", "Prof", "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.",
 ];
 
 /// If these words occur in an author name, the generated sort string will be
 /// identical to the author's name.
-pub static VERBATIM_NAME_INDICATORS: [&str; 17] = [
+static VERBATIM_NAME_INDICATORS: [&str; 17] = [
     "Agency",
     "Corporation",
     "Company",
@@ -87,7 +87,7 @@ pub static VERBATIM_NAME_INDICATORS: [&str; 17] = [
 ];
 
 // From https://en.wikipedia.org/wiki/List_of_family_name_affixes Jan 22, 2024
-pub static FAMILY_NAME_PREFIXES: [&str; 87] = [
+static FAMILY_NAME_PREFIXES: [&str; 87] = [
     "A",    // Romanian
     "Ab",   // Welish, Cornish, Breton
     "Af",   // Danish, Swedish,

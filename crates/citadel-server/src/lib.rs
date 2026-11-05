@@ -95,7 +95,10 @@ impl CalibreCatalogSource {
     /// Opens the library for queries only; it is never changed.
     pub fn open(library_path: &Path) -> Result<Self, String> {
         let source = Self::empty();
-        source.replace(open_library(library_path, Library::open_read_only)?, true);
+        source.replace(
+            open_library(library_path, |path| Library::open_read_only(path))?,
+            true,
+        );
         Ok(source)
     }
 
@@ -103,7 +106,10 @@ impl CalibreCatalogSource {
     /// library at a time; nothing enforces that.
     pub fn open_writable(library_path: &Path) -> Result<Self, String> {
         let source = Self::empty();
-        source.replace(open_library(library_path, Library::new)?, false);
+        source.replace(
+            open_library(library_path, |path| Library::open(path))?,
+            false,
+        );
         Ok(source)
     }
 
@@ -117,20 +123,20 @@ impl CalibreCatalogSource {
 
     /// Serves the library at `library_path` from now on, preferring writes.
     pub fn replace_from_path(&self, library_path: &Path) -> Result<(), String> {
-        let path_text = library_path
-            .to_str()
-            .ok_or_else(|| "library path must be valid UTF-8".to_string())?;
-        if libcalibre::util::get_db_path(path_text).is_none() {
-            return Err(format!("not a Calibre library: {path_text}"));
+        if !libcalibre::is_library(library_path) {
+            return Err(format!("not a Calibre library: {}", library_path.display()));
         }
-        match open_library(library_path, Library::new) {
+        match open_library(library_path, |path| Library::open(path)) {
             Ok(opened) => {
                 self.replace(opened, false);
                 Ok(())
             }
             Err(error) => {
                 eprintln!("citadel_server library=read-only reason={error}");
-                self.replace(open_library(library_path, Library::open_read_only)?, true);
+                self.replace(
+                    open_library(library_path, |path| Library::open_read_only(path))?,
+                    true,
+                );
                 Ok(())
             }
         }
@@ -192,14 +198,16 @@ impl CalibreCatalogSource {
 
 fn open_library(
     library_path: &Path,
-    open: impl FnOnce(libcalibre::util::ValidDbPath) -> Result<Library, CalibreError>,
+    open: impl FnOnce(&Path) -> Result<Library, CalibreError>,
 ) -> Result<Opened, String> {
-    let path_text = library_path
-        .to_str()
-        .ok_or_else(|| "library path must be valid UTF-8".to_string())?;
-    let database = libcalibre::util::get_db_path(path_text)
-        .ok_or_else(|| format!("not a Calibre library: {path_text}"))?;
-    let library = open(database).map_err(|error| format!("could not open {path_text}: {error}"))?;
+    let library = open(library_path)
+        .map(citadel_core::configure_library)
+        .map_err(|error| match error {
+            CalibreError::NotALibrary(_) => {
+                format!("not a Calibre library: {}", library_path.display())
+            }
+            error => format!("could not open {}: {error}", library_path.display()),
+        })?;
     Ok(Opened {
         library,
         path: library_path.to_path_buf(),
@@ -236,7 +244,7 @@ impl CatalogSource for CalibreCatalogSource {
     }
 
     fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
-        self.facets(libcalibre::CatalogFacetKind::Genres)
+        self.facets(citadel_core::genres::facet())
     }
 
     fn book_file(&self, book_id: BookId, format: &str) -> Result<ResolvedBookAsset, CalibreError> {

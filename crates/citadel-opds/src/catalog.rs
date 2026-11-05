@@ -80,7 +80,7 @@ impl CatalogBookQuery {
             CatalogFilter::Author(id) => query.author_id = Some(AuthorId(id)),
             CatalogFilter::Series(id) => query.series_id = Some(id),
             CatalogFilter::Tag(id) => query.tag_id = Some(id),
-            CatalogFilter::Genre(id) => query.genre_id = Some(id),
+            CatalogFilter::Genre(id) => query.custom_value = Some(citadel_core::genres::filter(id)),
             CatalogFilter::Search(text) => query.text = Some(text),
         }
         query
@@ -1001,8 +1001,7 @@ mod tests {
     use chrono::{DateTime, NaiveDate};
     use diesel::{Connection, RunQueryDsl};
     use libcalibre::{
-        library::Book, util::get_db_path, BookAdd, BookFileInfo, BookIdentifier, BookUpdate,
-        Library, LibraryAuthor,
+        Author as LibraryAuthor, Book, BookAdd, BookFileInfo, BookIdentifier, BookUpdate, Library,
     };
     use quick_xml::{events::Event, name::ResolveResult, NsReader};
     use std::{collections::HashMap, path::PathBuf, sync::Mutex};
@@ -1266,7 +1265,7 @@ mod tests {
         fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
             let mut library = self.library.lock().unwrap();
             library
-                .catalog_facets(libcalibre::CatalogFacetKind::Genres)
+                .catalog_facets(citadel_core::genres::facet())
                 .map(|items| {
                     items
                         .into_iter()
@@ -1568,7 +1567,7 @@ mod tests {
             offset: 0,
         }
         .into_calibre();
-        assert_eq!(genre.genre_id, Some(1));
+        assert_eq!(genre.custom_value, Some(citadel_core::genres::filter(1)));
     }
 
     #[tokio::test]
@@ -1844,10 +1843,10 @@ mod tests {
             })
             .unwrap();
 
-        let database_path = library.database_path().to_string();
+        let database_path = library.database_path().to_str().unwrap().to_string();
         drop(library);
         let mut connection = diesel::SqliteConnection::establish(&database_path).unwrap();
-        libcalibre::persistence::register_sql_functions(&mut connection).unwrap();
+        libcalibre::__internals::register_sql_functions(&mut connection).unwrap();
         diesel::sql_query(format!(
             "UPDATE books SET uuid = NULL WHERE id = {}",
             added.id.as_i32()
@@ -1865,8 +1864,7 @@ mod tests {
         .execute(&mut connection)
         .unwrap();
         drop(connection);
-        let mut library =
-            Library::new(get_db_path(directory.path().to_str().unwrap()).unwrap()).unwrap();
+        let mut library = Library::open(directory.path()).unwrap();
         assert_eq!(library.get_book(added.id).unwrap().uuid, None);
         assert!(
             library.catalog_updated_at().unwrap().unwrap()
@@ -2035,9 +2033,12 @@ mod tests {
                 file_paths: vec![source_path],
             })
             .unwrap();
-        library
-            .set_book_genres(fantasy.id, vec!["Fantasy".to_string()])
-            .unwrap();
+        citadel_core::genres::set_book_genres(
+            &mut library,
+            fantasy.id,
+            vec!["Fantasy".to_string()],
+        )
+        .unwrap();
 
         let (base, server) = loopback(Arc::new(LibrarySource {
             library: Mutex::new(library),

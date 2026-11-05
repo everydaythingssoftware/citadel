@@ -1,6 +1,5 @@
 use diesel::prelude::*;
 use diesel::query_builder::AsChangeset;
-use serde::Deserialize;
 
 use crate::schema::authors;
 use crate::sorting;
@@ -30,7 +29,7 @@ pub struct NewAuthor {
     pub link: Option<String>,
 }
 
-#[derive(Deserialize, AsChangeset, Default, Debug)]
+#[derive(AsChangeset, Default, Debug)]
 #[diesel(table_name = authors)]
 pub struct UpdateAuthorData {
     pub(crate) name: Option<String>,

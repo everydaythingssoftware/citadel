@@ -6,7 +6,9 @@ use common::setup_with_library;
 use diesel::prelude::*;
 use diesel::sql_query;
 use diesel::sql_types::{BigInt, Integer};
-use libcalibre::{BookAdd, BookId, CalibreError, Library};
+use libcalibre::{
+    BookAdd, BookId, CalibreError, CustomColumnKind, CustomColumnSpec, CustomValue, Library,
+};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -35,7 +37,7 @@ fn rows_for_book(lib: &Library, table: &str, book_id: BookId) -> i64 {
         n: i64,
     }
 
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path())
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path())
         .expect("failed to open test db");
     sql_query(format!("SELECT COUNT(*) AS n FROM {table} WHERE book = ?"))
         .bind::<Integer, _>(book_id.as_i32())
@@ -66,10 +68,24 @@ fn test_delete_books_removes_all_records_but_leaves_files() {
     let kept = lib.add_book(book("The Tombs of Atuan")).unwrap();
     // Custom-column values: the `read` bool (non-normalized) and genres
     // (normalized), for both books.
+    let genres = lib
+        .create_custom_column(CustomColumnSpec {
+            label: "genres".to_string(),
+            name: "Genres".to_string(),
+            kind: CustomColumnKind::Text,
+            is_multiple: true,
+            enum_values: Vec::new(),
+            display: None,
+        })
+        .unwrap();
     for id in [doomed.id, kept.id] {
         lib.set_book_read_state(id, true).unwrap();
-        lib.set_book_genres(id, vec!["Fantasy".to_string()])
-            .unwrap();
+        lib.set_custom_value(
+            id,
+            genres.id,
+            Some(CustomValue::TextMultiple(vec!["Fantasy".to_string()])),
+        )
+        .unwrap();
         lib.upsert_book_identifier(id, "isbn".to_string(), "9780547773742".to_string(), None)
             .unwrap();
     }
@@ -168,7 +184,7 @@ fn test_delete_cleans_only_newly_orphaned_entities_and_rolls_back_cleanup() {
     let mut second_doomed = book("Doomed2");
     second_doomed.series = Some("Kept Series".into());
     let second_doomed = lib.add_book(second_doomed).unwrap();
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path()).unwrap();
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path()).unwrap();
     for (name, id) in [
         ("Shared Publisher", doomed.id),
         ("Only Doomed Publisher", second_doomed.id),

@@ -2,18 +2,22 @@ use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 
 use crate::error::CalibreError;
+use std::path::Path;
+
 use crate::util::ValidDbPath;
 
 /// Headline counts for a library, cheap enough to run against a library the
 /// user has only pointed at (onboarding's post-open reveal): two COUNT
 /// queries, no book-row hydration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct LibraryStats {
     pub book_count: i64,
     pub author_count: i64,
 }
 
-/// Count books and authors in the library at `db_path` without adopting it.
+/// Count books and authors in the library at `library_root` without
+/// adopting it.
 ///
 /// Deliberately NOT [`crate::persistence::establish_connection`]: that flips
 /// the journal mode to WAL and re-registers triggers — persistent changes to
@@ -27,8 +31,10 @@ pub struct LibraryStats {
 /// survive close for every connection app-wide — Apple's system SQLite
 /// enables `SQLITE_FCNTL_PERSIST_WAL` by default. The database file itself is
 /// never modified either way.
-pub fn library_stats(db_path: &ValidDbPath) -> Result<LibraryStats, CalibreError> {
+pub fn library_stats(library_root: impl AsRef<Path>) -> Result<LibraryStats, CalibreError> {
     use crate::schema::{authors, books};
+
+    let db_path = ValidDbPath::locate(library_root.as_ref())?;
 
     let mut conn =
         SqliteConnection::establish(&db_path.database_path).map_err(CalibreError::database)?;

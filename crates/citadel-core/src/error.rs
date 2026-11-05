@@ -72,7 +72,8 @@ impl From<libcalibre::CalibreError> for LibraryError {
             | CalibreError::AuthorNotFound(_)
             | CalibreError::BookFileNotFound(_, _)
             | CalibreError::BookCoverNotFound(_)
-            | CalibreError::CustomColumnNotFound(_) => LibraryErrorCode::NotFound,
+            | CalibreError::CustomColumnNotFound(_)
+            | CalibreError::NotALibrary(_) => LibraryErrorCode::NotFound,
             CalibreError::InvalidBookFormat(_)
             | CalibreError::InvalidCustomColumn(_)
             | CalibreError::InvalidCustomValue(_)
