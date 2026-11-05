@@ -49,6 +49,7 @@ impl CitadelState {
             let db_path = libcalibre::util::get_db_path(&library_path)
                 .ok_or_else(|| format!("Invalid library path: {}", library_path))?;
             let library = Library::new(db_path)
+                .map(citadel_core::configure_library)
                 .map_err(|error| format!("Failed to open library: {error}"))?;
 
             *self.inner.library.lock().expect("Library mutex poisoned") = Some(library);
@@ -249,7 +250,7 @@ impl CatalogSource for CitadelState {
     fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
         self.with_opds_library(|library| {
             library
-                .catalog_facets(libcalibre::CatalogFacetKind::Genres)
+                .catalog_facets(citadel_core::genres::facet())
                 .map(|items| {
                     items
                         .into_iter()

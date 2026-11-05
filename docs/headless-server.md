@@ -153,7 +153,7 @@ The Unix process test exercises the user commands, OPDS app passwords, browser s
 To generate a disposable validation library, provide an EPUB you can use for testing:
 
 ```sh
-cargo run -p libcalibre --example create_opds_validation_library -- \
+cargo run -p citadel-opds --example create_opds_validation_library -- \
   /absolute/empty/output-directory /absolute/path/to/example.epub
 ```
 

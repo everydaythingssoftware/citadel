@@ -199,7 +199,9 @@ fn open_library(
         .ok_or_else(|| "library path must be valid UTF-8".to_string())?;
     let database = libcalibre::util::get_db_path(path_text)
         .ok_or_else(|| format!("not a Calibre library: {path_text}"))?;
-    let library = open(database).map_err(|error| format!("could not open {path_text}: {error}"))?;
+    let library = open(database)
+        .map(citadel_core::configure_library)
+        .map_err(|error| format!("could not open {path_text}: {error}"))?;
     Ok(Opened {
         library,
         path: library_path.to_path_buf(),
@@ -236,7 +238,7 @@ impl CatalogSource for CalibreCatalogSource {
     }
 
     fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
-        self.facets(libcalibre::CatalogFacetKind::Genres)
+        self.facets(citadel_core::genres::facet())
     }
 
     fn book_file(&self, book_id: BookId, format: &str) -> Result<ResolvedBookAsset, CalibreError> {

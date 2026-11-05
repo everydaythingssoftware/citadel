@@ -58,6 +58,10 @@ pub enum CalibreError {
     #[error("Invalid custom column: {0}")]
     InvalidCustomColumn(String),
 
+    /// Read state was written on a library opened without a read column.
+    #[error("This library has no read column")]
+    NoReadColumn,
+
     /// Custom column value is invalid (type mismatch, value not in an
     /// enumeration's allowed values, or an unparseable stored value).
     #[error("Invalid custom column value: {0}")]

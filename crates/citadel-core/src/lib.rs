@@ -25,7 +25,16 @@ pub use url::{path_to_asset_url, AssetUrlBuilder, BookUrlBuilder, HttpUrlBuilder
 
 pub mod contracts;
 pub mod error;
+pub mod genres;
 pub mod library;
 pub mod password;
 pub mod store;
 pub mod vault;
+
+/// Names Citadel as the producer in each book's `metadata.opf`.
+pub const OPF_PRODUCER: &str = "citadel [https://github.com/every-day-things/citadel]";
+
+/// Applies Citadel's settings to a library handle it opened for writing.
+pub fn configure_library(library: libcalibre::Library) -> libcalibre::Library {
+    library.with_opf_producer(OPF_PRODUCER)
+}

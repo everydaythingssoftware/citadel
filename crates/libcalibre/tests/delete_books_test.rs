@@ -6,7 +6,9 @@ use common::setup_with_library;
 use diesel::prelude::*;
 use diesel::sql_query;
 use diesel::sql_types::{BigInt, Integer};
-use libcalibre::{BookAdd, BookId, CalibreError, Library};
+use libcalibre::{
+    BookAdd, BookId, CalibreError, CustomColumnKind, CustomColumnSpec, CustomValue, Library,
+};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -66,10 +68,24 @@ fn test_delete_books_removes_all_records_but_leaves_files() {
     let kept = lib.add_book(book("The Tombs of Atuan")).unwrap();
     // Custom-column values: the `read` bool (non-normalized) and genres
     // (normalized), for both books.
+    let genres = lib
+        .create_custom_column(CustomColumnSpec {
+            label: "genres".to_string(),
+            name: "Genres".to_string(),
+            kind: CustomColumnKind::Text,
+            is_multiple: true,
+            enum_values: Vec::new(),
+            display: None,
+        })
+        .unwrap();
     for id in [doomed.id, kept.id] {
         lib.set_book_read_state(id, true).unwrap();
-        lib.set_book_genres(id, vec!["Fantasy".to_string()])
-            .unwrap();
+        lib.set_custom_value(
+            id,
+            genres.id,
+            Some(CustomValue::TextMultiple(vec!["Fantasy".to_string()])),
+        )
+        .unwrap();
         lib.upsert_book_identifier(id, "isbn".to_string(), "9780547773742".to_string(), None)
             .unwrap();
     }
