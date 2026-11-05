@@ -2809,6 +2809,7 @@ dependencies = [
  "image",
  "insta",
  "libcalibre",
+ "libsqlite3-sys",
  "mobi",
  "percent-encoding",
  "proptest",

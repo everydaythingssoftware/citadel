@@ -7,21 +7,28 @@ rust-version.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = { version = "0.4.31", features = ["serde"] }
+chrono = "0.4.31"
 diesel = { version = "2.2.4", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
-epub = "2.1.1"
-mobi = "0.8.0"
-percent-encoding = "2.3"
+epub = { version = "2.1.1", optional = true }
+libsqlite3-sys = { version = "0.30", optional = true, features = ["bundled"] }
+mobi = { version = "0.8.0", optional = true }
+percent-encoding = { version = "2.3", optional = true }
 regex = "1.10.2"
-serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 uuid = { version = "1.6.1", features = [ "v4", "fast-rng", ] }
 sanitise-file-name = "1.0.0"
 # Same major as epub's, so the cover reader shares its archive code.
-zip = { version = "3", default-features = false, features = ["deflate"] }
+zip = { version = "3", default-features = false, features = ["deflate"], optional = true }
 
 [features]
+default = ["epub", "mobi"]
+# Read metadata and covers from EPUB files.
+epub = ["dep:epub", "dep:percent-encoding", "dep:zip"]
+# Read metadata and covers from MOBI, AZW and AZW3 files.
+mobi = ["dep:mobi"]
+# Compile SQLite into the binary instead of linking the system library.
+bundled-sqlite = ["dep:libsqlite3-sys"]
 # Exposes connection helpers to this crate's tests and examples. Not public API.
 __internals = []
 
@@ -32,5 +39,6 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 insta = { version = "1.40", features = ["yaml"] }
 proptest = "1.4"
 rusqlite = "0.32"
+serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 tempfile = "3.8"
