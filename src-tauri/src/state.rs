@@ -46,9 +46,10 @@ impl CitadelState {
                 .store(true, Ordering::Release);
         }
         let result = (|| {
-            let db_path = libcalibre::util::get_db_path(&library_path)
-                .ok_or_else(|| format!("Invalid library path: {}", library_path))?;
-            let library = Library::new(db_path)
+            if !libcalibre::is_library(&library_path) {
+                return Err(format!("Invalid library path: {}", library_path));
+            }
+            let library = Library::open(&library_path)
                 .map(citadel_core::configure_library)
                 .map_err(|error| format!("Failed to open library: {error}"))?;
 
@@ -288,9 +289,7 @@ mod tests {
     }
 
     fn add_asset(directory: &Path, byte: u8, length: usize) -> BookId {
-        let root = directory.to_string_lossy().into_owned();
-        let database = libcalibre::util::get_db_path(&root).unwrap();
-        let mut library = libcalibre::Library::new(database).unwrap();
+        let mut library = libcalibre::Library::open(directory).unwrap();
         let source = directory.join(format!("source-{byte}.epub"));
         std::fs::write(&source, vec![byte; length]).unwrap();
         let book = library
@@ -385,8 +384,7 @@ mod tests {
         let second_book = add_asset(second.path(), b'B', 2 * 1024 * 1024);
         assert_eq!(first_book, second_book);
         let second_path = second.path().to_string_lossy().into_owned();
-        let second_db = libcalibre::util::get_db_path(&second_path).unwrap();
-        libcalibre::Library::new(second_db)
+        libcalibre::Library::open(&second_path)
             .unwrap()
             .randomize_library_uuid()
             .unwrap();

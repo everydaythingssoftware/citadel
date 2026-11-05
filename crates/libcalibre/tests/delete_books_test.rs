@@ -37,7 +37,7 @@ fn rows_for_book(lib: &Library, table: &str, book_id: BookId) -> i64 {
         n: i64,
     }
 
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path())
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path())
         .expect("failed to open test db");
     sql_query(format!("SELECT COUNT(*) AS n FROM {table} WHERE book = ?"))
         .bind::<Integer, _>(book_id.as_i32())
@@ -184,7 +184,7 @@ fn test_delete_cleans_only_newly_orphaned_entities_and_rolls_back_cleanup() {
     let mut second_doomed = book("Doomed2");
     second_doomed.series = Some("Kept Series".into());
     let second_doomed = lib.add_book(second_doomed).unwrap();
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path()).unwrap();
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path()).unwrap();
     for (name, id) in [
         ("Shared Publisher", doomed.id),
         ("Only Doomed Publisher", second_doomed.id),

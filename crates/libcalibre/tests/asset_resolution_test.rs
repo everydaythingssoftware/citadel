@@ -3,12 +3,11 @@ mod common;
 use std::fs;
 
 use common::{setup_with_library, standard_test_book};
-use libcalibre::{error::CalibreError, util::get_db_path, BookId, Library};
+use libcalibre::{error::CalibreError, BookId, Library};
 use rusqlite::{params, Connection};
 
 fn reopen(temp: &tempfile::TempDir) -> Library {
-    let path = get_db_path(temp.path().to_str().unwrap()).unwrap();
-    Library::new(path).unwrap()
+    Library::open(temp.path()).unwrap()
 }
 
 fn add_file_row(

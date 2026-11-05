@@ -1001,8 +1001,7 @@ mod tests {
     use chrono::{DateTime, NaiveDate};
     use diesel::{Connection, RunQueryDsl};
     use libcalibre::{
-        library::Book, util::get_db_path, BookAdd, BookFileInfo, BookIdentifier, BookUpdate,
-        Library, LibraryAuthor,
+        library::Book, BookAdd, BookFileInfo, BookIdentifier, BookUpdate, Library, LibraryAuthor,
     };
     use quick_xml::{events::Event, name::ResolveResult, NsReader};
     use std::{collections::HashMap, path::PathBuf, sync::Mutex};
@@ -1844,10 +1843,10 @@ mod tests {
             })
             .unwrap();
 
-        let database_path = library.database_path().to_string();
+        let database_path = library.database_path().to_str().unwrap().to_string();
         drop(library);
         let mut connection = diesel::SqliteConnection::establish(&database_path).unwrap();
-        libcalibre::persistence::register_sql_functions(&mut connection).unwrap();
+        libcalibre::__internals::register_sql_functions(&mut connection).unwrap();
         diesel::sql_query(format!(
             "UPDATE books SET uuid = NULL WHERE id = {}",
             added.id.as_i32()
@@ -1865,8 +1864,7 @@ mod tests {
         .execute(&mut connection)
         .unwrap();
         drop(connection);
-        let mut library =
-            Library::new(get_db_path(directory.path().to_str().unwrap()).unwrap()).unwrap();
+        let mut library = Library::open(directory.path()).unwrap();
         assert_eq!(library.get_book(added.id).unwrap().uuid, None);
         assert!(
             library.catalog_updated_at().unwrap().unwrap()

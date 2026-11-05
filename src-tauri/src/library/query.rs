@@ -161,8 +161,7 @@ pub fn clb_query_get_custom_values_for_book(
 #[tauri::command]
 #[specta::specta]
 pub fn clb_query_is_path_valid_library(library_root: String) -> bool {
-    let db_path = libcalibre::util::get_db_path(&library_root);
-    db_path.is_some()
+    libcalibre::is_library(&library_root)
 }
 
 /// Find an existing Calibre library for first-run onboarding: Calibre's own
@@ -191,9 +190,10 @@ pub struct LibraryStats {
 #[tauri::command]
 #[specta::specta]
 pub fn clb_query_library_stats(library_root: String) -> Result<LibraryStats, String> {
-    let db_path = libcalibre::util::get_db_path(&library_root)
-        .ok_or_else(|| format!("No Calibre library at '{library_root}'"))?;
-    let stats = libcalibre::library_stats(&db_path).map_err(|e| e.to_string())?;
+    if !libcalibre::is_library(&library_root) {
+        return Err(format!("No Calibre library at '{library_root}'"));
+    }
+    let stats = libcalibre::library_stats(&library_root).map_err(|e| e.to_string())?;
     Ok(LibraryStats {
         book_count: stats.book_count,
         author_count: stats.author_count,
@@ -248,8 +248,7 @@ mod tests {
         extract_empty_library(tmp.path());
 
         let library_root = tmp.path().to_string_lossy().into_owned();
-        let db_path = libcalibre::util::get_db_path(&library_root).unwrap();
-        let mut lib = libcalibre::Library::new(db_path).unwrap();
+        let mut lib = libcalibre::Library::open(&library_root).unwrap();
         lib.add_book(test_book("Book One", vec!["Ann Author"]))
             .unwrap();
         lib.add_book(test_book("Book Two", vec!["Ann Author", "Bob Writer"]))

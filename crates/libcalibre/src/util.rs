@@ -1,21 +1,34 @@
 use std::path::Path;
 
+use crate::CalibreError;
+
 #[derive(Clone)]
-pub struct ValidDbPath {
+pub(crate) struct ValidDbPath {
     pub(crate) library_path: String,
     pub(crate) database_path: String,
 }
 
-/// For a given library root root directory, return the path to the SQLite
-/// database if the file is accessible.
-pub fn get_db_path(library_root: &str) -> Option<ValidDbPath> {
-    let db_path = Path::new(library_root).join("metadata.db");
-    if db_path.exists() {
-        Some(ValidDbPath {
-            database_path: db_path.to_str().map(|s| s.to_string())?,
-            library_path: library_root.to_string(),
+impl ValidDbPath {
+    /// The library rooted at `library_root`, which must hold a `metadata.db`.
+    pub(crate) fn locate(library_root: &Path) -> Result<Self, CalibreError> {
+        let database = library_root.join("metadata.db");
+        if !database.is_file() {
+            return Err(CalibreError::NotALibrary(library_root.to_path_buf()));
+        }
+        let utf8 = |path: &Path| {
+            path.to_str()
+                .map(str::to_string)
+                .ok_or_else(|| CalibreError::NonUtf8Path(path.to_path_buf()))
+        };
+        Ok(Self {
+            library_path: utf8(library_root)?,
+            database_path: utf8(&database)?,
         })
-    } else {
-        None
     }
+}
+
+/// Whether `library_root` holds a Calibre library (a `metadata.db` file).
+/// Nothing is opened or read.
+pub fn is_library(library_root: impl AsRef<Path>) -> bool {
+    library_root.as_ref().join("metadata.db").is_file()
 }

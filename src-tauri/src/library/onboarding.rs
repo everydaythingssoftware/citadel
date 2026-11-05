@@ -33,7 +33,8 @@ pub struct SyncStatus {
 
 /// Find an existing Calibre library: the location Calibre itself records in
 /// its config wins; otherwise probe Calibre's default folder. Either candidate
-/// must actually hold a `metadata.db` (via `get_db_path`) or it falls through.
+/// must actually hold a `metadata.db` (via `libcalibre::is_library`) or it falls
+/// through.
 pub fn detect_calibre_library(home: &Path) -> Option<DetectedLibrary> {
     detect_from(calibre_config_file(home).as_deref(), home)
 }
@@ -42,7 +43,7 @@ pub fn detect_calibre_library(home: &Path) -> Option<DetectedLibrary> {
 /// explicit instead of resolved from the host OS.
 fn detect_from(config_file: Option<&Path>, home: &Path) -> Option<DetectedLibrary> {
     if let Some(path) = config_file.and_then(configured_library_path) {
-        if libcalibre::util::get_db_path(&path).is_some() {
+        if libcalibre::is_library(&path) {
             return Some(DetectedLibrary {
                 path,
                 source: DetectionSource::CalibreConfig,
@@ -51,7 +52,7 @@ fn detect_from(config_file: Option<&Path>, home: &Path) -> Option<DetectedLibrar
     }
 
     let default_folder = home.join("Calibre Library").to_string_lossy().into_owned();
-    if libcalibre::util::get_db_path(&default_folder).is_some() {
+    if libcalibre::is_library(&default_folder) {
         return Some(DetectedLibrary {
             path: default_folder,
             source: DetectionSource::DefaultFolder,
@@ -192,7 +193,8 @@ mod tests {
 
     use super::*;
 
-    /// The minimum `get_db_path` accepts: a folder holding a `metadata.db`.
+    /// The minimum `libcalibre::is_library` accepts: a folder holding a
+    /// `metadata.db`.
     fn make_library(dir: &Path) {
         fs::create_dir_all(dir).unwrap();
         fs::write(dir.join("metadata.db"), b"").unwrap();

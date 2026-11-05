@@ -30,6 +30,7 @@ use crate::{types::BookId, CalibreError};
 
 /// The datatype of a Calibre custom column.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CustomColumnKind {
     Bool,
     Int,
@@ -120,6 +121,7 @@ impl CustomColumnKind {
 
 /// A custom column definition, as stored in Calibre's `custom_columns` table.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct CustomColumn {
     pub id: i32,
     /// Lookup name, e.g. `read` (Calibre exposes it as `#read`).
@@ -139,6 +141,7 @@ pub struct CustomColumn {
 
 /// A value of a custom column for one book.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CustomValue {
     Bool(bool),
     Int(i64),

@@ -14,7 +14,7 @@ fn test_add_single_book_full_database() {
     assert!(result.is_ok(), "Failed to add book: {:?}", result.err());
 
     // Capture the entire database state
-    let db_path = lib.database_path().to_string();
+    let db_path = lib.database_path().to_str().unwrap().to_string();
     let snapshot = DatabaseSnapshot::capture(&std::path::PathBuf::from(db_path))
         .expect("Failed to capture database snapshot")
         .normalize();
@@ -27,7 +27,7 @@ fn test_add_single_book_full_database() {
 fn test_empty_library_state() {
     let (_temp, lib) = setup_with_library();
 
-    let db_path = lib.database_path().to_string();
+    let db_path = lib.database_path().to_str().unwrap().to_string();
     let snapshot = DatabaseSnapshot::capture(&std::path::PathBuf::from(db_path))
         .expect("Failed to capture database snapshot")
         .normalize();

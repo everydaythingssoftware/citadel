@@ -8,14 +8,14 @@ pub mod library;
 pub mod mime_type;
 pub(crate) mod models;
 mod operations;
-pub mod persistence;
+pub(crate) mod persistence;
 mod queries;
 pub(crate) mod schema;
 pub mod schema_versions;
 pub mod sorting;
 pub mod stats;
 pub mod types;
-pub mod util;
+mod util;
 
 // Re-export the main API types
 pub use create::{create_target_blocker, CreateTargetBlocker};
@@ -32,6 +32,15 @@ pub use schema_versions::{
 };
 pub use stats::{library_stats, LibraryStats};
 pub use types::{AuthorId, BookFileId, BookId};
+pub use util::is_library;
+
+/// Connection helpers for libcalibre's own tests, examples and benchmarks.
+/// Not part of the public API: no stability guarantees.
+#[cfg(feature = "__internals")]
+#[doc(hidden)]
+pub mod __internals {
+    pub use crate::persistence::*;
+}
 
 // Keep entity exports that are needed internally (for operations/queries)
 pub(crate) use entities::{

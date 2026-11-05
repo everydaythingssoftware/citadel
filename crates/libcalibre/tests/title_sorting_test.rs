@@ -1,7 +1,7 @@
 // Property-based tests for book title sorting
 // Verifies invariants in sort_book_title() logic
 
-use libcalibre::persistence::sort_book_title;
+use libcalibre::__internals::sort_book_title;
 use proptest::prelude::*;
 
 proptest! {

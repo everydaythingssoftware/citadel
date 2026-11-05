@@ -172,7 +172,7 @@ fn test_update_book_language_replace_clear_and_untouched() {
 #[test]
 fn test_metadata_opf_emits_language_codes() {
     let (_temp, mut lib) = setup_with_library();
-    let library_path = lib.library_path().to_string();
+    let library_path = lib.library_path().to_str().unwrap().to_string();
 
     let book = lib
         .add_book(BookAdd {
@@ -627,7 +627,7 @@ fn test_tag_creation_reuses_case_insensitive_matches() {
 
     let db_path = temp.path().join("metadata.db");
     let mut conn =
-        libcalibre::persistence::establish_connection(db_path.to_str().unwrap()).unwrap();
+        libcalibre::__internals::establish_connection(db_path.to_str().unwrap()).unwrap();
     let count = crate_tag_count(&mut conn);
     assert_eq!(count, 1);
 }

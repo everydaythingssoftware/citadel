@@ -72,9 +72,7 @@ pub fn clb_cmd_create_library(library_root: String) -> Result<(), String> {
         Ok(Some(CreateTargetBlocker::AlreadyALibrary)) => {
             return Err(ERR_CREATE_LIBRARY_TARGET_IS_LIBRARY.to_string())
         }
-        Ok(Some(CreateTargetBlocker::NotEmpty)) => {
-            return Err(ERR_CREATE_LIBRARY_TARGET_NOT_EMPTY.to_string())
-        }
+        Ok(Some(_)) => return Err(ERR_CREATE_LIBRARY_TARGET_NOT_EMPTY.to_string()),
         Err(e) => return Err(format!("Failed to inspect '{library_root}': {e}")),
     }
     libcalibre::Library::create_library_at(&library_root)
@@ -441,9 +439,8 @@ mod cover_download_tests {
                 .unwrap()
                 .has_cover)
             .unwrap());
-        let database = libcalibre::util::get_db_path(a.path().to_str().unwrap()).unwrap();
         assert!(
-            !libcalibre::Library::open_read_only(database)
+            !libcalibre::Library::open_read_only(a.path())
                 .unwrap()
                 .get_book(libcalibre::BookId::from(1))
                 .unwrap()

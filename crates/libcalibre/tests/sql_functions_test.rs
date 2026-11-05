@@ -3,7 +3,7 @@
 
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use libcalibre::persistence::establish_connection;
+use libcalibre::__internals::establish_connection;
 
 #[derive(QueryableByName)]
 struct StringResult {

@@ -156,6 +156,7 @@ pub struct AuthorUpdate {
 /// sort columns (`books.sort` for titles, the primary linked author's
 /// `authors.sort` for authors), with `books.id` as a stable tiebreak.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BookSortOrder {
     #[default]
     TitleAsc,
@@ -211,6 +212,7 @@ pub struct BookPage {
 /// [`Library::list_series`]; series ids are what [`BookQuery::series_id`]
 /// filters on.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SeriesSummary {
     pub id: i32,
     pub name: String,
@@ -220,6 +222,7 @@ pub struct SeriesSummary {
 /// One tag in the library. Returned by [`Library::list_tags`]; the full
 /// vocabulary feeds tag autocomplete in clients.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TagSummary {
     pub id: i32,
     pub name: String,
@@ -230,6 +233,7 @@ pub struct TagSummary {
 /// [`Library::list_publishers`]; publisher ids are what
 /// [`BookQuery::publisher_id`] filters on.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PublisherSummary {
     pub id: i32,
     pub name: String,
@@ -247,6 +251,7 @@ pub struct CustomValueFilter {
 /// One value of a text, series or enumeration custom column, with its
 /// linked-book count. Returned by [`Library::list_custom_column_values`].
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct CustomValueSummary {
     pub id: i32,
     pub name: String,
@@ -254,9 +259,15 @@ pub struct CustomValueSummary {
 }
 
 impl Library {
-    /// Opens a library for writing. Its schema must be at least
-    /// [`schema_versions::MINIMUM_SCHEMA_VERSION`]; nothing is upgraded here.
-    pub fn new(db_path: ValidDbPath) -> Result<Self, CalibreError> {
+    /// Opens the library rooted at `library_root` (the folder holding
+    /// `metadata.db`) for writing. Its schema must be at least
+    /// [`MINIMUM_SCHEMA_VERSION`](crate::MINIMUM_SCHEMA_VERSION); nothing is
+    /// upgraded here.
+    ///
+    /// Opening for writing switches the database to WAL mode and installs
+    /// Calibre's triggers. Use [`Library::open_read_only`] to only read.
+    pub fn open(library_root: impl AsRef<Path>) -> Result<Self, CalibreError> {
+        let db_path = ValidDbPath::locate(library_root.as_ref())?;
         let mut conn = establish_connection(&db_path.database_path)?;
         schema_versions::supported_version(&mut conn)?;
         Ok(Self {
@@ -268,9 +279,12 @@ impl Library {
         })
     }
 
-    /// Open an existing library for queries without changing its journal mode or triggers.
-    /// Mutation methods must not be used with this handle; SQLite rejects database writes.
-    pub fn open_read_only(db_path: ValidDbPath) -> Result<Self, CalibreError> {
+    /// Opens the library rooted at `library_root` for reading only. The
+    /// database is never changed: not its journal mode, triggers or schema.
+    /// Writes fail, and it is safe to read while Calibre has the library
+    /// open.
+    pub fn open_read_only(library_root: impl AsRef<Path>) -> Result<Self, CalibreError> {
+        let db_path = ValidDbPath::locate(library_root.as_ref())?;
         let mut conn = establish_read_only_connection(&db_path.database_path)?;
         schema_versions::supported_version(&mut conn)?;
         Ok(Self {
@@ -326,12 +340,14 @@ impl Library {
         schema_versions::upgrade(&mut self.conn, Path::new(&self.db_path.database_path))
     }
 
-    pub fn library_path(&self) -> &str {
-        &self.db_path.library_path
+    /// The library's root folder.
+    pub fn library_path(&self) -> &Path {
+        Path::new(&self.db_path.library_path)
     }
 
-    pub fn database_path(&self) -> &str {
-        &self.db_path.database_path
+    /// The library's `metadata.db`.
+    pub fn database_path(&self) -> &Path {
+        Path::new(&self.db_path.database_path)
     }
 
     pub fn library_uuid(&mut self) -> Result<String, CalibreError> {
@@ -1411,6 +1427,7 @@ fn unique_tag_names<'a>(tag_names: &'a [String]) -> Vec<&'a str> {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum CatalogFacetKind {
     Authors,
     Series,
@@ -1421,6 +1438,7 @@ pub enum CatalogFacetKind {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct CatalogFacetSummary {
     pub id: i32,
     pub name: String,

@@ -45,7 +45,7 @@ fn series_id_by_name(lib: &mut Library, name: &str) -> i32 {
         id: i32,
     }
 
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path())
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path())
         .expect("failed to open test db");
     let row: IdRow = sql_query("SELECT id FROM series WHERE name = ?")
         .bind::<Text, _>(name)
@@ -712,7 +712,7 @@ fn test_list_series_returns_counts_sorted_by_name() {
 
 /// `add_book` does not persist publishers yet, so link one directly.
 fn link_publisher(lib: &mut Library, book_id: BookId, name: &str) {
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path())
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path())
         .expect("failed to open test db");
     sql_query("INSERT OR IGNORE INTO publishers (name) VALUES (?)")
         .bind::<Text, _>(name)
@@ -866,7 +866,7 @@ fn test_sort_updated_desc_uses_id_as_stable_tiebreaker() {
     let newer_first = lib.add_book(book("Newer First", &[])).unwrap();
     let newer_second = lib.add_book(book("Newer Second", &[])).unwrap();
 
-    let mut conn = libcalibre::persistence::establish_connection(lib.database_path()).unwrap();
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path()).unwrap();
     sql_query("UPDATE books SET last_modified = '2024-01-01 00:00:00' WHERE id = ?")
         .bind::<Integer, _>(older.id.as_i32())
         .execute(&mut conn)

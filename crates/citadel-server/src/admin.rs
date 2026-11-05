@@ -232,9 +232,12 @@ fn execute(
             if !root.is_absolute() {
                 return Err("libraries add needs an absolute path".into());
             }
-            let database = libcalibre::util::get_db_path(path)
-                .ok_or_else(|| format!("No Calibre library at {path} (no metadata.db inside)."))?;
-            let id = Library::open_read_only(database)
+            if !libcalibre::is_library(root) {
+                return Err(format!(
+                    "No Calibre library at {path} (no metadata.db inside)."
+                ));
+            }
+            let id = Library::open_read_only(root)
                 .and_then(|mut library| library.library_uuid())
                 .map_err(|error| format!("Could not read the library at {path}: {error}"))?;
             let registered = accounts

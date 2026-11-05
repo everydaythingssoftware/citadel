@@ -8,7 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 chrono = { version = "0.4.31", features = ["serde"] }
-diesel = { version = "2.2.4", features = ["sqlite", "chrono", "r2d2", "returning_clauses_for_sqlite_3_35"] }
+diesel = { version = "2.2.4", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
 epub = "2.1.1"
 mobi = "0.8.0"
 percent-encoding = "2.3"
@@ -21,7 +21,12 @@ sanitise-file-name = "1.0.0"
 # Same major as epub's, so the cover reader shares its archive code.
 zip = { version = "3", default-features = false, features = ["deflate"] }
 
+[features]
+# Exposes connection helpers to this crate's tests and examples. Not public API.
+__internals = []
+
 [dev-dependencies]
+libcalibre = { path = ".", features = ["__internals"] }
 fastrand = "2.3"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 insta = { version = "1.40", features = ["yaml"] }
