@@ -1,6 +1,7 @@
 [package]
 name = "citadel-desktop"
 version = "0.7.1"
+publish = false
 description = "Citadel desktop application and Tauri IPC adapters."
 authors = ["Phil Denhoff"]
 license = "MIT"

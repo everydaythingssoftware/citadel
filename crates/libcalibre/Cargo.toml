@@ -1,10 +1,14 @@
 [package]
 name = "libcalibre"
-version = "1.0.0"
+version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Read and write Calibre ebook libraries (metadata.db and the book folders beside it)"
+license = "MIT"
+repository = "https://github.com/everydaythingssoftware/citadel"
+keywords = ["calibre", "ebook", "library", "sqlite", "epub"]
+categories = ["database", "parser-implementations"]
+exclude = ["diesel.toml"]
 
 [dependencies]
 chrono = "0.4.31"
