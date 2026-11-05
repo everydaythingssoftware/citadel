@@ -88,7 +88,7 @@ impl LibraryBook {
     /// forwarded to the builder (the asset builder appends the cover's mtime so
     /// the webview re-fetches a replaced cover; see [`AssetUrlBuilder`]).
     pub fn from_library_book(
-        book: &libcalibre::library::Book,
+        book: &libcalibre::Book,
         library_path: &str,
         author_book_counts: &HashMap<libcalibre::AuthorId, i64>,
         url_builder: &dyn BookUrlBuilder,
@@ -136,7 +136,7 @@ impl LibraryBook {
 /// books. A stale flag yields a dangling URL, which the frontend's cover
 /// `onerror` fallback absorbs.
 fn book_cover_url(
-    book: &libcalibre::library::Book,
+    book: &libcalibre::Book,
     library_path: &str,
     url_builder: &dyn BookUrlBuilder,
     cache_bust: bool,

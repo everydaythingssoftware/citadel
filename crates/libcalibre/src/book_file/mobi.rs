@@ -7,7 +7,7 @@ use mobi::{
 };
 
 use super::{non_empty, BookFileMetadata, MAX_COVER_BYTES};
-use crate::mime_type::MIMETYPE;
+use crate::mime_type::MimeType;
 
 fn language_to_string(lang: &Language) -> String {
     match lang {
@@ -153,11 +153,11 @@ fn display_name(author: &str) -> Option<String> {
     }
 }
 
-pub(super) fn read_metadata(path: &Path, format: MIMETYPE) -> Option<BookFileMetadata> {
+pub(super) fn read_metadata(path: &Path, format: MimeType) -> Option<BookFileMetadata> {
     with_mobi(path, |mobi| read_metadata_from(mobi, format))
 }
 
-fn read_metadata_from(mobi: &Mobi, format: MIMETYPE) -> Option<BookFileMetadata> {
+fn read_metadata_from(mobi: &Mobi, format: MimeType) -> Option<BookFileMetadata> {
     let publication_date = NaiveDateTime::parse_from_str(
         &mobi.metadata.publish_date().unwrap_or_default(),
         "%Y-%m-%dT%H:%M:%S%z",
@@ -237,7 +237,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("broken.azw3");
         std::fs::write(&path, b"not a mobi").unwrap();
-        assert_eq!(read_metadata(&path, MIMETYPE::KF8), None);
+        assert_eq!(read_metadata(&path, MimeType::KF8), None);
         assert_eq!(cover_image_data(&path), None);
     }
 
@@ -253,7 +253,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("truncated.mobi");
         std::fs::write(&path, data).unwrap();
-        assert_eq!(read_metadata(&path, MIMETYPE::MOBI), None);
+        assert_eq!(read_metadata(&path, MimeType::MOBI), None);
         assert_eq!(cover_image_data(&path), None);
     }
 }

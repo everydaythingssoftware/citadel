@@ -23,7 +23,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use citadel_core::error::{LibraryError, LibraryErrorCode};
 use futures_util::StreamExt;
 use image::ImageReader;
-use libcalibre::{book_file, mime_type::MIMETYPE};
+use libcalibre::{book_file, mime_type::MimeType};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
@@ -104,7 +104,7 @@ struct Upload {
     library_id: String,
     file_name: String,
     extension: String,
-    format: MIMETYPE,
+    format: MimeType,
     size: u64,
     received: u64,
     last_active: SystemTime,
@@ -256,7 +256,7 @@ impl Staging {
     /// Rebuilds an upload from its record and file, or `None` when it can't
     /// continue: its file is missing or inconsistent, or its time is up.
     fn restore(&self, id: &str, record: UploadRecord) -> Option<Upload> {
-        let format = MIMETYPE::from_file_extension(&record.extension)?;
+        let format = MimeType::from_file_extension(&record.extension)?;
         let path = self.book_path(id, &record.extension);
         let mut received = std::fs::metadata(&path).ok()?.len();
         if received > record.size || (record.book.is_some() && received != record.size) {
@@ -469,7 +469,7 @@ fn is_upload_id(id: &str) -> bool {
 }
 
 /// The name a browser gave the file, reduced to its final component.
-fn file_name(raw: &str) -> Result<(String, String, MIMETYPE), ApiFailure> {
+fn file_name(raw: &str) -> Result<(String, String, MimeType), ApiFailure> {
     let name = raw.rsplit(['/', '\\']).next().unwrap_or_default().trim();
     if name.is_empty() || name.chars().count() > MAX_FILE_NAME_CHARS || name.contains('\0') {
         return Err(LibraryError::invalid("Invalid file name").into());
@@ -479,7 +479,7 @@ fn file_name(raw: &str) -> Result<(String, String, MIMETYPE), ApiFailure> {
         .and_then(|extension| extension.to_str())
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
-    let format = MIMETYPE::from_file_extension(&extension).ok_or_else(|| {
+    let format = MimeType::from_file_extension(&extension).ok_or_else(|| {
         LibraryError::invalid("Citadel can import EPUB, MOBI, AZW, AZW3, PDF and TXT files")
     })?;
     Ok((name.to_string(), extension, format))
@@ -1017,7 +1017,7 @@ async fn read_book(
             .unwrap_or(&file_name)
             .to_string();
         let metadata = metadata.unwrap_or(book_file::BookFileMetadata {
-            format: MIMETYPE::UNKNOWN,
+            format: MimeType::UNKNOWN,
             title: None,
             author_names: Vec::new(),
             identifier: None,
@@ -1030,7 +1030,7 @@ async fn read_book(
         // PDF and TXT titles come from the file's name, which here is the
         // staging ID rather than the name the user uploaded.
         let title = match metadata.format {
-            MIMETYPE::PDF | MIMETYPE::TXT => None,
+            MimeType::PDF | MimeType::TXT => None,
             _ => metadata.title,
         };
         StagedBook {
@@ -1063,7 +1063,7 @@ mod tests {
             library_id: "library".into(),
             file_name: "book.txt".into(),
             extension: "txt".into(),
-            format: MIMETYPE::TXT,
+            format: MimeType::TXT,
             size: 4,
             received: 0,
             last_active,
@@ -1259,7 +1259,7 @@ mod tests {
         let (name, extension, format) = file_name("../../etc/Notes.TXT").ok().unwrap();
         assert_eq!(
             (name.as_str(), extension.as_str(), format),
-            ("Notes.TXT", "txt", MIMETYPE::TXT)
+            ("Notes.TXT", "txt", MimeType::TXT)
         );
         assert!(file_name("folder/").is_err());
         assert!(file_name("book").is_err());

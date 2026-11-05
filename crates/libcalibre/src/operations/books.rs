@@ -360,7 +360,9 @@ fn hydrate(
     Ok(book_list)
 }
 
-fn to_library_authors(author_models: Vec<crate::Author>) -> Vec<crate::library::Author> {
+fn to_library_authors(
+    author_models: Vec<crate::entities::author::Author>,
+) -> Vec<crate::library::Author> {
     author_models
         .into_iter()
         .map(|a| crate::library::Author {

@@ -8,7 +8,7 @@ use citadel_core::{
     error::LibraryError,
     LibraryAuthor, LibraryBook,
 };
-use libcalibre::mime_type::MIMETYPE;
+use libcalibre::mime_type::MimeType;
 use serde::{Deserialize, Serialize};
 
 use crate::imports::{ImportableBookMetadata, ImportableFile};
@@ -130,8 +130,8 @@ pub fn clb_query_list_all_filetypes() -> Vec<(String, String)> {
     file_formats::SupportedFormats::list_all()
         .iter()
         .filter_map(|(_, extension)| {
-            MIMETYPE::from_file_extension(extension)
-                .filter(|mimetype| mimetype != &MIMETYPE::UNKNOWN)
+            MimeType::from_file_extension(extension)
+                .filter(|mimetype| mimetype != &MimeType::UNKNOWN)
                 .map(|mimetype| (mimetype.as_str().to_string(), extension.to_string()))
         })
         .collect()

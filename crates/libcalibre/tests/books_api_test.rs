@@ -451,20 +451,6 @@ fn test_delete_book_identifier() {
 }
 
 #[test]
-fn test_remove_books() {
-    let (_temp, mut lib) = setup_with_library();
-
-    let book1 = lib.add_book(empty_book("Book 1")).unwrap();
-    let book2 = lib.add_book(empty_book("Book 2")).unwrap();
-
-    assert_eq!(lib.books().unwrap().len(), 2);
-
-    lib.remove_books(vec![book1.id, book2.id]).unwrap();
-
-    assert_eq!(lib.books().unwrap().len(), 0);
-}
-
-#[test]
 fn test_add_book_with_authors() {
     let (_temp, mut lib) = setup_with_library();
 

@@ -5,9 +5,7 @@ use std::path::{Path, PathBuf};
 use common::{
     setup_with_library, setup_with_schema_26_library, standard_test_book, write_schema_26_library,
 };
-use libcalibre::{
-    error::CalibreError, schema_versions, Library, MINIMUM_SCHEMA_VERSION, SCHEMA_VERSION,
-};
+use libcalibre::{upgrade_backups, CalibreError, Library, MINIMUM_SCHEMA_VERSION, SCHEMA_VERSION};
 use rusqlite::Connection;
 
 fn fixture_copy() -> (tempfile::TempDir, PathBuf) {
@@ -120,7 +118,7 @@ fn a_calibre_7_2_library_upgrades_from_26_to_28_with_a_backup_beside_it() {
 
     library.add_book(standard_test_book()).unwrap();
     assert_eq!(library.upgrade().unwrap(), None);
-    assert_eq!(schema_versions::backups(&database).unwrap().len(), 1);
+    assert_eq!(upgrade_backups(&database).unwrap().len(), 1);
 
     drop(library);
     let mut reopened = open(temp.path());
@@ -206,7 +204,7 @@ fn only_the_newest_three_backups_are_kept() {
             .unwrap();
         taken.push(library.upgrade().unwrap().unwrap().backup);
     }
-    let kept = schema_versions::backups(&database).unwrap();
+    let kept = upgrade_backups(&database).unwrap();
     assert_eq!(kept.len(), 3);
     assert_eq!(kept[0], taken[3], "newest first");
     assert!(!taken[0].exists(), "the oldest copy was pruned");
@@ -224,5 +222,5 @@ fn read_only_handles_refuse_to_upgrade_without_touching_the_file() {
         Err(CalibreError::ReadOnlyLibrary)
     ));
     assert_eq!(std::fs::read(&database).unwrap(), before);
-    assert!(schema_versions::backups(&database).unwrap().is_empty());
+    assert!(upgrade_backups(&database).unwrap().is_empty());
 }

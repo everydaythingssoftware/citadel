@@ -1,4 +1,4 @@
-use libcalibre::mime_type::MIMETYPE;
+use libcalibre::mime_type::MimeType;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -84,11 +84,11 @@ pub fn validate_file_importable(path: &Path) -> Option<ImportableFile> {
 pub fn get_importable_file_metadata(file: ImportableFile) -> Option<ImportableBookMetadata> {
     let metadata = libcalibre::book_file::read_metadata(&file.path)?;
     let file_type = match metadata.format {
-        MIMETYPE::EPUB => ImportableBookType::Epub,
-        MIMETYPE::MOBI | MIMETYPE::KF7 | MIMETYPE::KF8 => ImportableBookType::Mobi,
-        MIMETYPE::PDF => ImportableBookType::Pdf,
-        MIMETYPE::TXT => ImportableBookType::Text,
-        MIMETYPE::UNKNOWN => return None,
+        MimeType::EPUB => ImportableBookType::Epub,
+        MimeType::MOBI | MimeType::KF7 | MimeType::KF8 => ImportableBookType::Mobi,
+        MimeType::PDF => ImportableBookType::Pdf,
+        MimeType::TXT => ImportableBookType::Text,
+        _ => return None,
     };
     Some(ImportableBookMetadata {
         file_type,

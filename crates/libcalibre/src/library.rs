@@ -640,22 +640,6 @@ impl Library {
             .map_err(|e| CalibreError::FileSystem(e.to_string()))
     }
 
-    pub fn remove_books(&mut self, book_ids: Vec<BookId>) -> Result<Vec<BookId>, CalibreError> {
-        let mut removed = Vec::new();
-        for book_id in book_ids {
-            let book = book_queries::get(&mut self.conn, book_id)?
-                .ok_or(CalibreError::BookNotFound(book_id))?;
-            operations::assets::delete_entire_book(
-                &self.db_path.library_path,
-                &mut self.conn,
-                book_id,
-                &book.path,
-            )?;
-            removed.push(book_id);
-        }
-        Ok(removed)
-    }
-
     /// Delete books from the library database, all-or-nothing in one
     /// transaction: each `books` row, its links, per-book data and
     /// custom-column values. Files on disk are NOT touched; the returned
@@ -726,10 +710,6 @@ impl Library {
         )
     }
 
-    pub fn remove_book_cover(&mut self, _book_id: BookId) -> Result<(), CalibreError> {
-        todo!()
-    }
-
     pub fn get_book_file(
         &mut self,
         book_id: BookId,
@@ -740,19 +720,6 @@ impl Library {
             &mut self.conn,
             book_id,
             file_format,
-        )
-    }
-
-    pub fn get_book_file_path(
-        &mut self,
-        id: BookId,
-        format: &str,
-    ) -> Result<PathBuf, CalibreError> {
-        operations::assets::get_book_file_path(
-            &self.db_path.library_path,
-            &mut self.conn,
-            id,
-            format,
         )
     }
 
@@ -771,45 +738,6 @@ impl Library {
 
     pub fn resolve_book_cover(&mut self, id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
         operations::assets::resolve_book_cover(&self.db_path.library_path, &mut self.conn, id)
-    }
-
-    pub fn remove_book_file(&mut self, book_id: BookId, format: &str) -> Result<(), CalibreError> {
-        operations::assets::remove_book_file(
-            &self.db_path.library_path,
-            &mut self.conn,
-            book_id,
-            format,
-        )
-    }
-
-    pub fn add_book_file_from_bytes(
-        &mut self,
-        book_id: BookId,
-        file_format: String,
-        file_data: Vec<u8>,
-    ) -> Result<(), CalibreError> {
-        operations::assets::add_book_file_from_bytes(
-            &self.db_path.library_path,
-            &mut self.conn,
-            book_id,
-            file_format,
-            file_data,
-        )
-    }
-
-    pub fn add_book_file_from_path(
-        &mut self,
-        book_id: BookId,
-        file_format: String,
-        file_path: String,
-    ) -> Result<(), CalibreError> {
-        operations::assets::add_book_file_from_path(
-            &self.db_path.library_path,
-            &mut self.conn,
-            book_id,
-            file_format,
-            file_path,
-        )
     }
 
     // =========================================================================

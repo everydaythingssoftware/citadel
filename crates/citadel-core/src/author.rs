@@ -20,7 +20,7 @@ impl LibraryAuthor {
     /// `Library::author_book_counts` map (authors absent from the map have
     /// no linked books).
     pub fn from_author(
-        author: &libcalibre::library::Author,
+        author: &libcalibre::Author,
         book_counts: &HashMap<libcalibre::AuthorId, i64>,
     ) -> Self {
         LibraryAuthor {
