@@ -6,6 +6,7 @@ rust-version.workspace = true
 description = "Read and write Calibre ebook libraries (metadata.db and the book folders beside it)"
 license = "MIT"
 repository = "https://github.com/everydaythingssoftware/citadel"
+readme = "README.md"
 keywords = ["calibre", "ebook", "library", "sqlite", "epub"]
 categories = ["database", "parser-implementations"]
 exclude = ["diesel.toml"]
