@@ -38,7 +38,7 @@ jobs:
       - name: Test runtime and headless host without Tauri
         run: cargo test --locked -p citadel-core --features citadel-core/openapi -p citadel-metadata -p citadel-opds -p citadel-server
       - name: Test validation fixture input checks
-        run: cargo test --locked -p libcalibre --example create_opds_validation_library
+        run: cargo test --locked -p citadel-opds --example create_opds_validation_library
 
       - uses: oven-sh/setup-bun@v2
         if: runner.os == 'Linux'

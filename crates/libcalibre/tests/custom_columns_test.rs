@@ -3,7 +3,9 @@ mod common;
 
 use chrono::{TimeZone, Utc};
 use common::{setup_with_library, standard_test_book};
-use libcalibre::{BookId, CalibreError, CustomColumnKind, CustomColumnSpec, CustomValue, Library};
+use libcalibre::{
+    BookId, BookQuery, CalibreError, CustomColumnKind, CustomColumnSpec, CustomValue, Library,
+};
 
 fn spec(label: &str, kind: CustomColumnKind) -> CustomColumnSpec {
     CustomColumnSpec {
@@ -1023,4 +1025,51 @@ fn test_read_state_uses_bool_custom_column() {
         lib.get_custom_value(book1, read.id).unwrap(),
         Some(CustomValue::Bool(true))
     );
+}
+
+#[test]
+fn test_read_state_uses_the_configured_column() {
+    let (_temp, lib) = setup_with_library();
+    let mut lib = lib.with_read_column("finished");
+    let book = add_book(&mut lib);
+
+    lib.set_book_read_state(book, true).unwrap();
+
+    let columns = lib.custom_columns().unwrap();
+    let finished = columns.iter().find(|c| c.label == "finished").unwrap();
+    assert_eq!(finished.kind, CustomColumnKind::Bool);
+    assert_eq!(finished.name, "Finished");
+    assert!(!columns.iter().any(|c| c.label == "read"));
+    assert!(lib.get_book(book).unwrap().is_read);
+    let unread = lib
+        .query_books(BookQuery {
+            hide_read: true,
+            ..BookQuery::default()
+        })
+        .unwrap();
+    assert_eq!(unread.total, 0);
+}
+
+#[test]
+fn test_without_a_read_column_books_are_unread_and_writes_fail() {
+    let (_temp, lib) = setup_with_library();
+    let mut lib = lib.with_read_column("read");
+    let book = add_book(&mut lib);
+    lib.set_book_read_state(book, true).unwrap();
+    let mut lib = lib.without_read_column();
+
+    assert_eq!(lib.read_column(), None);
+    assert!(!lib.get_book_read_state(book).unwrap());
+    assert!(!lib.get_book(book).unwrap().is_read);
+    let page = lib
+        .query_books(BookQuery {
+            hide_read: true,
+            ..BookQuery::default()
+        })
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert!(matches!(
+        lib.set_book_read_state(book, false),
+        Err(CalibreError::NoReadColumn)
+    ));
 }

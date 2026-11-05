@@ -286,7 +286,7 @@ impl CatalogSource for CalibreCatalogSource {
     }
 
     fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
-        self.facets(libcalibre::CatalogFacetKind::Genres)
+        self.facets(citadel_core::genres::facet())
     }
 
     fn book_file(&self, book_id: BookId, format: &str) -> Result<ResolvedBookAsset, CalibreError> {
