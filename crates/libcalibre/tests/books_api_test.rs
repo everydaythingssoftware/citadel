@@ -665,7 +665,7 @@ fn test_tag_creation_reuses_case_insensitive_matches() {
 
     let db_path = temp.path().join("metadata.db");
     let mut conn =
-        libcalibre::persistence::establish_connection(db_path.to_str().unwrap()).unwrap();
+        libcalibre::__internals::establish_connection(db_path.to_str().unwrap()).unwrap();
     let count = crate_tag_count(&mut conn);
     assert_eq!(count, 1);
 }

@@ -77,7 +77,7 @@ impl<'a> LibraryService<'a> {
             .map(|book| {
                 LibraryBook::from_library_book(
                     book,
-                    self.library.library_path(),
+                    &self.library.library_path().to_string_lossy(),
                     &counts,
                     self.urls,
                     cache_bust,

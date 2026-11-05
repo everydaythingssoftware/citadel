@@ -47,9 +47,10 @@ pub struct LegacyLibraryImport {
 }
 
 fn calibre_uuid(path: &str) -> Result<String, String> {
-    let database = libcalibre::util::get_db_path(path)
-        .ok_or_else(|| format!("Not a Calibre library: {path}"))?;
-    libcalibre::Library::open_read_only(database)
+    if !libcalibre::is_library(path) {
+        return Err(format!("Not a Calibre library: {path}"));
+    }
+    libcalibre::Library::open_read_only(path)
         .and_then(|mut library| library.library_uuid())
         .map_err(|error| format!("Could not read library at {path}: {error}"))
 }

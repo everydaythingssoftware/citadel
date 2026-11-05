@@ -34,6 +34,7 @@ const UPGRADE_27_TO_28: &str = include_str!("schema_versions/upgrade_27_to_28.sq
 
 /// What [`crate::Library::upgrade`] did.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct SchemaUpgrade {
     pub from: i32,
     pub to: i32,
@@ -60,7 +61,7 @@ struct ColumnId {
 }
 
 /// The database's `PRAGMA user_version`.
-pub fn schema_version(conn: &mut SqliteConnection) -> Result<i32, diesel::result::Error> {
+pub(crate) fn schema_version(conn: &mut SqliteConnection) -> Result<i32, diesel::result::Error> {
     sql_query("PRAGMA user_version")
         .get_result::<UserVersion>(conn)
         .map(|row| row.user_version)
@@ -68,7 +69,8 @@ pub fn schema_version(conn: &mut SqliteConnection) -> Result<i32, diesel::result
 
 /// Reads the version of a database the person has only pointed at, through
 /// a read-only connection that changes nothing (see [`crate::library_stats`]).
-pub fn peek_schema_version(db_path: &ValidDbPath) -> Result<i32, CalibreError> {
+pub fn peek_schema_version(library_root: impl AsRef<Path>) -> Result<i32, CalibreError> {
+    let db_path = ValidDbPath::locate(library_root.as_ref())?;
     let mut conn =
         SqliteConnection::establish(&db_path.database_path).map_err(CalibreError::database)?;
     conn.batch_execute("PRAGMA query_only = ON; PRAGMA busy_timeout = 3000;")

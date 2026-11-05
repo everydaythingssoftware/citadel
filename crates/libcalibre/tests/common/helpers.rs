@@ -1,4 +1,3 @@
-use libcalibre::util::get_db_path;
 use libcalibre::{BookAdd, Library};
 use std::collections::HashMap;
 use std::path::Path;
@@ -34,9 +33,7 @@ pub fn write_schema_26_library(root: &Path) {
 pub fn setup_with_schema_26_library() -> (TempDir, Library) {
     let temp_dir = tempfile::tempdir().unwrap();
     write_schema_26_library(temp_dir.path());
-    let valid_path =
-        get_db_path(temp_dir.path().to_str().unwrap()).expect("Failed to get valid DB path");
-    let library = Library::new(valid_path).expect("Failed to open Library");
+    let library = Library::open(temp_dir.path()).expect("Failed to open Library");
     (temp_dir, library)
 }
 
