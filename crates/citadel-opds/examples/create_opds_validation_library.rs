@@ -115,7 +115,8 @@ fn create_validation_library(
         )?;
 
         if index % 3 != 2 {
-            library.add_book_genres(
+            citadel_core::genres::add_book_genres(
+                &mut library,
                 book.id,
                 vec![
                     if index % 2 == 0 {

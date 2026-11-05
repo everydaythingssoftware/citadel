@@ -42,7 +42,7 @@ impl<'a> LibraryService<'a> {
             series_id: query.series_id,
             tag_id: query.tag_id,
             publisher_id: query.publisher_id,
-            genre_id: None,
+            custom_value: None,
             hide_read: query.hide_read,
             sort: query.sort.into(),
             limit: query.limit.map(i64::from),
@@ -339,7 +339,7 @@ impl<'a> LibraryService<'a> {
         // Checked first: the genre column is created (and isn't rolled back)
         // before libcalibre finds out the book is missing.
         let id = self.existing_book(id)?.id;
-        self.library.add_book_genres(id, genres)?;
+        crate::genres::add_book_genres(self.library, id, genres)?;
         Ok(())
     }
     pub fn set_cover(&mut self, _actor: &Actor, id: &str, bytes: Vec<u8>) -> Result<()> {

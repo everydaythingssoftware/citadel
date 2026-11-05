@@ -18,6 +18,8 @@ Citadel must preserve manual choices when metadata is refreshed and keep the lib
 
 Resolved genres live in a Calibre multi-value text custom column with label `citadel_genres` and display name `Genres`.
 
+The column is Citadel's, not libcalibre's: `citadel_core::genres` owns the label, its definition and name normalization, and libcalibre sees it as any other custom column.
+
 - A compatible existing `#citadel_genres` text/multiple column is adopted.
 - An absent column is created only when a user explicitly accepts genre suggestions.
 - An incompatible existing `#citadel_genres` column produces an actionable error. Citadel does not replace or reinterpret it.

@@ -249,7 +249,7 @@ impl CatalogSource for CitadelState {
     fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
         self.with_opds_library(|library| {
             library
-                .catalog_facets(libcalibre::CatalogFacetKind::Genres)
+                .catalog_facets(citadel_core::genres::facet())
                 .map(|items| {
                     items
                         .into_iter()

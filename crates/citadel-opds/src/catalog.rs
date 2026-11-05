@@ -80,7 +80,7 @@ impl CatalogBookQuery {
             CatalogFilter::Author(id) => query.author_id = Some(AuthorId(id)),
             CatalogFilter::Series(id) => query.series_id = Some(id),
             CatalogFilter::Tag(id) => query.tag_id = Some(id),
-            CatalogFilter::Genre(id) => query.genre_id = Some(id),
+            CatalogFilter::Genre(id) => query.custom_value = Some(citadel_core::genres::filter(id)),
             CatalogFilter::Search(text) => query.text = Some(text),
         }
         query
@@ -1266,7 +1266,7 @@ mod tests {
         fn genres(&self) -> Result<Vec<CatalogFacet>, CalibreError> {
             let mut library = self.library.lock().unwrap();
             library
-                .catalog_facets(libcalibre::CatalogFacetKind::Genres)
+                .catalog_facets(citadel_core::genres::facet())
                 .map(|items| {
                     items
                         .into_iter()
@@ -1568,7 +1568,7 @@ mod tests {
             offset: 0,
         }
         .into_calibre();
-        assert_eq!(genre.genre_id, Some(1));
+        assert_eq!(genre.custom_value, Some(citadel_core::genres::filter(1)));
     }
 
     #[tokio::test]
@@ -2035,9 +2035,12 @@ mod tests {
                 file_paths: vec![source_path],
             })
             .unwrap();
-        library
-            .set_book_genres(fantasy.id, vec!["Fantasy".to_string()])
-            .unwrap();
+        citadel_core::genres::set_book_genres(
+            &mut library,
+            fantasy.id,
+            vec!["Fantasy".to_string()],
+        )
+        .unwrap();
 
         let (base, server) = loopback(Arc::new(LibrarySource {
             library: Mutex::new(library),

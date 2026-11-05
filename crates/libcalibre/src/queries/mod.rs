@@ -3,7 +3,7 @@ pub mod book_descriptions;
 pub mod book_files;
 pub mod book_identifiers;
 pub mod books;
-pub mod genres;
+pub mod custom_values;
 pub mod languages;
 pub mod publishers;
 pub mod series;

@@ -24,8 +24,8 @@ pub use error::CalibreError;
 pub use library::{
     Author as LibraryAuthor, AuthorAdd, AuthorUpdate, Book as LibraryBook, BookAdd, BookFileInfo,
     BookIdentifier, BookPage, BookQuery, BookSortOrder, BookUpdate, CatalogFacetKind,
-    CatalogFacetSummary, GenreSummary, Library, PublisherSummary, ResolvedBookAsset, SeriesSummary,
-    TagSummary,
+    CatalogFacetSummary, CustomValueFilter, CustomValueSummary, Library, PublisherSummary,
+    ResolvedBookAsset, SeriesSummary, TagSummary, DEFAULT_READ_COLUMN,
 };
 pub use schema_versions::{
     peek_schema_version, SchemaUpgrade, MINIMUM_SCHEMA_VERSION, SCHEMA_VERSION,
