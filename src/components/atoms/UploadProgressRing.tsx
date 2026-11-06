@@ -4,7 +4,7 @@ import styles from "./UploadProgressRing.module.css";
 export interface UploadProgressRingProps {
 	/** 0–1 of the file sent. */
 	progress: number;
-	/** Stops the upload; the ring shows a stop square when set. */
+	/** Stops the upload; hovering the ring shows an × when set. */
 	onStop?: () => void;
 	/** e.g. "Stop uploading walden". */
 	stopLabel?: string;
@@ -14,7 +14,7 @@ export interface UploadProgressRingProps {
 
 const CIRCUMFERENCE = 2 * Math.PI * 10;
 
-/** App Store-style determinate ring, doubling as a stop button. */
+/** Determinate ring that turns into a stop (×) button on hover. */
 export const UploadProgressRing = ({
 	progress,
 	onStop,
@@ -38,9 +38,7 @@ export const UploadProgressRing = ({
 					transform="rotate(-90 12 12)"
 				/>
 			)}
-			{onStop && (
-				<rect className={styles.stop} x="9" y="9" width="6" height="6" rx="1" />
-			)}
+			{onStop && <path className={styles.stop} d="M9 9l6 6M15 9l-6 6" />}
 		</svg>
 	);
 	return onStop ? (
