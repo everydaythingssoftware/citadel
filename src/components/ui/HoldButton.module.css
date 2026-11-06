@@ -1,38 +1,24 @@
 .wrap {
 	position: relative;
 	display: inline-flex;
+	/* A button's own height, however tall the row or grid around it. */
+	align-self: start;
 }
 
+/* Built on the standard bordered button (Button.module.css): at rest it
+   only swaps the text to red, the AppKit destructive look; holding floods
+   it red. */
 .button {
 	position: relative;
 	overflow: hidden;
 	isolation: isolate;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
 	width: 100%;
-	min-height: 28px;
-	padding: 0 12px;
-	/* At rest a plain bordered button with red text (the AppKit destructive
-	   look); holding floods it red. */
-	border: var(--ctd-control-border-width) solid var(--ctd-border);
-	border-radius: var(--ctd-radius-control);
-	background: var(--ctd-control-bg-strong);
-	box-shadow: var(--ctd-control-shadow);
-	font: inherit;
-	font-size: 13px;
-	font-weight: 500;
 	color: color-mix(in oklch, var(--ctd-danger-bg) 85%, var(--ctd-ink));
 	/* A long press must not select the label, call out or scroll. */
 	user-select: none;
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
 	touch-action: none;
-}
-
-.button:focus-visible {
-	outline: none;
-	box-shadow: var(--ctd-focus-shadow);
 }
 
 .button:disabled {
@@ -165,12 +151,6 @@
 	from {
 		opacity: 0;
 		transform: translate(-50%, 4px);
-	}
-}
-
-@media (pointer: coarse) {
-	.button {
-		min-height: 44px;
 	}
 }
 
