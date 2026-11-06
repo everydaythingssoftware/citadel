@@ -15,13 +15,18 @@
 	container-type: inline-size;
 	/* The row stretching past its ends mustn't widen the page. */
 	overflow-x: clip;
-	/* Neighbours fade into the edges rather than being cut off by them. */
+	/* Neighbours ease out at the edges over most of their peek, so they read
+	   as covers leaving view rather than covers cut off. */
 	mask-image: linear-gradient(
 		to right,
-		transparent,
-		black 32px,
-		black calc(100% - 32px),
-		transparent
+		transparent 0,
+		oklch(0% 0 0 / 0.15) 8px,
+		oklch(0% 0 0 / 0.55) 28px,
+		black 72px,
+		black calc(100% - 72px),
+		oklch(0% 0 0 / 0.55) calc(100% - 28px),
+		oklch(0% 0 0 / 0.15) calc(100% - 8px),
+		transparent 100%
 	);
 }
 

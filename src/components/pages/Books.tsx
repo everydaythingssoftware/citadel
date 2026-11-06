@@ -407,6 +407,7 @@ export const Books = ({
 				) : noMatches ? (
 					trimmedQuery.length > 0 ? (
 						<EmptyState
+							art="search"
 							title={`No books match “${trimmedQuery}”`}
 							description="Search looks at titles and authors. Check the spelling, or try fewer words."
 						>

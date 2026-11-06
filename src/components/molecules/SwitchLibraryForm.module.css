@@ -2,7 +2,9 @@
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
+	max-width: 560px;
 }
+
 
 .text {
 	margin: 0;
@@ -24,7 +26,7 @@
 
 /* Read-only: filled by Choose…, so it reads as a value well, not a field. */
 .pathInput.pathInput {
-	background-color: var(--ctd-surface-muted);
+	background-color: var(--ctd-bg);
 	box-shadow: none;
 	cursor: default;
 }
@@ -32,4 +34,9 @@
 .actions {
 	display: flex;
 	justify-content: flex-end;
+}
+
+/* The explanation is its own block above the form, not one of its fields. */
+.stack > .text {
+	margin-bottom: 8px;
 }

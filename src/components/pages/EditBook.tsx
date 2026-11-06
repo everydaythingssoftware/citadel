@@ -51,7 +51,6 @@ import { remoteBookDownloads } from "@/lib/book-downloads";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
 import {
 	GlyphDownload,
-	GlyphLookUp,
 	GlyphOpenExternal,
 	GlyphRemove,
 } from "../icons/RowGlyphs";
@@ -1006,48 +1005,51 @@ const EditBookForm = ({
 													.catch(reportFailure("Couldn't save the identifier"));
 											}}
 										/>
-										{meta.anySourceEnabled &&
-											label.toLowerCase() === "isbn" && (
-												<Tooltip label="Look up metadata">
+										<div className={styles.identifierActions}>
+											{meta.anySourceEnabled &&
+												label.toLowerCase() === "isbn" && (
+													<Tooltip label="Fill in details from this ISBN">
+														<Button
+															size="sm"
+															variant="default"
+															disabled={meta.isFetching}
+															onClick={() => void meta.fetchFromIsbn()}
+														>
+															{meta.isFetching ? (
+																<Spinner size={12} />
+															) : (
+																"Look Up"
+															)}
+														</Button>
+													</Tooltip>
+												)}
+											{deepLinkForIdentifier(label, value) && (
+												<Tooltip label="Open record in browser">
 													<IconButton
-														aria-label="Look up metadata"
-														disabled={meta.isFetching}
-														onClick={() => void meta.fetchFromIsbn()}
+														aria-label="Open record in browser"
+														onClick={() =>
+															void meta.openIdentifierLink(label, value)
+														}
 													>
-														{meta.isFetching ? (
-															<Spinner size={12} />
-														) : (
-															<GlyphLookUp />
-														)}
+														<GlyphOpenExternal />
 													</IconButton>
 												</Tooltip>
 											)}
-										{deepLinkForIdentifier(label, value) && (
-											<Tooltip label="Open record in browser">
+											<Tooltip label="Remove identifier">
 												<IconButton
-													aria-label="Open record in browser"
-													onClick={() =>
-														void meta.openIdentifierLink(label, value)
-													}
+													aria-label="Remove identifier"
+													onClick={() => {
+														onDeleteIdentifier(book.id, id)
+															.then(clearIdentifierFailure)
+															.catch(
+																reportFailure("Couldn't remove the identifier"),
+															);
+													}}
 												>
-													<GlyphOpenExternal />
+													<GlyphRemove />
 												</IconButton>
 											</Tooltip>
-										)}
-										<Tooltip label="Remove identifier">
-											<IconButton
-												aria-label="Remove identifier"
-												onClick={() => {
-													onDeleteIdentifier(book.id, id)
-														.then(clearIdentifierFailure)
-														.catch(
-															reportFailure("Couldn't remove the identifier"),
-														);
-												}}
-											>
-												<GlyphRemove />
-											</IconButton>
-										</Tooltip>
+										</div>
 									</div>
 								</FormRow>
 							))}
@@ -1066,26 +1068,27 @@ const EditBookForm = ({
 											clearIdentifierFailure();
 										}}
 									/>
-									<Button
-										variant="default"
-										className={styles.addIdentifier}
-										disabled={newBookIdentifierLabel.trim() === ""}
-										onClick={() => {
-											onUpsertIdentifier(
-												book.id,
-												null,
-												newBookIdentifierLabel,
-												"",
-											)
-												.then(() => {
-													setNewBookIdentifierLabel("");
-													clearIdentifierFailure();
-												})
-												.catch(reportFailure("Couldn't add the identifier"));
-										}}
-									>
-										Add
-									</Button>
+									<div className={styles.identifierActions}>
+										<Button
+											variant="default"
+											disabled={newBookIdentifierLabel.trim() === ""}
+											onClick={() => {
+												onUpsertIdentifier(
+													book.id,
+													null,
+													newBookIdentifierLabel,
+													"",
+												)
+													.then(() => {
+														setNewBookIdentifierLabel("");
+														clearIdentifierFailure();
+													})
+													.catch(reportFailure("Couldn't add the identifier"));
+											}}
+										>
+											Add
+										</Button>
+									</div>
 								</div>
 							</FormRow>
 						</div>

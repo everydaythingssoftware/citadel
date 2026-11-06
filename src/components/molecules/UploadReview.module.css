@@ -211,10 +211,3 @@
 		font-weight: 600;
 	}
 }
-
-/* Wider windows have the pager's "1 of 2" and arrows; dots would repeat it. */
-@media (min-width: 36.01em) {
-	.dots {
-		display: none;
-	}
-}

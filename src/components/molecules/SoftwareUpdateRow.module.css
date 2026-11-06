@@ -35,14 +35,6 @@
 	overflow-wrap: anywhere;
 }
 
-.percent {
-	min-width: 3ch;
-	font-size: 0.75rem;
-	font-variant-numeric: tabular-nums;
-	text-align: right;
-	color: var(--ctd-ink-soft);
-}
-
 .label {
 	display: inline-flex;
 	align-items: center;

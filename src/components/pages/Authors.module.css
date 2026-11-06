@@ -43,7 +43,7 @@
  * stop at reading length; the trailing track takes what's left. */
 .grid {
 	display: grid;
-	grid-template-columns: minmax(160px, 1fr) minmax(0, 0.8fr) 56px 56px;
+	grid-template-columns: minmax(160px, 1fr) minmax(0, 0.8fr) 56px 64px;
 	/* A reading-width table: rows, hairlines and hover stop with the columns. */
 	max-width: 880px;
 	align-items: center;
@@ -135,9 +135,9 @@
 
 /* size 24 keeps the edit/delete hit areas comfortably clickable. */
 .actionIcon {
-	width: 24px;
-	height: 24px;
-	font-size: 14px;
+	width: 28px;
+	height: 28px;
+	font-size: 16px;
 }
 
 .dangerIcon {
@@ -146,7 +146,7 @@
 
 /* Slot stays reserved so pencils align across rows. */
 .actionSpacer {
-	width: 24px;
+	width: 28px;
 }
 
 .footer {
@@ -191,7 +191,7 @@
 	}
 
 	.grid {
-		grid-template-columns: minmax(0, 1fr) 48px 32px;
+		grid-template-columns: minmax(0, 1fr) 48px 36px;
 	}
 
 	/* No reserved trash slot: the pencil sits at the row's end. */
@@ -236,7 +236,8 @@
 
 @media (pointer: coarse) {
 	.actionIcon {
-		width: 32px;
-		height: 32px;
+		width: 36px;
+		height: 36px;
+		font-size: 18px;
 	}
 }

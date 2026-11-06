@@ -398,10 +398,15 @@
 	flex-wrap: nowrap;
 }
 
-/* As wide as an identifier row's two icon buttons and their gap, so both
- * rows' fields end on the same line. */
-.addIdentifier {
-	min-width: 58px;
+/* One trailing slot for every identifier row's actions, so the fields all
+ * end on the same line whatever each row offers. */
+.identifierActions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+	flex: none;
+	width: 104px;
 }
 
 .flexGrow {

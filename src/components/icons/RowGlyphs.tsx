@@ -24,13 +24,6 @@ const Glyph = ({
 	</svg>
 );
 
-export const GlyphLookUp = (props: SVGProps<SVGSVGElement>) => (
-	<Glyph title="Look up" {...props}>
-		<circle cx="7" cy="7" r="4.25" />
-		<path d="M10.25 10.25 13.5 13.5" />
-	</Glyph>
-);
-
 export const GlyphOpenExternal = (props: SVGProps<SVGSVGElement>) => (
 	<Glyph title="Open" {...props}>
 		<path d="M6.5 3.5h-3v9h9v-3" />

@@ -185,6 +185,7 @@ export const Authors = () => {
 			{noMatches ? (
 				searchTerm.length > 0 ? (
 					<EmptyState
+						art="search"
 						title={`No authors match “${searchTerm}”`}
 						description="Check the spelling, or search by surname."
 					>
