@@ -43,6 +43,12 @@
 	white-space: nowrap;
 }
 
+/* The glyph sits inside a 26px hit area; pull it in so the visible gap
+   matches the bar's 12px rhythm. */
+.shelfButton {
+	margin-inline-start: -5px;
+}
+
 .gridArea {
 	flex: 1;
 	min-height: 0;

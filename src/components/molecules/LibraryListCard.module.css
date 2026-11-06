@@ -116,3 +116,9 @@
 	min-height: 28px;
 	font-size: 13px;
 }
+
+/* The open library: its name in semibold beside the checkmark, so the
+   marker isn't the check alone. */
+.libraryRow[data-active] .rowName {
+	font-weight: 600;
+}

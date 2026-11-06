@@ -13,7 +13,7 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 16px;
+	gap: 12px;
 	background: var(--ctd-bg);
 	opacity: 0;
 }

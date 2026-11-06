@@ -374,7 +374,7 @@ const PathView = ({
 			<p className={card.lede}>
 				{mode === "create"
 					? "Choose an empty folder on the server for it."
-					: "Choose the folder on the server that holds metadata.db."}
+					: "Choose the server folder that holds metadata.db."}
 			</p>
 			<div className={styles.field}>
 				<div className={styles.fieldInput}>

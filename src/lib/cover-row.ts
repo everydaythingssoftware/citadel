@@ -29,7 +29,7 @@ export interface CoverRowParams {
 
 export const DEFAULT_COVER_ROW: CoverRowParams = {
 	coverWidth: 112,
-	peek: 0.3,
+	peek: 0.5,
 	sideScale: 0.88,
 	pixelsPerCover: 400,
 	stiffness: 260,
