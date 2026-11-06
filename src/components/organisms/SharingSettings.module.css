@@ -160,12 +160,6 @@
 
 /* Doubled classes beat the ui-kit's own width and colours regardless of
  * CSS-module emit order. */
-/* This pane's separators run the group's full width, so the listening row's
- * shade and the separators start at the same edge. */
-.group.group > * + *::before {
-	left: 0;
-}
-
 /* Clicking locked All networks points here; timing mirrors
  * SIGN_IN_EMPHASIS_MS in the component. */
 .emphasized {

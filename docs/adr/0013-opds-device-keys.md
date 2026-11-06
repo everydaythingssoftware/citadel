@@ -33,7 +33,8 @@ interface calls them device passwords, since that's what a reader app asks for.
   a key's use to the host at most hourly, so busy readers don't write to the
   database on every request. Recording what each device did is left to
   analytics (CDL-49).
-- OPDS stays HTTP Basic: a username plus one of that user's keys. The OPDS
+- OPDS stays HTTP Basic: a username plus one of that user's keys. Usernames
+  match as they do for browser sign-in: trimmed and ignoring case. The OPDS
   runtime holds a hot-swappable snapshot of verifiers (key ID, username, salt,
   hash), never keys. It checks every verifier so that timing doesn't show
   which one matched, and keeps the shared back-off on failures.

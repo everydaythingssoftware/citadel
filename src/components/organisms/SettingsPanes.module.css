@@ -114,7 +114,7 @@
 	background-color: var(--ctd-surface);
 }
 
-/* Inset hairline between rows: starts after the 14px label gutter. */
+/* Hairline between rows, the group's full width. */
 .group > * + * {
 	position: relative;
 }
@@ -123,7 +123,7 @@
 	content: "";
 	position: absolute;
 	top: 0;
-	left: 0.875rem;
+	left: 0;
 	right: 0;
 	height: 1px;
 	background-color: var(--ctd-border);

@@ -386,7 +386,7 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 				Let reader apps browse and download this library over OPDS.
 			</p>
 			<div className={panes.groups}>
-				<div className={`${panes.group} ${classes.group}`}>
+				<div className={panes.group}>
 					<Row label="Share library" htmlFor={shareSwitchId} error={shareError}>
 						<Switch
 							id={shareSwitchId}
@@ -490,7 +490,7 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 					</Row>
 				</div>
 
-				<div className={`${panes.group} ${classes.group}`}>
+				<div className={panes.group}>
 					<Row
 						label="Require sign-in"
 						htmlFor="sharing-signin"
@@ -541,7 +541,7 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 						<h3 id={keysHeadingId} className={panes.sectionTitle}>
 							Device passwords
 						</h3>
-						<div className={`${panes.group} ${classes.group}`}>
+						<div className={panes.group}>
 							{keys.length === 0 && (
 								<div className={panes.row}>
 									<span className={panes.rowDescription}>
