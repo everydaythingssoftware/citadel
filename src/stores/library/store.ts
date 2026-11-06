@@ -8,7 +8,6 @@ import type {
 	CustomColumnDef,
 	CustomValueDto,
 	DeleteBooksOutcome,
-	ImportableBookMetadata,
 	LibraryAuthor,
 	LibraryBook,
 	LibraryPublisher,
@@ -87,10 +86,6 @@ interface LibraryActions {
 	addBookGenres: (bookId: string, genres: string[]) => Promise<void>;
 	setBookCoverFromMetadata: (bookId: string, coverId: string) => Promise<void>;
 	setBookCoverFromFile: (bookId: string, image: Blob) => Promise<void>;
-	listValidFileTypes: () => Promise<string[]>;
-	getImportableBookMetadata: (
-		filePath: string,
-	) => Promise<ImportableBookMetadata | undefined>;
 
 	// Book and author mutations
 	updateBook: (bookId: string, updates: BookUpdate) => Promise<void>;
@@ -107,7 +102,6 @@ interface LibraryActions {
 		label: string,
 		value: string,
 	) => Promise<void>;
-	addBook: (metadata: ImportableBookMetadata) => Promise<string | undefined>;
 }
 
 interface LibraryStoreState {
@@ -827,32 +821,6 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 					true,
 				),
 
-			listValidFileTypes: async () => {
-				const { library } = get();
-				if (!library) return [];
-				const types = await library.listValidFileTypes();
-				return types.map((type) => type.extension);
-			},
-
-			getImportableBookMetadata: async (filePath: string) => {
-				const { library } = get();
-				if (!library) return;
-
-				const importableFile = await library.checkFileImportable(filePath);
-				if (!importableFile) {
-					console.error(`File ${filePath} not importable`);
-					return;
-				}
-				const metadata =
-					await library.getImportableFileMetadata(importableFile);
-				if (!metadata) {
-					console.error(`Failed to get metadata for file at ${filePath}`);
-					return;
-				}
-
-				return metadata;
-			},
-
 			updateBook: (id, updates) =>
 				withActiveLibrary((library) => library.updateBook(id, updates), true),
 
@@ -901,12 +869,6 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 					(library) =>
 						library.upsertBookIdentifier(id, identifierId, label, value),
 					true,
-				),
-
-			addBook: (metadata) =>
-				withActiveLibrary(
-					(library) => library.addImportableFileByMetadata(metadata),
-					Boolean,
 				),
 		},
 	};

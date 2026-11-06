@@ -215,9 +215,5 @@ export const createHttpLibrary = (
 					body: { label, value, existing_id: identifierId },
 				}),
 			),
-		checkFileImportable: unsupported,
-		getImportableFileMetadata: unsupported,
-		addImportableFileByMetadata: unsupported,
-		listValidFileTypes: unsupported,
 	};
 };

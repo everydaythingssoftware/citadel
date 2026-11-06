@@ -28,8 +28,8 @@ export interface MetadataSearchModalProps {
 }
 
 /**
- * The unified "Find book details" sheet, shared by Edit Book and the Add Book
- * import flow. Purely presentational — the caller owns all state. Results from
+ * The unified "Find book details" sheet, opened from Edit Book. Purely
+ * presentational — the caller owns all state. Results from
  * any provider share one list; each row shows where it came from and a designed
  * placeholder when the source carries no cover.
  */

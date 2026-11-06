@@ -8,12 +8,9 @@ use citadel_core::{
     error::LibraryError,
     LibraryAuthor, LibraryBook,
 };
-use libcalibre::mime_type::MIMETYPE;
 use serde::{Deserialize, Serialize};
 
-use crate::imports::{ImportableBookMetadata, ImportableFile};
 use crate::libs::cover_thumbs::{self, CoverThumbnail};
-use crate::libs::file_formats;
 use crate::state::CitadelState;
 
 use super::onboarding::{self, DetectedLibrary, SyncStatus};
@@ -109,32 +106,6 @@ pub fn clb_query_list_all_authors(
     state
         .with_library_service(|service| service.list_authors())
         .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn clb_query_is_file_importable(path_to_file: String) -> Option<ImportableFile> {
-    let file_path = Path::new(&path_to_file);
-
-    file_formats::validate_file_importable(file_path)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn clb_query_importable_file_metadata(file: ImportableFile) -> Option<ImportableBookMetadata> {
-    file_formats::get_importable_file_metadata(file)
-}
-#[tauri::command]
-#[specta::specta]
-pub fn clb_query_list_all_filetypes() -> Vec<(String, String)> {
-    file_formats::SupportedFormats::list_all()
-        .iter()
-        .filter_map(|(_, extension)| {
-            MIMETYPE::from_file_extension(extension)
-                .filter(|mimetype| mimetype != &MIMETYPE::UNKNOWN)
-                .map(|mimetype| (mimetype.as_str().to_string(), extension.to_string()))
-        })
-        .collect()
 }
 
 #[tauri::command]

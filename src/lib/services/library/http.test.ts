@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LibraryBook, LibraryBookQuery } from "@/bindings";
 import { createHttpLibrary } from "./http";
-import { CoverExpiredError } from "./types";
+import { CoverExpiredError, DeviceType } from "./types";
 
 const query: LibraryBookQuery = {
 	text: "search",
@@ -211,18 +211,18 @@ describe("HTTP Library", () => {
 		);
 	});
 
-	it("keeps devices and local-file imports to the desktop", async () => {
+	it("keeps devices to the desktop", async () => {
 		const fetch = vi.fn();
 		const library = createHttpLibrary({
 			baseUrl: "https://citadel.test",
 			fetch,
 		});
 		await expect(
-			library.checkFileImportable("/server/book.epub"),
+			library.sendToDevice({} as LibraryBook, {
+				type: DeviceType.externalDrive,
+				path: "/Volumes/Kindle",
+			}),
 		).rejects.toThrow("isn't available in the browser");
-		await expect(library.listValidFileTypes()).rejects.toThrow(
-			"isn't available in the browser",
-		);
 		expect(fetch).not.toHaveBeenCalled();
 	});
 

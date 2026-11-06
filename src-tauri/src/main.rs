@@ -15,9 +15,7 @@ mod account;
 mod app_updates;
 pub mod libs {
     pub mod cover_thumbs;
-    pub mod file_formats;
 }
-mod imports;
 mod library;
 mod menu;
 mod metadata;
@@ -55,9 +53,6 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::query::clb_query_search_books,
             library::query::clb_query_books,
             library::query::clb_query_get_book,
-            library::query::clb_query_is_file_importable,
-            library::query::clb_query_importable_file_metadata,
-            library::query::clb_query_list_all_filetypes,
             // Series query commands
             library::query::clb_query_list_series,
             // Tag query commands
@@ -65,7 +60,6 @@ fn command_builder() -> Builder<tauri::Wry> {
             // Publisher query commands
             library::query::clb_query_list_publishers,
             // Book manipulation commands
-            library::command::clb_cmd_create_book,
             // Adding books by review, like uploads on the web (CDL-54)
             library::staging::clb_query_staged_books,
             library::staging::clb_cmd_stage_book,

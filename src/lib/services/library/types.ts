@@ -6,8 +6,6 @@ import type {
 	BookUpdate,
 	CoverThumbnail,
 	DeleteBooksOutcome,
-	ImportableBookMetadata,
-	ImportableFile,
 	LibraryAuthor,
 	LibraryBook,
 	LibraryBookPage,
@@ -29,10 +27,6 @@ export const BookDeletion = {
 	permanent: "permanent",
 } as const;
 export type TBookDeletion = (typeof BookDeletion)[keyof typeof BookDeletion];
-export interface FileType {
-	extension: string;
-	mimetype: string;
-}
 
 /**
  * A book waiting for review: a file being uploaded to, or waiting in, the
@@ -244,43 +238,6 @@ export interface Library {
 	 * @param book_id Book to retrieve the file for.
 	 */
 	getDefaultFilePathForBook(book_id: LibraryBook["id"]): string | undefined;
-
-	/**
-	 * Return an ImportableFile if the file at `filePath` can be added to the library.
-	 * @param filePath
-	 */
-	checkFileImportable(filePath: string): Promise<ImportableFile | undefined>;
-	/**
-   * Gets Metadata for a file that can be imported.
-
-   * `ImportableFile` is used to ensure that the file can be imported:
-   * see {@link Library#checkFileImportable} for more details.
-
-   * @param importableFile
-   */
-	getImportableFileMetadata(
-		importableFile: ImportableFile,
-	): Promise<ImportableBookMetadata | undefined>;
-	/**
-	 * Adds a file to the library.
-	 *
-	 * Users can edit `metadata` before calling this function. For example, they
-	 * can change the title of the book before it's added to the DB.
-	 *
-	 * `ImportableBookMetadata` is used to ensure that the file can be imported:
-	 * see {@link Library#getImportableFileMetadata} for more details.
-	 *
-	 * @param metadata
-	 */
-	addImportableFileByMetadata(
-		metadata: ImportableBookMetadata,
-	): Promise<LibraryBook["id"] | undefined>;
-
-	/**
-	 * Returns a list of valid file extensions & mimetypes for files users want to
-	 * add to their library.
-	 */
-	listValidFileTypes(): Promise<FileType[]>;
 }
 
 export interface LocalConnectionOptions {
