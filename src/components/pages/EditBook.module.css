@@ -123,19 +123,19 @@
 }
 
 /* Icon-button-sized hit target for the back chevron. */
+/* A borderless standard button (Button.module.css subtle) whose chevron
+   hangs into the bar's inset, so the label lines up with the form below. */
 .backLink {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 22px;
-	height: 22px;
-	border-radius: 5px;
+	flex: none;
+	gap: 2px;
+	margin-left: -10px;
+	padding-inline: 8px 10px;
 	color: var(--ctd-ink-soft);
-	transition: background-color 120ms ease-out;
+	text-decoration: none;
 }
 
 .backLink:hover {
-	background-color: var(--ctd-nav-hover-bg);
+	color: var(--ctd-ink);
 }
 
 .pageTitle {
@@ -149,6 +149,12 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* A hairline between where you came from and the book you're on. */
+.backLink + .pageTitle {
+	padding-left: 12px;
+	border-left: 1px solid var(--ctd-border);
 }
 
 .notice {
