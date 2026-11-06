@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { CitadelMark } from "@/components/atoms/CitadelMark";
+import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { Button, TextInput } from "@/components/ui";
 import styles from "./SignInForm.module.css";
 
@@ -26,7 +26,7 @@ export const AdministratorSetupForm = ({
 		<main className={styles.root}>
 			<form className={styles.card} onSubmit={submit} aria-busy={pending}>
 				<div className={styles.mark} aria-hidden="true">
-					<CitadelMark />
+					<FluentLibraryFilled fontSize={28} />
 				</div>
 				<h1 className={styles.title}>Set up Citadel</h1>
 				<TextInput

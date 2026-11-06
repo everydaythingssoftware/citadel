@@ -123,11 +123,13 @@
 		left: 0;
 		bottom: 0;
 		width: 200px;
-		background-color: var(--ctd-surface);
+		/* The toolbar's material, opaque, so the drawer reads as the same
+		   surface sliding out from under it. */
+		background-color: var(--ctd-bg);
 		border-right: 1px solid var(--ctd-border);
-		box-shadow:
-			1px 0 0 var(--ctd-border),
-			8px 0 24px oklch(0% 0 0 / 0.16);
+		box-shadow: 8px 0 24px oklch(0% 0 0 / 0.16);
+		/* Shadow only past the right edge, never up onto the toolbar. */
+		clip-path: inset(0 -40px 0 0);
 		z-index: 105;
 		overflow-y: auto;
 	}

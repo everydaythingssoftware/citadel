@@ -1,0 +1,87 @@
+.actions {
+	display: grid;
+	gap: 10px;
+	align-content: start;
+	min-width: 0;
+}
+
+/* A full-width two-way control at button height, not a toolbar segment. */
+.readState {
+	display: flex;
+	width: 100%;
+}
+
+.readState > * {
+	flex: 1;
+	height: calc(var(--ctd-control-height) - 6px);
+	font-size: 13px;
+}
+
+/* One bordered button split in two: the action, then the menu arrow. */
+.split {
+	display: flex;
+	height: var(--ctd-control-height);
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-control);
+	background-color: var(--ctd-control-bg-strong);
+	box-shadow: var(--ctd-control-shadow);
+	overflow: hidden;
+}
+
+.main,
+.more {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: 0;
+	background: transparent;
+	color: var(--ctd-control-text);
+	font: inherit;
+	font-size: 13px;
+	font-weight: var(--ctd-control-font-weight);
+	cursor: default;
+}
+
+.main {
+	flex: 1;
+	gap: 6px;
+	min-width: 0;
+	padding: 0 10px;
+	white-space: nowrap;
+}
+
+.more {
+	flex: none;
+	width: 28px;
+	border-left: 1px solid var(--ctd-border);
+	color: var(--ctd-ink-soft);
+}
+
+.main:hover,
+.more:hover,
+.more[aria-expanded="true"] {
+	background-color: var(--ctd-control-bg);
+}
+
+.main:focus-visible,
+.more:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
+}
+
+.glyph {
+	flex: none;
+}
+
+.note {
+	margin: -4px 0 0;
+	font-size: 12px;
+	text-align: center;
+	color: var(--ctd-ink-soft);
+}
+
+@media (max-width: 640px) {
+	.note {
+		text-align: left;
+	}
+}

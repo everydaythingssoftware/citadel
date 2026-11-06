@@ -229,44 +229,18 @@
 	min-width: 0;
 }
 
-/* The cover is followed by 16px, the panels by 12px between them. */
+/* The cover keeps its own width (its shadow hugs it) and sits 16px above
+   the actions. */
 .sideColumn > :first-child {
+	align-self: flex-start;
 	margin-bottom: 4px;
 }
 
-.sideStack,
-.formatsSlot {
-	min-width: 0;
-}
-
-/* Your state for this book, in the same grouped panel as the formats. */
-.statePanel {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
-	min-height: 34px;
-	padding: 0 12px;
-	border: 1px solid var(--ctd-border);
-	border-radius: 8px;
-}
-
-:global(:root[data-theme="dark"]) .statePanel {
-	background-color: var(--pal-mantle);
-}
-
-.finishedLabel {
-	font-size: 13px;
-	font-weight: 500;
-	color: var(--ctd-ink);
-	user-select: none;
-}
-
-/* Phones: the cover beside your state, the formats full width beneath. */
+/* Phones: the actions beside the cover rather than beneath it. */
 @media (max-width: 640px) {
 	.sideColumn {
 		display: grid;
-		grid-template-columns: 104px minmax(0, 1fr);
+		grid-template-columns: 112px minmax(0, 1fr);
 		gap: 16px;
 		align-items: start;
 	}
@@ -274,17 +248,8 @@
 	/* A grid item won't shrink below the image's own width without this. */
 	.sideColumn > :first-child {
 		min-width: 0;
+		justify-self: start;
 		margin-bottom: 0;
-	}
-
-	.formatsSlot {
-		grid-column: 1 / -1;
-	}
-}
-
-@media (pointer: coarse) {
-	.statePanel {
-		min-height: 44px;
 	}
 }
 
@@ -349,12 +314,13 @@
 @media (max-width: 640px) {
 	.formRow {
 		grid-template-columns: minmax(0, 1fr);
-		row-gap: 4px;
+		row-gap: var(--ctd-field-label-gap);
 	}
 
 	.rowLabel {
 		text-align: left;
 		white-space: normal;
+		line-height: 1;
 	}
 
 	.formRowTop .rowLabel {
@@ -396,7 +362,22 @@
 	justify-content: flex-end;
 	gap: 4px;
 	flex: none;
-	width: 104px;
+	width: 60px;
+}
+
+.removeIdentifier {
+	font-size: 15px;
+}
+
+/* Series name and its number share a row; the number is a short field. */
+.seriesHash {
+	flex: none;
+	color: var(--ctd-ink-soft);
+}
+
+.seriesIndex.seriesIndex {
+	width: 64px;
+	flex: none;
 }
 
 .flexGrow {

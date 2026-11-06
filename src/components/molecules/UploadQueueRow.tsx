@@ -6,7 +6,7 @@ import {
 	ChevronRightGlyph,
 	XmarkGlyph,
 } from "@/components/icons/UploadGlyphs";
-import { Button, IconButton } from "@/components/ui";
+import { Button, IconButton, Spinner } from "@/components/ui";
 import { type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import styles from "./UploadQueueRow.module.css";
 
@@ -78,33 +78,16 @@ export const UploadQueueRow = ({
 				</span>
 			</div>
 			<div className={styles.trailing}>
-				{/* Waiting and uploading share one ring with a stop button, so
-				    every file that can still be stopped is stopped the same way. */}
-				{(item.phase === UploadPhase.uploading ||
-					item.phase === UploadPhase.waiting) && (
+				{item.phase === UploadPhase.uploading && (
 					<UploadProgressRing
-						progress={
-							item.phase === UploadPhase.uploading && item.size
-								? item.sentBytes / item.size
-								: 0
-						}
+						progress={item.size ? item.sentBytes / item.size : 0}
 						onStop={onRemove}
-						stopLabel={
-							item.phase === UploadPhase.uploading
-								? `Stop uploading ${item.name}`
-								: `Remove ${item.name}`
-						}
+						stopLabel={`Stop uploading ${item.name}`}
 					/>
 				)}
 				{(item.phase === UploadPhase.reading ||
 					item.phase === UploadPhase.adding) && (
-					<span className={styles.ringSlot}>
-						<UploadProgressRing
-							progress={0}
-							indeterminate
-							label={subtitle(item)}
-						/>
-					</span>
+					<Spinner size={18} aria-label={subtitle(item)} />
 				)}
 				{item.phase === UploadPhase.ready && (
 					// On phones the whole row taps through to review (the button
@@ -129,7 +112,12 @@ export const UploadQueueRow = ({
 						Dismiss
 					</Button>
 				) : (
-					item.phase === UploadPhase.failed && (
+					// Every file that can still be dropped offers the same ×; an
+					// upload in flight stops from its ring, and adding (the final
+					// write to the library) runs to the end.
+					(item.phase === UploadPhase.waiting ||
+						item.phase === UploadPhase.reading ||
+						item.phase === UploadPhase.failed) && (
 						<IconButton aria-label={`Remove ${item.name}`} onClick={onRemove}>
 							<XmarkGlyph />
 						</IconButton>

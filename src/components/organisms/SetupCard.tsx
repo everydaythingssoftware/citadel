@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CitadelMark } from "@/components/atoms/CitadelMark";
+import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { Button, Spinner } from "@/components/ui";
 import { REVEAL_ANIMATE_MIN } from "@/lib/first-run/machine";
 import styles from "./FirstRunFlow.module.css";
@@ -22,7 +22,9 @@ export const plural = (n: number, word: string) =>
 
 /* ------------------------------- icons -------------------------------- */
 
-export const ShelfMark = () => <CitadelMark />;
+export const ShelfMark = () => (
+	<FluentLibraryFilled fontSize={28} aria-hidden="true" />
+);
 
 export const GlobeGlyph = () => (
 	<svg

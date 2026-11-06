@@ -24,7 +24,6 @@ import {
 	IconButton,
 	Select,
 	Spinner,
-	Switch,
 	TagsInput,
 	Textarea,
 	TextInput,
@@ -48,9 +47,10 @@ import {
 import { deepLinkForIdentifier } from "@/lib/metadata-providers/registry";
 import { formatSeriesIndex } from "@/lib/series";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
-import { GlyphOpenExternal, GlyphRemove } from "../icons/RowGlyphs";
+import { GlyphOpenExternal } from "../icons/RowGlyphs";
 import { BookCover } from "../atoms/BookCover";
-import { BookFormatsPanel } from "../molecules/BookFormatsPanel";
+import { F7Trash } from "../icons/F7Trash";
+import { BookActions } from "../molecules/BookActions";
 import { MetadataSearchModal } from "../molecules/MetadataSearchModal";
 import { RichTextEditor } from "../molecules/RichTextEditor";
 import styles from "./EditBook.module.css";
@@ -819,24 +819,11 @@ const EditBookForm = ({
 			<div className={styles.layout}>
 				<div className={styles.sideColumn}>
 					<Cover book={book} />
-					<div className={styles.sideStack}>
-						<div className={styles.statePanel}>
-							<label
-								className={styles.finishedLabel}
-								htmlFor="edit-book-finished"
-							>
-								Finished
-							</label>
-							<Switch
-								id="edit-book-finished"
-								checked={values.isRead}
-								onCheckedChange={(checked) => setFieldValue("isRead", checked)}
-							/>
-						</div>
-					</div>
-					<div className={styles.formatsSlot}>
-						<BookFormatsPanel files={book.file_list} />
-					</div>
+					<BookActions
+						files={book.file_list}
+						isRead={values.isRead}
+						onReadChange={(isRead) => setFieldValue("isRead", isRead)}
+					/>
 				</div>
 				<div className={styles.formColumn}>
 					<section className={styles.section}>
@@ -857,28 +844,35 @@ const EditBookForm = ({
 							/>
 						</FormRow>
 						<FormRow label="Series" htmlFor="edit-book-series">
-							<TextInput
-								id="edit-book-series"
-								placeholder="Not in a series"
-								value={values.series}
-								onChange={(event) =>
-									setFieldValue("series", event.target.value)
-								}
-							/>
-						</FormRow>
-						<FormRow label="Series index" htmlFor="edit-book-series-index">
-							<TextInput
-								id="edit-book-series-index"
-								type="number"
-								step="any"
-								min="0"
-								placeholder="1"
-								disabled={values.series.trim() === ""}
-								value={values.seriesIndex}
-								onChange={(event) =>
-									setFieldValue("seriesIndex", event.target.value)
-								}
-							/>
+							{/* The number belongs to the series, so it sits beside it. */}
+							<div className={styles.inlineControls}>
+								<TextInput
+									id="edit-book-series"
+									className={styles.flexGrow}
+									placeholder="Not in a series"
+									value={values.series}
+									onChange={(event) =>
+										setFieldValue("series", event.target.value)
+									}
+								/>
+								<span className={styles.seriesHash} aria-hidden="true">
+									#
+								</span>
+								<TextInput
+									id="edit-book-series-index"
+									className={styles.seriesIndex}
+									aria-label="Number in series"
+									type="number"
+									step="any"
+									min="0"
+									placeholder="1"
+									disabled={values.series.trim() === ""}
+									value={values.seriesIndex}
+									onChange={(event) =>
+										setFieldValue("seriesIndex", event.target.value)
+									}
+								/>
+							</div>
 						</FormRow>
 					</section>
 					<section className={styles.section}>
@@ -975,23 +969,6 @@ const EditBookForm = ({
 											}}
 										/>
 										<div className={styles.identifierActions}>
-											{meta.anySourceEnabled &&
-												label.toLowerCase() === "isbn" && (
-													<Tooltip label="Fill in details from this ISBN">
-														<Button
-															size="sm"
-															variant="default"
-															disabled={meta.isFetching}
-															onClick={() => void meta.fetchFromIsbn()}
-														>
-															{meta.isFetching ? (
-																<Spinner size={12} />
-															) : (
-																"Look Up"
-															)}
-														</Button>
-													</Tooltip>
-												)}
 											{deepLinkForIdentifier(label, value) && (
 												<Tooltip label="Open record in browser">
 													<IconButton
@@ -1006,6 +983,7 @@ const EditBookForm = ({
 											)}
 											<Tooltip label="Remove identifier">
 												<IconButton
+													className={styles.removeIdentifier}
 													aria-label="Remove identifier"
 													onClick={() => {
 														onDeleteIdentifier(book.id, id)
@@ -1015,7 +993,7 @@ const EditBookForm = ({
 															);
 													}}
 												>
-													<GlyphRemove />
+													<F7Trash />
 												</IconButton>
 											</Tooltip>
 										</div>
@@ -1116,12 +1094,27 @@ const EditBookForm = ({
 					{meta.anySourceEnabled && (
 						<section className={styles.section}>
 							<FormRow label="Metadata">
-								<Button
-									variant="default"
-									onClick={() => meta.openSearch(values.title || "")}
-								>
-									Find book details…
-								</Button>
+								<div className={styles.inlineControls}>
+									<Button
+										variant="default"
+										onClick={() => meta.openSearch(values.title || "")}
+									>
+										Find Book Details…
+									</Button>
+									{meta.isbnIdentifier && (
+										<Button
+											variant="default"
+											disabled={meta.isFetching}
+											onClick={() => void meta.fetchFromIsbn()}
+										>
+											{meta.isFetching ? (
+												<Spinner size={12} />
+											) : (
+												"Fill from ISBN"
+											)}
+										</Button>
+									)}
+								</div>
 							</FormRow>
 						</section>
 					)}
