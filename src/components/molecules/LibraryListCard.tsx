@@ -268,6 +268,7 @@ const LibraryRow = ({
 			ref={rowRef}
 			type="button"
 			className={styles.libraryRow}
+			data-active={isActive || undefined}
 			data-menu-target={isMenuTarget || undefined}
 			onClick={() => {
 				if (!isActive) void onSwitchLibrary(library.id);

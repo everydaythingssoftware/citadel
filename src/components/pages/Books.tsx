@@ -542,6 +542,7 @@ const SaveAsShelfControl = ({
 			<Tooltip label="Save as shelf…">
 				<IconButton
 					ref={bookmarkButtonRef}
+					className={styles.shelfButton}
 					aria-label="Save as shelf"
 					onClick={() => setIsOpen(true)}
 				>

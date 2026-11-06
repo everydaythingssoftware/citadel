@@ -6,7 +6,7 @@
  */
 .carousel {
 	--cover-width: 112px;
-	--peek: 0.3;
+	--peek: 0.5;
 	--cover-gap: max(
 		16px,
 		calc(50cqi - var(--cover-width) * (0.56 + var(--peek)))

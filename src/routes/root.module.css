@@ -125,7 +125,9 @@
 		width: 200px;
 		background-color: var(--ctd-surface);
 		border-right: 1px solid var(--ctd-border);
-		box-shadow: var(--ctd-shadow-lift);
+		box-shadow:
+			1px 0 0 var(--ctd-border),
+			8px 0 24px oklch(0% 0 0 / 0.16);
 		z-index: 105;
 		overflow-y: auto;
 	}
