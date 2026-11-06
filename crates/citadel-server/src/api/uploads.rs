@@ -829,6 +829,22 @@ pub(super) async fn receive(
     headers: HeaderMap,
     body: Body,
 ) -> Result<Json<StagedUpload>, ApiFailure> {
+    match tokio::spawn(receive_chunk(state, user, id, headers, body)).await {
+        Ok(outcome) => outcome,
+        Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
+        Err(_) => Err(LibraryError::unavailable().into()),
+    }
+}
+
+/// Runs as its own task so a cancelled request can't stop it between a
+/// queued write and the rollback in `Receiving`.
+async fn receive_chunk(
+    state: ApiState,
+    user: SignedIn,
+    id: String,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Json<StagedUpload>, ApiFailure> {
     let offset = headers
         .get(UPLOAD_OFFSET)
         .and_then(|value| value.to_str().ok())

@@ -1626,6 +1626,70 @@ async fn chunks_must_continue_at_the_offset_and_fit_the_chunk_size() {
 }
 
 #[tokio::test]
+async fn a_cancelled_chunk_request_still_rolls_back_and_frees_the_upload() {
+    use futures_util::StreamExt;
+
+    let (directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let epub = epub_bytes();
+    let (_, upload) = start_upload(&router, &cookie, "book.epub", epub.len()).await;
+    let id = upload["id"].as_str().unwrap().to_string();
+    let staged = directory.path().join(format!("state/uploads/{id}.epub"));
+
+    // The body stays open after its first half until the client goes away,
+    // then fails the way a dropped connection does.
+    let (disconnect, disconnected) = tokio::sync::oneshot::channel::<()>();
+    let body = futures_util::stream::iter([Ok::<_, std::io::Error>(epub[..2048].to_vec())]).chain(
+        futures_util::stream::once(async move {
+            let _ = disconnected.await;
+            Err(std::io::Error::other("connection reset"))
+        }),
+    );
+    let pending = router.clone().oneshot(
+        Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/uploads/{id}/content"))
+            .header("cookie", &cookie)
+            .header("upload-offset", "0")
+            .body(Body::from_stream(body))
+            .unwrap(),
+    );
+    let half_written = async {
+        while std::fs::metadata(&staged).map_or(0, |file| file.len()) < 2048 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        tokio::select! {
+            response = pending => panic!("the chunk finished early: {response:?}"),
+            () = half_written => {}
+        }
+    })
+    .await
+    .expect("the first half of the chunk was never written");
+    drop(disconnect);
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while std::fs::metadata(&staged).unwrap().len() != 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the interrupted chunk was never rolled back");
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    let (status, body) = loop {
+        let (status, body) = send_chunk(&router, &cookie, &id, 0, epub[..4096].to_vec()).await;
+        if status != StatusCode::CONFLICT || tokio::time::Instant::now() > deadline {
+            break (status, body);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    };
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["receivedBytes"], 4096);
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn uploads_reject_unsupported_mislabelled_and_oversized_files() {
     let (_directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
     let (status, error) = start_upload(&router, &cookie, "archive.zip", 10).await;
