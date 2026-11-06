@@ -334,16 +334,12 @@ const AddLibraryRow = ({
 					.finally(() => setBusy(false));
 			}}
 		>
-			<span className={styles.addIcon} aria-hidden="true">
-				<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-					<path
-						d="M5 1v8M1 5h8"
-						stroke="currentColor"
-						strokeWidth="1.5"
-						strokeLinecap="round"
-					/>
-				</svg>
-			</span>
+			<svg className={styles.addIcon} viewBox="0 0 16 16" aria-hidden="true">
+				<path
+					fillRule="evenodd"
+					d="M8 .75a7.25 7.25 0 1 0 0 14.5A7.25 7.25 0 1 0 8 .75ZM7.2 4.75h1.6V7.2h2.45v1.6H8.8v2.45H7.2V8.8H4.75V7.2H7.2Z"
+				/>
+			</svg>
 			<span className={styles.rowLabels}>
 				<span className={styles.rowName}>
 					{busy ? "Adding Library…" : "Add Library…"}

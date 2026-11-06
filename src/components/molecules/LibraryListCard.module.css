@@ -123,16 +123,17 @@
 	font-weight: 600;
 }
 
-/* The add row: a plus in a quiet circle where the other rows have a book. */
+/* The add row: a plus knocked out of a filled circle, where the other rows
+   have a filled book; the same size, weight and colour. */
 .addIcon {
-	display: inline-grid;
-	place-items: center;
 	flex-shrink: 0;
 	width: 1rem;
 	height: 1rem;
-	border-radius: 50%;
-	background-color: var(--ctd-surface-muted);
-	color: var(--ctd-ink);
+	color: var(--ctd-ink-soft);
+}
+
+.addIcon path {
+	fill: currentColor;
 }
 
 .rowError {
