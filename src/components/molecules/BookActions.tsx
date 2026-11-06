@@ -40,21 +40,16 @@ export const BookActions = ({
  * state: the circle fills, the check draws in, and it stays green. Pressing
  * it again marks the book unread.
  */
-export const FinishedButton = ({
+const FinishedButton = ({
 	isRead,
 	onReadChange,
-	tone = "success",
-}: Pick<BookActionsProps, "isRead" | "onReadChange"> & {
-	/** Ink when something nearby already shows finished in green. */
-	tone?: "success" | "ink";
-}) => {
+}: Pick<BookActionsProps, "isRead" | "onReadChange">) => {
 	// Only a press animates; opening an already-finished book doesn't.
 	const [justFinished, setJustFinished] = useState(false);
 	return (
 		<button
 			type="button"
 			className={styles.finished}
-			data-tone={tone}
 			aria-pressed={isRead}
 			data-just-finished={justFinished || undefined}
 			title={isRead ? "Mark as unread" : undefined}

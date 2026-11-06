@@ -4,7 +4,6 @@ import DOMPurify from "dompurify";
 import {
 	type CSSProperties,
 	Fragment,
-	useEffect,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -13,7 +12,7 @@ import type { Identifier, LibraryBook } from "@/bindings";
 import { BookCover } from "@/components/atoms/BookCover";
 import { EditGlyph } from "@/components/icons/EditGlyph";
 import { GlyphOpenExternal } from "@/components/icons/RowGlyphs";
-import { FileTiles, FinishedButton } from "@/components/molecules/BookActions";
+import { FileTiles } from "@/components/molecules/BookActions";
 import { Button } from "@/components/ui";
 import buttonStyles from "@/components/ui/Button.module.css";
 import { safeAsyncEventHandler } from "@/lib/async";
@@ -24,11 +23,7 @@ import { useCoverPalette } from "@/lib/hooks/use-cover-palette";
 import { languageNameForCode } from "@/lib/languages";
 import { usePlatform } from "@/lib/platform/context";
 import { formatSeriesIndex } from "@/lib/series";
-import {
-	useLibraryActions,
-	useLibraryStore,
-	useSeriesList,
-} from "@/stores/library/store";
+import { useLibraryStore, useSeriesList } from "@/stores/library/store";
 import styles from "./BookDrawer.module.css";
 
 interface BookDrawerProps {
@@ -54,8 +49,6 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 				"--wash-2-dark": colors.dark[1],
 			} as CSSProperties)
 		: undefined;
-	const [isRead, setIsRead] = useState(book.is_read);
-	useEffect(() => setIsRead(book.is_read), [book.is_read]);
 
 	return (
 		<article className={styles.drawer} style={washStyle}>
@@ -67,7 +60,7 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 				</div>
 				<div className={styles.cover}>
 					<BookCover book={book} disableFade fluid />
-					{isRead && (
+					{book.is_read && (
 						<span className={styles.coverCheck} title="Finished">
 							<svg viewBox="0 0 16 16" aria-hidden="true">
 								<path d="M4.5 8.25 7 10.6 11.5 5.8" />
@@ -78,11 +71,7 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 				<div className={styles.heading}>
 					<h2 className={styles.title}>{book.title}</h2>
 					<Byline book={book} onClose={onClose} />
-					<BookActionsRow
-						book={book}
-						isRead={isRead}
-						onReadChange={setIsRead}
-					/>
+					<BookActionsRow book={book} />
 				</div>
 			</header>
 			<div className={styles.body}>
@@ -162,43 +151,14 @@ const Byline = ({ book, onClose }: BookDrawerProps) => {
 	);
 };
 
-const readOnlyUpdate = (isRead: boolean) => ({
-	author_id_list: null,
-	tag_list: null,
-	title: null,
-	timestamp: null,
-	publication_date: null,
-	is_read: isRead,
-	description: null,
-	series: null,
-	series_index: null,
-	language_list: null,
-});
-
-const BookActionsRow = ({
-	book,
-	isRead,
-	onReadChange,
-}: {
-	book: LibraryBook;
-	isRead: boolean;
-	onReadChange: (isRead: boolean) => void;
-}) => {
+const BookActionsRow = ({ book }: { book: LibraryBook }) => {
 	const platform = usePlatform();
 	const navigate = useNavigate();
-	const actions = useLibraryActions();
 	const canEdit = useLibraryStore((state) => state.library?.readOnly === false);
 	const localFile = book.file_list.find((file) => "Local" in file);
 	const canRead =
 		platform.capabilities.canOpenLocalPaths && localFile !== undefined;
 	const download = remoteBookDownloads(book.file_list)[0];
-
-	const markRead = (next: boolean) => {
-		onReadChange(next);
-		actions.updateBook(book.id, readOnlyUpdate(next)).catch(() => {
-			onReadChange(!next);
-		});
-	};
 
 	return (
 		<div className={styles.actions}>
@@ -227,9 +187,6 @@ const BookActionsRow = ({
 						Download
 					</a>
 				)
-			)}
-			{canEdit && (
-				<FinishedButton isRead={isRead} onReadChange={markRead} tone="ink" />
 			)}
 			{canEdit && (
 				<Button
