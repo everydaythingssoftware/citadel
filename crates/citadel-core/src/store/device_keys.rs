@@ -124,7 +124,9 @@ impl CitadelStore {
         secret: &str,
     ) -> Result<NewDeviceKey> {
         if secret.is_empty() {
-            return Err(StoreError::Invalid("Device keys can't be empty.".into()));
+            return Err(StoreError::Invalid(
+                "Device passwords can't be empty.".into(),
+            ));
         }
         self.add_device_key(username, name, secret)
     }
@@ -136,7 +138,7 @@ impl CitadelStore {
         let key = connection.immediate_transaction(|connection| {
             if name_taken(connection, &user.id, &name)? {
                 return Err(StoreError::Conflict(format!(
-                    "{} already has a device key named '{name}'.",
+                    "{} already has a device password named '{name}'.",
                     user.username
                 )));
             }
@@ -278,7 +280,7 @@ fn validate_name(name: &str) -> Result<String> {
     let name = name.trim();
     if name.is_empty() {
         return Err(StoreError::Invalid(
-            "Name the device this key is for.".into(),
+            "Name the device this password is for.".into(),
         ));
     }
     if name.chars().count() > NAME_MAX_CHARS || name.chars().any(char::is_control) {
@@ -290,7 +292,7 @@ fn validate_name(name: &str) -> Result<String> {
 }
 
 fn unknown_key(username: &str) -> StoreError {
-    StoreError::NotFound(format!("{username} has no such device key."))
+    StoreError::NotFound(format!("{username} has no such device password."))
 }
 
 /// `sha256(salt || key)`, the same as the migration computes in SQL.

@@ -83,6 +83,23 @@
 	border-color: var(--ctd-danger-bg);
 }
 
+.button[data-tone="neutral"] {
+	border-color: var(--ctd-border-strong);
+	color: var(--ctd-ink);
+}
+
+.button[data-tone="neutral"]::before {
+	background: var(--ctd-ink);
+}
+
+.button[data-tone="neutral"]::after {
+	color: var(--ctd-surface);
+}
+
+.button[data-tone="neutral"][data-state] {
+	border-color: var(--ctd-ink);
+}
+
 .button[data-shake] {
 	animation-duration: 320ms;
 	animation-timing-function: ease-in-out;

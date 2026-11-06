@@ -37,6 +37,15 @@ export const AtRest: Story = {
  */
 export const Holding: Story = {};
 
+/** Interactive: for actions that replace something rather than destroy it. */
+export const Neutral: Story = {
+	args: {
+		label: "Rotate",
+		hint: "Hold to replace this password",
+		tone: "neutral",
+	},
+};
+
 /** Interactive: full width, as the phone's "Cancel All Uploads" row. */
 export const FullWidth: Story = {
 	args: { label: "Cancel All Uploads" },

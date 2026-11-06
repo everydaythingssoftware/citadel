@@ -16,7 +16,8 @@ old one.
 ## Decision
 
 Each user has any number of **device keys** in `citadel.db` (`device_keys`),
-each named for one reader, such as "Kobo" or "KOReader on phone".
+each named for one reader, such as "Kobo" or "KOReader on phone". The desktop's
+interface calls them device passwords, since that's what a reader app asks for.
 
 - The server generates every key with the e-ink-friendly generator
   (`citadel_core::password::generate_app_password`). Users can't choose or
@@ -46,8 +47,14 @@ pre-`citadel.db` `opds-credentials.json` is carried over the same way.
 Both hosts manage keys the same way. The server's CLI has
 `users keys <name> [add|rotate|revoke <device>]`, and the browser gets the
 same controls with user management (CDL-67). The desktop's Sharing settings
-list the local user's keys with Add, hold-to-Rotate and hold-to-Revoke. Revoking
-the desktop's last key stops a share that requires sign-in.
+list the local user's keys with Add Device, hold-to-Rotate and hold-to-Revoke.
+A new key appears in a sheet above the address and username a reader needs, and
+that step closes only through Done, because the key can't be shown again.
+
+Sharing doesn't depend on keys existing. A share that requires sign-in can start
+with none, or lose its last one, and keeps running while rejecting every
+request. All networks depends only on sign-in being required: with no keys
+nobody can get in, so there's nothing to protect by refusing to start.
 
 ## Consequences
 

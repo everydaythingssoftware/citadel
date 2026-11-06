@@ -12,19 +12,22 @@ export interface HoldButtonProps {
 	/** Shown when it's clicked instead of held, e.g. "Hold to cancel all uploads". */
 	hint: string;
 	onConfirm: () => void;
+	/** Neutral for actions that replace something rather than destroy it. */
+	tone?: "danger" | "neutral";
 	disabled?: boolean;
 	className?: string;
 }
 
 /**
- * A destructive button that has to be held: a red fill grows from the
- * middle while it's held and the action happens when it's full. A click
+ * A consequential button that has to be held: a fill, red unless neutral,
+ * grows from the middle while it's held and the action happens when it's full. A click
  * shakes it and says to hold.
  */
 export const HoldButton = ({
 	label,
 	hint,
 	onConfirm,
+	tone = "danger",
 	disabled = false,
 	className,
 }: HoldButtonProps) => {
@@ -41,6 +44,7 @@ export const HoldButton = ({
 					hold.shakes === 0 ? undefined : hold.shakes % 2 ? "odd" : "even"
 				}
 				data-label={label}
+				data-tone={tone}
 				disabled={disabled}
 				aria-label={`${label} (press and hold)`}
 				style={{ "--hold-ms": `${HOLD_MS}ms` } as CSSProperties}

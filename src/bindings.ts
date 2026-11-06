@@ -444,10 +444,6 @@ async clbCmdRotateOpdsDeviceKey(keyId: string) : Promise<Result<NewDeviceKey, Op
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Revoking the last key stops a running share that requires sign-in (see
- * `OpdsService::clear_credentials`).
- */
 async clbCmdRevokeOpdsDeviceKey(keyId: string) : Promise<Result<OpdsDeviceKeys, OpdsStatusError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_revoke_opds_device_key", { keyId }) };

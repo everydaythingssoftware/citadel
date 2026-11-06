@@ -11,12 +11,22 @@ export interface SheetProps {
 	children: ReactNode;
 	width?: number;
 	/**
+	 * False when closing would lose something for good: Escape, clicks outside
+	 * and the close button all stop working, so the content must offer its own
+	 * way out.
+	 */
+	dismissible?: boolean;
+	/** Lets the content choose where focus starts; preventDefault to take over. */
+	onOpenAutoFocus?: (event: Event) => void;
+	/**
 	 * Sheets are usually opened programmatically (no Dialog.Trigger), so Radix
 	 * has no trigger to return focus to on close. Callers should preventDefault
 	 * here and refocus the control that opened the sheet.
 	 */
 	onCloseAutoFocus?: (event: Event) => void;
 }
+
+const preventClosing = (event: Event) => event.preventDefault();
 
 /** A macOS document sheet: detached below the toolbar, dimming the window. */
 export const Sheet = ({
@@ -25,6 +35,8 @@ export const Sheet = ({
 	title,
 	children,
 	width = 540,
+	dismissible = true,
+	onOpenAutoFocus,
 	onCloseAutoFocus,
 }: SheetProps) => (
 	<Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -35,15 +47,23 @@ export const Sheet = ({
 				className={styles.content}
 				style={{ width: `min(${width}px, calc(100vw - 32px))` }}
 				aria-describedby={undefined}
+				onOpenAutoFocus={onOpenAutoFocus}
 				onCloseAutoFocus={onCloseAutoFocus}
-				onPointerDownOutside={ignorePopoverInteractOutside}
-				onInteractOutside={ignorePopoverInteractOutside}
+				onEscapeKeyDown={dismissible ? undefined : preventClosing}
+				onPointerDownOutside={
+					dismissible ? ignorePopoverInteractOutside : preventClosing
+				}
+				onInteractOutside={
+					dismissible ? ignorePopoverInteractOutside : preventClosing
+				}
 			>
 				<div className={styles.header}>
 					<Dialog.Title className={styles.title}>{title}</Dialog.Title>
-					<Dialog.Close asChild>
-						<DialogCloseButton />
-					</Dialog.Close>
+					{dismissible && (
+						<Dialog.Close asChild>
+							<DialogCloseButton />
+						</Dialog.Close>
+					)}
 				</div>
 				<div className={styles.body}>{children}</div>
 			</Dialog.Content>

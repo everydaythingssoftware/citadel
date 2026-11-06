@@ -1,19 +1,31 @@
-//! The sharing pane: server toggle, scope, port, reader sign-in.
+//! The sharing pane: server toggle, scope, port, reader sign-in, device keys.
 //!
-//! Design contract (ADR 0013 + the rows layout signed off by Phil):
+//! Design contract (ADR 0013):
 //! - The backend owns server truth; the pane renders status and config from
 //!   the service, never local guesses.
 //! - Readers sign in with the username and a per-device key. Keys are
-//!   generated, shown once when created or rotated, and kept only as hashes;
-//!   rotate and revoke are press-and-hold.
+//!   generated and shown once, in a sheet that closes only through Done, and
+//!   kept only as hashes. Rotate and revoke are press-and-hold.
 //! - Scope and port changes reconfigure a running server; sign-in off just
 //!   means "not required" and never deletes the keys.
+//! - Secondary text sits under a row's label, never under its control.
 
+import clsx from "clsx";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { DeviceKey, NewDeviceKey, OpdsLifecycleState } from "@/bindings";
+import type { OpdsLifecycleState } from "@/bindings";
 import { TablerCopy } from "@/components/icons/TablerCopy";
+import { DeviceKeySheet } from "@/components/organisms/DeviceKeySheet";
+import panes from "@/components/organisms/SettingsPanes.module.css";
 import classes from "@/components/organisms/SharingSettings.module.css";
-import { Button, HoldButton, SegmentedControl, Switch } from "@/components/ui";
+import {
+	Button,
+	HoldButton,
+	SegmentedControl,
+	Switch,
+	TextInput,
+} from "@/components/ui";
+import { useDeviceKeySheet } from "@/lib/hooks/use-device-key-sheet";
 import type { SharingError } from "@/lib/hooks/use-opds-sharing";
 import {
 	SHARING_ERROR_SOURCE,
@@ -21,6 +33,7 @@ import {
 } from "@/lib/hooks/use-opds-sharing";
 import { usePlatform } from "@/lib/platform/context";
 import type { SharingSettings as SharingPreferences } from "@/lib/platform/settings/types";
+import { deviceKeyUsage } from "@/lib/services/opds/device-keys";
 import { useSettings } from "@/stores/settings/store";
 
 /** Copied state lifetime. */
@@ -30,26 +43,56 @@ const PENDING_LABEL = {
 	starting: "Starting…",
 	waitingForInterface: "Waiting for a network connection…",
 } as const satisfies Partial<Record<OpdsLifecycleState, string>>;
-/** The port row holds errors inline beside the field, so they stay short. */
+/** Matches the sign-in-emphasis animation in the module CSS. */
+const SIGN_IN_EMPHASIS_MS = 1_200;
+const ALL_NETWORKS_LOCKED = "All networks requires sign-in.";
 const PORT_RANGE_MESSAGE = "Choose a port from 1 to 65535.";
-const PORT_UNAVAILABLE_MESSAGE = "Port not available, please choose another";
-const serverErrorMessage = (error: SharingError): string =>
-	error.code === "portUnavailable" ? PORT_UNAVAILABLE_MESSAGE : error.message;
 /** HTTP Basic splits `user:pass` at the first colon; the backend rejects it too. */
 const USERNAME_FORBIDDEN = ":";
 
-const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
-	dateStyle: "medium",
-});
-const formatDate = (unixSeconds: number): string =>
-	DATE_FORMAT.format(new Date(unixSeconds * 1_000));
+interface RowProps {
+	label: string;
+	htmlFor?: string;
+	description?: string | null;
+	error?: string | null;
+	className?: string;
+	children: ReactNode;
+}
 
-export const deviceKeyUsage = (key: DeviceKey): string =>
-	`Added ${formatDate(key.createdAt)} · ${
-		key.lastUsedAt === null
-			? "Never used"
-			: `Last used ${formatDate(key.lastUsedAt)}`
-	}`;
+/** One setting: an error takes the description's place, in the same slot. */
+const Row = ({
+	label,
+	htmlFor,
+	description,
+	error,
+	className,
+	children,
+}: RowProps) => (
+	<div className={clsx(panes.row, className)}>
+		<div className={panes.rowLabels}>
+			{htmlFor ? (
+				<label className={panes.rowLabel} htmlFor={htmlFor}>
+					{label}
+				</label>
+			) : (
+				<span className={panes.rowLabel}>{label}</span>
+			)}
+			{error ? (
+				<span
+					className={`${panes.rowDescription} ${classes.errorText}`}
+					role="alert"
+				>
+					{error}
+				</span>
+			) : (
+				description && (
+					<span className={panes.rowDescription}>{description}</span>
+				)
+			)}
+		</div>
+		{children}
+	</div>
+);
 
 export const SharingSettings = () => {
 	const platform = usePlatform();
@@ -88,21 +131,22 @@ interface SharingPaneProps {
 const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 	const platform = usePlatform();
 	const shareSwitchId = useId();
+	const keysHeadingId = useId();
 	const [portInput, setPortInput] = useState(String(sharing.port));
 	/** Why the last port change was rolled back; outlives the restart that
 	 * clears the service error. */
 	const [portError, setPortError] = useState<SharingError | null>(null);
 	const [usernameInput, setUsernameInput] = useState("");
 	const [usernameDirty, setUsernameDirty] = useState(false);
-	const [deviceName, setDeviceName] = useState("");
-	/** The key just created or rotated: its secret is shown this once. */
-	const [shownKey, setShownKey] = useState<NewDeviceKey | null>(null);
+	/** Which control a credential error belongs to while no sheet is open. */
+	const [renameFailed, setRenameFailed] = useState(false);
+	const [signInEmphasized, setSignInEmphasized] = useState(false);
 	const [urlCopied, setUrlCopied] = useState(false);
-	const [keyCopied, setKeyCopied] = useState(false);
 	const portFocusedRef = useRef(false);
 	const reconfiguringRef = useRef(false);
 	const urlCopiedTimer = useRef<number | null>(null);
-	const keyCopiedTimer = useRef<number | null>(null);
+	const emphasisTimer = useRef<number | null>(null);
+	const addDeviceRef = useRef<HTMLButtonElement>(null);
 
 	const status = controller.status;
 	const shareOn =
@@ -112,10 +156,7 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 	const keys = controller.deviceKeys?.keys ?? [];
 	const storedUsername = controller.deviceKeys?.username ?? "";
 	const credentialsConfigured = keys.length > 0;
-	const allNetworksUnlocked =
-		sharing.authenticationEnabled && credentialsConfigured;
-	const sharingNeedsKey =
-		sharing.authenticationEnabled && !credentialsConfigured;
+	const allNetworksUnlocked = sharing.authenticationEnabled;
 	const usernameInvalid = usernameInput.includes(USERNAME_FORBIDDEN);
 	const port = Number(portInput);
 	const portValid = Number.isInteger(port) && port > 0 && port <= 65_535;
@@ -158,7 +199,7 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 
 	useEffect(
 		() => () => {
-			for (const timer of [urlCopiedTimer, keyCopiedTimer]) {
+			for (const timer of [urlCopiedTimer, emphasisTimer]) {
 				if (timer.current !== null) window.clearTimeout(timer.current);
 			}
 		},
@@ -171,17 +212,35 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 		if (!usernameDirty) setUsernameInput(storedUsername);
 	}, [storedUsername, usernameDirty]);
 
+	const sheet = useDeviceKeySheet({
+		createDeviceKey: controller.createDeviceKey,
+		rotateDeviceKey: controller.rotateDeviceKey,
+		clearError: controller.clearError,
+		copyText: (text) => platform.clipboard.writeText(text),
+	});
+
 	const toggleShare = async (on: boolean) => {
 		setPortError(null);
-		if (on) {
-			await controller.start({
-				target: sharing.target,
-				port: portValid ? port : sharing.port,
-				authenticationEnabled: sharing.authenticationEnabled,
-			});
+		if (!on) {
+			await controller.stop();
 			return;
 		}
-		await controller.stop();
+		await controller.start({
+			target: sharing.target,
+			port: portValid ? port : sharing.port,
+			authenticationEnabled: sharing.authenticationEnabled,
+		});
+	};
+
+	// A click on the locked All networks segment points at what unlocks it.
+	const pointAtSignIn = () => {
+		setSignInEmphasized(true);
+		if (emphasisTimer.current !== null)
+			window.clearTimeout(emphasisTimer.current);
+		emphasisTimer.current = window.setTimeout(() => {
+			emphasisTimer.current = null;
+			setSignInEmphasized(false);
+		}, SIGN_IN_EMPHASIS_MS);
 	};
 
 	const changeTarget = (target: "localNetworks" | "allInterfaces") => {
@@ -248,49 +307,26 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 	const settleUsername = () => {
 		const username = usernameInput.trim();
 		if (usernameInvalid) return;
+		setUsernameDirty(false);
 		if (!username || username === storedUsername) {
-			setUsernameDirty(false);
 			setUsernameInput(storedUsername);
 			return;
 		}
-		setUsernameDirty(false);
+		setRenameFailed(false);
 		void controller.renameUser(username).then((ok) => {
+			setRenameFailed(!ok);
 			if (!ok) setUsernameInput(storedUsername);
 		});
 	};
 
-	const showKey = (key: NewDeviceKey | null) => {
-		if (!key) return;
-		setShownKey(key);
-		setKeyCopied(false);
+	const rotateKey = (keyId: string) => {
+		setRenameFailed(false);
+		void sheet.rotate(keyId);
 	};
 
-	const addDeviceKey = async () => {
-		const name = deviceName.trim();
-		if (!name) return;
-		const created = await controller.createDeviceKey(name);
-		if (created) setDeviceName("");
-		showKey(created);
-	};
-
-	const rotateDeviceKey = async (key: DeviceKey) => {
-		showKey(await controller.rotateDeviceKey(key.id));
-	};
-
-	const revokeDeviceKey = async (key: DeviceKey) => {
-		if (shownKey?.key.id === key.id) setShownKey(null);
-		await controller.revokeDeviceKey(key.id);
-	};
-
-	const copyKey = async (secret: string) => {
-		await platform.clipboard.writeText(secret);
-		setKeyCopied(true);
-		if (keyCopiedTimer.current !== null)
-			window.clearTimeout(keyCopiedTimer.current);
-		keyCopiedTimer.current = window.setTimeout(() => {
-			keyCopiedTimer.current = null;
-			setKeyCopied(false);
-		}, COPIED_MS);
+	const revokeKey = (keyId: string) => {
+		setRenameFailed(false);
+		void controller.revokeDeviceKey(keyId);
 	};
 
 	const copyUrl = async (url: string) => {
@@ -304,7 +340,6 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 		}, COPIED_MS);
 	};
 
-	const portInvalid = !portValid;
 	const serverError =
 		portError ??
 		(controller.error?.source === SHARING_ERROR_SOURCE.server
@@ -312,11 +347,21 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 			: null);
 	const credentialError =
 		controller.error?.source === SHARING_ERROR_SOURCE.credentials
-			? controller.error
+			? controller.error.message
 			: null;
-	const portMessage = portInvalid
+	const portRejected = serverError?.code === "portUnavailable";
+	const portMessage = !portValid
 		? PORT_RANGE_MESSAGE
-		: serverError && serverErrorMessage(serverError);
+		: portRejected
+			? serverError.message
+			: null;
+	const shareError = serverError && !portRejected ? serverError.message : null;
+	const usernameError = usernameInvalid
+		? "Usernames can't contain a colon."
+		: renameFailed
+			? credentialError
+			: null;
+	const keysError = !renameFailed && !sheet.open ? credentialError : null;
 	const listenUrl = status?.state === "running" ? status.urls[0] : undefined;
 	const pendingLabel =
 		status?.state === "starting" || status?.state === "waitingForInterface"
@@ -325,10 +370,10 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 
 	if (!status) {
 		return (
-			<div className={classes.stack}>
-				<p className={classes.note}>Checking sharing status…</p>
+			<div className={panes.groups}>
+				<p className={panes.paneNote}>Checking sharing status…</p>
 				{controller.error && (
-					<p className={classes.fieldError} role="alert">
+					<p className={panes.inlineNote} data-tone="error" role="alert">
 						{controller.error.message}
 					</p>
 				)}
@@ -337,282 +382,258 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 	}
 
 	return (
-		<div className={classes.stack}>
-			<div className={classes.intro}>
-				<h3 className={classes.sectionTitle}>Sharing</h3>
-				<p className={classes.note}>
-					Let OPDS reader apps browse and download from Citadel.
-				</p>
-			</div>
-
-			<div className={classes.card}>
-				<div className={`${classes.row} ${classes.rowTop}`}>
-					<label htmlFor={shareSwitchId}>Share library</label>
-					<div className={classes.controlStack}>
+		<div>
+			<p className={panes.paneNote}>
+				Let reader apps browse and download this library over OPDS.
+			</p>
+			<div className={panes.groups}>
+				<div className={`${panes.group} ${classes.group}`}>
+					<Row label="Share library" htmlFor={shareSwitchId} error={shareError}>
 						<Switch
 							id={shareSwitchId}
 							checked={shareOn}
-							disabled={controller.isActing || !portValid || sharingNeedsKey}
+							disabled={controller.isActing || !portValid}
 							onCheckedChange={(on) => void toggleShare(on)}
 						/>
-						{sharingNeedsKey && (
-							<p className={classes.fieldNote}>
-								Add a device key below to enable sharing.
-							</p>
-						)}
-					</div>
-				</div>
-				{pendingLabel && (
-					<div className={classes.rowListen}>
-						<p className={classes.listen}>{pendingLabel}</p>
-					</div>
-				)}
-				{listenUrl && (
-					<div className={classes.rowListen}>
-						<p className={classes.listen}>
-							Listening on
-							<button
-								type="button"
-								className={`${classes.urlChip} ${urlCopied ? classes.urlCopied : ""}`}
-								aria-label={`Copy ${listenUrl}`}
-								onMouseDown={(event) => event.preventDefault()}
-								onClick={() => void copyUrl(listenUrl)}
-							>
-								<code>{listenUrl}</code>
-								<span className={classes.urlChipIcon} aria-hidden="true">
-									{urlCopied ? (
-										<svg
-											className={classes.urlCheck}
-											aria-hidden="true"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="2.5"
-											strokeLinecap="round"
-										>
-											<path d="M4 12.5l5 5L20 6.5" />
-										</svg>
-									) : (
-										<TablerCopy />
-									)}
-								</span>
-							</button>
-							<span className={classes.urlCopyLabel} data-copied={urlCopied}>
-								<span>Copy</span>
-								<span>Copied</span>
-							</span>
-						</p>
-					</div>
-				)}
-				<div className={`${classes.row} ${classes.rowTop}`}>
-					<span className={classes.rowLabelText}>Reachable from</span>
-					<div className={classes.controlStack}>
-						<SegmentedControl
-							aria-label="Reachable from"
-							value={sharing.target}
-							onChange={(next) => {
-								if (
-									next === "localNetworks" ||
-									(next === "allInterfaces" && allNetworksUnlocked)
-								) {
-									changeTarget(next);
-								}
-							}}
-							items={[
-								{ value: "localNetworks", label: "Local network" },
-								{
-									value: "allInterfaces",
-									label: "All networks",
-									disabled: !allNetworksUnlocked,
-								},
-							]}
-						/>
-						{!allNetworksUnlocked && (
-							<p className={classes.fieldNote}>
-								All networks requires reader sign-in.
-							</p>
-						)}
-					</div>
-				</div>
-				<div className={classes.row}>
-					<label htmlFor="sharing-port">Port</label>
-					{portMessage && (
-						<p className={classes.inlineError} role="alert">
-							{portMessage}
-						</p>
+					</Row>
+					{pendingLabel && (
+						<div className={classes.rowListen}>
+							<p className={classes.listen}>{pendingLabel}</p>
+						</div>
 					)}
-					<input
-						id="sharing-port"
-						aria-invalid={portMessage ? true : undefined}
-						className={`${classes.portInput} ${portMessage ? classes.inputError : ""}`}
-						inputMode="numeric"
-						value={portInput}
-						onFocus={() => {
-							portFocusedRef.current = true;
-						}}
-						onBlur={(event) => {
-							portFocusedRef.current = false;
-							void commitPort(event);
-						}}
-						onKeyDown={(event) => {
-							if (event.key === "Enter") event.currentTarget.blur();
-						}}
-						onChange={(event) => {
-							const value = event.currentTarget.value;
-							if (!/^\d*$/.test(value)) return;
-							setPortInput(value);
-							setPortError(null);
-							// Editing the port acknowledges a failed start, the same
-							// as leaving the pane: reset the service to stopped.
-							if (status.state === "error") void controller.stop();
-						}}
-					/>
+					{listenUrl && (
+						<div className={classes.rowListen}>
+							<p className={classes.listen}>
+								Listening on
+								<button
+									type="button"
+									className={`${classes.urlChip} ${urlCopied ? classes.urlCopied : ""}`}
+									aria-label={`Copy ${listenUrl}`}
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => void copyUrl(listenUrl)}
+								>
+									<code>{listenUrl}</code>
+									<span className={classes.urlChipIcon} aria-hidden="true">
+										{urlCopied ? (
+											<svg
+												className={classes.urlCheck}
+												aria-hidden="true"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												strokeWidth="2.5"
+												strokeLinecap="round"
+											>
+												<path d="M4 12.5l5 5L20 6.5" />
+											</svg>
+										) : (
+											<TablerCopy />
+										)}
+									</span>
+								</button>
+								<span className={classes.urlCopyLabel} data-copied={urlCopied}>
+									<span>Copy</span>
+									<span>Copied</span>
+								</span>
+							</p>
+						</div>
+					)}
+					<Row label="Reachable from" className={classes.rowTop}>
+						<div className={classes.controlStack}>
+							<SegmentedControl
+								aria-label="Reachable from"
+								value={sharing.target}
+								onChange={(next) => {
+									if (next === "localNetworks" || next === "allInterfaces") {
+										changeTarget(next);
+									}
+								}}
+								onLockedClick={pointAtSignIn}
+								items={[
+									{ value: "localNetworks", label: "Local network" },
+									{
+										value: "allInterfaces",
+										label: "All networks",
+										lockedReason: allNetworksUnlocked
+											? undefined
+											: ALL_NETWORKS_LOCKED,
+									},
+								]}
+							/>
+							{!allNetworksUnlocked && (
+								<span className={panes.rowDescription}>
+									{ALL_NETWORKS_LOCKED}
+								</span>
+							)}
+						</div>
+					</Row>
+					<Row label="Port" htmlFor="sharing-port" error={portMessage}>
+						<TextInput
+							id="sharing-port"
+							aria-invalid={portMessage ? true : undefined}
+							className={`${classes.portInput} ${portMessage ? classes.invalid : ""}`}
+							inputMode="numeric"
+							value={portInput}
+							onFocus={() => {
+								portFocusedRef.current = true;
+							}}
+							onBlur={(event) => {
+								portFocusedRef.current = false;
+								void commitPort(event);
+							}}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") event.currentTarget.blur();
+							}}
+							onChange={(event) => {
+								const value = event.currentTarget.value;
+								if (!/^\d*$/.test(value)) return;
+								setPortInput(value);
+								setPortError(null);
+								// Editing the port acknowledges a failed start, the same
+								// as leaving the pane: reset the service to stopped.
+								if (status.state === "error") void controller.stop();
+							}}
+						/>
+					</Row>
 				</div>
+
+				<div className={`${panes.group} ${classes.group}`}>
+					<Row
+						label="Require sign-in"
+						htmlFor="sharing-signin"
+						description="HTTP Basic Auth, supported by most reader apps."
+						className={signInEmphasized ? classes.emphasized : undefined}
+					>
+						<Switch
+							id="sharing-signin"
+							checked={sharing.authenticationEnabled}
+							disabled={controller.isActing}
+							onCheckedChange={(on) => void toggleSignIn(on)}
+						/>
+					</Row>
+					{sharing.authenticationEnabled && (
+						<Row
+							label="Username"
+							htmlFor="sharing-username"
+							description={
+								usernameDirty && credentialsConfigured
+									? "Change it on every reader too."
+									: null
+							}
+							error={usernameError}
+						>
+							<TextInput
+								id="sharing-username"
+								aria-invalid={usernameError ? true : undefined}
+								className={`${classes.usernameInput} ${usernameError ? classes.invalid : ""}`}
+								value={usernameInput}
+								spellCheck={false}
+								autoCapitalize="off"
+								onChange={(event) => {
+									setUsernameDirty(true);
+									setRenameFailed(false);
+									setUsernameInput(event.currentTarget.value);
+								}}
+								onKeyDown={(event) => {
+									if (event.key === "Enter") event.currentTarget.blur();
+								}}
+								onBlur={settleUsername}
+							/>
+						</Row>
+					)}
+				</div>
+
+				{sharing.authenticationEnabled && (
+					<section aria-labelledby={keysHeadingId}>
+						<h3 id={keysHeadingId} className={panes.sectionTitle}>
+							Device passwords
+						</h3>
+						<div className={`${panes.group} ${classes.group}`}>
+							{keys.length === 0 && (
+								<div className={panes.row}>
+									<span className={panes.rowDescription}>
+										Reader apps can't sign in until you add a device.
+									</span>
+									<Button
+										ref={addDeviceRef}
+										variant="primary"
+										className={classes.addFirstDevice}
+										onClick={sheet.startAdding}
+									>
+										Add Device…
+									</Button>
+								</div>
+							)}
+							{keys.map((key) => (
+								<div key={key.id} className={`${panes.row} ${classes.keyRow}`}>
+									<div className={panes.rowLabels}>
+										<span className={panes.rowLabel}>{key.name}</span>
+										<span className={panes.rowDescription}>
+											{deviceKeyUsage(key)}
+										</span>
+									</div>
+									<div className={classes.keyActions}>
+										<HoldButton
+											label="Rotate"
+											hint="Hold to replace this password"
+											tone="neutral"
+											disabled={controller.isActing}
+											onConfirm={() => rotateKey(key.id)}
+										/>
+										<HoldButton
+											label="Revoke"
+											hint="Hold to revoke this password"
+											disabled={controller.isActing}
+											onConfirm={() => revokeKey(key.id)}
+										/>
+									</div>
+								</div>
+							))}
+							{keysError && (
+								<div className={panes.row}>
+									<span
+										className={`${panes.rowDescription} ${classes.errorText}`}
+										role="alert"
+									>
+										{keysError}
+									</span>
+								</div>
+							)}
+							{keys.length > 0 && (
+								<div className={classes.keysFooter}>
+									<Button
+										ref={addDeviceRef}
+										variant="subtle"
+										className={classes.addDevice}
+										onClick={sheet.startAdding}
+									>
+										+ Add Device…
+									</Button>
+								</div>
+							)}
+						</div>
+					</section>
+				)}
 			</div>
 
-			<div className={classes.card}>
-				<div className={classes.row}>
-					<div>
-						<label htmlFor="sharing-signin">Require sign-in</label>
-						<p className={classes.rowNote}>
-							HTTP Basic authentication, supported by most readers.
-						</p>
-					</div>
-					<Switch
-						id="sharing-signin"
-						checked={sharing.authenticationEnabled}
-						disabled={controller.isActing}
-						onCheckedChange={(on) => void toggleSignIn(on)}
-					/>
-				</div>
-				{sharing.authenticationEnabled && (
-					<>
-						<div className={`${classes.row} ${classes.rowTop}`}>
-							<label htmlFor="sharing-username">Username</label>
-							<div className={classes.controlStack}>
-								<input
-									id="sharing-username"
-									className={`${classes.fieldInput} ${usernameInvalid ? classes.inputError : ""}`}
-									value={usernameInput}
-									spellCheck={false}
-									autoCapitalize="off"
-									onChange={(event) => {
-										setUsernameDirty(true);
-										setUsernameInput(event.currentTarget.value);
-									}}
-									onKeyDown={(event) => {
-										if (event.key === "Enter") event.currentTarget.blur();
-									}}
-									onBlur={settleUsername}
-								/>
-								{usernameInvalid ? (
-									<p className={classes.fieldError}>
-										Usernames can't contain a colon (:).
-									</p>
-								) : (
-									usernameDirty &&
-									credentialsConfigured && (
-										<p className={classes.fieldNote}>
-											Every device signs in with this name. Change it on each of
-											them too.
-										</p>
-									)
-								)}
-							</div>
-						</div>
-						{keys.map((key) => (
-							<div key={key.id} className={classes.row}>
-								<div>
-									<span className={classes.keyName}>{key.name}</span>
-									<p className={classes.rowNote}>{deviceKeyUsage(key)}</p>
-								</div>
-								<div className={classes.keyActions}>
-									<HoldButton
-										label="Rotate"
-										hint="Hold to replace this key"
-										disabled={controller.isActing}
-										onConfirm={() => void rotateDeviceKey(key)}
-									/>
-									<HoldButton
-										label="Revoke"
-										hint="Hold to revoke this key"
-										disabled={controller.isActing}
-										onConfirm={() => void revokeDeviceKey(key)}
-									/>
-								</div>
-							</div>
-						))}
-						{shownKey && (
-							<div className={`${classes.row} ${classes.rowTop}`}>
-								<div>
-									<span className={classes.rowLabelText}>
-										Key for {shownKey.key.name}
-									</span>
-									<p className={classes.rowNote}>
-										Copy it now: it won't be shown again.
-									</p>
-								</div>
-								<div className={classes.keyActions}>
-									<button
-										type="button"
-										className={`${classes.urlChip} ${keyCopied ? classes.urlCopied : ""}`}
-										aria-label={`Copy the key for ${shownKey.key.name}`}
-										onClick={() => void copyKey(shownKey.secret)}
-									>
-										<code className={classes.mono}>{shownKey.secret}</code>
-										<span className={classes.urlChipIcon} aria-hidden="true">
-											<TablerCopy />
-										</span>
-									</button>
-									<Button size="sm" onClick={() => setShownKey(null)}>
-										{keyCopied ? "Copied" : "Done"}
-									</Button>
-								</div>
-							</div>
-						)}
-						<div className={`${classes.row} ${classes.rowTop}`}>
-							<div>
-								<label htmlFor="sharing-device">Add a device</label>
-								<p className={classes.rowNote}>
-									One key per reader app, so each can be revoked alone.
-								</p>
-							</div>
-							<div className={classes.controlStack}>
-								<form
-									className={classes.keyActions}
-									onSubmit={(event) => {
-										event.preventDefault();
-										void addDeviceKey();
-									}}
-								>
-									<input
-										id="sharing-device"
-										className={`${classes.fieldInput} ${classes.deviceInput}`}
-										value={deviceName}
-										placeholder="e.g. Kobo"
-										spellCheck={false}
-										onChange={(event) =>
-											setDeviceName(event.currentTarget.value)
-										}
-									/>
-									<Button
-										type="submit"
-										size="sm"
-										disabled={controller.isActing || !deviceName.trim()}
-									>
-										Add Key
-									</Button>
-								</form>
-								{credentialError && (
-									<p className={classes.fieldError} role="alert">
-										{credentialError.message}
-									</p>
-								)}
-							</div>
-						</div>
-					</>
-				)}
-			</div>
+			<DeviceKeySheet
+				open={sheet.open}
+				view={sheet.view}
+				name={sheet.name}
+				copied={sheet.copied}
+				isActing={controller.isActing}
+				error={credentialError}
+				address={listenUrl ?? null}
+				onNameChange={sheet.setName}
+				onSubmitName={() => void sheet.submitName()}
+				onCopyKey={() => void sheet.copyKey()}
+				onClose={sheet.close}
+				onCloseAutoFocus={(event) => {
+					event.preventDefault();
+					sheet.closed();
+					addDeviceRef.current?.focus();
+				}}
+			/>
 		</div>
 	);
 };

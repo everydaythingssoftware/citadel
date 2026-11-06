@@ -33,6 +33,10 @@
 	z-index: 111;
 }
 
+.content:focus {
+	outline: none;
+}
+
 .content[data-state="open"] {
 	animation: sheet-in 180ms ease-out;
 }
