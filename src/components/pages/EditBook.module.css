@@ -23,7 +23,7 @@
 }
 
 .deleteError {
-	color: var(--ctd-danger-bg);
+	color: var(--ctd-danger-ink);
 	margin-right: auto;
 }
 
@@ -76,9 +76,7 @@
 	/* Back on the left, the title centred, actions on the right: the sides
 	   keep their buttons' width and the title gives way, with an ellipsis. */
 	display: grid;
-	grid-template-columns:
-		minmax(max-content, 1fr) minmax(0, auto)
-		minmax(max-content, 1fr);
+	grid-template-columns: 1fr auto 1fr;
 	align-items: center;
 	gap: 16px;
 	/* Content stops with the form (920px); the bar's hairline still spans. */
@@ -102,6 +100,8 @@
 .headerLead {
 	display: flex;
 	align-items: center;
+	/* Its own width at the left edge, never stretched across its column. */
+	justify-self: start;
 }
 
 /* Wide enough for "Saving…" so the label can change without the button
@@ -155,6 +155,9 @@
 }
 
 .pageTitle {
+	/* The only part of the bar that gives way: it shrinks to an ellipsis
+	   before the buttons on either side do. */
+	min-width: 0;
 	margin: 0;
 	outline: none;
 	text-align: center;
@@ -169,7 +172,6 @@
 	font-size: 16px;
 	font-weight: 600;
 	letter-spacing: 0.01em;
-	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;

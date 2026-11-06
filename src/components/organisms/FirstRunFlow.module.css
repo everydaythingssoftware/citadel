@@ -222,7 +222,7 @@
 	margin: 10px 2px 0;
 	font-size: 12px;
 	line-height: 1.45;
-	color: var(--ctd-danger-bg);
+	color: var(--ctd-danger-ink);
 	text-align: left;
 }
 
@@ -422,7 +422,7 @@
 .retryNote {
 	margin: 10px 2px 0;
 	font-size: 12px;
-	color: var(--ctd-danger-bg);
+	color: var(--ctd-danger-ink);
 	text-align: center;
 }
 

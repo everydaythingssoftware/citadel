@@ -1,5 +1,5 @@
 import { usePlatform } from "@/lib/platform/context";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { SettingsPanes } from "@/components/organisms/SettingsPanes";
 import classes from "@/components/pages/SettingsWindow.module.css";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
@@ -87,13 +87,9 @@ export const SettingsWindow = () => {
 		};
 	}, [platform]);
 
-	const requestClose = useCallback(() => {
-		void platform.window.hide();
-	}, [platform]);
-
 	return (
 		<div className={classes.window}>
-			<SettingsPanes onRequestClose={requestClose} />
+			<SettingsPanes />
 		</div>
 	);
 };

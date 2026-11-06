@@ -157,7 +157,7 @@
 
 .error {
 	font-size: 12px;
-	color: var(--ctd-danger-bg);
+	color: var(--ctd-danger-ink);
 }
 
 /* Touch screens: larger tokens, and a remove button whose hit area reaches

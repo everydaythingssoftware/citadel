@@ -134,7 +134,10 @@
  * boxes melt into the window and the pane reads as a flat void. The stronger
  * surface keeps the System Settings card structure legible.
  */
-:global([data-theme="dark"]) .group,
+:global([data-theme="dark"]) .group {
+	background-color: var(--ctd-surface-strong);
+}
+
 .row {
 	display: flex;
 	align-items: center;
@@ -189,7 +192,7 @@
 
 .inlineNote[data-tone="error"] {
 	/* --ctd-danger-text is for text on a danger fill; this sits on the pane. */
-	color: var(--ctd-danger-border);
+	color: var(--ctd-danger-ink);
 }
 
 .sectionTitle {

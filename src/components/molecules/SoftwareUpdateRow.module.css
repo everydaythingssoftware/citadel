@@ -31,7 +31,7 @@
 .detail {
 	font-size: 0.75rem;
 	line-height: 1.35;
-	color: var(--ctd-danger-bg);
+	color: var(--ctd-danger-ink);
 	overflow-wrap: anywhere;
 }
 

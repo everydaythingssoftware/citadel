@@ -78,14 +78,6 @@ const TAB_META: Record<
 	},
 };
 
-interface SettingsPanesProps {
-	/**
-	 * Called when a pane wants to dismiss settings, e.g. after switching
-	 * libraries. In the settings window this hides the window.
-	 */
-	onRequestClose?: () => void;
-}
-
 /**
  * Classic macOS preferences layout (iTerm2 / pre-Ventura System Preferences):
  * a centered icon-over-label tab strip across the top, a hairline divider,
@@ -94,7 +86,7 @@ interface SettingsPanesProps {
  * the top of the window and doubles as the drag region; the traffic lights
  * overlay its left edge.
  */
-export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
+export const SettingsPanes = () => {
 	const platform = usePlatform();
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
@@ -122,10 +114,6 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 
 	const tabId = (tab: SettingsTab) => `${baseId}-tab-${tab}`;
 	const panelId = (tab: SettingsTab) => `${baseId}-panel-${tab}`;
-
-	const close = useCallback(() => {
-		onRequestClose?.();
-	}, [onRequestClose]);
 
 	const selectAndFocusTab = useCallback((tab: SettingsTab) => {
 		setActiveTab(tab);
@@ -201,7 +189,7 @@ export const SettingsPanes = ({ onRequestClose }: SettingsPanesProps) => {
 			>
 				<div className={classes.panelInner}>
 					{activeTab === "general" && <GeneralTab />}
-					{activeTab === "library" && <LibraryTab closeSettings={close} />}
+					{activeTab === "library" && <LibraryTab />}
 					{activeTab === "sharing" && <SharingSettings />}
 					{activeTab === "integrations" && <IntegrationsTab />}
 				</div>
@@ -490,11 +478,7 @@ const PublicUrlLine = ({
 	</li>
 );
 
-interface LibraryTabProps {
-	closeSettings: () => void;
-}
-
-const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
+const LibraryTab = () => {
 	const { libraries, activeLibrary, switchTo, adoptLibrary } =
 		useLibrarySelection();
 	const platform = usePlatform();
@@ -504,10 +488,10 @@ const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
 			title: "Choose a Calibre Library Folder",
 		});
 		if (path === null) return null;
-		const result = await adoptLibrary(path);
-		if (result.ok) closeSettings();
-		return result;
-	}, [platform, adoptLibrary, closeSettings]);
+		// Settings stays open, as when switching from the list: the new
+		// library's row becomes current once it has opened.
+		return adoptLibrary(path);
+	}, [platform, adoptLibrary]);
 
 	const revealActiveLibrary = useCallback(() => {
 		if (!activeLibrary) return;

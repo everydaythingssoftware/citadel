@@ -703,6 +703,9 @@ const EditBookForm = ({
 	const [saveRequest, setSaveRequest] = useState(0);
 	const requestSave = useCallback(() => setSaveRequest((n) => n + 1), []);
 	const saving = useRef(false);
+	// A save the control that asked for it already confirms (Finished turns
+	// green), so the Save button doesn't narrate it.
+	const quietSave = useRef(false);
 	const saveQueued = useRef(false);
 	const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
 		"idle",
@@ -738,14 +741,16 @@ const EditBookForm = ({
 			return;
 		}
 		saving.current = true;
+		const quiet = quietSave.current;
+		quietSave.current = false;
 		lastSaved.current = values;
 		if (undoing.current) undoing.current = false;
 		else setHistory((steps) => [...steps, baseline].slice(-UNDO_STEPS));
-		setSaveStatus("saving");
+		if (!quiet) setSaveStatus("saving");
 		void (async () => {
 			try {
 				await save();
-				setSaveStatus("saved");
+				setSaveStatus(quiet ? "idle" : "saved");
 			} catch (error) {
 				setSaveStatus("idle");
 				meta.setMessage({
@@ -959,6 +964,7 @@ const EditBookForm = ({
 						isRead={values.isRead}
 						onReadChange={(isRead) => {
 							setFieldValue("isRead", isRead);
+							quietSave.current = true;
 							requestSave();
 						}}
 					/>

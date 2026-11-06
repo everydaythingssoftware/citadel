@@ -103,7 +103,7 @@
 	letter-spacing: 0.02em;
 	text-transform: uppercase;
 	white-space: nowrap;
-	color: var(--ctd-danger-bg);
+	color: var(--ctd-danger-ink);
 	background-color: oklch(from var(--ctd-danger-bg) l c h / 0.15);
 }
 
@@ -141,7 +141,7 @@
 }
 
 .dangerIcon {
-	color: var(--ctd-danger-bg);
+	color: var(--ctd-danger-ink);
 }
 
 /* Slot stays reserved so pencils align across rows. */
@@ -230,7 +230,7 @@
 
 .sheetFailure {
 	margin: 12px 0 0;
-	color: var(--ctd-danger-border);
+	color: var(--ctd-danger-ink);
 	font-size: 13px;
 }
 
