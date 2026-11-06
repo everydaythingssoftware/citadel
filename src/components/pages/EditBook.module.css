@@ -96,9 +96,13 @@
 }
 
 .pageHeader {
-	display: flex;
+	/* Back on the left, the title centred, actions on the right: the sides
+	   keep their buttons' width and the title gives way, with an ellipsis. */
+	display: grid;
+	grid-template-columns:
+		minmax(max-content, 1fr) minmax(0, auto)
+		minmax(max-content, 1fr);
 	align-items: center;
-	justify-content: space-between;
 	gap: 16px;
 	/* Content stops with the form (920px); the bar's hairline still spans. */
 	padding: 10px max(24px, calc(100% - 896px)) 10px 24px;
@@ -110,9 +114,6 @@
 .headerLead {
 	display: flex;
 	align-items: center;
-	gap: 4px;
-	min-width: 0;
-	flex: 1;
 }
 
 .headerActions {
@@ -120,6 +121,7 @@
 	align-items: center;
 	gap: 8px;
 	flex-wrap: nowrap;
+	justify-content: flex-end;
 }
 
 /* Icon-button-sized hit target for the back chevron. */
@@ -141,6 +143,7 @@
 .pageTitle {
 	margin: 0;
 	outline: none;
+	text-align: center;
 	font-family: var(--ctd-font-serif);
 	font-size: 16px;
 	font-weight: 600;
@@ -149,12 +152,6 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-
-/* A hairline between where you came from and the book you're on. */
-.backLink + .pageTitle {
-	padding-left: 12px;
-	border-left: 1px solid var(--ctd-border);
 }
 
 .notice {

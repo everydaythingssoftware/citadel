@@ -770,10 +770,10 @@ const EditBookForm = ({
 							<BackChevron />
 							All Books
 						</RouterLink>
-						<h3 ref={titleRef} tabIndex={-1} className={styles.pageTitle}>
-							{book.title}
-						</h3>
 					</div>
+					<h3 ref={titleRef} tabIndex={-1} className={styles.pageTitle}>
+						{book.title}
+					</h3>
 					<div className={styles.headerActions}>
 						{hasChanges && (
 							<Button variant="subtle" onClick={revert}>
