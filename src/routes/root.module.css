@@ -54,13 +54,6 @@
 	display: none;
 }
 
-/* With no sidebar beside it, the panel runs to the window edge: no left
-   hairline or corner to meet. */
-.shell:not([data-sidebar-open]) .content {
-	border-left: 0;
-	border-top-left-radius: 0;
-}
-
 .main {
 	display: grid;
 	grid-template-rows: 1fr;
@@ -79,6 +72,13 @@
 	/* macOS panel corner where the toolbar and sidebar hairlines meet;
 	 * overflow clips scrolled content to the curve. */
 	border-top-left-radius: var(--ctd-radius-panel);
+}
+
+/* With no sidebar beside it, the panel runs to the window edge: no left
+   hairline or corner to meet. */
+.shell:not([data-sidebar-open]) .content {
+	border-left: 0;
+	border-top-left-radius: 0;
 }
 
 .scrim {

@@ -26,3 +26,42 @@ export const remoteBookDownloads = (files: BookFile[]): BookDownload[] =>
 			return [];
 		}
 	});
+
+/** One row of a book's Formats panel: a file to open here or download. */
+export type BookFormatRow =
+	| { kind: "open"; key: string; label: string; path: string }
+	| { kind: "download"; key: string; label: string; url: string };
+
+const extensionLabel = (path: string, fallback: string) => {
+	const name = path.split(/[\\/]/).at(-1) ?? "";
+	const extension = name.includes(".") ? name.split(".").at(-1) : undefined;
+	return extension ? extension.toUpperCase() : fallback;
+};
+
+/**
+ * Local files (desktop) open in their default app; remote files (web)
+ * download. Sorted by label so the list reads the same every visit.
+ */
+export const bookFormatRows = (files: BookFile[]): BookFormatRow[] =>
+	[
+		...files.flatMap((file): BookFormatRow[] =>
+			"Local" in file
+				? [
+						{
+							kind: "open",
+							key: file.Local.path,
+							label: extensionLabel(file.Local.path, file.Local.mime_type),
+							path: file.Local.path,
+						},
+					]
+				: [],
+		),
+		...remoteBookDownloads(files).map(
+			(file): BookFormatRow => ({
+				kind: "download",
+				key: file.url,
+				label: file.label,
+				url: file.url,
+			}),
+		),
+	].sort((a, b) => a.label.localeCompare(b.label));

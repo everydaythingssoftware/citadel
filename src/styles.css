@@ -133,7 +133,13 @@
 	/* One height for every regular control: fields, pop-ups and buttons line
 	   up on any row they share. */
 	--ctd-control-height: 28px;
+	/* Switches stay in the marble palette: ink for on, stone for off. */
 	--ctd-switch-on-bg: var(--ctd-accent);
+	--ctd-switch-on-knob: oklch(100% 0 0);
+	--ctd-switch-off-bg: oklch(88% 0.004 90);
+	--ctd-switch-off-border: oklch(21% 0.004 270 / 0.14);
+	--ctd-switch-off-knob: oklch(100% 0 0);
+	--ctd-switch-knob-shadow: 0 0.5px 2px oklch(0% 0 0 / 0.25);
 	--ctd-popover-shadow: var(--ctd-shadow-lift);
 	--ctd-dialog-shadow: var(--ctd-shadow-lift);
 
@@ -247,9 +253,14 @@
 		0 2px 6px oklch(0% 0 0 / 0.45), 0 16px 32px oklch(0% 0 0 / 0.5);
 	--ctd-content-bg: var(--pal-base);
 	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.4);
-	/* A near-white track would need a dark knob; a mid-grey one keeps the
-	   native white knob and still reads as on. */
-	--ctd-switch-on-bg: oklch(74% 0.004 270);
+	/* On is the near-white ink with a dark knob; off is a dim stone with a
+	   dimmed knob, so it doesn't glow. */
+	--ctd-switch-on-bg: oklch(90% 0.004 90);
+	--ctd-switch-on-knob: oklch(22% 0.005 270);
+	--ctd-switch-off-bg: oklch(30% 0.005 270);
+	--ctd-switch-off-border: oklch(100% 0 0 / 0.1);
+	--ctd-switch-off-knob: oklch(80% 0.004 90);
+	--ctd-switch-knob-shadow: inset 0 0 0 0.5px oklch(0% 0 0 / 0.2);
 	--ctd-scrollbar-thumb: oklch(from var(--pal-text) l c h / 0.35);
 	--ctd-control-shadow: 0 0.5px 1.5px oklch(0% 0 0 / 0.4);
 	--ctd-field-inner-shadow: inset 0 0.5px 1px oklch(0% 0 0 / 0.2);
