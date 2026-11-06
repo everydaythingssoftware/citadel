@@ -10,10 +10,6 @@ export interface UploadProgressRingProps {
 	stopLabel?: string;
 	size?: number;
 	className?: string;
-	/** Busy with no measurable progress (reading, adding): a turning arc. */
-	indeterminate?: boolean;
-	/** Accessible name while indeterminate, e.g. "Reading book…". */
-	label?: string;
 }
 
 const CIRCUMFERENCE = 2 * Math.PI * 10;
@@ -25,29 +21,7 @@ export const UploadProgressRing = ({
 	stopLabel = "Stop upload",
 	size = 24,
 	className,
-	indeterminate = false,
-	label,
 }: UploadProgressRingProps) => {
-	if (indeterminate) {
-		return (
-			<span
-				className={clsx(styles.ring, styles.spinning, className)}
-				role="progressbar"
-				aria-label={label}
-			>
-				<svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-					<circle className={styles.track} cx="12" cy="12" r="10" />
-					<circle
-						className={styles.arc}
-						cx="12"
-						cy="12"
-						r="10"
-						strokeDasharray={`${CIRCUMFERENCE * 0.25} ${CIRCUMFERENCE}`}
-					/>
-				</svg>
-			</span>
-		);
-	}
 	const value = Math.min(1, Math.max(0, progress));
 	const percent = Math.round(value * 100);
 	const ring = (

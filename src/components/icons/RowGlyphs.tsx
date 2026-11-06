@@ -31,13 +31,6 @@ export const GlyphOpenExternal = (props: SVGProps<SVGSVGElement>) => (
 	</Glyph>
 );
 
-export const GlyphRemove = (props: SVGProps<SVGSVGElement>) => (
-	<Glyph title="Remove" {...props}>
-		<circle cx="8" cy="8" r="5.75" />
-		<path d="M5.5 8h5" />
-	</Glyph>
-);
-
 export const GlyphDownload = (props: SVGProps<SVGSVGElement>) => (
 	<Glyph title="Download" {...props}>
 		<path d="M8 2.5v7.5M4.75 7 8 10.25 11.25 7M3 13.25h10" />

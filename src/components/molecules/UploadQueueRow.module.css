@@ -133,12 +133,3 @@
 		display: block;
 	}
 }
-
-/* Same footprint as the stop ring's button, so rings line up down the list. */
-.ringSlot {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-}

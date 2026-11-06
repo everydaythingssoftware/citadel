@@ -3,7 +3,7 @@
 	--text-input-inset: 2px;
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--ctd-field-label-gap);
 }
 
 /* A tight line box keeps the label nearer its own field than the one above. */
