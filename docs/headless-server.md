@@ -26,7 +26,6 @@ services:
     image: ghcr.io/everydaythingssoftware/citadel-server
     ports: ["8081:8081", "8080:8080"]
     environment:
-      CITADEL_PUBLIC_URL: http://nas.local:8081
     volumes:
       - citadel-state:/var/lib/citadel
       - /path/to/your/books:/library
@@ -39,7 +38,8 @@ Settings come from environment variables; all are optional:
 
 | Variable | Default in the image | Meaning |
 | --- | --- | --- |
-| `CITADEL_PUBLIC_URL` | `http://localhost:8081` | The address browsers use to reach Citadel. Set it to the address you type, such as `http://nas.local:8081`. |
+| `CITADEL_PUBLIC_URLS` | none | Citadel's public URLs, separated by commas, spaces or newlines. Without any, Citadel answers at every address: see [Addresses](#addresses). |
+| `CITADEL_TRUSTED_PROXIES` | private networks | Reverse proxies whose forwarded headers Citadel believes, as addresses or ranges. |
 | `CITADEL_LISTEN` | `0.0.0.0:8081` | Where the browser and API listen. |
 | `CITADEL_OPDS_PORT` | `8080` | The OPDS port. |
 | `CITADEL_OPDS_ADDRESSES` | `all` | `all`, `local` (private networks only) or a comma-separated list of addresses. |
@@ -81,8 +81,8 @@ The container reports its health to Docker through `citadel-server health`.
 
 ## Run it from source
 
-Copy `crates/citadel-server/example-config.toml`, set the listeners and the
-public URL, and run the server:
+Copy `crates/citadel-server/example-config.toml`, set the listeners, and
+run the server:
 
 ```sh
 CONFIG=/absolute/path/to/citadel-server.toml
@@ -102,8 +102,10 @@ setup code when it starts:
 citadel_server setup_code=K7QD-M2XV-H9RW message="No administrator yet. Open http://127.0.0.1:8081 and enter this code to create the administrator account."
 ```
 
-Open the public URL, enter the code with a username and password, and you are
-the administrator. Then choose a library: make a new one in an empty folder on
+Open Citadel in a browser, enter the code with a username and password, and you are
+the administrator. Setup then shows the server's public URLs, or the line that
+sets one for the address you opened it at (see [Addresses](#addresses)); you can
+skip it. Then choose a library: make a new one in an empty folder on
 the server, or use a Calibre library already there, typed as an absolute path
 or picked from a folder browser. The choice is kept in `citadel.db`, so it
 survives restarts; nothing is written to the config file. Until a library is
@@ -275,18 +277,55 @@ client continues to use IPC. The `[api]` table is required:
 ```toml
 [api]
 listen = "127.0.0.1:8081"
-# The origin browsers use to reach Citadel, as typed in the address bar.
-publicUrl = "https://books.example.com"
+# Optional: addresses browsers use to reach Citadel, as typed in the address bar.
+publicUrls = ["https://books.example.com", "http://nas.local:8081"]
 # Optional: serve a frontend built with `bun run build:web`.
 webDirectory = "/absolute/path/to/citadel/dist"
 ```
 
-`publicUrl` is required: when it is
-https the session cookie is marked `Secure`, and state-changing requests must come
-from that origin. Citadel itself serves plain HTTP; terminate TLS at a reverse
-proxy for connections beyond a trusted local network. The address must pass the same
-explicit-address checks as OPDS. A bind failure fails startup rather than
-silently leaving only part of the configured server running.
+A bind failure fails startup rather than silently leaving only part of the
+configured server running. Citadel itself serves plain HTTP; terminate TLS at a
+reverse proxy for connections beyond a trusted local network.
+
+### Addresses
+
+People reach a home server by more than one name. The configuration lists
+Citadel's public URLs, and it is the only place they are set:
+`CITADEL_PUBLIC_URLS` in the environment (separated by commas, spaces or
+newlines), or `publicUrls` in the config file. Citadel never writes them, and
+reads them when it starts, so restart the server after changing them.
+
+```yaml
+    environment:
+      CITADEL_PUBLIC_URLS: >-
+        https://books.example.com
+        http://nas.local:8081
+```
+
+Once any are set, Citadel refuses API requests for every other host with
+`421 Misdirected Request`, the status HTTP defines for a request sent to a
+server that won't answer for that host. The web app's own files still load, so
+the page can say which address was refused. This also stops DNS rebinding.
+Without any, Citadel answers at every address. That is safe enough on a home
+network: creating the administrator needs the setup code from the log, and a
+session cookie only works at the address it was issued for, so a page
+elsewhere can't use it.
+
+Setup shows the line that sets the address you opened Citadel at, ready to
+copy, or confirms it is already listed. Administrators also see the list,
+read-only, under Settings → General. This machine's own names (`localhost`,
+`127.0.0.1`, `[::1]`) always work, so a health check or an SSH tunnel never
+locks you out; Settings lists `localhost` on the listener's port as always
+included.
+
+Each request's own address decides whether its session cookie is `Secure`, and
+a page must post to the address it was loaded from.
+
+Behind a reverse proxy, Citadel believes `Forwarded` or
+`X-Forwarded-Proto`/`X-Forwarded-Host` only from trusted proxies: by default
+this machine and private networks (`10.0.0.0/8`, `172.16.0.0/12`,
+`192.168.0.0/16`, `fc00::/7`), which covers a proxy on the same host or Docker
+network. Set `trustedProxies` (or `CITADEL_TRUSTED_PROXIES`) to narrow it.
 
 Browsers sign in with their Citadel username and sign-in password and receive an
 `HttpOnly`, `SameSite=Lax` session cookie that lasts 30 days from last use.
@@ -462,10 +501,10 @@ ttlSecs = 600            # how long an answer is reused
 perUserPerMinute = 30
 ```
 
-Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open `publicUrl` in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
+Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open the server in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 
 Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. When the library is open for writing, books can be added from the browser: drop files anywhere on the window or use Add Book, watch them upload, then review each one (or add them all with the metadata read from their files). Uploads keep going while the sheet is closed, and finished ones wait out the review window across reloads and restarts. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
 
-For frontend development, set `publicUrl` to the Vite origin (`http://localhost:1420`) and run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
+For frontend development, run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 
 OPDS acquisition routes remain available. The browser's first run uses the setup routes above: a fresh server shows the setup-code form instead of sign-in, the administrator then chooses the library on a card like the desktop's first run (typed path or folder browser, with Calibre's format upgrade offered for older libraries), and a library whose folder went missing shows the administrator a card to retry or point at its new location while readers see a notice.

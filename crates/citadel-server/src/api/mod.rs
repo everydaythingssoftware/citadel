@@ -28,6 +28,7 @@ use crate::{served::ServedLibrary, CalibreCatalogSource};
 use citadel_core::{store::CitadelStore, vault::Vault};
 
 mod account;
+pub mod addresses;
 mod edits;
 mod metadata;
 mod server;
@@ -45,7 +46,16 @@ pub use uploads::{Staging, UploadConfig};
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApiConfig {
     pub listen: SocketAddr,
-    pub public_url: String,
+    /// Removed setting, kept only to explain the migration to `publicUrls`.
+    #[serde(default)]
+    pub public_url: Option<String>,
+    /// The public URLs browsers reach Citadel at. With none, Citadel
+    /// answers at any address.
+    #[serde(default)]
+    pub public_urls: Vec<String>,
+    /// Proxies whose `Forwarded`/`X-Forwarded-*` headers are believed.
+    /// Defaults to this machine and private networks.
+    pub trusted_proxies: Option<Vec<String>>,
     pub web_directory: Option<std::path::PathBuf>,
     #[serde(default)]
     pub uploads: UploadConfig,
@@ -58,7 +68,8 @@ pub struct ApiConfig {
 pub struct ApiAccess {
     pub accounts: Arc<CitadelStore>,
     pub served: Arc<ServedLibrary>,
-    pub public_url: PublicUrl,
+    /// Where browsers may reach Citadel.
+    pub addresses: Arc<addresses::Addresses>,
     /// Seals users' provider keys in `citadel.db` (ADR 0011).
     pub secrets: Arc<Vault>,
     /// The one-time code for creating the first administrator, while none
@@ -537,7 +548,7 @@ pub fn router(
         access: Arc::new(session::Access::new(
             access.accounts,
             access.served,
-            access.public_url,
+            access.addresses,
             access.setup_code,
         )),
         work: Arc::new(Semaphore::new(64)),
@@ -547,6 +558,7 @@ pub fn router(
         secrets,
         updates,
     };
+    let address_state = state.clone();
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes()
         .merge(setup::public_routes())
@@ -602,7 +614,34 @@ pub fn router(
                 .merge(chunks),
         )
         .layer(axum::middleware::from_fn(normalize_errors))
+        .layer(axum::middleware::from_fn_with_state(
+            address_state,
+            addresses::check_address,
+        ))
         .layer(axum::middleware::from_fn(server::name_the_build))
+}
+
+impl ApiConfig {
+    /// `publicUrls`, parsed.
+    pub fn public_addresses(&self) -> Result<Vec<PublicUrl>, String> {
+        self.public_urls
+            .iter()
+            .map(|url| PublicUrl::parse(url))
+            .collect()
+    }
+
+    pub fn proxies(&self) -> Result<Vec<addresses::IpRange>, String> {
+        match &self.trusted_proxies {
+            None => Ok(addresses::default_trusted_proxies()),
+            Some(ranges) => ranges
+                .iter()
+                .map(|range| {
+                    addresses::IpRange::parse(range)
+                        .map_err(|error| format!("api.trustedProxies: {error}"))
+                })
+                .collect(),
+        }
+    }
 }
 
 const JSON_BODY_BYTES: usize = 1024 * 1024;
@@ -709,11 +748,15 @@ pub(crate) async fn start(config: &ApiConfig, router: Router) -> Result<RunningA
         .map_err(|error| format!("could not bind API {}: {error}", config.listen))?;
     let (shutdown, receiver) = tokio::sync::oneshot::channel();
     let task = tokio::spawn(async move {
-        axum::serve(listener, router)
-            .with_graceful_shutdown(async move {
-                let _ = receiver.await;
-            })
-            .await
+        // The peer's address decides whether its forwarded headers count.
+        axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            let _ = receiver.await;
+        })
+        .await
     });
     Ok(RunningApi {
         shutdown: Some(shutdown),

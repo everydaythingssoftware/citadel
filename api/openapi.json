@@ -2497,6 +2497,46 @@
         ]
       }
     },
+    "/api/server/addresses": {
+      "get": {
+        "description": "The public URLs browsers may reach Citadel at, where they are set, and the address this request used. Read-only: only the server's configuration sets them, and with none Citadel answers at any address. Administrators only.",
+        "operationId": "getServerAddresses",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerAddresses"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/server/update": {
       "get": {
         "description": "Which Citadel this server runs, and for administrators whether a newer release is out. The server asks GitHub once a day.",
@@ -5266,6 +5306,62 @@
           },
           "upgradeAvailable": {
             "type": "boolean"
+          }
+        }
+      },
+      "ServerAddress": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "An origin, such as `https://books.example.com`."
+          }
+        }
+      },
+      "ServerAddresses": {
+        "type": "object",
+        "required": [
+          "addresses",
+          "configFile",
+          "alwaysIncluded",
+          "current",
+          "currentListed"
+        ],
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerAddress"
+            },
+            "description": "The configured public URLs. Empty means Citadel answers at any\naddress."
+          },
+          "alwaysIncluded": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "This machine's own address on the listener's port, such as\n`http://localhost:8081`. It always works, whatever the list says."
+          },
+          "configFile": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The config file that sets them, when the server runs from one; null\nwhen its settings come from environment variables\n(`CITADEL_PUBLIC_URLS`)."
+          },
+          "current": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The address this request came in on."
+          },
+          "currentListed": {
+            "type": "boolean",
+            "description": "`current` is in the list (not merely allowed as this machine's)."
           }
         }
       },

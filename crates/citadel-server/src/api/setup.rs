@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use super::{
+    addresses::RequestOrigin,
     session::{self, blocking, current_user, SessionInfo, SignedIn},
     ApiFailure, ApiState,
 };
@@ -115,7 +116,8 @@ pub(super) async fn require_administrator(
     mut request: Request,
     next: Next,
 ) -> Response {
-    if session::cross_origin(&state.access, request.method(), request.headers()) {
+    let origin = request.extensions().get::<RequestOrigin>().cloned();
+    if session::cross_origin(origin.as_ref(), request.method(), request.headers()) {
         return session::cross_origin_refused();
     }
     match current_user(&state, request.headers()).await {
@@ -169,11 +171,13 @@ async fn status(State(state): State<ApiState>) -> Result<Json<SetupStatus>, ApiF
         (status = 429, body = LibraryError), (status = 503, body = LibraryError), (status = 500, body = LibraryError)))]
 async fn create_administrator(
     State(state): State<ApiState>,
+    origin: Option<Extension<RequestOrigin>>,
     method: Method,
     headers: HeaderMap,
     input: Result<Json<CreateAdministrator>, JsonRejection>,
 ) -> Response {
-    if session::cross_origin(&state.access, &method, &headers) {
+    let origin = origin.map(|Extension(origin)| origin);
+    if session::cross_origin(origin.as_ref(), &method, &headers) {
         return session::cross_origin_refused();
     }
     let Ok(Json(input)) = input else {
@@ -231,7 +235,7 @@ async fn create_administrator(
     let mut response = Json(SessionInfo::new(&user, library_access)).into_response();
     response.headers_mut().insert(
         header::SET_COOKIE,
-        state.access.public_url.cookie(&token, SESSION_TTL_SECONDS),
+        session::session_cookie(origin.as_ref(), &token, SESSION_TTL_SECONDS),
     );
     response
 }

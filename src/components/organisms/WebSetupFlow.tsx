@@ -2,16 +2,20 @@ import clsx from "clsx";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Button, Checkbox, Spinner, TextInput } from "@/components/ui";
+import type { CopyText } from "@/lib/hooks/use-copy-text";
+import { useCopyText } from "@/lib/hooks/use-copy-text";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import type { WebSetupFlow as WebSetupFlowState } from "@/lib/hooks/use-web-setup-flow";
 import { useWebSetupFlow } from "@/lib/hooks/use-web-setup-flow";
 import type {
 	FolderBrowser,
 	PathVerdict,
+	PublicUrls,
 	SetupMode,
 	SetupSnapshot,
 } from "@/lib/web-setup/machine";
 import {
+	isLocalAddress,
 	mustBeReadOnly,
 	READ_ONLY_DESCRIPTION,
 	READ_ONLY_PROMPT,
@@ -32,6 +36,7 @@ import {
 	ErrLine,
 	FolderGlyph,
 	fmt,
+	GlobeGlyph,
 	MorphCard,
 	plural,
 	RevealView,
@@ -63,6 +68,144 @@ const UpGlyph = () => (
 );
 
 /* ------------------------------ card views ------------------------------ */
+
+interface AddressViewProps {
+	urls: PublicUrls;
+	typed: string;
+	checking: boolean;
+	stillMissing: boolean;
+	error: string | null;
+	copied: boolean;
+	onType: (url: string) => void;
+	onCopy: (text: string) => void;
+	onCheck: () => void;
+	onDone: () => void;
+}
+
+const CopyGlyph = () => (
+	<svg
+		width="13"
+		height="13"
+		viewBox="0 0 16 16"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.4"
+		strokeLinejoin="round"
+		aria-hidden="true"
+	>
+		<rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+		<path d="M10.5 5.5v-2A1.5 1.5 0 0 0 9 2H4a1.5 1.5 0 0 0-1.5 1.5V9A1.5 1.5 0 0 0 4 10.5h1.5" />
+	</svg>
+);
+
+/** The server's public URLs, or the line that sets one, before the library. */
+const AddressView = ({
+	urls,
+	typed,
+	checking,
+	stillMissing,
+	error,
+	copied,
+	onType,
+	onCopy,
+	onCheck,
+	onDone,
+}: AddressViewProps) => {
+	const configured = urls.listed.length > 0;
+	if (configured) {
+		return (
+			<>
+				<h1 className={card.title}>Public URLs</h1>
+				<p className={card.lede}>
+					Citadel only accepts traffic at these URLs: you can add more to your
+					configuration.
+				</p>
+				<ul className={styles.urlList}>
+					{urls.listed.map((url) => (
+						<li key={url}>
+							<GlobeGlyph />
+							<span className={styles.urlListText}>{url}</span>
+							{url === urls.current && (
+								<span className={styles.currentPill}>current</span>
+							)}
+						</li>
+					))}
+				</ul>
+				<div className={card.actions}>
+					<Button
+						variant="primary"
+						fullWidth
+						data-autofocus="true"
+						onClick={onDone}
+					>
+						Continue
+					</Button>
+				</div>
+			</>
+		);
+	}
+	const local = urls.current === null || isLocalAddress(urls.current);
+	const current = urls.current ?? "";
+	return (
+		<>
+			<h1 className={card.title}>Public URL</h1>
+			<div className={styles.addressCopy}>
+				<p>
+					Optional: to have Citadel accept traffic only at this URL and
+					localhost, add it to <code>CITADEL_PUBLIC_URLS</code> (or{" "}
+					<code>publicUrls</code> in the config file) and restart Citadel.
+				</p>
+			</div>
+			{local ? (
+				<div className={styles.typedAddress}>
+					<TextInput
+						label="URL others will use"
+						name="publicUrl"
+						type="url"
+						inputMode="url"
+						autoCapitalize="none"
+						spellCheck={false}
+						value={typed}
+						onChange={(event) => onType(event.currentTarget.value)}
+					/>
+				</div>
+			) : (
+				<div className={styles.currentUrl}>
+					<span className={styles.currentUrlLabel}>Current URL</span>
+					<div className={styles.currentUrlRow}>
+						<code className={styles.currentUrlValue}>{current}</code>
+						<Button
+							variant="subtle"
+							size="sm"
+							className={styles.copyButton}
+							aria-label={copied ? "Copied" : "Copy URL"}
+							onClick={() => onCopy(current)}
+						>
+							{copied ? "Copied" : <CopyGlyph />}
+						</Button>
+					</div>
+				</div>
+			)}
+			{stillMissing && (
+				<ErrLine text="Citadel still has no public URLs. Restart it after setting CITADEL_PUBLIC_URLS, then continue." />
+			)}
+			{error && <ErrLine text={error} />}
+			<div className={styles.pairActions}>
+				<Button disabled={checking} onClick={onDone}>
+					Skip
+				</Button>
+				<Button
+					variant="primary"
+					disabled={checking}
+					data-autofocus={local ? undefined : "true"}
+					onClick={onCheck}
+				>
+					{checking ? <BusyLabel text="Checking…" /> : "Continue"}
+				</Button>
+			</div>
+		</>
+	);
+};
 
 const LoadingView = () => (
 	<>
@@ -573,6 +716,7 @@ const resolveView = (
 	send: WebSetupFlowState["send"],
 	announce: (text: string) => void,
 	reduced: boolean,
+	copy: CopyText,
 ): ResolvedView | null => {
 	const { step } = snapshot;
 	const hasFound =
@@ -584,6 +728,26 @@ const resolveView = (
 				label: "Checking the server",
 				hasBack: false,
 				node: <LoadingView />,
+			};
+		case "address":
+			return {
+				key: "address",
+				label: "Public URL",
+				hasBack: false,
+				node: (
+					<AddressView
+						urls={step.urls}
+						typed={step.typed}
+						checking={step.checking}
+						stillMissing={step.stillMissing}
+						error={step.error}
+						copied={copy.copied}
+						onType={(url) => send({ type: "ADDRESS_TYPED", url })}
+						onCopy={copy.copy}
+						onCheck={() => send({ type: "ADDRESS_CHECK" })}
+						onDone={() => send({ type: "ADDRESS_DONE" })}
+					/>
+				),
 			};
 		case "unavailable":
 			return {
@@ -736,7 +900,8 @@ export const WebSetupFlow = ({ onFinished }: WebSetupFlowProps) => {
 	const announce = useCallback((text: string) => setAnnounced(text), []);
 
 	const done = snapshot.step.id === "done";
-	const resolved = resolveView(snapshot, send, announce, reduced);
+	const copy = useCopyText();
+	const resolved = resolveView(snapshot, send, announce, reduced, copy);
 
 	useEffect(() => {
 		if (done) return;

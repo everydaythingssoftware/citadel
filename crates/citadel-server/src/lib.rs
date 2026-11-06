@@ -35,6 +35,10 @@ const UPLOADS_DIRECTORY: &str = "uploads";
 pub struct ServerConfig {
     /// Removed setting, kept only to explain the migration.
     library_path: Option<PathBuf>,
+    /// The file these settings came from; `None` when they came from the
+    /// environment.
+    #[serde(skip)]
+    pub config_file: Option<PathBuf>,
     pub state_directory: Option<PathBuf>,
     /// Folders where libraries are mounted, each a library itself or holding
     /// one per subfolder; setup offers what it finds there.
@@ -426,7 +430,7 @@ pub fn load_config(path: &Path) -> Result<ServerConfig, String> {
         .map_err(|error| format!("could not read config {}: {error}", path.display()))?;
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| format!("config {} is not valid UTF-8", path.display()))?;
-    let config: ServerConfig = toml::from_str(text).map_err(|error| {
+    let mut config: ServerConfig = toml::from_str(text).map_err(|error| {
         let message = error.to_string();
         if message.contains("missing field `api`") {
             format!(
@@ -439,6 +443,7 @@ pub fn load_config(path: &Path) -> Result<ServerConfig, String> {
         }
     })?;
     validate_config(&config)?;
+    config.config_file = Some(path.to_path_buf());
     Ok(config)
 }
 
@@ -448,6 +453,13 @@ pub(crate) fn validate_config(config: &ServerConfig) -> Result<(), String> {
             "libraryPath has been removed: Citadel keeps the library it serves in citadel.db. \
              Delete the line, then set the library up in the browser as the administrator, or \
              run `citadel-server --config <path> libraries add <absolute path>`."
+                .into(),
+        );
+    }
+    if config.api.public_url.is_some() {
+        return Err(
+            "api.publicUrl has been replaced by publicUrls, a list: \
+             publicUrls = [\"https://books.example.com\"]. Without it, Citadel answers at any address."
                 .into(),
         );
     }
@@ -489,7 +501,8 @@ pub(crate) fn validate_config(config: &ServerConfig) -> Result<(), String> {
     if !api.listen.ip().is_unspecified() {
         citadel_opds::network::validate_explicit_addresses(&[api.listen.ip().to_string()], true)?;
     }
-    api::PublicUrl::parse(&api.public_url)?;
+    api.public_addresses()?;
+    api.proxies()?;
     api.uploads.validate()?;
     api.metadata.validate()?;
     if let Some(directory) = &api.web_directory {
@@ -597,6 +610,16 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         ServedLibrary::new(accounts.clone(), source.clone(), state_directory.clone())
             .with_library_roots(config.library_roots.clone()),
     );
+    let addresses = api::addresses::Addresses::new(
+        config.api.public_addresses()?,
+        config.api.proxies()?,
+        api::PublicUrl::parse(&format!("http://localhost:{}", config.api.listen.port())).ok(),
+        config
+            .config_file
+            .as_ref()
+            .map(|path| path.display().to_string()),
+    );
+    let open_at = browser_address(&config, &addresses);
     match served.open_registered()? {
         Some(info) if info.available => println!(
             "citadel_server library={} path={}",
@@ -610,8 +633,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
             info.problem.unwrap_or_default()
         ),
         None => println!(
-            "citadel_server library=none message=\"No library yet; an administrator sets one up at {}\"",
-            config.api.public_url
+            "citadel_server library=none message=\"No library yet; an administrator sets one up at {open_at}\""
         ),
     }
     let setup_code = if accounts
@@ -622,9 +644,8 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     } else {
         let code = generate_setup_code();
         println!(
-            "citadel_server setup_code={code} message=\"No administrator yet. Open {} and enter \
-             this code to create the administrator account.\"",
-            config.api.public_url
+            "citadel_server setup_code={code} message=\"No administrator yet. Open {open_at} and \
+             enter this code to create the administrator account.\""
         );
         Some(code)
     };
@@ -655,7 +676,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     let access = api::ApiAccess {
         accounts: accounts.clone(),
         served: served.clone(),
-        public_url: api::PublicUrl::parse(&config.api.public_url)?,
+        addresses: addresses.clone(),
         secrets,
         setup_code,
         updates: updates::Updates::new(
@@ -695,9 +716,19 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     );
     let mut api = match api::start(&config.api, router).await {
         Ok(api) => {
+            let known: Vec<String> = addresses
+                .all()
+                .into_iter()
+                .map(|address| address.origin().to_string())
+                .collect();
             println!(
-                "citadel_server api=http://{} public_url={}",
-                config.api.listen, config.api.public_url
+                "citadel_server api=http://{} public_urls={}",
+                config.api.listen,
+                if known.is_empty() {
+                    "any".to_string()
+                } else {
+                    known.join(",")
+                }
             );
             api
         }
@@ -745,6 +776,23 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     let stopped = service.stop().await;
     log_status(&stopped);
     Ok(())
+}
+
+/// Where to tell people to open Citadel: the first known address, else the
+/// listener, which in a container means this machine's own address.
+fn browser_address(config: &ServerConfig, addresses: &api::addresses::Addresses) -> String {
+    if let Some(address) = addresses.all().into_iter().next() {
+        return address.origin().to_string();
+    }
+    let listen = config.api.listen;
+    if listen.ip().is_unspecified() {
+        format!(
+            "http://localhost:{port} (or this server's address, port {port})",
+            port = listen.port()
+        )
+    } else {
+        format!("http://{listen}")
+    }
 }
 
 /// Starts OPDS once there is a library to serve and a reader to serve it to.
@@ -908,17 +956,41 @@ mod tests {
     }
 
     const API: &str =
-        "[api]\nlisten = \"127.0.0.1:8081\"\npublicUrl = \"https://books.example.com\"\n";
+        "[api]\nlisten = \"127.0.0.1:8081\"\npublicUrls = [\"https://books.example.com\"]\n";
     const SHARING: &str = "[sharing]\nport = 8080\ntarget = \"localNetworks\"\n";
 
     #[test]
-    fn api_is_required_and_needs_a_public_url_and_a_valid_listener() {
+    fn api_is_required_and_needs_valid_addresses_and_a_listener() {
         let error = load_config_text(SHARING).unwrap_err();
         assert!(error.contains("[api] table is required"), "{error}");
-        assert!(toml::from_str::<ServerConfig>(&format!(
+        // No public URLs: Citadel answers at any address.
+        let without_addresses = toml::from_str::<ServerConfig>(&format!(
             "{SHARING}[api]\nlisten = \"127.0.0.1:8081\"\n"
         ))
-        .is_err());
+        .unwrap();
+        assert!(validate_config(&without_addresses).is_ok());
+        let listed = toml::from_str::<ServerConfig>(&format!(
+            "{SHARING}[api]\nlisten = \"127.0.0.1:8081\"\npublicUrls = [\"https://books.example.com\", \"http://nas.local:8081\"]\ntrustedProxies = [\"172.18.0.0/16\"]\n"
+        ))
+        .unwrap();
+        assert!(validate_config(&listed).is_ok());
+        assert_eq!(listed.api.public_addresses().unwrap().len(), 2);
+        let renamed = toml::from_str::<ServerConfig>(&format!(
+            "{SHARING}[api]\nlisten = \"127.0.0.1:8081\"\npublicUrl = \"https://books.example.com\"\n"
+        ))
+        .unwrap();
+        let error = validate_config(&renamed).unwrap_err();
+        assert!(error.contains("replaced by publicUrls"), "{error}");
+        for invalid in [
+            "publicUrls = [\"nas.local\"]",
+            "trustedProxies = [\"proxy\"]",
+        ] {
+            let config = toml::from_str::<ServerConfig>(&format!(
+                "{SHARING}[api]\nlisten = \"127.0.0.1:8081\"\n{invalid}\n"
+            ))
+            .unwrap();
+            assert!(validate_config(&config).is_err(), "{invalid}");
+        }
         let with_api = format!("{SHARING}{API}");
         assert!(validate_config(&toml::from_str::<ServerConfig>(&with_api).unwrap()).is_ok());
         for everywhere in ["0.0.0.0:8081", "[::]:8081"] {

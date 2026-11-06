@@ -13,6 +13,7 @@ import {
 	ServerProviderKey,
 	serverKeyStatus,
 } from "@/components/organisms/ServerProviderKey";
+import { GlobeGlyph } from "@/components/organisms/SetupCard";
 import classes from "@/components/organisms/SettingsPanes.module.css";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
 import {
@@ -21,9 +22,12 @@ import {
 	SegmentedControl,
 	Switch,
 	TextInput,
+	Tooltip,
 } from "@/components/ui";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
+import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
+import { useServerAddresses } from "@/lib/hooks/use-server-addresses";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
@@ -273,6 +277,7 @@ const GeneralTab = () => {
 	const platform = usePlatform();
 	const supportsAutoUpdates = platform.capabilities.supportsAutoUpdates;
 	const softwareUpdate = useSoftwareUpdate();
+	const administrator = useBrowserSessionControls()?.administrator ?? false;
 
 	const applyTheme = useCallback(
 		(value: string) => {
@@ -333,9 +338,118 @@ const GeneralTab = () => {
 					)}
 				</div>
 			)}
+			{administrator && <ServerAddressesSection />}
 		</div>
 	);
 };
+
+/** Where people reach this server. Set by whoever runs it, not from here. */
+const ServerAddressesSection = () => {
+	const { addresses, error } = useServerAddresses();
+	const headingId = useId();
+	const always = addresses?.alwaysIncluded ?? null;
+	const listed =
+		addresses?.addresses.filter((address) => address.url !== always) ?? [];
+	const current = addresses?.current ?? null;
+	const where = addresses?.configFile
+		? `add publicUrls to ${addresses.configFile}`
+		: "set CITADEL_PUBLIC_URLS in the server’s environment";
+	return (
+		<section aria-labelledby={headingId}>
+			<h3 id={headingId} className={classes.sectionTitle}>
+				{addresses && listed.length === 0
+					? "Public URLs"
+					: "Configured public URLs"}
+			</h3>
+			{addresses &&
+				(listed.length > 0 ? (
+					<>
+						<p className={classes.paneNote}>
+							Only traffic sent to these URLs is accepted by Citadel. To add
+							more, update the server’s configuration.
+						</p>
+						<ul className={classes.urlWell}>
+							{listed.map((address) => (
+								<PublicUrlLine
+									key={address.url}
+									url={address.url}
+									current={address.url === current}
+								/>
+							))}
+							{always && (
+								<PublicUrlLine
+									url={always}
+									current={always === current}
+									always
+								/>
+							)}
+						</ul>
+					</>
+				) : (
+					<p className={classes.paneNote}>
+						None are configured, so Citadel accepts traffic at any URL. To limit
+						it, {where}, then restart the server.
+					</p>
+				))}
+			{error && (
+				<p role="alert" className={classes.inlineNote} data-tone="error">
+					{error}
+				</p>
+			)}
+		</section>
+	);
+};
+
+interface PublicUrlLineProps {
+	url: string;
+	current: boolean;
+	always?: boolean;
+}
+
+const PublicUrlLine = ({
+	url,
+	current,
+	always = false,
+}: PublicUrlLineProps) => (
+	<li className={classes.urlLine} data-always={always || undefined}>
+		<GlobeGlyph />
+		<span className={classes.urlText}>{url}</span>
+		{current && <span className={classes.currentPill}>current</span>}
+		{always && (
+			<Tooltip label="Always included" openDelay={150}>
+				<button
+					type="button"
+					className={classes.alwaysInfo}
+					aria-label="Always included"
+				>
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 16 16"
+						fill="none"
+						aria-hidden="true"
+					>
+						<circle
+							cx="8"
+							cy="8"
+							r="7.25"
+							stroke="currentColor"
+							strokeOpacity="0.55"
+							strokeWidth="1"
+						/>
+						<circle cx="8" cy="4.9" r="0.95" fill="currentColor" />
+						<path
+							d="M8 7.2v4.4"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+						/>
+					</svg>
+				</button>
+			</Tooltip>
+		)}
+	</li>
+);
 
 interface LibraryTabProps {
 	closeSettings: () => void;

@@ -204,6 +204,86 @@
 	color: var(--ctd-danger-border);
 }
 
+.sectionTitle {
+	margin: 0 0.125rem 0.25rem;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
+/* Public URLs: a sunken, read-only well, like the one in the setup step. */
+.urlWell {
+	margin: 0;
+	padding: 0.25rem 0;
+	list-style: none;
+	background: var(--ctd-bg-deep);
+	border: 1px solid var(--ctd-border);
+	border-radius: var(--ctd-radius-control);
+	box-shadow: var(--ctd-field-inner-shadow);
+}
+
+.urlLine {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5625rem;
+	min-width: 0;
+	padding: 0.4375rem 0.75rem;
+}
+
+.urlLine svg {
+	flex: none;
+	color: var(--ctd-ink-soft);
+}
+
+.urlText {
+	min-width: 0;
+	overflow-wrap: break-word;
+	font-family: var(--ctd-font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+	font-size: 0.78125rem;
+	color: var(--ctd-ink);
+}
+
+.urlLine[data-always] .urlText {
+	color: var(--ctd-ink-soft);
+}
+
+.currentPill {
+	flex: none;
+	padding: 0.1875rem 0.4375rem 0.25rem;
+	border-radius: var(--ctd-radius-capsule);
+	background-color: color-mix(in oklch, var(--ctd-brass) 16%, transparent);
+	color: color-mix(in oklch, var(--ctd-brass) 80%, var(--ctd-ink));
+	font-size: 0.78125rem;
+	font-weight: 600;
+	font-variant: all-small-caps;
+	letter-spacing: 0.05em;
+	line-height: 1;
+}
+
+.alwaysInfo {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	width: 1rem;
+	height: 1rem;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	color: var(--ctd-ink-soft);
+	cursor: help;
+}
+
+.alwaysInfo svg {
+	display: block;
+}
+
+.alwaysInfo:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
 .paneNote {
 	margin: 0 0.125rem 0.625rem;
 	line-height: 1.45;

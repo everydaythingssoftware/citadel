@@ -5,6 +5,30 @@ export type SessionInfo = components["schemas"]["SessionInfo"];
 /** Whether the server has an administrator and a library yet; public. */
 export type SetupStatus = components["schemas"]["SetupStatus"];
 
+/**
+ * The server isn't set up for the address this page was opened at (421).
+ * The message names the address and how to add it.
+ */
+export class WrongAddressError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "WrongAddressError";
+	}
+}
+
+const MISDIRECTED = 421;
+
+const failure = (
+	error: { message?: string } | undefined,
+	response: Response,
+	fallback: string,
+): Error =>
+	response.status === MISDIRECTED
+		? new WrongAddressError(
+				error?.message ?? "Citadel isn't set up for this address.",
+			)
+		: new Error(error?.message ?? `${fallback} (${response.status})`);
+
 /** Browser sign-in against the serving origin; the session lives in an HttpOnly cookie. */
 export interface BrowserSession {
 	/** The signed-in user, or null when the browser has no valid session. */
@@ -31,19 +55,14 @@ export const createBrowserSession = (origin: string): BrowserSession => {
 			const { data, error, response } = await client.GET("/api/session");
 			if (response.status === 401) return null;
 			if (error || !data)
-				throw new Error(
-					error?.message ?? `Could not reach Citadel (${response.status})`,
-				);
+				throw failure(error, response, "Could not reach Citadel");
 			return data;
 		},
 		signIn: async (username, password) => {
 			const { data, error, response } = await client.POST("/api/session", {
 				body: { username, password },
 			});
-			if (error || !data)
-				throw new Error(
-					error?.message ?? `Could not sign in (${response.status})`,
-				);
+			if (error || !data) throw failure(error, response, "Could not sign in");
 			return data;
 		},
 		signOut: async () => {
@@ -56,9 +75,7 @@ export const createBrowserSession = (origin: string): BrowserSession => {
 		setupStatus: async () => {
 			const { data, error, response } = await client.GET("/api/setup");
 			if (error || !data)
-				throw new Error(
-					error?.message ?? `Could not reach Citadel (${response.status})`,
-				);
+				throw failure(error, response, "Could not reach Citadel");
 			return data;
 		},
 		createAdministrator: async (setupCode, username, password) => {
@@ -67,10 +84,7 @@ export const createBrowserSession = (origin: string): BrowserSession => {
 				{ body: { setupCode, username, password } },
 			);
 			if (error || !data)
-				throw new Error(
-					error?.message ??
-						`Could not create the administrator (${response.status})`,
-				);
+				throw failure(error, response, "Could not create the administrator");
 			return data;
 		},
 	};

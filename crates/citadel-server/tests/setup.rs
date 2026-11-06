@@ -42,6 +42,20 @@ fn fresh_with_roots(
     code: Option<&str>,
     roots: Vec<std::path::PathBuf>,
 ) -> Server {
+    fresh_with(
+        directory,
+        code,
+        roots,
+        api::addresses::Addresses::fixed(vec![api::PublicUrl::parse(PUBLIC_URL).unwrap()]),
+    )
+}
+
+fn fresh_with(
+    directory: &std::path::Path,
+    code: Option<&str>,
+    roots: Vec<std::path::PathBuf>,
+    addresses: std::sync::Arc<api::addresses::Addresses>,
+) -> Server {
     let state = directory.join("state");
     std::fs::create_dir_all(&state).unwrap();
     let accounts = Arc::new(CitadelStore::open(&state.join("citadel.db")).unwrap());
@@ -55,7 +69,7 @@ fn fresh_with_roots(
     let access = api::ApiAccess {
         accounts: accounts.clone(),
         served: served.clone(),
-        public_url: api::PublicUrl::parse(PUBLIC_URL).unwrap(),
+        addresses,
         secrets: Arc::new(
             citadel_core::vault::Vault::open_or_create(&state.join("secrets")).unwrap(),
         ),
@@ -67,7 +81,14 @@ fn fresh_with_roots(
         api::Metadata::new(api::MetadataConfig::default())
             .expect("metadata client builds without a network"),
     );
-    let router = api::router(source.clone(), &service, access, None, staging, metadata);
+    let router = through_proxy(api::router(
+        source.clone(),
+        &service,
+        access,
+        None,
+        staging,
+        metadata,
+    ));
     Server {
         router,
         accounts,
@@ -407,6 +428,7 @@ async fn readers_never_reach_the_setup_routes() {
             Some(json!({"mode": "adopt", "path": "/"})),
         ),
         ("POST", "/api/setup/library/upgrade", None),
+        ("GET", "/api/server/addresses", None),
         ("POST", "/api/setup/library/reopen", None),
     ] {
         let (status, _, error) =
@@ -901,6 +923,231 @@ async fn a_library_can_be_served_read_only_and_stays_so_after_a_restart() {
         restarted.source.read_only(),
         "the choice survives a restart"
     );
+}
+
+/// How a browser reaches the test server: through a TLS proxy at
+/// `PUBLIC_URL`, which sends `Host` and `X-Forwarded-Proto` on every request.
+fn through_proxy(router: axum::Router) -> axum::Router {
+    router.layer(axum::middleware::map_request(
+        |mut request: axum::http::Request<Body>| async move {
+            let headers = request.headers_mut();
+            let url = PUBLIC_URL.split_once("://").unwrap();
+            headers
+                .entry("host")
+                .or_insert(axum::http::HeaderValue::from_static(url.1));
+            headers
+                .entry("x-forwarded-proto")
+                .or_insert(axum::http::HeaderValue::from_static(url.0));
+            request
+        },
+    ))
+}
+
+/// A request as a browser at `origin` sends it, past any proxy.
+async fn from_address(
+    router: &Router,
+    origin: &str,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+    cookie: Option<&str>,
+) -> (StatusCode, Value) {
+    let (scheme, host) = origin.split_once("://").unwrap();
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("host", host)
+        .header("x-forwarded-proto", scheme)
+        .header("origin", origin);
+    if let Some(cookie) = cookie {
+        builder = builder.header("cookie", cookie);
+    }
+    let request = match body {
+        Some(body) => builder
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string())),
+        None => builder.body(Body::empty()),
+    }
+    .unwrap();
+    let response = router.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned())),
+    )
+}
+
+#[tokio::test]
+async fn without_public_urls_every_address_is_answered() {
+    let directory = tempfile::tempdir().unwrap();
+    let server = fresh_with(
+        directory.path(),
+        Some(SETUP_CODE),
+        Vec::new(),
+        api::addresses::Addresses::fixed(Vec::new()),
+    );
+    let administrator = bootstrap(&server.router).await;
+    for origin in ["http://nas.local:8081", "http://192.168.1.20:8081"] {
+        let (status, _) =
+            from_address(&server.router, origin, "GET", "/api/setup", None, None).await;
+        assert_eq!(status, StatusCode::OK, "{origin}");
+    }
+    let (status, listed) = from_address(
+        &server.router,
+        "http://nas.local:8081",
+        "GET",
+        "/api/server/addresses",
+        None,
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(
+        listed,
+        json!({
+            "addresses": [],
+            "configFile": null,
+            "alwaysIncluded": null,
+            "current": "http://nas.local:8081",
+            "currentListed": false,
+        })
+    );
+    // Nothing in the browser sets or keeps an address.
+    for path in [
+        "/api/setup/address",
+        "/api/server/addresses",
+        "/api/server/addresses/remove",
+    ] {
+        let (status, _) = from_address(
+            &server.router,
+            "http://nas.local:8081",
+            "POST",
+            path,
+            Some(json!({"url": "http://nas.local:8081"})),
+            Some(&administrator),
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK, "{path}");
+    }
+}
+
+#[tokio::test]
+async fn configured_public_urls_refuse_every_other_address() {
+    let directory = tempfile::tempdir().unwrap();
+    let server = fresh_with(
+        directory.path(),
+        Some(SETUP_CODE),
+        Vec::new(),
+        api::addresses::Addresses::fixed(vec![api::PublicUrl::parse(PUBLIC_URL).unwrap()]),
+    );
+    let administrator = bootstrap(&server.router).await;
+    let (status, refused) = from_address(
+        &server.router,
+        "http://nas.local:8081",
+        "GET",
+        "/api/setup",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST, "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(message.contains("http://nas.local:8081"), "{refused}");
+    assert!(message.contains("configuration"), "{refused}");
+    // This machine's own names always work, and health checks anywhere.
+    for origin in ["http://localhost:8081", "http://127.0.0.1:8081"] {
+        let (status, _) =
+            from_address(&server.router, origin, "GET", "/api/setup", None, None).await;
+        assert_eq!(status, StatusCode::OK, "{origin}");
+    }
+    let (status, _) = from_address(
+        &server.router,
+        "http://nas.local:8081",
+        "GET",
+        "/api/version",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, listed) = from_address(
+        &server.router,
+        PUBLIC_URL,
+        "GET",
+        "/api/server/addresses",
+        None,
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed["addresses"], json!([{"url": PUBLIC_URL}]));
+    assert_eq!(listed["current"], PUBLIC_URL);
+    assert_eq!(listed["currentListed"], true);
+}
+
+#[tokio::test]
+async fn sign_in_cookies_follow_the_address_used() {
+    let directory = tempfile::tempdir().unwrap();
+    let server = fresh_with(
+        directory.path(),
+        Some(SETUP_CODE),
+        Vec::new(),
+        api::addresses::Addresses::fixed(vec![
+            api::PublicUrl::parse(PUBLIC_URL).unwrap(),
+            api::PublicUrl::parse("http://nas.local:8081").unwrap(),
+        ]),
+    );
+    bootstrap(&server.router).await;
+    for (origin, secure) in [(PUBLIC_URL, true), ("http://nas.local:8081", false)] {
+        let (scheme, host) = origin.split_once("://").unwrap();
+        let response = server
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/session")
+                    .header("host", host)
+                    .header("x-forwarded-proto", scheme)
+                    .header("origin", origin)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"username": "phil", "password": "a long password"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{origin}");
+        let cookie = response.headers()["set-cookie"]
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(cookie.contains("; Secure"), secure, "{origin}: {cookie}");
+    }
+    // A page at one address can't post to Citadel at another.
+    let response = server
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/session")
+                .header("host", "nas.local:8081")
+                .header("x-forwarded-proto", "http")
+                .header("origin", PUBLIC_URL)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"username": "phil", "password": "a long password"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[cfg(unix)]

@@ -10,9 +10,9 @@ import type {
  * CDL-39 web setup — pure state machine (functional core).
  *
  * The browser's counterpart to the desktop first-run flow, for the server an
- * administrator has just created themselves on: choose a folder on the
- * server, by typing or browsing, see what is there, then create a library
- * or adopt the one found. `transition(snapshot, event)` returns the next
+ * administrator has just created themselves on: see the server's public URLs,
+ * or the line that sets one; then choose a folder on the server, by typing or
+ * browsing, see what is there, and create a library or adopt the one found. `transition(snapshot, event)` returns the next
  * snapshot plus one-shot effects for the shell (`use-web-setup-flow.ts`),
  * which talks to the server through LibraryCatalog's setup operations.
  */
@@ -53,8 +53,42 @@ export type PathVerdict =
 	| { kind: "crossover"; message: string }
 	| { kind: "error"; message: string };
 
+/** What the server says about its public URLs, for the address step. */
+export interface PublicUrls {
+	/** The configured public URLs; empty means any address works. */
+	listed: string[];
+	/** The address this page is using, as the server saw it. */
+	current: string | null;
+	/** The config file that sets them, or null for environment variables. */
+	configFile: string | null;
+}
+
+const LOOPBACK_HOST = /^(localhost|.+\.localhost|127(\.\d{1,3}){3}|::1)$/i;
+
+/** This machine's own name, which only works on the server itself. */
+export const isLocalAddress = (url: string): boolean => {
+	try {
+		return LOOPBACK_HOST.test(new URL(url).hostname.replace(/^\[|\]$/g, ""));
+	} catch {
+		return false;
+	}
+};
+
 export type SetupStep =
 	| { id: "loading" }
+	| {
+			/** Before the library: the server's public URLs, or how to set one. */
+			id: "address";
+			urls: PublicUrls;
+			/** What the administrator typed, when the page is on localhost. */
+			typed: string;
+			checking: boolean;
+			/** Continue checked, and the server still has none. */
+			stillMissing: boolean;
+			error: string | null;
+			/** Where setup goes next. */
+			next: SetupStep;
+	  }
 	| { id: "unavailable"; message: string }
 	| { id: "chooser" }
 	| {
@@ -108,7 +142,8 @@ export type SetupEffect =
 	| { kind: "inspect"; path: string }
 	| { kind: "list"; path: string | null }
 	| { kind: "commit"; request: ChooseLibrary }
-	| { kind: "reopen" };
+	| { kind: "reopen" }
+	| { kind: "load-addresses" };
 
 export type SetupEvent =
 	| {
@@ -116,6 +151,8 @@ export type SetupEvent =
 			library: ServedLibrary | null;
 			browseRoot: string;
 			found: FoundLibraries;
+			/** The public URLs, when the server could say; setup skips the step without them. */
+			publicUrls: PublicUrls | null;
 	  }
 	| { type: "STATUS_FAILED"; message: string }
 	| { type: "RETRY" }
@@ -145,6 +182,13 @@ export type SetupEvent =
 	| { type: "COMMITTED"; library: ServedLibrary }
 	| { type: "COMMIT_FAILED"; message: string }
 	| { type: "SHOW_BOOKS" }
+	| { type: "ADDRESS_TYPED"; url: string }
+	/** Continue while none is configured: ask the server again. */
+	| { type: "ADDRESS_CHECK" }
+	| { type: "ADDRESSES_LOADED"; urls: PublicUrls }
+	| { type: "ADDRESSES_FAILED"; message: string }
+	/** Skip, or Continue once one is configured. */
+	| { type: "ADDRESS_DONE" }
 	| { type: "BACK" }
 	| { type: "ESCAPE" };
 
@@ -268,18 +312,61 @@ export const transition = (
 					found: event.found,
 					library: event.library,
 				};
-				if (!event.library) return to(base, { id: "chooser" });
-				if (event.library.available) return to(base, { id: "done" });
-				return to(base, {
-					id: "broken",
-					library: event.library,
-					retry: "idle",
-				});
+				const next: SetupStep = !event.library
+					? { id: "chooser" }
+					: event.library.available
+						? { id: "done" }
+						: { id: "broken", library: event.library, retry: "idle" };
+				if (!event.library && event.publicUrls)
+					return to(base, {
+						id: "address",
+						urls: event.publicUrls,
+						typed: "",
+						checking: false,
+						stillMissing: false,
+						error: null,
+						next,
+					});
+				return to(base, next);
 			}
 			if (event.type === "STATUS_FAILED") {
 				return to(snapshot, { id: "unavailable", message: event.message });
 			}
 			return same(snapshot);
+		}
+
+		case "address": {
+			switch (event.type) {
+				case "ADDRESS_TYPED":
+					return to(snapshot, {
+						...step,
+						typed: event.url,
+						stillMissing: false,
+					});
+				case "ADDRESS_CHECK":
+					if (step.checking) return same(snapshot);
+					return to(snapshot, { ...step, checking: true, error: null }, [
+						{ kind: "load-addresses" },
+					]);
+				case "ADDRESSES_LOADED":
+					return to(snapshot, {
+						...step,
+						urls: event.urls,
+						checking: false,
+						stillMissing: event.urls.listed.length === 0,
+					});
+				case "ADDRESSES_FAILED":
+					return to(snapshot, {
+						...step,
+						checking: false,
+						error: event.message,
+					});
+				case "ADDRESS_DONE":
+					if (step.checking) return same(snapshot);
+					return to(snapshot, step.next);
+				default:
+					return same(snapshot);
+			}
 		}
 
 		case "unavailable": {

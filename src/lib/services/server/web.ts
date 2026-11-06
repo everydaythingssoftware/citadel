@@ -39,6 +39,16 @@ export const createWebServerService = (
 				);
 			return toUpdate(data);
 		},
+		addresses: async () => {
+			const { data, error, response } = await client.GET(
+				"/api/server/addresses",
+			);
+			if (error || !data)
+				throw new Error(
+					error?.message ?? `Could not read the addresses (${response.status})`,
+				);
+			return data;
+		},
 	};
 };
 

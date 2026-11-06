@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createBrowserSession } from ".";
+import { createBrowserSession, WrongAddressError } from ".";
 
 const json = (data: unknown, status = 200) =>
 	new Response(JSON.stringify(data), {
@@ -142,5 +142,26 @@ describe("browser session", () => {
 			username: "phil",
 			password: "a long password",
 		});
+	});
+
+	it("tells an unlisted address apart from an unreachable server", async () => {
+		const refusal =
+			"http://books.local:8081 isn't one of this server's addresses. An administrator can add it under Settings.";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				json({ code: "invalidArgument", message: refusal }, 421),
+			),
+		);
+		const client = createBrowserSession("http://books.local:8081");
+		const failure = await client.setupStatus().catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(WrongAddressError);
+		expect((failure as Error).message).toBe(refusal);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => json({ code: "unavailable", message: "Busy" }, 503)),
+		);
+		const other = await client.setupStatus().catch((error: unknown) => error);
+		expect(other).not.toBeInstanceOf(WrongAddressError);
 	});
 });

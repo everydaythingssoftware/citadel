@@ -6,7 +6,9 @@
 # run, with the code the server prints when it starts.
 [api]
 listen = "127.0.0.1:8081"
-publicUrl = "http://127.0.0.1:8081"
+# Optional: the public URLs browsers reach Citadel at. Once set, other
+# addresses are refused; without any, Citadel answers at every address.
+# publicUrls = ["https://books.example.com", "http://nas.local:8081"]
 # Optional: serve a frontend built with `bun run build:web`.
 # webDirectory = "/absolute/path/to/citadel/dist"
 
