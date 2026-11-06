@@ -846,7 +846,7 @@ const THEME = /-(light|dark)\.png$/;
 const AREAS = [
 	["Sign-in & setup", /^(0[12]|20|3\d)-|setup|signin/],
 	["Library", /^(0[3-6]|17|2[12])-|books-grid|search/],
-	["Book editor", /^(0[7-9]|16|23)-|book-edit/],
+	["Book editor", /^(0[7-9]|1[68]|23)-|book-edit|book-finished/],
 	["Lists", /^(1[0-35]|24)-|authors|series|tags|publishers/],
 	[
 		"Settings & libraries",
