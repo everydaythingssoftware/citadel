@@ -1,7 +1,5 @@
 import {
 	commands,
-	type ImportableBookMetadata,
-	type ImportableFile,
 	type LibraryBook,
 	type LibraryBookQuery,
 	type LibraryError,
@@ -278,32 +276,6 @@ export const createTauriLibrary = (): Library => {
 		},
 		getDefaultFilePathForBook: (bookId) => {
 			return bookFilePath.get(bookId)?.localPath;
-		},
-
-		checkFileImportable: async (filePath: string) => {
-			const result =
-				(await commands.clbQueryIsFileImportable(filePath)) ?? undefined;
-			return result;
-		},
-		getImportableFileMetadata: async (importableFile: ImportableFile) => {
-			const result =
-				(await commands.clbQueryImportableFileMetadata(importableFile)) ??
-				undefined;
-			return result;
-		},
-		addImportableFileByMetadata: async (metadata: ImportableBookMetadata) => {
-			const result = await commands.clbCmdCreateBook(metadata);
-			if (result.status === "error") {
-				throw new Error(result.error);
-			}
-			return result.data;
-		},
-		listValidFileTypes: async () => {
-			const result = await commands.clbQueryListAllFiletypes();
-			return result.map(([mimetype, extension]) => ({
-				extension,
-				mimetype,
-			}));
 		},
 	};
 };

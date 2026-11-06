@@ -144,15 +144,6 @@ async clbQueryGetBook(bookId: string) : Promise<Result<LibraryBook, LibraryError
     else return { status: "error", error: e  as any };
 }
 },
-async clbQueryIsFileImportable(pathToFile: string) : Promise<ImportableFile | null> {
-    return await TAURI_INVOKE("clb_query_is_file_importable", { pathToFile });
-},
-async clbQueryImportableFileMetadata(file: ImportableFile) : Promise<ImportableBookMetadata | null> {
-    return await TAURI_INVOKE("clb_query_importable_file_metadata", { file });
-},
-async clbQueryListAllFiletypes() : Promise<([string, string])[]> {
-    return await TAURI_INVOKE("clb_query_list_all_filetypes");
-},
 async clbQueryListSeries() : Promise<Result<LibrarySeries[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_list_series") };
@@ -172,14 +163,6 @@ async clbQueryListTags() : Promise<Result<LibraryTag[], string>> {
 async clbQueryListPublishers() : Promise<Result<LibraryPublisher[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_list_publishers") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async clbCmdCreateBook(md: ImportableBookMetadata) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_create_book", { md }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -711,29 +694,6 @@ vocabulary: string | null }
  * Book identifiers, such as ISBN, DOI, Google Books ID, etc.
  */
 export type Identifier = { id: number; label: string; value: string }
-/**
- * Represents metadata for pre-import books, which have a very loose structure.
- */
-export type ImportableBookMetadata = { file_type: ImportableBookType; 
-/**
- * The title of the book, if one is available, or the name of the file to import.
- */
-title: string; 
-/**
- * The list of authors of the book, if available. Some books may not be formatted correctly,
- * and will have no authors, or all author names will be one string separated by "," or ";".
- */
-author_names: string[] | null; identifier: string | null; publisher: string | null; language: string | null; tags: string[]; 
-/**
- * Path of the file to import.
- */
-path: string; publication_date: string | null; 
-/**
- * True if a cover image can be extracted from the file at `path`.
- */
-file_contains_cover: boolean }
-export type ImportableBookType = "Epub" | "Pdf" | "Mobi" | "Text"
-export type ImportableFile = { path: string }
 /**
  * Result of moving a pre-CDL-45 `settings.json` library list into the registry.
  */

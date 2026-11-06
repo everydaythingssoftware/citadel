@@ -1,4 +1,4 @@
-/* Unified metadata search sheet (shared by Edit Book and Add Book). */
+/* Unified metadata search sheet (opened from Edit Book). */
 .searchStack {
 	display: flex;
 	flex-direction: column;

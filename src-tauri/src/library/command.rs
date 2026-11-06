@@ -1,7 +1,6 @@
 use tauri::Manager;
 
 use crate::account::LocalAccount;
-use crate::imports::ImportableBookMetadata;
 use crate::libs::cover_thumbs::{self, CoverThumbnail};
 use crate::state::CitadelState;
 use citadel_core::{
@@ -80,18 +79,6 @@ pub fn clb_cmd_create_library(library_root: String) -> Result<(), String> {
     libcalibre::Library::create_library_at(&library_root)
         .map(drop)
         .map_err(|error| format!("Failed to create library: {error}"))
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn clb_cmd_create_book(
-    state: tauri::State<CitadelState>,
-    account: tauri::State<LocalAccount>,
-    md: ImportableBookMetadata,
-) -> Result<String, String> {
-    state
-        .with_library_service(|service| service.create_book(&account.actor(), md.to_book_add()))
-        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
