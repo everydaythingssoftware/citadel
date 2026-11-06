@@ -32,7 +32,6 @@ export const AdministratorSetupForm = ({
 					autoComplete="one-time-code"
 					autoCapitalize="characters"
 					spellCheck={false}
-					placeholder="K7QD-M2XV-H9RW"
 					required
 					value={setupCode}
 					onChange={(event) => setSetupCode(event.currentTarget.value)}

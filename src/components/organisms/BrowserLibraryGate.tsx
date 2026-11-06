@@ -68,6 +68,12 @@ export const BrowserLibraryGate = ({ children }: { children: ReactNode }) => {
 					<Button onClick={() => void refresh()}>Try again</Button>
 				</Notice>
 			);
+		case "unwell":
+			return (
+				<Notice title="Citadel needs attention" message={state.error}>
+					<Button onClick={() => void refresh()}>Try again</Button>
+				</Notice>
+			);
 		case "wrongAddress":
 			return (
 				<Notice

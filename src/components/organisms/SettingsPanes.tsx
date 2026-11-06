@@ -28,6 +28,8 @@ import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
 import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { useServerAddresses } from "@/lib/hooks/use-server-addresses";
+import { useServerHealth } from "@/lib/hooks/use-server-health";
+import { healthCheckLabel, healthChecksInOrder } from "@/lib/server-health";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
@@ -291,6 +293,7 @@ const GeneralTab = () => {
 
 	return (
 		<div className={classes.groups}>
+			{administrator && <ServerProblemsNotice />}
 			<div className={classes.group}>
 				<SettingsRow
 					label="Appearance"
@@ -340,6 +343,42 @@ const GeneralTab = () => {
 			)}
 			{administrator && <ServerAddressesSection />}
 		</div>
+	);
+};
+
+/**
+ * What an administrator should fix, if anything: the server's checks that
+ * aren't fine, with their reasons. Nothing when all is well; monitors use
+ * /api/health for the full picture.
+ */
+const ServerProblemsNotice = () => {
+	const { health } = useServerHealth();
+	const problems = health
+		? healthChecksInOrder(health.checks).filter(
+				(check) => check.status !== "ok",
+			)
+		: [];
+	if (problems.length === 0) return null;
+	return (
+		<section
+			className={classes.problems}
+			data-status={health?.status}
+			aria-label="Citadel needs attention"
+		>
+			<h3 className={classes.problemsTitle}>Citadel needs attention</h3>
+			<ul className={classes.problemsList}>
+				{problems.map((check) => (
+					<li key={check.name}>
+						<span className={classes.problemName}>
+							{healthCheckLabel(check)}
+						</span>
+						{check.detail && (
+							<span className={classes.problemDetail}>{check.detail}</span>
+						)}
+					</li>
+				))}
+			</ul>
+		</section>
 	);
 };
 

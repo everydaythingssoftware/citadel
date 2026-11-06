@@ -1150,6 +1150,106 @@ async fn sign_in_cookies_follow_the_address_used() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
+#[tokio::test]
+async fn health_answers_anywhere_and_explains_itself_only_to_administrators() {
+    let directory = tempfile::tempdir().unwrap();
+    let server = fresh(directory.path(), Some(SETUP_CODE));
+    // A monitor at an address Citadel doesn't know still gets an answer.
+    let (status, health) = from_address(
+        &server.router,
+        "http://monitor.local:3001",
+        "GET",
+        "/api/health",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{health}");
+    assert_eq!(health["status"], "degraded", "no library yet: {health}");
+    let names: Vec<&str> = health["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|check| check["name"].as_str().unwrap())
+        .collect();
+    for expected in [
+        "database",
+        "providerKeys",
+        "library",
+        "stateDisk",
+        "opds",
+        "metadata",
+    ] {
+        assert!(names.contains(&expected), "{expected} in {names:?}");
+    }
+    assert!(
+        health["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|check| check["detail"].is_null()),
+        "reasons are for administrators: {health}"
+    );
+
+    let administrator = bootstrap(&server.router).await;
+    let (status, _, health) = request(
+        &server.router,
+        "GET",
+        "/api/health",
+        None,
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let library = health["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["name"] == "library")
+        .unwrap();
+    assert_eq!(library["status"], "degraded");
+    assert_eq!(library["detail"], "No library is set up yet");
+
+    let books = directory.path().join("Books");
+    drop(libcalibre::Library::create_library_at(books.to_str().unwrap()).unwrap());
+    let (status, _, _) = request(
+        &server.router,
+        "POST",
+        "/api/setup/library",
+        Some(json!({"mode": "adopt", "path": books.to_string_lossy(), "readOnly": true})),
+        Some(&administrator),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, _, health) = request(
+        &server.router,
+        "GET",
+        "/api/health",
+        None,
+        Some(&administrator),
+    )
+    .await;
+    let library = health["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["name"] == "library")
+        .unwrap();
+    assert_eq!(library["status"], "ok", "{health}");
+    assert!(
+        library["detail"]
+            .as_str()
+            .unwrap()
+            .contains("served read-only as chosen"),
+        "{library}"
+    );
+    assert!(health["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|check| check["name"] == "libraryDisk"));
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_library_the_server_cant_write_is_served_read_only_with_the_reason() {

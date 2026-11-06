@@ -247,8 +247,9 @@ fn forwarded(headers: &HeaderMap) -> Forwarded {
 }
 
 /// Refuses API requests for hosts Citadel isn't set up for, and records the
-/// address each request used. `/api/version` answers anywhere, for health
-/// checks; the web app's files too, so the refusal can be explained.
+/// address each request used. `/api/version` and `/api/health` answer
+/// anywhere, for health checks and monitors; the web app's files too, so the
+/// refusal can be explained.
 pub(super) async fn check_address(
     State(state): State<ApiState>,
     mut request: Request,
@@ -261,7 +262,8 @@ pub(super) async fn check_address(
     let addresses = &state.access.addresses;
     let origin = addresses.origin_of(request.headers(), peer);
     let path = request.uri().path();
-    let checked = (path == "/api" || path.starts_with("/api/")) && path != "/api/version";
+    let checked = (path == "/api" || path.starts_with("/api/"))
+        && !matches!(path, "/api/version" | "/api/health");
     if checked {
         if let Some(origin) = &origin {
             if addresses.standing(origin) == Standing::Refused {

@@ -1,7 +1,7 @@
 import type { ClientOptions } from "openapi-fetch";
 import { createCitadelHttpClient } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema.generated";
-import type { ServerService, ServerUpdate } from "./types";
+import type { ServerHealth, ServerService, ServerUpdate } from "./types";
 
 type UpdateStatus = components["schemas"]["UpdateStatus"];
 
@@ -38,6 +38,16 @@ export const createWebServerService = (
 					error?.message ?? `Could not check for updates (${response.status})`,
 				);
 			return toUpdate(data);
+		},
+		health: async () => {
+			// 503 still carries the checks: that is when they matter most.
+			const { data, error, response } = await client.GET("/api/health");
+			const health = data ?? (error as unknown as ServerHealth | undefined);
+			if (!health?.checks)
+				throw new Error(
+					`Could not read the server's health (${response.status})`,
+				);
+			return health;
 		},
 		addresses: async () => {
 			const { data, error, response } = await client.GET(

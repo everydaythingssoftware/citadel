@@ -400,7 +400,8 @@ pub fn load(source: &ConfigSource) -> Result<ServerConfig, String> {
     }
 }
 
-/// Asks the server listening where `config` says whether it answers.
+/// Asks the server listening where `config` says whether it can serve, and
+/// prints the checks that aren't fine.
 pub async fn health(config: &ServerConfig) -> Result<(), String> {
     let mut address = config.api.listen;
     if address.ip().is_unspecified() {
@@ -409,7 +410,7 @@ pub async fn health(config: &ServerConfig) -> Result<(), String> {
             std::net::SocketAddr::V6(_) => std::net::Ipv6Addr::LOCALHOST.into(),
         });
     }
-    let url = format!("http://{address}/api/version");
+    let url = format!("http://{address}/api/health");
     let response = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -418,10 +419,31 @@ pub async fn health(config: &ServerConfig) -> Result<(), String> {
         .send()
         .await
         .map_err(|error| format!("no answer from {url}: {error}"))?;
-    if response.status().is_success() {
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.unwrap_or_default();
+    let unwell: Vec<String> = body["checks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|check| check["status"] != "ok")
+        .map(|check| {
+            format!(
+                "{}={}",
+                check["name"].as_str().unwrap_or("?"),
+                check["status"].as_str().unwrap_or("?")
+            )
+        })
+        .collect();
+    let summary = format!(
+        "health={} {}",
+        body["status"].as_str().unwrap_or("unknown"),
+        unwell.join(" ")
+    );
+    if status.is_success() {
+        println!("citadel_server {}", summary.trim_end());
         Ok(())
     } else {
-        Err(format!("{url} answered {}", response.status()))
+        Err(format!("{url} answered {status}: {}", summary.trim_end()))
     }
 }
 
@@ -603,7 +625,10 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         release::VERSION,
         release::COMMIT
     );
-    let (state_directory, accounts) = open_accounts(&config)?;
+    let (state_directory, accounts) = match open_accounts(&config) {
+        Ok(opened) => opened,
+        Err(reason) => return serve_unavailable(&config, reason).await,
+    };
     let accounts = Arc::new(accounts);
     let source = Arc::new(CalibreCatalogSource::empty());
     let served = Arc::new(
@@ -643,10 +668,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         None
     } else {
         let code = generate_setup_code();
-        println!(
-            "citadel_server setup_code={code} message=\"No administrator yet. Open {open_at} and \
-             enter this code to create the administrator account.\""
-        );
+        println!("{}", setup_code_announcement(&code, &open_at));
         Some(code)
     };
 
@@ -778,21 +800,88 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     Ok(())
 }
 
+/// `citadel.db` can't be opened. Rather than exit (and, under a restart
+/// policy, loop), keep answering until stopped: health fails with the
+/// reason and the browser shows it. Exits with the reason once stopped.
+async fn serve_unavailable(config: &ServerConfig, reason: String) -> Result<(), String> {
+    eprintln!(
+        "citadel_server error=\"{reason}\" message=\"Citadel can't open its database. It \
+         keeps answering so health checks and the browser show this; fix it and restart.\""
+    );
+    let router = api::unavailable_router(reason.clone(), config.api.web_directory.as_deref());
+    let mut api = api::start(&config.api, router).await?;
+    println!(
+        "citadel_server api=http://{} health=failing",
+        config.api.listen
+    );
+    tokio::select! {
+        result = shutdown_signal() => result?,
+        error = api.wait() => return Err(error),
+    }
+    api.stop().await;
+    Err(reason)
+}
+
 /// Where to tell people to open Citadel: the first known address, else the
-/// listener, which in a container means this machine's own address.
-fn browser_address(config: &ServerConfig, addresses: &api::addresses::Addresses) -> String {
+/// listener. A listener on every interface (a container) is reached at
+/// localhost here, or at this machine's own address from elsewhere, which
+/// the second part says.
+struct OpenAt {
+    url: String,
+    elsewhere: Option<String>,
+}
+
+impl std::fmt::Display for OpenAt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.elsewhere {
+            Some(elsewhere) => write!(f, "{} (or {elsewhere})", self.url),
+            None => write!(f, "{}", self.url),
+        }
+    }
+}
+
+fn browser_address(config: &ServerConfig, addresses: &api::addresses::Addresses) -> OpenAt {
     if let Some(address) = addresses.all().into_iter().next() {
-        return address.origin().to_string();
+        return OpenAt {
+            url: address.origin().to_string(),
+            elsewhere: None,
+        };
     }
     let listen = config.api.listen;
     if listen.ip().is_unspecified() {
-        format!(
-            "http://localhost:{port} (or this server's address, port {port})",
-            port = listen.port()
-        )
+        OpenAt {
+            url: format!("http://localhost:{}", listen.port()),
+            elsewhere: Some(format!("this server's address, port {}", listen.port())),
+        }
     } else {
-        format!("http://{listen}")
+        OpenAt {
+            url: format!("http://{listen}"),
+            elsewhere: None,
+        }
     }
+}
+
+/// The setup code for people reading the log: a box that stands out among
+/// the other lines, then one JSON line for anything that parses the log.
+fn setup_code_announcement(code: &str, open_at: &OpenAt) -> String {
+    let rule = "=".repeat(64);
+    let open = match &open_at.elsewhere {
+        Some(elsewhere) => format!(
+            "  Open {}\n  (or {elsewhere}) and enter this setup code:",
+            open_at.url
+        ),
+        None => format!("  Open {} and enter this setup code:", open_at.url),
+    };
+    let json = serde_json::json!({
+        "citadel_server": "setup_code",
+        "setup_code": code,
+        "url": open_at.url,
+    });
+    format!(
+        "\n{rule}\n  Set up Citadel\n\n{open}\n\n      {code}\n\n  \
+         It creates the administrator account. Until then, a new\n  \
+         code is printed each time the server starts.\n{rule}\n\n{json}"
+    )
 }
 
 /// Starts OPDS once there is a library to serve and a reader to serve it to.
@@ -914,6 +1003,34 @@ async fn shutdown_signal() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_setup_code_stands_out_and_has_a_line_to_parse() {
+        let open_at = OpenAt {
+            url: "http://localhost:8081".into(),
+            elsewhere: Some("this server's address, port 8081".into()),
+        };
+        let announcement = setup_code_announcement("K7QD-M2XV-H9RW", &open_at);
+        assert!(
+            announcement.contains("\n      K7QD-M2XV-H9RW\n"),
+            "{announcement}"
+        );
+        assert!(announcement.contains("(or this server's address, port 8081)"));
+        let last: serde_json::Value =
+            serde_json::from_str(announcement.lines().last().unwrap()).unwrap();
+        assert_eq!(
+            last,
+            serde_json::json!({
+                "citadel_server": "setup_code",
+                "setup_code": "K7QD-M2XV-H9RW",
+                "url": "http://localhost:8081",
+            })
+        );
+        let lines: Vec<&str> = announcement.lines().collect();
+        let banner = &lines[..lines.len() - 1];
+        let width = banner.iter().map(|line| line.len()).max().unwrap();
+        assert!(width <= 72, "the box fits a narrow terminal: {width}");
+    }
 
     #[test]
     fn arguments_take_a_config_file_or_fall_back_to_the_environment() {

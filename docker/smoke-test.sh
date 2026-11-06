@@ -34,7 +34,7 @@ echo "version: $version"
 curl -fsS -H 'accept: text/html' "http://127.0.0.1:$port/books/1" | grep -q '<div id="root">' \
 	|| fail "the web app isn't served"
 echo "web app served"
-docker logs "$name" 2>&1 | grep -q 'setup_code=' || fail "no setup code in the log"
+docker logs "$name" 2>&1 | grep -q '"setup_code":"' || fail "no setup code in the log"
 echo "setup code printed"
 
 owner=$(docker exec "$name" stat -c %u:%g /var/lib/citadel/citadel.db)

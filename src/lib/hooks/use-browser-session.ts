@@ -11,12 +11,16 @@ import {
 	createBrowserSession,
 	type SessionInfo,
 	type SetupStatus,
+	ServerUnreachableError,
 	WrongAddressError,
 } from "@/lib/services/session";
 
 export type BrowserSessionState =
 	| { status: "checking" }
 	| { status: "unreachable"; error: string }
+	/** The server answered, but with an error it can't get past, such as a
+	 * database it can't open. */
+	| { status: "unwell"; error: string }
 	/** Opened at an address the server isn't set up for. */
 	| { status: "wrongAddress"; error: string }
 	/** A fresh server: nobody can sign in until the administrator exists. */
@@ -82,7 +86,9 @@ export const useBrowserSession = (
 			setState(
 				error instanceof WrongAddressError
 					? { status: "wrongAddress", error: error.message }
-					: { status: "unreachable", error: message(error) },
+					: error instanceof ServerUnreachableError
+						? { status: "unreachable", error: message(error) }
+						: { status: "unwell", error: message(error) },
 			);
 		}
 	}, [session]);

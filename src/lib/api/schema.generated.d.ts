@@ -285,6 +285,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only. */
+        get: operations["getHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library": {
         parameters: {
             query?: never;
@@ -954,6 +971,23 @@ export interface components {
             /** @description Provider vocabulary or thesaurus when one is declared. */
             vocabulary: string | null;
         };
+        Health: {
+            checks: components["schemas"]["HealthCheck"][];
+            /** @description The worst of the checks. */
+            status: components["schemas"]["HealthStatus"];
+        };
+        HealthCheck: {
+            /** @description What is wrong or how it stands. Administrators only. */
+            detail: string | null;
+            /**
+             * @description `database`, `providerKeys`, `library`, `webApp`, `opds`, `metadata`,
+             *     `stateDisk` or `libraryDisk`.
+             */
+            name: string;
+            status: components["schemas"]["HealthStatus"];
+        };
+        /** @enum {string} */
+        HealthStatus: "ok" | "degraded" | "failing";
         /** @description Book identifiers, such as ISBN, DOI, Google Books ID, etc. */
         Identifier: {
             /** Format: int32 */
@@ -2992,6 +3026,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
                 };
             };
         };

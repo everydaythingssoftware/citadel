@@ -37,6 +37,10 @@ pub(super) struct ServerVersion {
     description = "Which Citadel this server is. Public.",
     responses((status = 200, body = ServerVersion)))]
 async fn version() -> Json<ServerVersion> {
+    version_json()
+}
+
+pub(super) fn version_json() -> Json<ServerVersion> {
     Json(ServerVersion {
         version: release::VERSION.into(),
         commit: release::COMMIT.into(),
