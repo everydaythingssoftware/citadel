@@ -1,4 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { localFile } from "../local-file";
 import type { DialogAdapter } from "../types";
 
 export const createTauriDialogs = (): DialogAdapter => ({
@@ -21,6 +22,13 @@ export const createTauriDialogs = (): DialogAdapter => ({
 		if (typeof result === "string") return result;
 		return null;
 	},
-	// The desktop app imports by path through openFile instead.
-	chooseFiles: async () => [],
+	chooseFiles: async ({ extensions, multiple }) => {
+		const result = await open({
+			multiple: multiple ?? false,
+			directory: false,
+			filters: [{ name: "Books", extensions }],
+		});
+		const paths = result === null ? [] : [result].flat();
+		return paths.map(localFile);
+	},
 });

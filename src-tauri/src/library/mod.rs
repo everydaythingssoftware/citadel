@@ -6,6 +6,7 @@ pub mod command;
 pub mod onboarding;
 pub mod query;
 pub mod registry;
+pub mod staging;
 
 #[derive(Serialize, specta::Type)]
 pub struct CalibreClientConfig {

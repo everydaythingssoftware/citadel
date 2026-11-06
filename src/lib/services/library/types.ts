@@ -34,8 +34,17 @@ export interface FileType {
 	mimetype: string;
 }
 
-/** A file being uploaded to, or waiting in, the server's staging area. */
-export type StagedUpload = components["schemas"]["StagedUpload"];
+/**
+ * A book waiting for review: a file being uploaded to, or waiting in, the
+ * server's staging area, or a file the desktop has read where it is.
+ */
+export type StagedUpload = Omit<
+	components["schemas"]["StagedUpload"],
+	"expiresAt"
+> & {
+	/** When the server discards it; the desktop keeps books until it quits. */
+	expiresAt?: string;
+};
 /** What the server read from an uploaded file, for review. */
 export type StagedBook = components["schemas"]["StagedBook"];
 /** The reviewed metadata a staged upload is added to the library with. */
@@ -83,30 +92,52 @@ export interface UploadChunk {
 	onSent?: () => void;
 }
 
-/**
- * Adding books by uploading them to a Citadel server. Failures reject with an
- * {@link UploadError} so callers can tell a retryable network blip from a
- * refusal.
- */
-export interface BookUploads {
-	list(): Promise<{ limits: UploadLimits; uploads: StagedUpload[] }>;
-	create(file: { name: string; size: number }): Promise<StagedUpload>;
-	status(uploadId: string): Promise<StagedUpload>;
-	sendChunk(chunk: UploadChunk): Promise<StagedUpload>;
+/** What every way of adding books by review shares, once a book is staged. */
+interface BookStaging {
 	/** Absolute URL of the cover preview, for a book with `coverUrl`. */
 	coverUrl(uploadId: string): string;
 	commit(uploadId: string, book: ReviewedBook): Promise<LibraryBook>;
 	cancel(uploadId: string): Promise<void>;
 }
 
+/**
+ * Adding books by uploading them to a Citadel server. Failures reject with an
+ * {@link UploadError} so callers can tell a retryable network blip from a
+ * refusal.
+ */
+export interface BookUploads extends BookStaging {
+	list(): Promise<{ limits: UploadLimits; uploads: StagedUpload[] }>;
+	create(file: { name: string; size: number }): Promise<StagedUpload>;
+	status(uploadId: string): Promise<StagedUpload>;
+	sendChunk(chunk: UploadChunk): Promise<StagedUpload>;
+}
+
+/**
+ * Adding books from files on this computer: each is read where it is, and
+ * copied into the library only once it's added. A file that can't be added
+ * rejects with an {@link UploadError} of `invalid`.
+ */
+export interface LocalBookImports extends BookStaging {
+	list(): Promise<{ uploads: StagedUpload[] }>;
+	stage(path: string): Promise<StagedUpload>;
+}
+
+/** How a library takes new books for review. */
+export type BookIntake = BookUploads | LocalBookImports;
+
+export const isLocalImports = (
+	intake: BookIntake,
+): intake is LocalBookImports => "stage" in intake;
+
 export interface Library {
 	readonly readOnly: boolean;
 	readonly bookDeletion: TBookDeletion;
 	/**
-	 * Present when new books can be uploaded to this library: a server
-	 * library opened for writing.
+	 * Present when new books can be added to this library by review: a
+	 * server library opened for writing takes uploads, and a desktop library
+	 * reads files in place.
 	 */
-	readonly uploads?: BookUploads;
+	readonly uploads?: BookIntake;
 	listCustomColumns(): Promise<CustomColumnDef[]>;
 	getCustomValuesForBook(bookId: string): Promise<BookCustomValue[]>;
 	setCustomValue(

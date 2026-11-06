@@ -19,8 +19,11 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
-use chrono::{DateTime, NaiveDate, Utc};
-use citadel_core::error::{LibraryError, LibraryErrorCode};
+use chrono::{DateTime, Utc};
+use citadel_core::{
+    error::{LibraryError, LibraryErrorCode},
+    staging::{book_format, read_book_file, CommitUpload, StagedBook},
+};
 use futures_util::StreamExt;
 use image::ImageReader;
 use libcalibre::{book_file, mime_type::MIMETYPE};
@@ -161,23 +164,6 @@ pub(super) struct StagedUpload {
     /// When the server discards the upload: a fixed review deadline once the
     /// file has been read, otherwise an hour after its last chunk.
     expires_at: DateTime<Utc>,
-}
-
-/// What the uploaded file says about itself, for the user to review.
-#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct StagedBook {
-    /// The file's format, as its extension (`epub`, `azw3`, …).
-    format: String,
-    /// The file's own title, or its name when it has none.
-    title: String,
-    author_names: Vec<String>,
-    identifier: Option<String>,
-    publisher: Option<String>,
-    language: Option<String>,
-    tags: Vec<String>,
-    publication_date: Option<NaiveDate>,
-    cover_url: Option<String>,
 }
 
 fn failure(code: LibraryErrorCode, message: impl Into<String>) -> ApiFailure {
@@ -474,14 +460,7 @@ fn file_name(raw: &str) -> Result<(String, String, MIMETYPE), ApiFailure> {
     if name.is_empty() || name.chars().count() > MAX_FILE_NAME_CHARS || name.contains('\0') {
         return Err(LibraryError::invalid("Invalid file name").into());
     }
-    let extension = FsPath::new(name)
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
-    let format = MIMETYPE::from_file_extension(&extension).ok_or_else(|| {
-        LibraryError::invalid("Citadel can import EPUB, MOBI, AZW, AZW3, PDF and TXT files")
-    })?;
+    let (extension, format) = book_format(name)?;
     Ok((name.to_string(), extension, format))
 }
 
@@ -661,36 +640,6 @@ pub(super) async fn cover(
         .into_response())
 }
 
-/// The metadata the user reviewed, to add the upload to the library with.
-#[derive(Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct CommitUpload {
-    title: String,
-    #[serde(default)]
-    author_names: Vec<String>,
-    /// Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`
-    /// prefixes are accepted); other identifiers are ignored.
-    identifier: Option<String>,
-    publisher: Option<String>,
-    language: Option<String>,
-    #[serde(default)]
-    tags: Vec<String>,
-    publication_date: Option<NaiveDate>,
-}
-
-fn trimmed(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn trimmed_list(values: Vec<String>) -> Vec<String> {
-    values
-        .into_iter()
-        .filter_map(|value| trimmed(Some(value)))
-        .collect()
-}
-
 /// Releases an upload claimed for adding to the library, unless it was added.
 struct Committing {
     staging: Arc<Staging>,
@@ -722,8 +671,9 @@ pub(super) async fn commit(
     input: Result<Json<CommitUpload>, JsonRejection>,
 ) -> Result<(StatusCode, Json<citadel_core::LibraryBook>), ApiFailure> {
     let Json(input) = input.map_err(|_| LibraryError::invalid("Invalid book JSON"))?;
-    let title =
-        trimmed(Some(input.title)).ok_or_else(|| LibraryError::invalid("A book needs a title"))?;
+    if input.title.trim().is_empty() {
+        return Err(LibraryError::invalid("A book needs a title").into());
+    }
     let staging = state.uploads.clone();
     let owner = Owner::new(&state, &user);
     let (path, extension) = staging.with_upload(&id, &owner, |upload| {
@@ -751,26 +701,7 @@ pub(super) async fn commit(
     };
 
     let actor = user.0.actor();
-    let identifiers = trimmed(input.identifier)
-        .as_deref()
-        .and_then(book_file::isbn)
-        .map(|isbn| HashMap::from([("isbn".to_string(), isbn)]))
-        .unwrap_or_default();
-    let tags = trimmed_list(input.tags);
-    let book = libcalibre::BookAdd {
-        title,
-        author_names: trimmed_list(input.author_names),
-        tags: (!tags.is_empty()).then_some(tags),
-        series: None,
-        series_index: None,
-        publisher: trimmed(input.publisher),
-        publication_date: input.publication_date,
-        rating: None,
-        comments: None,
-        language: trimmed(input.language),
-        identifiers,
-        file_paths: vec![path],
-    };
+    let book = input.into_book_add(path)?;
     let book = super::write(state.clone(), move |service| {
         let id = service.create_book(&actor, book)?;
         service.get_book(&id)
@@ -1023,47 +954,14 @@ async fn read_book(
     let cover_url = format!("/api/uploads/{id}/cover");
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let metadata = book_file::read_metadata(&path);
-        let has_cover = metadata.as_ref().is_some_and(|metadata| metadata.has_cover)
-            && book_file::cover_image_data(&path)
-                .and_then(|cover| {
-                    let reader = ImageReader::new(Cursor::new(cover));
-                    resized_jpeg(reader, 600, 600)
-                })
-                .is_some_and(|(preview, _, _)| std::fs::write(&cover_path, preview).is_ok());
-        let fallback_title = FsPath::new(&file_name)
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or(&file_name)
-            .to_string();
-        let metadata = metadata.unwrap_or(book_file::BookFileMetadata {
-            format: MIMETYPE::UNKNOWN,
-            title: None,
-            author_names: Vec::new(),
-            identifier: None,
-            publisher: None,
-            language: None,
-            tags: Vec::new(),
-            publication_date: None,
-            has_cover: false,
-        });
-        // PDF and TXT titles come from the file's name, which here is the
-        // staging ID rather than the name the user uploaded.
-        let title = match metadata.format {
-            MIMETYPE::PDF | MIMETYPE::TXT => None,
-            _ => metadata.title,
-        };
-        StagedBook {
-            format: extension,
-            title: title.unwrap_or(fallback_title),
-            author_names: metadata.author_names,
-            identifier: metadata.identifier,
-            publisher: metadata.publisher,
-            language: metadata.language,
-            tags: metadata.tags,
-            publication_date: metadata.publication_date,
-            cover_url: has_cover.then_some(cover_url),
-        }
+        let mut read = read_book_file(&path, &file_name, extension);
+        let has_cover = read
+            .cover
+            .take()
+            .and_then(|cover| resized_jpeg(ImageReader::new(Cursor::new(cover)), 600, 600))
+            .is_some_and(|(preview, _, _)| std::fs::write(&cover_path, preview).is_ok());
+        read.book.cover_url = has_cover.then_some(cover_url);
+        read.book
     })
     .await
     .map_err(|_| LibraryError::unavailable().into())

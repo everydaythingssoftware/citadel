@@ -1,26 +1,47 @@
 import { useEffect, useRef, useState } from "react";
+import { usePlatform } from "@/lib/platform/context";
+import type { BookSource } from "@/lib/uploads/queue";
 
 const carriesFiles = (event: DragEvent): boolean =>
 	event.dataTransfer?.types.includes("Files") ?? false;
 
 /**
  * Tracks files dragged anywhere over the window and hands them over when
- * dropped. Nested elements fire their own enter/leave pairs, so a depth
- * counter keeps the drag "in" until the pointer really leaves the window.
+ * dropped. The desktop reports drags natively, by path; in a browser nested
+ * elements fire their own enter/leave pairs, so a depth counter keeps the
+ * drag "in" until the pointer really leaves the window.
  */
 export const useFileDrag = ({
 	enabled,
 	onDrop,
 }: {
 	enabled: boolean;
-	onDrop: (files: File[]) => void;
+	onDrop: (files: BookSource[]) => void;
 }): boolean => {
+	const platform = usePlatform();
+	const native = platform.capabilities.canPickLocalFiles;
 	const [dragging, setDragging] = useState(false);
 	const onDropRef = useRef(onDrop);
 	onDropRef.current = onDrop;
 
 	useEffect(() => {
-		if (!enabled) {
+		if (!enabled || !native) return;
+		let disposed = false;
+		const unlisten = platform.window.onFileDrag((event) => {
+			if (disposed) return;
+			setDragging(event.type === "enter");
+			if (event.type === "drop" && event.files.length > 0)
+				onDropRef.current(event.files);
+		});
+		return () => {
+			disposed = true;
+			setDragging(false);
+			void unlisten.then((dispose) => dispose());
+		};
+	}, [enabled, native, platform]);
+
+	useEffect(() => {
+		if (!enabled || native) {
 			setDragging(false);
 			return;
 		}
@@ -66,7 +87,7 @@ export const useFileDrag = ({
 			window.removeEventListener("dragend", reset);
 			window.removeEventListener("blur", reset);
 		};
-	}, [enabled]);
+	}, [enabled, native]);
 
 	return dragging;
 };

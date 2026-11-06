@@ -185,6 +185,43 @@ async clbCmdCreateBook(md: ImportableBookMetadata) : Promise<Result<string, stri
     else return { status: "error", error: e  as any };
 }
 },
+async clbQueryStagedBooks() : Promise<Result<StagedFile[], LibraryError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_staged_books") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Reads a book file where it is, for review before it's added.
+ */
+async clbCmdStageBook(path: string) : Promise<Result<StagedFile, LibraryError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_stage_book", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Adds a staged book to the library with the metadata the person reviewed.
+ * The library copies the file; the original stays where it was.
+ */
+async clbCmdAddStagedBook(stagedId: string, book: CommitUpload) : Promise<Result<LibraryBook, LibraryError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_add_staged_book", { stagedId, book }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Skips a staged book; its file is left untouched.
+ */
+async clbCmdDiscardStagedBook(stagedId: string) : Promise<void> {
+    await TAURI_INVOKE("clb_cmd_discard_staged_book", { stagedId });
+},
 async clbCmdUpdateBook(bookId: string, updates: BookUpdate) : Promise<Result<number, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_update_book", { bookId, updates }) };
@@ -576,6 +613,15 @@ series: string | null; series_index: number | null;
 language_list: string[] | null }
 export type CalibreClientConfig = { library_path: string }
 /**
+ * The metadata the user reviewed, to add the upload to the library with.
+ */
+export type CommitUpload = { title: string; authorNames?: string[]; 
+/**
+ * Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`
+ * prefixes are accepted); other identifiers are ignored.
+ */
+identifier: string | null; publisher: string | null; language: string | null; tags?: string[]; publicationDate: string | null }
+/**
  * What the frontend needs to render one grid cover: a small image URL and the
  * thumbnail's pixel dimensions (same aspect ratio as the source cover) to
  * reserve exact row height up front.
@@ -830,6 +876,22 @@ export type SoftwareUpdateStatus = { kind: "idle" } | { kind: "checking" } | { k
  * Downloaded and verified; installs when Citadel quits.
  */
 { kind: "ready"; version: string } | { kind: "checkFailed"; message: string } | { kind: "updateFailed"; version: string; message: string }
+/**
+ * What the uploaded file says about itself, for the user to review.
+ */
+export type StagedBook = { 
+/**
+ * The file's format, as its extension (`epub`, `azw3`, …).
+ */
+format: string; 
+/**
+ * The file's own title, or its name when it has none.
+ */
+title: string; authorNames: string[]; identifier: string | null; publisher: string | null; language: string | null; tags: string[]; publicationDate: string | null; coverUrl: string | null }
+/**
+ * A book file read for review, ready to add or skip.
+ */
+export type StagedFile = { id: string; fileName: string; size: number; book: StagedBook }
 /**
  * Best-effort cloud-sync verdict for a candidate library path. Informational
  * only — the UX warns, it never blocks. Unknown providers (Seafile, Syncthing,

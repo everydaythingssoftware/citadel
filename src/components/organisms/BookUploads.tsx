@@ -5,9 +5,9 @@ import { useUploadStatus } from "@/lib/hooks/use-upload-status";
 import { UploadSheet } from "./UploadSheet";
 
 /**
- * Adding books by upload: the drop overlay and the upload sheet. Mount once,
- * inside the library chrome; it renders nothing for libraries that can't
- * take uploads.
+ * Adding books by review: the drop overlay and the add-books sheet, for
+ * uploads to a server or files on this computer. Mount once, inside the
+ * library chrome; it renders nothing for libraries that can't take books.
  */
 export const BookUploads = () => {
 	const { enabled, dragging, sheet } = useUploadController();
@@ -22,8 +22,13 @@ export const BookUploads = () => {
 
 /** Toolbar status for uploads running while the sheet is closed. */
 export const UploadToolbarStatus = () => {
-	const { summary, soonest, open } = useUploadStatus();
+	const { summary, soonest, local, open } = useUploadStatus();
 	return (
-		<UploadIndicator summary={summary} countdown={soonest} onOpen={open} />
+		<UploadIndicator
+			summary={summary}
+			countdown={soonest}
+			local={local}
+			onOpen={open}
+		/>
 	);
 };

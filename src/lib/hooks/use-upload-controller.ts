@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
+import { isLocalImports } from "@/lib/services/library";
 import { readyItems, summarize, visibleItems } from "@/lib/uploads/queue";
 import {
 	LibraryState,
@@ -32,10 +33,9 @@ const settleAfterReview = () => {
 export const useUploadController = () => {
 	useBookUploads();
 	const libraryState = useLibraryState();
-	const canUpload = useLibraryStore(
-		(state) => state.library?.uploads !== undefined,
-	);
-	const enabled = libraryState === LibraryState.ready && canUpload;
+	const intake = useLibraryStore((state) => state.library?.uploads);
+	const enabled = libraryState === LibraryState.ready && intake !== undefined;
+	const local = intake !== undefined && isLocalImports(intake);
 	const queue = useUploadsStore((state) => state.queue);
 	const sheetOpen = useUploadsStore((state) => state.sheetOpen);
 	const reviewKey = useUploadsStore((state) => state.reviewKey);
@@ -93,6 +93,7 @@ export const useUploadController = () => {
 		enabled,
 		dragging,
 		sheet: {
+			local,
 			open: sheetOpen,
 			onOpenChange: (open: boolean) =>
 				open

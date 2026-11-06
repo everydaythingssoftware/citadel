@@ -4,15 +4,80 @@ import {
 	type ImportableFile,
 	type LibraryBook,
 	type LibraryBookQuery,
+	type LibraryError,
 	type NewAuthor,
+	type StagedFile,
 } from "@/bindings";
-import { BookDeletion, CoverExpiredError, type Library } from "./types";
+import {
+	BookDeletion,
+	CoverExpiredError,
+	type Library,
+	type LocalBookImports,
+	type StagedUpload,
+	UploadError,
+	UploadFailure,
+} from "./types";
 
 const unwrap = <T>(
 	result: { status: "ok"; data: T } | { status: "error"; error: string },
 ): T => {
 	if (result.status === "error") throw new Error(result.error);
 	return result.data;
+};
+
+/** Files on this computer, staged by the backend where they are. */
+export const createTauriBookImports = (): LocalBookImports => {
+	const covers = new Map<string, string>();
+	const staged = (file: StagedFile): StagedUpload => {
+		if (file.book.coverUrl) covers.set(file.id, file.book.coverUrl);
+		return {
+			id: file.id,
+			fileName: file.fileName,
+			size: file.size,
+			receivedBytes: file.size,
+			book: file.book,
+		};
+	};
+	const refused = (error: LibraryError) =>
+		new UploadError(
+			error.code === "invalidArgument" ||
+				error.code === "notFound" ||
+				error.code === "conflict"
+				? UploadFailure.invalid
+				: UploadFailure.server,
+			error.message,
+		);
+	return {
+		list: async () => {
+			const result = await commands.clbQueryStagedBooks();
+			if (result.status === "error") throw refused(result.error);
+			return { uploads: result.data.map(staged) };
+		},
+		stage: async (path) => {
+			const result = await commands.clbCmdStageBook(path);
+			if (result.status === "error") throw refused(result.error);
+			return staged(result.data);
+		},
+		coverUrl: (id) => covers.get(id) ?? "",
+		commit: async (id, book) => {
+			const result = await commands.clbCmdAddStagedBook(id, {
+				title: book.title,
+				authorNames: book.authorNames,
+				identifier: book.identifier ?? null,
+				publisher: book.publisher ?? null,
+				language: book.language ?? null,
+				tags: book.tags,
+				publicationDate: book.publicationDate ?? null,
+			});
+			if (result.status === "error") throw new Error(result.error.message);
+			covers.delete(id);
+			return result.data;
+		},
+		cancel: async (id) => {
+			await commands.clbCmdDiscardStagedBook(id);
+			covers.delete(id);
+		},
+	};
 };
 
 export const createTauriLibrary = (): Library => {
@@ -34,6 +99,7 @@ export const createTauriLibrary = (): Library => {
 	return {
 		readOnly: false,
 		bookDeletion: BookDeletion.trash,
+		uploads: createTauriBookImports(),
 		listCustomColumns: async () =>
 			unwrap(await commands.clbQueryListCustomColumns()),
 		getCustomValuesForBook: async (id) =>
