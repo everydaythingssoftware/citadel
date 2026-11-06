@@ -116,7 +116,6 @@ export const DatabaseRecoveryCard = ({
 					<div className={styles.quit}>
 						<Button
 							variant="subtle"
-							size="sm"
 							className={card.escapeBtn}
 							disabled={busy}
 							data-autofocus={steps.length === 0 || undefined}

@@ -105,17 +105,12 @@ const SubjectSuggestions = ({
 				{source ? `From ${source}:` : fallbackLabel}
 			</span>
 			{subjects.map((subject) => (
-				<Button
-					key={subject}
-					size="sm"
-					variant="subtle"
-					onClick={() => onAdd(subject)}
-				>
+				<Button key={subject} variant="subtle" onClick={() => onAdd(subject)}>
 					+ {subject}
 				</Button>
 			))}
 			{subjects.length > 1 && (
-				<Button size="sm" variant="subtle" onClick={onAddAll}>
+				<Button variant="subtle" onClick={onAddAll}>
 					Add all {subjects.length}
 				</Button>
 			)}
@@ -1108,7 +1103,6 @@ const EditBookForm = ({
 						<div className={styles.sectionHeader}>
 							<div className={styles.sectionLabel}>Description</div>
 							<Button
-								size="sm"
 								variant="default"
 								onClick={() => setIsEditingDescription(!isEditingDescription)}
 							>

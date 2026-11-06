@@ -129,24 +129,12 @@
 	background-color: var(--ctd-border);
 }
 
-/* A grouped box that hosts free-form content (e.g. the library form). */
-.formGroup {
-	border: 1px solid var(--ctd-border);
-	border-radius: 0.5rem;
-	background-color: var(--ctd-surface);
-	padding: 0.875rem 1rem 1rem;
-}
-
 /*
  * Dark mode: --ctd-surface sits ~2% lightness above --ctd-bg, so the grouped
  * boxes melt into the window and the pane reads as a flat void. The stronger
  * surface keeps the System Settings card structure legible.
  */
 :global([data-theme="dark"]) .group,
-:global([data-theme="dark"]) .formGroup {
-	background-color: var(--ctd-surface-strong);
-}
-
 .row {
 	display: flex;
 	align-items: center;

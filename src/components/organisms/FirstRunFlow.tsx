@@ -92,7 +92,6 @@ const PathWell = ({ path, home, bad = false, change }: PathWellProps) => (
 		{change && (
 			<Button
 				variant="subtle"
-				size="sm"
 				className={styles.wellChange}
 				disabled={change.disabled}
 				data-autofocus={change.autoFocus ? "true" : undefined}
@@ -153,7 +152,6 @@ const FoundView = ({
 				<div className={styles.escapes}>
 					<Button
 						variant="subtle"
-						size="sm"
 						className={styles.escapeBtn}
 						disabled={inert}
 						onClick={onPickDifferent}
@@ -162,7 +160,6 @@ const FoundView = ({
 					</Button>
 					<Button
 						variant="subtle"
-						size="sm"
 						className={styles.escapeBtn}
 						disabled={inert}
 						onClick={onStartNew}
@@ -226,7 +223,6 @@ const InvalidView = ({
 			<div className={styles.crossover}>
 				<Button
 					variant="subtle"
-					size="sm"
 					className={styles.escapeBtn}
 					onClick={onCreateHere}
 				>
@@ -302,7 +298,6 @@ const CreateView = ({
 					<div className={styles.crossover}>
 						<Button
 							variant="subtle"
-							size="sm"
 							className={styles.escapeBtn}
 							disabled={openInsteadBusy || frozen}
 							data-autofocus="true"
@@ -470,7 +465,6 @@ const BrokenView = ({
 			<div className={clsx(styles.escapes, styles.escapesAfterDivider)}>
 				<Button
 					variant="subtle"
-					size="sm"
 					className={styles.escapeBtn}
 					disabled={inert}
 					onClick={onPickDifferent}
@@ -479,7 +473,6 @@ const BrokenView = ({
 				</Button>
 				<Button
 					variant="subtle"
-					size="sm"
 					className={styles.escapeBtn}
 					disabled={inert}
 					onClick={onStartNew}

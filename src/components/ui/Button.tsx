@@ -2,9 +2,17 @@ import clsx from "clsx";
 import { forwardRef } from "react";
 import styles from "./Button.module.css";
 
+/**
+ * Citadel's one button. Every text button is the same height, padding and
+ * type size; only its role changes how it looks:
+ * - default: bordered, for most actions
+ * - primary: filled, for the one main action of a form, sheet or dialog
+ * - subtle: borderless, for quiet secondary actions (Cancel, Revert)
+ * - danger: filled red, for destructive confirmations
+ * An icon before the label is 14px with a 6px gap.
+ */
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 	variant?: "default" | "primary" | "danger" | "subtle";
-	size?: "sm" | "md";
 	fullWidth?: boolean;
 };
 
@@ -12,7 +20,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 	(
 		{
 			variant = "default",
-			size = "md",
 			fullWidth = false,
 			className,
 			type = "button",
@@ -26,7 +33,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 			className={clsx(
 				styles.button,
 				styles[variant],
-				styles[size],
 				fullWidth && styles.fullWidth,
 				className,
 			)}

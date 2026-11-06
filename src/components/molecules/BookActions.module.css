@@ -11,7 +11,7 @@
 	align-items: center;
 	justify-content: center;
 	gap: 7px;
-	height: calc(var(--ctd-control-height) + 4px);
+	height: var(--ctd-control-height);
 	padding: 0 12px;
 	border: var(--ctd-control-border-width) solid var(--ctd-border);
 	border-radius: var(--ctd-radius-control);
@@ -128,59 +128,103 @@
 	}
 }
 
-/* ---- Files: one bordered button split into the action and its menu. ---- */
-.split {
+/* ---- Files: document tiles that wrap, one per format. ---- */
+.tiles {
 	display: flex;
-	height: var(--ctd-control-height);
-	border: var(--ctd-control-border-width) solid var(--ctd-border);
-	border-radius: var(--ctd-radius-control);
-	background-color: var(--ctd-control-bg-strong);
-	box-shadow: var(--ctd-control-shadow);
-	overflow: hidden;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 4px 0 0;
+	padding: 0;
+	list-style: none;
 }
 
-.main,
-.more {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
+.tile {
+	position: relative;
+	display: grid;
+	place-items: end center;
+	width: 44px;
+	height: 54px;
+	padding: 0 0 9px;
 	border: 0;
+	border-radius: 6px;
 	background: transparent;
-	color: var(--ctd-control-text);
-	font: inherit;
-	font-size: 13px;
-	font-weight: var(--ctd-control-font-weight);
+	color: var(--ctd-ink-soft);
 	cursor: default;
 }
 
-.main {
-	flex: 1;
-	gap: 6px;
-	min-width: 0;
-	padding: 0 10px;
-	white-space: nowrap;
+.tile > * {
+	grid-area: 1 / 1;
 }
 
-.more {
-	flex: none;
-	width: 30px;
-	border-left: 1px solid var(--ctd-border);
+.page {
+	position: absolute;
+	inset: 2px;
+	width: 40px;
+	height: 50px;
+	filter: drop-shadow(0 1px 1px oklch(0% 0 0 / 0.12));
 }
 
-.main:hover,
-.more:hover,
-.more[aria-expanded="true"] {
-	background-color: var(--ctd-control-bg);
+.paper {
+	fill: var(--ctd-control-bg-strong);
+	stroke: var(--ctd-border-strong);
+	stroke-width: 1;
 }
 
-.main:focus-visible,
-.more:focus-visible {
+.fold {
+	fill: var(--ctd-surface-muted);
+	stroke: var(--ctd-border-strong);
+	stroke-width: 1;
+	stroke-linejoin: round;
+}
+
+.format {
+	position: relative;
+	font-size: 9.5px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	color: var(--ctd-ink);
+}
+
+/* What a click does, shown where the pointer is. */
+.badge {
+	position: absolute;
+	top: 14px;
+	left: 50%;
+	display: grid;
+	place-items: center;
+	width: 18px;
+	height: 18px;
+	margin-left: -9px;
+	color: var(--ctd-ink-soft);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+.badge svg {
+	width: 14px;
+	height: 14px;
+}
+
+.tile:hover .paper,
+.tile:focus-visible .paper {
+	fill: var(--ctd-control-bg);
+	stroke: var(--ctd-ink-soft);
+}
+
+.tile:hover .badge,
+.tile:focus-visible .badge {
+	opacity: 1;
+}
+
+.tile:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
+	box-shadow: var(--ctd-focus-shadow);
 }
 
-.glyph {
-	flex: none;
+@media (hover: none) {
+	.badge {
+		opacity: 1;
+	}
 }
 
 .note {

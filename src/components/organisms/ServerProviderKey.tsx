@@ -82,7 +82,6 @@ export const ServerProviderKey = ({
 					/>
 					<div className={classes.rowActions}>
 						<Button
-							size="sm"
 							variant="primary"
 							type="submit"
 							disabled={!draft.trim() || working || loading}
@@ -94,7 +93,6 @@ export const ServerProviderKey = ({
 			) : (
 				<div className={classes.rowActions}>
 					<Button
-						size="sm"
 						variant="default"
 						disabled={working}
 						onClick={() => void controller.remove()}
@@ -102,7 +100,6 @@ export const ServerProviderKey = ({
 						{busy === CREDENTIAL_BUSY.removing ? "Removing…" : "Remove"}
 					</Button>
 					<Button
-						size="sm"
 						variant="default"
 						disabled={working}
 						onClick={() => void controller.test()}

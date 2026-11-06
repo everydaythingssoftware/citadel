@@ -63,20 +63,16 @@ const Control = ({
 					{control.checking && (
 						<Spinner size={14} aria-label="Checking for updates" />
 					)}
-					<Button size="sm" disabled={control.checking} onClick={onCheck}>
+					<Button disabled={control.checking} onClick={onCheck}>
 						Check for Updates
 					</Button>
 				</>
 			);
 		case "later":
-			return (
-				<Button size="sm" onClick={onLater}>
-					Later
-				</Button>
-			);
+			return <Button onClick={onLater}>Later</Button>;
 		case "updateNow":
 			return (
-				<Button size="sm" variant="primary" onClick={onUpdateNow}>
+				<Button variant="primary" onClick={onUpdateNow}>
 					Update Now
 				</Button>
 			);
@@ -90,22 +86,14 @@ const Control = ({
 			);
 		case "restartNow":
 			return (
-				<Button size="sm" variant="primary" onClick={onRestartNow}>
+				<Button variant="primary" onClick={onRestartNow}>
 					Restart Now
 				</Button>
 			);
 		case "retryCheck":
-			return (
-				<Button size="sm" onClick={onCheck}>
-					Try Again
-				</Button>
-			);
+			return <Button onClick={onCheck}>Try Again</Button>;
 		case "retryUpdate":
-			return (
-				<Button size="sm" onClick={onUpdateNow}>
-					Try Again
-				</Button>
-			);
+			return <Button onClick={onUpdateNow}>Try Again</Button>;
 		case "releaseNotes":
 			return (
 				<InlineLink href={control.url} isExternal className={styles.link}>

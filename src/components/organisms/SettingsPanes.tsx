@@ -5,10 +5,11 @@ import { F7Gear } from "@/components/icons/F7Gear";
 import { F7Wifi } from "@/components/icons/F7Wifi";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { CurrentLibraryCard } from "@/components/molecules/CurrentLibraryCard";
-import { LibraryListCard } from "@/components/molecules/LibraryListCard";
+import {
+	type AddLibraryResult,
+	LibraryListCard,
+} from "@/components/molecules/LibraryListCard";
 import { SoftwareUpdateRow } from "@/components/molecules/SoftwareUpdateRow";
-import type { AddLibraryResult } from "@/components/molecules/SwitchLibraryForm";
-import { SwitchLibraryForm } from "@/components/molecules/SwitchLibraryForm";
 import {
 	ServerProviderKey,
 	serverKeyStatus,
@@ -33,7 +34,6 @@ import { healthCheckLabel, healthChecksInOrder } from "@/lib/server-health";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
-import { none, some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
 import {
 	SettingsSection,
@@ -499,14 +499,15 @@ const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
 		useLibrarySelection();
 	const platform = usePlatform();
 
-	const addNewLibraryByPath = useCallback(
-		async (form: SwitchLibraryForm): Promise<AddLibraryResult> => {
-			const result = await adoptLibrary(form.libraryPath);
-			if (result.ok) closeSettings();
-			return result;
-		},
-		[adoptLibrary, closeSettings],
-	);
+	const addLibrary = useCallback(async (): Promise<AddLibraryResult | null> => {
+		const path = await platform.dialogs.openDirectory({
+			title: "Choose a Calibre Library Folder",
+		});
+		if (path === null) return null;
+		const result = await adoptLibrary(path);
+		if (result.ok) closeSettings();
+		return result;
+	}, [platform, adoptLibrary, closeSettings]);
 
 	const revealActiveLibrary = useCallback(() => {
 		if (!activeLibrary) return;
@@ -527,6 +528,7 @@ const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
 				currentLibraryId={activeLibrary.id}
 				libraries={libraries}
 				onSwitchLibrary={switchTo}
+				onAddLibrary={addLibrary}
 			/>
 			<CurrentLibraryCard
 				library={activeLibrary}
@@ -536,17 +538,6 @@ const LibraryTab = ({ closeSettings }: LibraryTabProps) => {
 						: null
 				}
 			/>
-			<div className={classes.formGroup}>
-				<SwitchLibraryForm
-					onSubmit={addNewLibraryByPath}
-					selectNewLibrary={async () => {
-						const path = await platform.dialogs.openDirectory({
-							title: "Select Calibre Library Folder",
-						});
-						return path !== null ? some(path) : none();
-					}}
-				/>
-			</div>
 		</div>
 	);
 };
@@ -595,7 +586,7 @@ const ProviderRowShell = ({ id, status, children }: ProviderRowShellProps) => {
 				{status === "Requires setup" && !enabled ? (
 					// Switching on a source that has no key would do nothing; the
 					// one useful step is the key, so offer that instead.
-					<Button size="sm" variant="default" onClick={() => setExpanded(true)}>
+					<Button variant="default" onClick={() => setExpanded(true)}>
 						Add Key…
 					</Button>
 				) : (
@@ -712,7 +703,6 @@ const LocalProviderRow = ({ id }: { id: ProviderId }) => {
 					/>
 					<div className={classes.rowActions}>
 						<Button
-							size="sm"
 							variant="default"
 							disabled={!apiKeyInput || isTesting}
 							onClick={() => void handleClearKey()}
@@ -720,7 +710,6 @@ const LocalProviderRow = ({ id }: { id: ProviderId }) => {
 							Clear
 						</Button>
 						<Button
-							size="sm"
 							variant="default"
 							disabled={!apiKeyInput || isTesting}
 							onClick={() => void handleTest()}
@@ -728,7 +717,6 @@ const LocalProviderRow = ({ id }: { id: ProviderId }) => {
 							{isTesting ? "Testing…" : "Test"}
 						</Button>
 						<Button
-							size="sm"
 							variant="primary"
 							type="submit"
 							disabled={!apiKeyInput || isTesting}
@@ -740,7 +728,6 @@ const LocalProviderRow = ({ id }: { id: ProviderId }) => {
 			) : (
 				<div className={classes.rowActions}>
 					<Button
-						size="sm"
 						variant="default"
 						disabled={isTesting}
 						onClick={() => void handleTest()}

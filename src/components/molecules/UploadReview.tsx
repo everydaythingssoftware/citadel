@@ -47,15 +47,10 @@ export const UploadReview = ({
 	const physics = useMediaQuery("(pointer: fine)");
 	const actions = (
 		<>
-			<Button
-				size="md"
-				disabled={!current || busy}
-				onClick={() => void deck.skip()}
-			>
+			<Button disabled={!current || busy} onClick={() => void deck.skip()}>
 				Skip
 			</Button>
 			<Button
-				size="md"
 				variant="primary"
 				disabled={!current || busy || deck.form.title.trim() === ""}
 				onClick={() => void deck.add()}

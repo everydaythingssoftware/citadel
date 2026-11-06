@@ -147,7 +147,7 @@ export const MetadataSearchModal = ({
 						Still checking {joinNames(pendingProviderNames)}…
 					</span>
 					{onStop && (
-						<Button variant="subtle" size="sm" onClick={onStop}>
+						<Button variant="subtle" onClick={onStop}>
 							Stop
 						</Button>
 					)}
