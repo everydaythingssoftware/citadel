@@ -15,7 +15,49 @@ export interface EmptyStateProps {
 	description?: ReactNode;
 	/** Action buttons, rendered in a centered row beneath the copy. */
 	children?: ReactNode;
+	/** The drawing above the title: a shelf, or a search that found a gap. */
+	art?: "shelf" | "search";
 }
+
+/* Line drawings in the ink colour, so they sit quietly in either theme. */
+const ShelfArt = () => (
+	<svg
+		width="36"
+		height="36"
+		viewBox="0 0 36 36"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.5"
+		strokeLinejoin="round"
+		aria-hidden="true"
+	>
+		<path d="M6 7.5h6.5v21H6zM14.5 7.5H21v21h-6.5z" />
+		<path d="m23.2 9.4 6.1-1.6 5.2 19.6-6 1.6z" />
+	</svg>
+);
+
+/* A shelf with one book missing, and a magnifying glass peering into the gap. */
+const SearchArt = () => (
+	<svg
+		width="64"
+		height="44"
+		viewBox="0 0 64 44"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.5"
+		strokeLinecap="round"
+		strokeLinejoin="round"
+		aria-hidden="true"
+	>
+		<path d="M4 40h48" />
+		<path d="M8 12h7v28H8zM17 8h7v32h-7z" />
+		<path d="M26 14h7v26h-7z" strokeDasharray="2.5 2.5" opacity="0.7" />
+		<path d="M35 10h7v30h-7z" />
+		<circle cx="45" cy="20" r="9" fill="var(--ctd-content-bg)" />
+		<path d="m51.5 26.5 7 7" strokeWidth="2.5" />
+		<path d="M42.5 17.5a3.5 3.5 0 0 1 4.5-1" opacity="0.6" />
+	</svg>
+);
 
 /**
  * Quiet placeholder for empty grids/lists and zero-result
@@ -27,24 +69,14 @@ export const EmptyState = ({
 	title,
 	description,
 	children,
+	art = "shelf",
 }: EmptyStateProps) => {
 	return (
 		<div className={styles.root}>
 			<div className={styles.inner}>
-				<svg
-					className={styles.mark}
-					width="36"
-					height="36"
-					viewBox="0 0 36 36"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.5"
-					strokeLinejoin="round"
-					aria-hidden="true"
-				>
-					<path d="M6 7.5h6.5v21H6zM14.5 7.5H21v21h-6.5z" />
-					<path d="m23.2 9.4 6.1-1.6 5.2 19.6-6 1.6z" />
-				</svg>
+				<span className={styles.mark}>
+					{art === "search" ? <SearchArt /> : <ShelfArt />}
+				</span>
 				<h2 className={styles.title}>{title}</h2>
 				{description !== undefined && (
 					<p className={styles.description}>{description}</p>

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
+import { CitadelMark } from "@/components/atoms/CitadelMark";
 import { Button, TextInput } from "@/components/ui";
 import styles from "./SignInForm.module.css";
 
@@ -20,7 +20,7 @@ export const SignInForm = ({ onSubmit, pending, error }: SignInFormProps) => {
 		<main className={styles.root}>
 			<form className={styles.card} onSubmit={submit} aria-busy={pending}>
 				<div className={styles.mark} aria-hidden="true">
-					<FluentLibraryFilled fontSize={28} />
+					<CitadelMark />
 				</div>
 				<h1 className={styles.title}>Sign in to Citadel</h1>
 				<TextInput

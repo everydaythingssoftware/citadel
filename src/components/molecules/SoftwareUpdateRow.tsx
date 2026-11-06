@@ -82,18 +82,11 @@ const Control = ({
 			);
 		case "progress":
 			return (
-				<>
-					<ProgressBar
-						className={styles.progress}
-						value={control.value}
-						aria-label={`Downloading Citadel ${control.version}`}
-					/>
-					{control.value !== null && (
-						<span className={styles.percent} aria-hidden="true">
-							{Math.round(control.value * 100)}%
-						</span>
-					)}
-				</>
+				<ProgressBar
+					className={styles.progress}
+					value={control.value}
+					aria-label={`Downloading Citadel ${control.version}`}
+				/>
 			);
 		case "restartNow":
 			return (

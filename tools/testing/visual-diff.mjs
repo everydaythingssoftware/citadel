@@ -16,7 +16,7 @@ import { copyFileSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /* The page. Diffs are drawn on canvas once each image pair has loaded. */
-const TEMPLATE = String.raw`<title>Citadel Visual Diff</title>
+const TEMPLATE = `<title>Citadel Visual Diff</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: a sticky control bar over wrapping horizontal strips (before · after · difference), each a synced pan-and-zoom viewport, worst change first. */
@@ -153,11 +153,44 @@ input[type="search"] {
 	font: 11px var(--font-data);
 }
 main {
+	display: grid;
+	gap: 36px;
+	padding-block: 20px 64px;
+}
+.areas {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding-block: 12px 0;
+	padding-left: max(16px, env(safe-area-inset-left, 0px));
+	padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.areas a {
+	padding: 3px 10px;
+	border: 1px solid var(--line);
+	border-radius: 99px;
+	color: var(--ink);
+	font-size: 12px;
+	text-decoration: none;
+}
+.areas a:hover { background: var(--line); }
+.area { display: grid; gap: 14px; scroll-margin-top: 90px; }
+.area > h2 {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	margin: 0;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--line);
+	font-size: 17px;
+	font-weight: 600;
+}
+.area > h2 span { font-size: 12px; font-weight: 500; color: var(--ink-soft); }
+.area-strips {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: flex-start;
 	gap: 24px 28px;
-	padding-block: 20px 64px;
 }
 .strip {
 	display: grid;
@@ -171,7 +204,7 @@ main {
 	gap: 4px 10px;
 	min-width: 0;
 }
-.strip-head h2 {
+.strip-head h3 {
 	margin: 0;
 	font-size: 13px;
 	font-weight: 600;
@@ -342,6 +375,7 @@ dialog::backdrop { background: oklch(0% 0 0 / 0.55); }
 		<span class="hint">Pinch or <kbd>⌥</kbd>+scroll to zoom · drag to pan · <kbd>double-click</kbd> resets · Expand for a big view</span>
 	</div>
 </header>
+<nav class="areas" id="areas" aria-label="Areas"></nav>
 <main id="list"></main>
 <dialog id="big" aria-labelledby="big-title">
 	<div class="big-head">
@@ -354,6 +388,7 @@ dialog::backdrop { background: oklch(0% 0 0 / 0.55); }
 
 <script>
 const ENTRIES = /*__ENTRIES__*/[];
+const AREAS = /*__AREAS__*/[];
 const THRESHOLD = 24; // summed RGB difference below which a pixel counts as unchanged
 const MAX_ZOOM = 24;
 const state = { show: "changed", theme: "both", query: "", height: 300 };
@@ -413,7 +448,7 @@ function level(entry, r) {
 }
 
 function describe(entry, r) {
-	if (!entry.before) return "New screen";
+	if (!entry.before) return "Not captured before";
 	if (!entry.after) return "Removed";
 	if (!r) return "Comparing…";
 	if (r.ratio === 0) return "No change";
@@ -429,11 +464,12 @@ function visible(entry) {
 	return true;
 }
 
+// Within an area: by screen, light then dark side by side.
 function order(a, b) {
-	// Biggest changes first; screens with only one side go last.
-	const score = (e) => (!e.before || !e.after ? -1 : results.get(e.name)?.ratio ?? 0);
-	return score(b) - score(a) || a.name.localeCompare(b.name);
+	return a.key.localeCompare(b.key) || (a.theme === "light" ? -1 : 1);
 }
+
+const slug = (text) => "area-" + text.toLowerCase().replace(/[^a-z]+/g, "-").replace(/-$/, "");
 
 /* ---- Synced pan and zoom: one transform drives all three panes. ---- */
 function makeZoom(panes, layers, readout, size, freeWheel) {
@@ -611,6 +647,30 @@ function render() {
 	const list = document.getElementById("list");
 	const shown = ENTRIES.filter(visible).sort(order);
 	list.replaceChildren();
+	const nav = document.getElementById("areas");
+	nav.replaceChildren();
+	const groups = new Map();
+	for (const area of AREAS) {
+		const inArea = shown.filter((e) => e.area === area);
+		if (inArea.length === 0) continue;
+		const section = document.createElement("section");
+		section.className = "area";
+		section.id = slug(area);
+		const h = document.createElement("h2");
+		h.textContent = area;
+		const count = document.createElement("span");
+		count.textContent = inArea.length + (inArea.length === 1 ? " capture" : " captures");
+		h.append(count);
+		const strips = document.createElement("div");
+		strips.className = "area-strips";
+		section.append(h, strips);
+		list.append(section);
+		groups.set(area, strips);
+		const link = document.createElement("a");
+		link.href = "#" + section.id;
+		link.textContent = area;
+		nav.append(link);
+	}
 	if (shown.length === 0) {
 		const p = document.createElement("p");
 		p.className = "empty";
@@ -625,7 +685,7 @@ function render() {
 		section.style.width = "min(100%, " + (strip.panes.scrollWidth || 0) + "px)";
 		const head = document.createElement("div");
 		head.className = "strip-head";
-		const h = document.createElement("h2");
+		const h = document.createElement("h3");
 		h.textContent = entry.title;
 		h.title = entry.name;
 		const tag = document.createElement("span");
@@ -650,7 +710,7 @@ function render() {
 		tools.append(reset, expand);
 		head.append(h, tag, stat, tools);
 		section.append(head, strip.panes);
-		list.append(section);
+		groups.get(entry.area)?.append(section);
 		requestAnimationFrame(() => {
 			section.style.width = "min(100%, " + strip.panes.scrollWidth + "px)";
 		});
@@ -659,7 +719,7 @@ function render() {
 	const changed = done.filter((e) => results.get(e.name).ratio > 0).length;
 	const added = ENTRIES.filter((e) => !e.before).length;
 	document.getElementById("summary").textContent =
-		changed + " of " + done.length + " screens changed" + (added ? " · " + added + " new" : "") + " · " + shown.length + " shown";
+		changed + " of " + done.length + " captures changed" + (added ? " · " + added + " not captured before" : "") + " · " + shown.length + " shown";
 }
 
 function openBig(entry, from) {
@@ -747,6 +807,23 @@ mkdirSync(join(outDir, "before"), { recursive: true });
 mkdirSync(join(outDir, "after"), { recursive: true });
 
 const THEME = /-(light|dark)\.png$/;
+
+/* Where each capture belongs, by file-name pattern; the first match wins.
+   Anything unmatched lands in "Other". Areas render in this order. */
+const AREAS = [
+	["Sign-in & setup", /^(0[12]|20|3\d)-|setup|signin/],
+	["Library", /^(0[3-6]|17|2[12])-|books-grid|search/],
+	["Book editor", /^(0[7-9]|16|23)-|book-edit/],
+	["Lists", /^(1[0-35]|24)-|authors|series|tags|publishers/],
+	[
+		"Settings & libraries",
+		/^(14|25)-|settings|softwareupdate|currentlibrary|librarylist|switchlibrary/,
+	],
+	["Adding books", /upload|dropoverlay|addbook|bookuploads/],
+	["Recovery & switching", /recovery|curtain/],
+];
+const areaOf = (key) =>
+	AREAS.find(([, pattern]) => pattern.test(key))?.[0] ?? "Other";
 const label = (name) => {
 	const base = name.replace(THEME, "").replace(/\.png$/, "");
 	const story = base.startsWith("sb-");
@@ -760,6 +837,7 @@ const label = (name) => {
 		group: story ? "Storybook" : /^2\d-/.test(base) ? "Phone" : "Desktop",
 		title: words.charAt(0).toUpperCase() + words.slice(1),
 		key: base,
+		area: areaOf(base),
 	};
 };
 
@@ -780,6 +858,9 @@ const entries = [...new Set([...before, ...after])].sort().map((name) => {
 const page = TEMPLATE.replace(
 	"/*__ENTRIES__*/[]",
 	JSON.stringify(entries).replace(/</g, "\\u003c"),
+).replace(
+	"/*__AREAS__*/[]",
+	JSON.stringify([...AREAS.map(([name]) => name), "Other"]),
 );
 writeFileSync(
 	join(outDir, "index.html"),

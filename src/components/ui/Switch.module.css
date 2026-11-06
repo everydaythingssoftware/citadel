@@ -80,19 +80,19 @@
 		0 1px 3px oklch(0% 0 0 / 0.5);
 }
 
-/* Touch screens: a switch as tall as the 32px small buttons beside it. */
+/* Touch screens: a little larger than the desktop switch, smaller than iOS's. */
 @media (pointer: coarse) {
 	.track {
-		width: 52px;
-		height: 32px;
+		width: 44px;
+		height: 26px;
 	}
 
 	.thumb {
-		width: 28px;
-		height: 28px;
+		width: 22px;
+		height: 22px;
 	}
 
 	.thumb[data-state="checked"] {
-		transform: translateX(21px);
+		transform: translateX(19px);
 	}
 }

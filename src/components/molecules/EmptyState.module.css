@@ -19,6 +19,7 @@
 }
 
 .mark {
+	display: inline-flex;
 	margin-bottom: 4px;
 	color: oklch(from var(--ctd-ink-soft) l c h / 0.6);
 }
