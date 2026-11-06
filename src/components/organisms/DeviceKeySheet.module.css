@@ -37,6 +37,24 @@
 	-webkit-user-select: text;
 }
 
+/* Digits and symbols stand out from letters, as in 1Password, to make the
+ * password easier to read across to another device. */
+.password [data-kind="digit"] {
+	color: oklch(50% 0.16 255);
+}
+
+.password [data-kind="symbol"] {
+	color: oklch(52% 0.18 25);
+}
+
+:global([data-theme="dark"]) .password [data-kind="digit"] {
+	color: oklch(76% 0.12 245);
+}
+
+:global([data-theme="dark"]) .password [data-kind="symbol"] {
+	color: oklch(74% 0.14 25);
+}
+
 .passwordRow svg {
 	display: block;
 	width: 1rem;

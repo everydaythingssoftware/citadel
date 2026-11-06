@@ -1,5 +1,22 @@
 import type { DeviceKey } from "@/bindings";
 
+export interface PasswordRun {
+	kind: "letter" | "digit" | "symbol";
+	text: string;
+}
+
+const RUNS = /\p{L}+|\d+|[^\p{L}\d]+/gu;
+
+const runKind = (text: string): PasswordRun["kind"] => {
+	if (/^\p{L}/u.test(text)) return "letter";
+	return /^\d/.test(text) ? "digit" : "symbol";
+};
+
+/** Splits a password into runs of one kind of character, so each can be told
+ * apart while it's typed on another device. Joined, the runs are the password. */
+export const passwordRuns = (password: string): PasswordRun[] =>
+	(password.match(RUNS) ?? []).map((text) => ({ kind: runKind(text), text }));
+
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
 	dateStyle: "medium",
 });
