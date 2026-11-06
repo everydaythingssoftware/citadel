@@ -25,7 +25,6 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
-import { BOOK_BACKDROP, useBookBackdrop } from "@/lib/hooks/use-book-backdrop";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
 import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
@@ -264,7 +263,6 @@ const GeneralTab = () => {
 		(state) => state.setAutoUpdateCheckingEnabled,
 	);
 	const autoUpdateSwitchId = useId();
-	const [bookBackdrop, setBookBackdrop] = useBookBackdrop();
 
 	const platform = usePlatform();
 	const supportsAutoUpdates = platform.capabilities.supportsAutoUpdates;
@@ -296,28 +294,6 @@ const GeneralTab = () => {
 								{ value: "auto", label: "Auto" },
 								{ value: "light", label: "Light" },
 								{ value: "dark", label: "Dark" },
-							]}
-						/>
-					}
-				/>
-				{/* Trial: both backdrops are being tried in real libraries. */}
-				<SettingsRow
-					label="Book backdrop"
-					description="Behind a book’s cover and title."
-					control={
-						<SegmentedControl
-							aria-label="Book backdrop"
-							value={bookBackdrop}
-							onChange={(value) =>
-								setBookBackdrop(
-									value === BOOK_BACKDROP.blurredCover
-										? BOOK_BACKDROP.blurredCover
-										: BOOK_BACKDROP.colour,
-								)
-							}
-							items={[
-								{ value: BOOK_BACKDROP.colour, label: "Cover Colours" },
-								{ value: BOOK_BACKDROP.blurredCover, label: "Blurred Cover" },
 							]}
 						/>
 					}

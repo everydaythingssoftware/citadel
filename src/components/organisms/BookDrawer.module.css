@@ -31,6 +31,7 @@
 	z-index: -1;
 	overflow: hidden;
 	pointer-events: none;
+	background: linear-gradient(100deg, var(--wash-1) 20%, var(--wash-2) 100%);
 	mask-image: linear-gradient(
 		to bottom,
 		#000 0%,
@@ -43,25 +44,6 @@
 		rgb(0 0 0 / 0.04) 96%,
 		transparent 100%
 	);
-}
-
-.hero[data-backdrop="colour"] .backdrop {
-	background: linear-gradient(100deg, var(--wash-1) 20%, var(--wash-2) 100%);
-}
-
-/* Trial: the cover itself, blurred well past recognition. */
-.blur {
-	position: absolute;
-	inset: -60px;
-	width: calc(100% + 120px);
-	height: calc(100% + 120px);
-	object-fit: cover;
-	filter: blur(56px) saturate(1.4);
-	opacity: 0.42;
-}
-
-:global(:root[data-theme="dark"]) .blur {
-	opacity: 0.38;
 }
 
 .cover {
