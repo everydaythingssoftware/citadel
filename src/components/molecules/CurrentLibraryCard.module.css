@@ -40,7 +40,7 @@
 	justify-content: space-between;
 	gap: 1rem;
 	/* Tall enough for the name field, so every row matches it. */
-	min-height: 2.625rem;
+	min-height: 42px;
 	padding: 0.4375rem 0.875rem;
 }
 

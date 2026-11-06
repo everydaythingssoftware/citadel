@@ -31,7 +31,8 @@
 	align-content: start;
 	gap: 28px;
 	width: 100%;
-	max-width: 40rem;
+	/* Ends on the same line as the narrow list tables. */
+	max-width: 636px;
 	padding: 24px 24px 64px;
 }
 

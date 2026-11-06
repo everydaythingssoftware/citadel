@@ -76,6 +76,20 @@ const Wired = () => {
 						fontSize: 13,
 					}}
 				>
+					<svg
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.6"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						aria-hidden="true"
+						style={{ justifySelf: "center", marginBottom: 4 }}
+					>
+						<path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14" />
+					</svg>
 					<strong style={{ color: "var(--ctd-ink)", fontSize: 15 }}>
 						Drop books anywhere on this page
 					</strong>
