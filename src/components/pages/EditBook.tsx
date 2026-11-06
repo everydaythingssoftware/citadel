@@ -376,6 +376,12 @@ const CustomColumnInput = ({
 const sameValue = (a: unknown, b: unknown) =>
 	a === b || JSON.stringify(a) === JSON.stringify(b);
 
+/**
+ * Saves Undo can step back through, per book while its editor is open; the
+ * history goes when you leave the book or reload.
+ */
+const UNDO_STEPS = 50;
+
 /** How long the quiet "Saved" beside the Save button stays. */
 const SAVED_STATUS_MS = 2000;
 
@@ -734,7 +740,7 @@ const EditBookForm = ({
 		saving.current = true;
 		lastSaved.current = values;
 		if (undoing.current) undoing.current = false;
-		else setHistory((steps) => [...steps, baseline]);
+		else setHistory((steps) => [...steps, baseline].slice(-UNDO_STEPS));
 		setSaveStatus("saving");
 		void (async () => {
 			try {
