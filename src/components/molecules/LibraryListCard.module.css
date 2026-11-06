@@ -138,7 +138,7 @@
 .rowError {
 	font-size: 0.75rem;
 	line-height: 1.35;
-	color: var(--ctd-danger-border);
+	color: var(--ctd-danger-ink);
 }
 
 .libraryRow:disabled {

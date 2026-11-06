@@ -72,5 +72,5 @@
 	padding-inline-start: var(--text-input-inset);
 	font-size: 12px;
 	line-height: 1.2;
-	color: var(--ctd-danger-bg);
+	color: var(--ctd-danger-ink);
 }
