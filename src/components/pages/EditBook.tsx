@@ -48,7 +48,7 @@ import { formatSeriesIndex } from "@/lib/series";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
 import { GlyphOpenExternal } from "../icons/RowGlyphs";
 import { BookCover } from "../atoms/BookCover";
-import { F7Trash } from "../icons/F7Trash";
+import { TrashGlyph } from "../icons/TrashGlyph";
 import { BookActions } from "../molecules/BookActions";
 import { MetadataSearchModal } from "../molecules/MetadataSearchModal";
 import { RichTextEditor } from "../molecules/RichTextEditor";
@@ -989,7 +989,7 @@ const EditBookForm = ({
 															);
 													}}
 												>
-													<F7Trash />
+													<TrashGlyph />
 												</IconButton>
 											</Tooltip>
 										</div>

@@ -61,7 +61,7 @@ import { createSmartShelf } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
 import { BookCover } from "../atoms/BookCover";
 import { F7Bookmark } from "../icons/F7Bookmark";
-import { F7Pencil } from "../icons/F7Pencil";
+import { EditGlyph } from "../icons/EditGlyph";
 import { TablerCopy } from "../icons/TablerCopy";
 import { BookGrid, type ScrollToBookIndex } from "../molecules/BookGrid";
 import { EmptyLibrary, EmptyState } from "../molecules/EmptyState";
@@ -711,7 +711,7 @@ const BookDetails = ({
 									})
 								}
 							>
-								<F7Pencil />
+								<EditGlyph />
 								Edit
 							</Button>
 						)}
