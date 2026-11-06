@@ -40,16 +40,21 @@ export const BookActions = ({
  * state: the circle fills, the check draws in, and it stays green. Pressing
  * it again marks the book unread.
  */
-const FinishedButton = ({
+export const FinishedButton = ({
 	isRead,
 	onReadChange,
-}: Pick<BookActionsProps, "isRead" | "onReadChange">) => {
+	tone = "success",
+}: Pick<BookActionsProps, "isRead" | "onReadChange"> & {
+	/** Ink when something nearby already shows finished in green. */
+	tone?: "success" | "ink";
+}) => {
 	// Only a press animates; opening an already-finished book doesn't.
 	const [justFinished, setJustFinished] = useState(false);
 	return (
 		<button
 			type="button"
 			className={styles.finished}
+			data-tone={tone}
 			aria-pressed={isRead}
 			data-just-finished={justFinished || undefined}
 			title={isRead ? "Mark as unread" : undefined}
@@ -86,7 +91,7 @@ const verb = (row: BookFormatRow) =>
  * the format printed on the page. Clicking one opens it in its default app
  * (desktop) or downloads it (web); they wrap however many there are.
  */
-const FileTiles = ({ rows }: { rows: BookFormatRow[] }) => {
+export const FileTiles = ({ rows }: { rows: BookFormatRow[] }) => {
 	const platform = usePlatform();
 	const use = (row: BookFormatRow) => {
 		if (row.kind === "open") {

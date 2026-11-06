@@ -1,0 +1,320 @@
+.drawer {
+	--wash-1: var(--wash-1-light, transparent);
+	--wash-2: var(--wash-2-light, transparent);
+	display: flex;
+	flex-direction: column;
+	min-height: 100%;
+}
+
+:global(:root[data-theme="dark"]) .drawer {
+	--wash-1: var(--wash-1-dark, transparent);
+	--wash-2: var(--wash-2-dark, transparent);
+}
+
+/* ---- Hero: cover beside title, byline and actions, bottom-aligned. ---- */
+.hero {
+	position: relative;
+	isolation: isolate;
+	display: grid;
+	grid-template-columns: 120px minmax(0, 1fr);
+	align-items: end;
+	gap: 20px;
+	padding: 52px 24px 28px;
+}
+
+/* The colour spans the drawer's full width and eases out by the end of the
+   action row, so it never ends on an edge. */
+.backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	overflow: hidden;
+	pointer-events: none;
+	mask-image: linear-gradient(
+		to bottom,
+		#000 0%,
+		#000 40%,
+		rgb(0 0 0 / 0.88) 52%,
+		rgb(0 0 0 / 0.7) 63%,
+		rgb(0 0 0 / 0.5) 73%,
+		rgb(0 0 0 / 0.3) 82%,
+		rgb(0 0 0 / 0.14) 90%,
+		rgb(0 0 0 / 0.04) 96%,
+		transparent 100%
+	);
+}
+
+.hero[data-backdrop="colour"] .backdrop {
+	background: linear-gradient(100deg, var(--wash-1) 20%, var(--wash-2) 100%);
+	transition: opacity 240ms ease-out;
+}
+
+/* Trial: the cover itself, blurred well past recognition. */
+.blur {
+	position: absolute;
+	inset: -60px;
+	width: calc(100% + 120px);
+	height: calc(100% + 120px);
+	object-fit: cover;
+	filter: blur(56px) saturate(1.4);
+	opacity: 0.42;
+}
+
+:global(:root[data-theme="dark"]) .blur {
+	opacity: 0.38;
+}
+
+.cover {
+	position: relative;
+	align-self: end;
+	min-width: 0;
+}
+
+.cover > * {
+	box-shadow: var(--ctd-cover-shadow);
+}
+
+/* Finished, shown once: the green lives on the cover, not the button. */
+.coverCheck {
+	position: absolute;
+	right: -8px;
+	bottom: -8px;
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border: 2px solid var(--ctd-surface);
+	border-radius: 50%;
+	background-color: var(--ctd-success);
+	animation: check-in 260ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.coverCheck svg {
+	width: 14px;
+	height: 14px;
+	fill: none;
+	stroke: white;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+@keyframes check-in {
+	from {
+		transform: scale(0.5);
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.coverCheck {
+		animation: none;
+	}
+}
+
+.heading {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.title {
+	display: -webkit-box;
+	margin: 0 0 6px;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	font-family: var(--ctd-font-serif);
+	font-size: 24px;
+	font-weight: 600;
+	line-height: 1.2;
+	color: var(--ctd-ink);
+	text-wrap: balance;
+	overflow-wrap: anywhere;
+}
+
+.byline {
+	display: grid;
+	gap: 2px;
+	margin-bottom: 14px;
+	font-size: 13px;
+	line-height: 1.4;
+}
+
+.authors,
+.series {
+	margin: 0;
+}
+
+.authors {
+	color: var(--ctd-ink);
+}
+
+.series {
+	color: var(--ctd-ink-soft);
+}
+
+.link {
+	color: inherit;
+	text-decoration: underline;
+	text-decoration-color: oklch(from currentColor l c h / 0.35);
+	text-underline-offset: 2px;
+}
+
+.link:hover {
+	text-decoration-color: currentColor;
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+/* Three labelled buttons share the title column, so they run a little
+   tighter than standalone buttons. */
+.actions > * {
+	padding-inline: 10px;
+}
+
+.download:any-link {
+	color: var(--ctd-accent-text);
+	text-decoration: none;
+}
+
+/* ---- Body ---- */
+.body {
+	display: grid;
+	gap: 24px;
+	padding: 4px 24px 32px;
+}
+
+.section {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+
+.sectionTitle {
+	margin: 0;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ctd-ink-soft);
+}
+
+.description {
+	font-size: 13px;
+	line-height: 20px;
+	color: var(--ctd-ink);
+}
+
+.description :global(p) {
+	margin: 0 0 20px;
+}
+
+.description :global(p:last-child) {
+	margin-bottom: 0;
+}
+
+.description[data-clamped] {
+	max-height: 100px;
+	overflow: hidden;
+	mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+
+.description:not([data-clamped]):not([data-expanded]) {
+	max-height: 100px;
+	overflow: hidden;
+}
+
+.more {
+	justify-self: start;
+	margin-left: -8px;
+}
+
+.tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tag {
+	padding: 3px 10px;
+	border-radius: 999px;
+	background-color: var(--ctd-surface-muted);
+	font-size: 12px;
+	color: var(--ctd-ink);
+}
+
+.details {
+	display: grid;
+	grid-template-columns: 120px minmax(0, 1fr);
+	align-items: center;
+	gap: 6px 20px;
+	margin: 0;
+	font-size: 13px;
+}
+
+.details dt {
+	color: var(--ctd-ink-soft);
+	text-align: right;
+}
+
+.details dd {
+	min-width: 0;
+	margin: 0;
+	color: var(--ctd-ink);
+}
+
+.identifier {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.identifier .link {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-variant-numeric: tabular-nums;
+}
+
+.value {
+	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
+}
+
+.openGlyph {
+	width: 12px;
+	height: 12px;
+	color: var(--ctd-ink-soft);
+}
+
+.copy {
+	margin-block: -4px;
+}
+
+/* Phones: a smaller cover keeps the title column readable. */
+@media (max-width: 36em) {
+	.hero {
+		grid-template-columns: 96px minmax(0, 1fr);
+		gap: 16px;
+		padding: 52px 16px 24px;
+	}
+
+	.title {
+		font-size: 21px;
+	}
+
+	.body {
+		padding: 4px 16px 32px;
+	}
+
+	.details {
+		grid-template-columns: 96px minmax(0, 1fr);
+		gap: 6px 16px;
+	}
+}
