@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHttpLibrary } from "./http";
-import { UploadError, UploadFailure } from "./types";
+import { isLocalImports, UploadError, UploadFailure } from "./types";
 
 const json = (data: unknown, status = 200) =>
 	new Response(status === 204 ? null : JSON.stringify(data), {
@@ -25,7 +25,7 @@ const library = (fetch: (request: Request) => Promise<Response>) =>
 
 const uploadsOf = (fetch: (request: Request) => Promise<Response>) => {
 	const uploads = library(fetch).uploads;
-	if (!uploads) throw new Error("expected uploads");
+	if (!uploads || isLocalImports(uploads)) throw new Error("expected uploads");
 	return uploads;
 };
 

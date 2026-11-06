@@ -1,10 +1,17 @@
 import type {
+	BookIntake,
 	BookUploads,
+	LocalBookImports,
 	ReviewedBook,
 	StagedUpload,
 } from "@/lib/services/library";
-import { UploadError, UploadFailure } from "@/lib/services/library";
 import {
+	isLocalImports,
+	UploadError,
+	UploadFailure,
+} from "@/lib/services/library";
+import {
+	type BookSource,
 	itemsForFiles,
 	nextToUpload,
 	type QueueAction,
@@ -21,7 +28,7 @@ const CANCEL_ATTEMPTS = 5;
 export const PAUSED_MESSAGE = "Add or skip some books to keep uploading.";
 
 export interface UploadRunnerDeps {
-	uploads: BookUploads;
+	uploads: BookIntake;
 	getState: () => QueueState;
 	dispatch: (action: QueueAction) => void;
 	/** Called after a book lands in the library. */
@@ -32,7 +39,7 @@ export interface UploadRunnerDeps {
 export interface UploadRunner {
 	/** Loads the limits and any finished uploads from an earlier visit. */
 	restore(): Promise<void>;
-	addFiles(files: readonly File[]): void;
+	addFiles(files: readonly BookSource[]): void;
 	retry(key: string): void;
 	/** Stops and discards an upload (or skips a ready book). */
 	remove(key: string): Promise<void>;
@@ -73,7 +80,8 @@ const retryable = (error: unknown) => {
 /**
  * Drives the queue: sends one file at a time in chunks, resuming from the
  * server's offset after a failure, and starts the next file as soon as the
- * previous one's last byte has left (while the server reads it).
+ * previous one's last byte has left (while the server reads it). Files on
+ * this computer are read one at a time where they are instead.
  */
 export const createUploadRunner = ({
 	uploads,
@@ -91,8 +99,38 @@ export const createUploadRunner = ({
 
 	const coverUrl = (id: string) => uploads.coverUrl(id);
 
+	/** Reads one file on this computer where it is. */
+	const stage = async (
+		item: QueueItem,
+		local: LocalBookImports,
+	): Promise<void> => {
+		if (!item.path) return;
+		dispatch({ type: "reading", key: item.key });
+		try {
+			const upload = await local.stage(item.path);
+			if (disposed || current(item.key) === undefined) {
+				await local.cancel(upload.id);
+				return;
+			}
+			dispatch({ type: "received", key: item.key, upload, coverUrl });
+		} catch (error) {
+			if (disposed || current(item.key) === undefined) return;
+			const message =
+				error instanceof Error ? error.message : "Something went wrong";
+			dispatch(
+				failureOf(error) === UploadFailure.invalid
+					? { type: "rejected", key: item.key, message }
+					: { type: "failed", key: item.key, message },
+			);
+		}
+	};
+
 	/** Sends one file; resolves `sent` once its last byte leaves the browser. */
-	const transfer = async (item: QueueItem, sent: () => void): Promise<void> => {
+	const transfer = async (
+		item: QueueItem,
+		uploads: BookUploads,
+		sent: () => void,
+	): Promise<void> => {
 		const file = item.file;
 		if (!file) return sent();
 		const controller = new AbortController();
@@ -216,9 +254,13 @@ export const createUploadRunner = ({
 			for (;;) {
 				const item = nextToUpload(getState());
 				if (!item || disposed) break;
-				await new Promise<void>((resolve) => {
-					void transfer(item, resolve);
-				});
+				if (isLocalImports(uploads)) await stage(item, uploads);
+				else {
+					const remote = uploads;
+					await new Promise<void>((resolve) => {
+						void transfer(item, remote, resolve);
+					});
+				}
 			}
 		} finally {
 			pumping = false;
@@ -263,6 +305,11 @@ export const createUploadRunner = ({
 	return {
 		restore: async () => {
 			try {
+				if (isLocalImports(uploads)) {
+					const { uploads: staged } = await uploads.list();
+					dispatch({ type: "restored", uploads: staged, coverUrl });
+					return;
+				}
 				const { limits, uploads: staged } = await uploads.list();
 				dispatch({ type: "limits", limits });
 				dispatch({ type: "restored", uploads: staged, coverUrl });

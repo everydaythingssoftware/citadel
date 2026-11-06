@@ -21,6 +21,8 @@ import {
 import styles from "./UploadSheet.module.css";
 
 export interface UploadSheetProps {
+	/** Books are read from this computer rather than uploaded. */
+	local?: boolean;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	items: QueueItem[];
@@ -46,6 +48,7 @@ export interface UploadSheetProps {
  * page on phones. Closing it leaves uploads running.
  */
 export const UploadSheet = ({
+	local = false,
 	open,
 	onOpenChange,
 	items,
@@ -65,6 +68,9 @@ export const UploadSheet = ({
 }: UploadSheetProps) => {
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const firstReady = items.find((item) => item.phase === UploadPhase.ready);
+	const cancelHint = local
+		? "Hold to stop adding these books"
+		: "Hold to cancel all uploads";
 	useFollowNewest(bodyRef, reviewing ? 0 : items.length);
 	return (
 		<Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -114,6 +120,7 @@ export const UploadSheet = ({
 						{reviewing ? (
 							<UploadReview
 								deck={deck}
+								local={local}
 								authorSuggestions={authorSuggestions}
 								tagSuggestions={tagSuggestions}
 								onBack={onBackToQueue}
@@ -122,7 +129,10 @@ export const UploadSheet = ({
 						) : (
 							<>
 								{items.length > 0 && (
-									<ul className={styles.list} aria-label="Uploads">
+									<ul
+										className={styles.list}
+										aria-label={local ? "Books to add" : "Uploads"}
+									>
 										{items.map((item) => (
 											<UploadQueueRow
 												key={item.key}
@@ -154,8 +164,10 @@ export const UploadSheet = ({
 										</button>
 										<HoldButton
 											className={styles.cancelRow}
-											label="Cancel All Uploads"
-											hint="Hold to cancel all uploads"
+											label={
+												local ? "Cancel Adding Books" : "Cancel All Uploads"
+											}
+											hint={cancelHint}
 											onConfirm={onCancelAll}
 										/>
 									</>
@@ -171,7 +183,8 @@ export const UploadSheet = ({
 												your files.
 											</span>
 											<span className={styles.narrowOnly}>
-												Choose books from your files to upload them.
+												Choose books from your files to{" "}
+												{local ? "add them" : "upload them"}.
 											</span>
 										</p>
 										<Button
@@ -193,7 +206,7 @@ export const UploadSheet = ({
 							<HoldButton
 								className={styles.cancelAll}
 								label="Cancel All"
-								hint="Hold to cancel all uploads"
+								hint={cancelHint}
 								onConfirm={onCancelAll}
 							/>
 							<span className={styles.spacer} />
@@ -217,7 +230,7 @@ export const UploadSheet = ({
 					)}
 					<p className={styles.live} aria-live="polite">
 						{summary.active > 0
-							? `Uploading ${summary.active} ${summary.active === 1 ? "book" : "books"}`
+							? `${local ? "Reading" : "Uploading"} ${summary.active} ${summary.active === 1 ? "book" : "books"}`
 							: summary.ready > 0
 								? `${summary.ready} ready to review`
 								: ""}

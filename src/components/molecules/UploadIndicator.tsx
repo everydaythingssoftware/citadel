@@ -9,6 +9,8 @@ export interface UploadIndicatorProps {
 	summary: QueueSummary;
 	/** The soonest deadline among ready books. */
 	countdown?: Countdown;
+	/** Books are read from this computer rather than uploaded. */
+	local?: boolean;
 	onOpen: () => void;
 }
 
@@ -21,6 +23,7 @@ export interface UploadIndicatorProps {
 export const UploadIndicator = ({
 	summary,
 	countdown,
+	local = false,
 	onOpen,
 }: UploadIndicatorProps) => {
 	if (summary.active === 0 && summary.ready === 0) return null;
@@ -28,7 +31,7 @@ export const UploadIndicator = ({
 	const deadline = !uploading ? countdown : undefined;
 	const urgent = deadline?.urgent === true;
 	const label = uploading
-		? `Uploading ${summary.active} ${summary.active === 1 ? "book" : "books"}`
+		? `${local ? "Reading" : "Uploading"} ${summary.active} ${summary.active === 1 ? "book" : "books"}`
 		: `${summary.ready} to review`;
 	const button = (
 		<Button

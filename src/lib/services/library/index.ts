@@ -1,6 +1,8 @@
 export type {
+	BookIntake,
 	BookUploads,
 	Library,
+	LocalBookImports,
 	Options,
 	ReviewedBook,
 	StagedBook,
@@ -10,4 +12,10 @@ export type {
 	UploadChunk,
 	UploadLimits,
 } from "./types";
-export { BookDeletion, DeviceType, UploadError, UploadFailure } from "./types";
+export {
+	BookDeletion,
+	DeviceType,
+	isLocalImports,
+	UploadError,
+	UploadFailure,
+} from "./types";

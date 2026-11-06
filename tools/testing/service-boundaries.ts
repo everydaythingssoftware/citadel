@@ -29,6 +29,10 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbCmdAddBookGenres",
 		"clbCmdSetBookCoverFromMetadata",
 		"clbCmdSetBookCoverFromFile",
+		"clbQueryStagedBooks",
+		"clbCmdStageBook",
+		"clbCmdAddStagedBook",
+		"clbCmdDiscardStagedBook",
 	],
 	"src/lib/services/library-catalog/tauri.ts": [
 		"initClient",

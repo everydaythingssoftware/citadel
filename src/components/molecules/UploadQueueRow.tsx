@@ -7,7 +7,7 @@ import {
 	XmarkGlyph,
 } from "@/components/icons/UploadGlyphs";
 import { Button, IconButton, Spinner } from "@/components/ui";
-import { type QueueItem, UploadPhase } from "@/lib/uploads/queue";
+import { hasSource, type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import styles from "./UploadQueueRow.module.css";
 
 export interface UploadQueueRowProps {
@@ -35,7 +35,7 @@ const subtitle = (item: QueueItem): string => {
 			);
 		case UploadPhase.failed:
 		case UploadPhase.rejected:
-			return item.message ?? "Couldn't upload this file";
+			return item.message ?? "Couldn't add this file";
 	}
 };
 
@@ -113,7 +113,7 @@ export const UploadQueueRow = ({
 						<ChevronRightGlyph className={styles.chevron} />
 					</Button>
 				)}
-				{item.phase === UploadPhase.failed && item.file && (
+				{item.phase === UploadPhase.failed && hasSource(item) && (
 					<Button onClick={onRetry}>Try Again</Button>
 				)}
 				{item.phase === UploadPhase.rejected ? (

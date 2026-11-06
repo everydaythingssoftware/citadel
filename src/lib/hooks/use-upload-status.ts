@@ -1,6 +1,8 @@
 import { useMemo } from "react";
+import { isLocalImports } from "@/lib/services/library";
 import { type Countdown, countdown } from "@/lib/uploads/countdown";
 import { type QueueSummary, readyItems, summarize } from "@/lib/uploads/queue";
+import { useLibraryStore } from "@/stores/library/store";
 import { useUploadsStore } from "@/stores/uploads/store";
 import { useNow } from "./use-now";
 
@@ -8,8 +10,11 @@ import { useNow } from "./use-now";
 export const useUploadStatus = (): {
 	summary: QueueSummary;
 	soonest: Countdown | undefined;
+	/** Books are read from this computer rather than uploaded. */
+	local: boolean;
 	open: () => void;
 } => {
+	const intake = useLibraryStore((state) => state.library?.uploads);
 	const queue = useUploadsStore((state) => state.queue);
 	const openSheet = useUploadsStore((state) => state.openSheet);
 	const now = useNow();
@@ -24,5 +29,10 @@ export const useUploadStatus = (): {
 			? countdown(first, now, queue.limits?.reviewSeconds ?? 24 * 60 * 60)
 			: undefined;
 	}, [queue, now]);
-	return { summary, soonest, open: openSheet };
+	return {
+		summary,
+		soonest,
+		local: intake !== undefined && isLocalImports(intake),
+		open: openSheet,
+	};
 };

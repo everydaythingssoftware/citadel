@@ -10,7 +10,9 @@ export type {
 export type {
 	ClipboardAdapter,
 	DialogAdapter,
+	FileDragEvent,
 	FileOpenerAdapter,
+	LocalFile,
 	PlatformAdapter,
 	PlatformCapabilities,
 	WindowAdapter,

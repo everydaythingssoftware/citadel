@@ -6,4 +6,5 @@ export const createWebWindow = (): WindowAdapter => ({
 	setTheme: async () => {},
 	setBackgroundColor: async () => {},
 	hideOnClose: async () => () => {},
+	onFileDrag: async () => () => {},
 });

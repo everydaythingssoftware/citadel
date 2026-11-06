@@ -25,6 +25,8 @@ export interface UploadReviewProps {
 	onBack: () => void;
 	/** Closes the sheet; shown on phones, where this bar is the navigation bar. */
 	onDone?: () => void;
+	/** Books are read from this computer rather than uploaded. */
+	local?: boolean;
 }
 
 /**
@@ -37,6 +39,7 @@ export const UploadReview = ({
 	tagSuggestions,
 	onBack,
 	onDone,
+	local = false,
 }: UploadReviewProps) => {
 	const { current } = deck;
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -65,8 +68,12 @@ export const UploadReview = ({
 			<header className={styles.header} data-scrolled={scrolled || undefined}>
 				<button type="button" className={styles.back} onClick={onBack}>
 					<ChevronLeftGlyph />
-					<span className={styles.backWide}>All uploads</span>
-					<span className={styles.backNarrow}>Uploads</span>
+					<span className={styles.backWide}>
+						{local ? "All books" : "All uploads"}
+					</span>
+					<span className={styles.backNarrow}>
+						{local ? "Books" : "Uploads"}
+					</span>
 				</button>
 				<nav className={styles.pager} aria-label="Ready books">
 					<IconButton

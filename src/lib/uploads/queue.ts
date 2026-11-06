@@ -1,3 +1,4 @@
+import type { LocalFile } from "@/lib/platform";
 import type {
 	ReviewedBook,
 	StagedBook,
@@ -12,7 +13,7 @@ export const UploadPhase = {
 	/** Queued; nothing sent yet (or retrying after a failure). */
 	waiting: "waiting",
 	uploading: "uploading",
-	/** Every byte sent; the server is reading the file. */
+	/** Every byte sent and the server is reading the file, or the desktop is. */
 	reading: "reading",
 	/** Read and waiting for the user to add or skip it. */
 	ready: "ready",
@@ -34,6 +35,8 @@ export interface QueueItem {
 	size: number;
 	/** The picked file; absent for an upload restored from the server. */
 	file?: File;
+	/** The file on this computer, for a book added on the desktop. */
+	path?: string;
 	uploadId?: string;
 	phase: TUploadPhase;
 	/** Bytes the server has, plus those in flight for the current chunk. */
@@ -64,6 +67,8 @@ export type QueueAction =
 	  }
 	| { type: "started"; key: string; upload: StagedUpload }
 	| { type: "progressed"; key: string; sentBytes: number }
+	/** A file on this computer is being read where it is. */
+	| { type: "reading"; key: string }
 	| { type: "sent"; key: string }
 	| {
 			type: "received";
@@ -103,13 +108,23 @@ export const RejectReason = {
 	empty: "This file is empty",
 } as const;
 
-/** Why a file can't be uploaded at all, checked before any request. */
+/** A book chosen or dropped: a file in the page, or one on this computer. */
+export type BookSource = File | LocalFile;
+
+const isLocal = (source: BookSource): source is LocalFile =>
+	"path" in source && typeof source.path === "string";
+
+/**
+ * Why a file can't be uploaded at all, checked before any request. A file
+ * on this computer has no size yet; reading it checks the rest.
+ */
 export const rejectionFor = (
-	file: { name: string; size: number },
+	file: { name: string; size?: number },
 	limits: UploadLimits | undefined,
 ): string | undefined => {
 	if (!BOOK_EXTENSIONS.includes(extensionOf(file.name)))
 		return RejectReason.notABook;
+	if (file.size === undefined) return undefined;
 	if (file.size === 0) return RejectReason.empty;
 	if (limits && file.size > limits.maxFileBytes) return RejectReason.tooLarge;
 	return undefined;
@@ -120,23 +135,31 @@ const queueKey = (): string => `upload-${++nextKey}`;
 
 /** Queue items for picked or dropped files, rejecting the ones that can't go. */
 export const itemsForFiles = (
-	files: readonly File[],
+	files: readonly BookSource[],
 	limits: UploadLimits | undefined,
 	key: () => string = queueKey,
 ): QueueItem[] =>
-	files.map((file) => {
-		const message = rejectionFor(file, limits);
+	files.map((source) => {
+		const local = isLocal(source);
+		const message = rejectionFor(
+			{ name: source.name, size: local ? undefined : source.size },
+			limits,
+		);
 		return {
 			key: key(),
-			name: displayName(file.name),
-			fileName: file.name,
-			size: file.size,
-			file,
+			name: displayName(source.name),
+			fileName: source.name,
+			size: local ? 0 : source.size,
+			...(local ? { path: source.path } : { file: source }),
 			phase: message ? UploadPhase.rejected : UploadPhase.waiting,
 			sentBytes: 0,
 			message,
 		};
 	});
+
+/** Whether the item still has its file, to send or read (again). */
+export const hasSource = (item: QueueItem): boolean =>
+	item.file !== undefined || item.path !== undefined;
 
 const fromStaged = (
 	item: QueueItem,
@@ -146,6 +169,7 @@ const fromStaged = (
 	...item,
 	uploadId: upload.id,
 	expiresAt: upload.expiresAt,
+	size: upload.size,
 	sentBytes: upload.receivedBytes,
 	book: upload.book ?? undefined,
 	name: upload.book?.title || item.name,
@@ -213,6 +237,12 @@ export const queueReducer = (
 						}
 					: item,
 			);
+		case "reading":
+			return update(state, action.key, (item) =>
+				item.phase === UploadPhase.waiting
+					? { ...item, phase: UploadPhase.reading, message: undefined }
+					: item,
+			);
 		case "sent":
 			return update(state, action.key, (item) =>
 				item.phase === UploadPhase.uploading
@@ -247,7 +277,7 @@ export const queueReducer = (
 			}));
 		case "retried":
 			return update(state, action.key, (item) =>
-				item.phase === UploadPhase.failed && item.file
+				item.phase === UploadPhase.failed && hasSource(item)
 					? { ...item, phase: UploadPhase.waiting, message: undefined }
 					: item,
 			);
@@ -301,7 +331,7 @@ export const nextToUpload = (state: QueueState): QueueItem | undefined =>
 	state.items.some((item) => item.phase === UploadPhase.uploading)
 		? undefined
 		: state.items.find(
-				(item) => item.phase === UploadPhase.waiting && item.file,
+				(item) => item.phase === UploadPhase.waiting && hasSource(item),
 			);
 
 export const readyItems = (state: QueueState): QueueItem[] =>

@@ -6,7 +6,8 @@
 //! Tauri. Shared queries and mutations live in [`library::LibraryService`], with
 //! serializable inputs in [`contracts`] and transport-independent [`error`] codes.
 //! Every write names the [`Actor`] it is performed for. [`store`] owns
-//! `citadel.db`: users, sessions, the library registry and grants.
+//! `citadel.db`: users, sessions, the library registry and grants. [`staging`]
+//! reads book files for review before they are added.
 //! The cover/file URL scheme is injected through [`BookUrlBuilder`]: desktop
 //! supplies [`AssetUrlBuilder`] and the server supplies [`HttpUrlBuilder`].
 
@@ -27,5 +28,6 @@ pub mod contracts;
 pub mod error;
 pub mod library;
 pub mod password;
+pub mod staging;
 pub mod store;
 pub mod vault;

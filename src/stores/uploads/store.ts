@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import type { BookUploads, ReviewedBook } from "@/lib/services/library";
+import type { BookIntake, ReviewedBook } from "@/lib/services/library";
 import {
+	type BookSource,
 	emptyQueue,
 	type QueueAction,
 	type QueueState,
@@ -22,9 +23,9 @@ interface UploadsActions {
 	 * Points the queue at a library's uploads (or none), restoring finished
 	 * uploads from an earlier visit. A different library starts a new queue.
 	 */
-	connect: (uploads: BookUploads | undefined, onBookAdded: () => void) => void;
+	connect: (uploads: BookIntake | undefined, onBookAdded: () => void) => void;
 	dispatch: (action: QueueAction) => void;
-	addFiles: (files: readonly File[]) => void;
+	addFiles: (files: readonly BookSource[]) => void;
 	retry: (key: string) => void;
 	remove: (key: string) => Promise<void>;
 	add: (key: string, book: ReviewedBook) => Promise<boolean>;
@@ -34,7 +35,7 @@ interface UploadsActions {
 	review: (key: string | null) => void;
 }
 
-let connected: BookUploads | undefined;
+let connected: BookIntake | undefined;
 
 export const useUploadsStore = create<UploadsState & UploadsActions>()(
 	(set, get) => ({

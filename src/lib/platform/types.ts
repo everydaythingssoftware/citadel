@@ -31,19 +31,32 @@ export interface PlatformCapabilities {
 	supportsLocalOpdsServer: boolean;
 }
 
+/** A file on this computer, by path: what the desktop chooses and drops. */
+export interface LocalFile {
+	path: string;
+	name: string;
+}
+
+/** Files dragged over the window from outside it. */
+export type FileDragEvent =
+	| { type: "enter" }
+	| { type: "leave" }
+	| { type: "drop"; files: LocalFile[] };
+
 export interface DialogAdapter {
 	openFile(options: {
 		filters?: { name: string; extensions: string[] }[];
 	}): Promise<string | null>;
 	openDirectory(options?: { title?: string }): Promise<string | null>;
 	/**
-	 * Lets the person choose files to read in the page itself (uploads).
-	 * Resolves with none when they cancel or the platform has no picker.
+	 * Lets the person choose books to add: files read in the page itself in
+	 * a browser (uploads), files by path on the desktop. Resolves with none
+	 * when they cancel.
 	 */
 	chooseFiles(options: {
 		extensions: string[];
 		multiple?: boolean;
-	}): Promise<File[]>;
+	}): Promise<File[] | LocalFile[]>;
 }
 
 export interface ClipboardAdapter {
@@ -62,6 +75,11 @@ export interface WindowAdapter {
 	setTheme(theme: "dark" | "light" | null): Promise<void>;
 	setBackgroundColor(color: [number, number, number, number]): Promise<void>;
 	hideOnClose(): Promise<() => void>;
+	/**
+	 * Files dragged over the window, where the platform reports them by
+	 * path (the desktop). Browsers deliver drops to the page instead.
+	 */
+	onFileDrag(handler: (event: FileDragEvent) => void): Promise<() => void>;
 }
 
 /**

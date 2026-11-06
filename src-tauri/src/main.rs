@@ -66,6 +66,11 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::query::clb_query_list_publishers,
             // Book manipulation commands
             library::command::clb_cmd_create_book,
+            // Adding books by review, like uploads on the web (CDL-54)
+            library::staging::clb_query_staged_books,
+            library::staging::clb_cmd_stage_book,
+            library::staging::clb_cmd_add_staged_book,
+            library::staging::clb_cmd_discard_staged_book,
             library::command::clb_cmd_update_book,
             library::command::clb_cmd_upsert_book_identifier,
             library::command::clb_cmd_delete_book_identifier,
@@ -151,6 +156,17 @@ fn run_tauri_backend() -> std::io::Result<()> {
             app.manage(app_updates::SoftwareUpdates::new(
                 app.package_info().version.to_string(),
             ));
+
+            // Books waiting for review show cover previews from the app
+            // cache over the asset protocol.
+            let staging = library::staging::DesktopStaging::new(
+                app.path()
+                    .app_cache_dir()?
+                    .join(library::staging::COVER_DIR),
+            );
+            app.asset_protocol_scope()
+                .allow_directory(staging.cover_dir(), false)?;
+            app.manage(staging);
 
             // citadel.db lives in app data: the local user, its sharing
             // password and the library list (ADR 0009).

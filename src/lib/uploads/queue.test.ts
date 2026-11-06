@@ -85,6 +85,33 @@ describe("upload queue", () => {
 		]);
 	});
 
+	it("queues files on this computer by path, checking only their format", () => {
+		const items = itemsForFiles(
+			[
+				{ path: "/books/Walden.epub", name: "Walden.epub" },
+				{ path: "C:\\Books\\notes.docx", name: "notes.docx" },
+			],
+			limits,
+			keys(),
+		);
+		expect(items).toMatchObject([
+			{
+				key: "k1",
+				name: "Walden",
+				path: "/books/Walden.epub",
+				phase: UploadPhase.waiting,
+				size: 0,
+			},
+			{
+				key: "k2",
+				phase: UploadPhase.rejected,
+				message: RejectReason.notABook,
+			},
+		]);
+		expect(items[0]?.file).toBeUndefined();
+		expect(nextToUpload({ items })?.key).toBe("k1");
+	});
+
 	it("walks a file from waiting to added", () => {
 		const [item] = itemsForFiles(
 			[new File(["0123456789"], "Book.epub")],
