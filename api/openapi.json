@@ -4773,9 +4773,14 @@
           "is_read",
           "series",
           "series_index",
-          "language_list"
+          "language_list",
+          "added_at"
         ],
         "properties": {
+          "added_at": {
+            "type": "string",
+            "description": "When the book was added to the library (Calibre's `timestamp`), as an\nRFC 3339 UTC date-time."
+          },
           "author_list": {
             "type": "array",
             "items": {

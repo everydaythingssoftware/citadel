@@ -33,6 +33,7 @@ const book: LibraryBook = {
 	series: null,
 	series_index: null,
 	language_list: [],
+	added_at: "2025-03-12T10:00:00Z",
 };
 const json = (data: unknown, status = 200) =>
 	new Response(JSON.stringify(data), {

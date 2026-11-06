@@ -713,7 +713,12 @@ export type LibraryBook = { id: string; uuid: string | null; title: string; auth
  * Canonical Calibre language codes (ISO 639-2/3, e.g. `eng`, `fra`),
  * ordered. Empty when the book has no language metadata.
  */
-language_list: string[] }
+language_list: string[]; 
+/**
+ * When the book was added to the library (Calibre's `timestamp`), as an
+ * RFC 3339 UTC date-time.
+ */
+added_at: string }
 export type LibraryBookPage = { items: LibraryBook[]; 
 /**
  * Total number of books matching the filters, ignoring limit/offset.

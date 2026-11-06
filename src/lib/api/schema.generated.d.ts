@@ -1043,6 +1043,11 @@ export interface components {
             sortable_name: string;
         };
         LibraryBook: {
+            /**
+             * @description When the book was added to the library (Calibre's `timestamp`), as an
+             *     RFC 3339 UTC date-time.
+             */
+            added_at: string;
             author_list: components["schemas"]["LibraryAuthor"][];
             cover_image: components["schemas"]["LocalOrRemoteUrl"] | null;
             description: string | null;
