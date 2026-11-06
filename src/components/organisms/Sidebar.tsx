@@ -1,8 +1,8 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useEffect, useMemo, useState } from "react";
-import { F7Pencil } from "@/components/icons/F7Pencil";
-import { F7Trash } from "@/components/icons/F7Trash";
+import { EditGlyph } from "@/components/icons/EditGlyph";
+import { TrashGlyph } from "@/components/icons/TrashGlyph";
 import { TablerLogout } from "@/components/icons/TablerLogout";
 import { SettingsButton } from "@/components/molecules/SettingsButton";
 import { IconButton, TextInput, Tooltip } from "@/components/ui";
@@ -299,7 +299,7 @@ const ShelfRow = ({ shelf, isActive }: ShelfRowProps) => {
 						setIsRenaming(true);
 					}}
 				>
-					<F7Pencil />
+					<EditGlyph />
 				</IconButton>
 				<IconButton
 					aria-label={`Delete shelf ${shelf.name}`}
@@ -311,7 +311,7 @@ const ShelfRow = ({ shelf, isActive }: ShelfRowProps) => {
 						}
 					})}
 				>
-					<F7Trash />
+					<TrashGlyph />
 				</IconButton>
 			</span>
 		</div>

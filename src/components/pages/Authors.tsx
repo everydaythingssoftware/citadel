@@ -26,8 +26,8 @@ import {
 	useLibraryActions,
 	useLibraryStore,
 } from "@/stores/library/store";
-import { F7Pencil } from "../icons/F7Pencil";
-import { F7Trash } from "../icons/F7Trash";
+import { EditGlyph } from "../icons/EditGlyph";
+import { TrashGlyph } from "../icons/TrashGlyph";
 import { EmptyLibrary, EmptyState } from "../molecules/EmptyState";
 import styles from "./Authors.module.css";
 
@@ -461,7 +461,7 @@ const AuthorRow = ({
 							aria-label={`Edit ${author.name}`}
 							onClick={() => onEditAuthor(author.id)}
 						>
-							<F7Pencil />
+							<EditGlyph />
 						</IconButton>
 						{author.book_count === 0 ? (
 							<IconButton
@@ -469,7 +469,7 @@ const AuthorRow = ({
 								aria-label={`Delete ${author.name}`}
 								onClick={() => onDeleteAuthor(author.id)}
 							>
-								<F7Trash />
+								<TrashGlyph />
 							</IconButton>
 						) : (
 							<span className={styles.actionSpacer} />

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { F7Pencil } from "@/components/icons/F7Pencil";
-import { F7Trash } from "@/components/icons/F7Trash";
+import { EditGlyph } from "@/components/icons/EditGlyph";
+import { TrashGlyph } from "@/components/icons/TrashGlyph";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 
@@ -50,7 +50,7 @@ export const Standard: Story = {
 				<span style={label}>Primary</span>
 				<Button variant="primary">Save</Button>
 				<Button variant="primary">
-					<F7Pencil />
+					<EditGlyph />
 					Edit
 				</Button>
 				<Button variant="primary" disabled>
@@ -69,10 +69,10 @@ export const Standard: Story = {
 			<div style={row}>
 				<span style={label}>Icon</span>
 				<IconButton aria-label="Edit">
-					<F7Pencil />
+					<EditGlyph />
 				</IconButton>
 				<IconButton aria-label="Delete">
-					<F7Trash />
+					<TrashGlyph />
 				</IconButton>
 				<Button>Beside a button</Button>
 			</div>
