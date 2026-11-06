@@ -770,7 +770,7 @@ const resolveView = (
 						lede={
 							hasFound
 								? "Found in the folders mounted for libraries:"
-								: "This server keeps books in a Calibre‑compatible library on its own disk."
+								: "Your books live in a Calibre‑compatible library."
 						}
 						adoptDescription="Use a Calibre library already on the server."
 						createDescription="Make an empty library on the server."
