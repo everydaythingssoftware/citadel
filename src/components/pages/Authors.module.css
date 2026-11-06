@@ -29,8 +29,13 @@
 	position: sticky;
 	top: 0;
 	z-index: 2;
-	padding: 6px 24px;
+	margin-inline: 12px;
+	padding: 6px 12px;
 	background-color: var(--ctd-content-bg);
+	/* Covers the inset gutters so rows don't show beside it when scrolled. */
+	box-shadow:
+		-12px 0 0 var(--ctd-content-bg),
+		12px 0 0 var(--ctd-content-bg);
 	border-bottom: 1px solid var(--ctd-border);
 }
 
@@ -38,10 +43,9 @@
  * stop at reading length; the trailing track takes what's left. */
 .grid {
 	display: grid;
-	grid-template-columns: minmax(160px, 360px) minmax(0, 280px) 64px 56px minmax(
-			0,
-			1fr
-		);
+	grid-template-columns: minmax(160px, 1fr) minmax(0, 0.8fr) 56px 56px;
+	/* A reading-width table: rows, hairlines and hover stop with the columns. */
+	max-width: 880px;
 	align-items: center;
 	column-gap: 16px;
 }
@@ -66,7 +70,9 @@
 }
 
 .row {
-	padding: 6px 24px;
+	/* Inset table: text keeps its 24px column, hairlines start at 12px. */
+	margin-inline: 12px;
+	padding: 6px 12px;
 	border-bottom: 1px solid var(--ctd-border);
 }
 
@@ -181,7 +187,7 @@
 	}
 
 	.grid {
-		grid-template-columns: minmax(0, 1fr) 64px 56px;
+		grid-template-columns: minmax(0, 1fr) 56px 56px;
 	}
 }
 

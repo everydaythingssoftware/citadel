@@ -769,6 +769,13 @@ const EditBookForm = ({
 	// An identifier error is about the identifier just tried, so it goes once
 	// you type in the identifiers again or the next identifier change works.
 	const identifierFailure = useRef<typeof meta.message>(null);
+	// Arriving on a book puts focus on its title, so the next Tab goes into
+	// this page rather than back through the sidebar.
+	const titleRef = useRef<HTMLHeadingElement>(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: each book opened moves focus once
+	useEffect(() => {
+		titleRef.current?.focus({ preventScroll: true });
+	}, [book.id]);
 	const reportFailure = (what: string) => (error: unknown) => {
 		const failure = {
 			type: "error" as const,
@@ -800,7 +807,9 @@ const EditBookForm = ({
 								<BackChevron />
 							</RouterLink>
 						</Tooltip>
-						<h3 className={styles.pageTitle}>{book.title}</h3>
+						<h3 ref={titleRef} tabIndex={-1} className={styles.pageTitle}>
+							{book.title}
+						</h3>
 					</div>
 					<div className={styles.headerActions}>
 						{hasChanges && (
@@ -1133,7 +1142,7 @@ const EditBookForm = ({
 					)}
 					{meta.anySourceEnabled && (
 						<section className={styles.section}>
-							<FormRow label="Book details">
+							<FormRow label="Metadata">
 								<Button
 									variant="default"
 									onClick={() => meta.openSearch(values.title || "")}

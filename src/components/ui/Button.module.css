@@ -134,3 +134,10 @@
 	background-color: transparent;
 	border-color: transparent;
 }
+
+/* Touch screens: small buttons still need a finger-sized target. */
+@media (pointer: coarse) {
+	.sm {
+		height: 32px;
+	}
+}

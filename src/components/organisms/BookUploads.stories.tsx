@@ -55,17 +55,31 @@ const Wired = () => {
 			<div
 				style={{
 					display: "grid",
+					gridTemplateRows: "auto 1fr",
 					gap: 12,
-					alignContent: "start",
+					height: "100%",
 					color: "var(--ctd-ink)",
 				}}
 			>
 				<div style={{ display: "flex", gap: 12, alignItems: "center" }}>
 					<UploadToolbarStatus />
-					<span style={{ fontSize: 13 }}>
-						Drag book files (EPUB, MOBI, AZW3, PDF, TXT) from your computer
-						anywhere onto this page.
-					</span>
+				</div>
+				<div
+					style={{
+						display: "grid",
+						placeContent: "center",
+						gap: 6,
+						textAlign: "center",
+						border: "2px dashed var(--ctd-border-strong)",
+						borderRadius: "var(--ctd-radius-panel)",
+						color: "var(--ctd-ink-soft)",
+						fontSize: 13,
+					}}
+				>
+					<strong style={{ color: "var(--ctd-ink)", fontSize: 15 }}>
+						Drop books anywhere on this page
+					</strong>
+					EPUB, MOBI, AZW3, PDF or TXT files from your computer.
 				</div>
 				<BookUploads />
 			</div>

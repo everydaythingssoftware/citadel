@@ -1,0 +1,25 @@
+.controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	min-width: 100px;
+}
+
+.search {
+	flex: 1 1 220px;
+	max-width: 320px;
+}
+
+/* Phones: search gets the whole first row, as on Books. */
+@media (max-width: 36em) {
+	.controls {
+		gap: 8px 12px;
+	}
+
+	.search {
+		flex-basis: 100%;
+		max-width: none;
+	}
+}

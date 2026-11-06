@@ -53,6 +53,10 @@
 	cursor: default;
 }
 
+:global(:root[data-theme="dark"]) .input:disabled {
+	opacity: 0.6;
+}
+
 .hint {
 	padding-inline-start: var(--text-input-inset);
 	font-size: 12px;

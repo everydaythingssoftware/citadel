@@ -29,7 +29,9 @@
  * sits at the end of a reading-length name column, not across the panel. */
 .grid {
 	display: grid;
-	grid-template-columns: minmax(160px, 420px) 64px minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr) 64px 12px;
+	/* A reading-width table: rows, hairlines and hover stop with the columns. */
+	max-width: 600px;
 	align-items: center;
 	column-gap: 16px;
 }
@@ -39,8 +41,13 @@
 	position: sticky;
 	top: 0;
 	z-index: 2;
-	padding: 6px 24px;
+	margin-inline: 12px;
+	padding: 6px 12px;
 	background-color: var(--ctd-content-bg);
+	/* Covers the inset gutters so rows don't show beside it when scrolled. */
+	box-shadow:
+		-12px 0 0 var(--ctd-content-bg),
+		12px 0 0 var(--ctd-content-bg);
 	border-bottom: 1px solid var(--ctd-border);
 }
 
@@ -64,7 +71,9 @@
 }
 
 .row {
-	padding: 6px 24px;
+	/* Inset table: text keeps its 24px column, hairlines start at 12px. */
+	margin-inline: 12px;
+	padding: 6px 12px;
 	border-bottom: 1px solid var(--ctd-border);
 }
 
@@ -109,4 +118,29 @@
 	font-size: 12px;
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
+}
+
+/* The row opens the filtered library: a chevron says so on hover. */
+.row::after {
+	content: "";
+	width: 7px;
+	height: 7px;
+	justify-self: end;
+	border-top: 1.5px solid var(--ctd-ink-soft);
+	border-right: 1.5px solid var(--ctd-ink-soft);
+	transform: rotate(45deg);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+:global(.ctd-author-row):hover.row::after,
+:global(.ctd-author-row):focus-within.row::after {
+	opacity: 1;
+}
+
+@media (max-width: 36em) {
+	.searchInput {
+		flex-basis: 100%;
+		max-width: none;
+	}
 }

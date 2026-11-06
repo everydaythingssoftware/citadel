@@ -42,10 +42,11 @@ export const SignInForm = ({ onSubmit, pending, error }: SignInFormProps) => {
 					value={password}
 					onChange={(event) => setPassword(event.currentTarget.value)}
 				/>
-				{/* Always present, so a message appears without the card moving. */}
-				<p role="alert" className={styles.error}>
-					{error}
-				</p>
+				{error && (
+					<p role="alert" className={styles.error}>
+						{error}
+					</p>
+				)}
 				<Button type="submit" variant="primary" fullWidth disabled={pending}>
 					{pending ? "Signing in…" : "Sign In"}
 				</Button>

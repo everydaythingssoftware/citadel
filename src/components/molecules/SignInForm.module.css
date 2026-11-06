@@ -1,8 +1,11 @@
 .root {
 	min-height: 100vh;
 	display: grid;
-	place-items: center;
-	padding: 24px 16px;
+	/* Anchored near the top rather than centred: an error line grows the
+	   card downward without moving the fields under the pointer. */
+	justify-items: center;
+	align-content: start;
+	padding: max(24px, 20vh) 16px 24px;
 	background: var(--ctd-bg);
 }
 
@@ -35,10 +38,8 @@
 	color: var(--ctd-ink);
 }
 
-/* Reserves one line so an error doesn't shift the card. */
 .error {
-	min-height: 16px;
-	margin: -6px 0 -4px;
+	margin: -4px 0 0;
 	line-height: 16px;
 	padding-inline-start: 2px;
 	color: var(--ctd-danger-bg);

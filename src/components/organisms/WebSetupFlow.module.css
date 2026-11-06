@@ -2,7 +2,15 @@
  * card (FirstRunFlow.module.css): a typed path, and a folder browser. */
 
 .field {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
 	margin-top: 16px;
+}
+
+.fieldInput {
+	flex: 1;
+	min-width: 0;
 }
 
 .field input {
@@ -14,12 +22,6 @@
 		monospace
 	);
 	font-size: 12.5px;
-}
-
-.browseRow {
-	display: flex;
-	justify-content: flex-end;
-	margin-top: 6px;
 }
 
 .pathLine {
