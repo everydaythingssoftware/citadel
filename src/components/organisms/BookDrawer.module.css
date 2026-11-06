@@ -171,12 +171,6 @@
 	gap: 8px;
 }
 
-/* Three labelled buttons share the title column, so they run a little
-   tighter than standalone buttons. */
-.actions > * {
-	padding-inline: 10px;
-}
-
 .download:any-link {
 	color: var(--ctd-accent-text);
 	text-decoration: none;
@@ -251,16 +245,15 @@
 
 .details {
 	display: grid;
-	grid-template-columns: 120px minmax(0, 1fr);
+	grid-template-columns: max-content minmax(0, 1fr);
 	align-items: center;
-	gap: 6px 20px;
+	gap: 6px 24px;
 	margin: 0;
 	font-size: 13px;
 }
 
 .details dt {
 	color: var(--ctd-ink-soft);
-	text-align: right;
 }
 
 .details dd {
@@ -311,10 +304,5 @@
 
 	.body {
 		padding: 4px 16px 32px;
-	}
-
-	.details {
-		grid-template-columns: 96px minmax(0, 1fr);
-		gap: 6px 16px;
 	}
 }

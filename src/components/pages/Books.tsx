@@ -442,7 +442,7 @@ export const Books = ({
 				onOpenChange={(open) => {
 					if (!open) setIsBookSidebarOpen(false);
 				}}
-				width={520}
+				width={500}
 				bleed
 				onCloseAutoFocus={(event) => {
 					// No Dialog.Trigger to return focus to; hand it to the grid so
