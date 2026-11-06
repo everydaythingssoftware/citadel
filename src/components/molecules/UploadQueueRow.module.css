@@ -160,6 +160,16 @@
 	opacity: 0;
 }
 
+@media (hover: none) {
+	.busySpinner {
+		opacity: 0;
+	}
+
+	.busyX {
+		opacity: 1;
+	}
+}
+
 .busyCancel:hover,
 .busyCancel:focus-visible {
 	background: var(--ctd-nav-hover-bg);
@@ -178,14 +188,4 @@
 .busyCancel:hover .busyX,
 .busyCancel:focus-visible .busyX {
 	opacity: 1;
-}
-
-@media (hover: none) {
-	.busySpinner {
-		opacity: 0;
-	}
-
-	.busyX {
-		opacity: 1;
-	}
 }
