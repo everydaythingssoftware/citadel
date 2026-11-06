@@ -11,13 +11,20 @@ import {
 	createBrowserSession,
 	type SessionInfo,
 	type SetupStatus,
+	WrongAddressError,
 } from "@/lib/services/session";
 
 export type BrowserSessionState =
 	| { status: "checking" }
 	| { status: "unreachable"; error: string }
+	/** Opened at an address the server isn't set up for. */
+	| { status: "wrongAddress"; error: string }
 	/** A fresh server: nobody can sign in until the administrator exists. */
-	| { status: "needsAdministrator"; error: string | null; pending: boolean }
+	| {
+			status: "needsAdministrator";
+			error: string | null;
+			pending: boolean;
+	  }
 	| {
 			status: "signedOut";
 			setup: SetupStatus;
@@ -58,7 +65,11 @@ export const useBrowserSession = (
 		try {
 			const setup = await session.setupStatus();
 			if (!setup.administratorExists) {
-				setState({ status: "needsAdministrator", error: null, pending: false });
+				setState({
+					status: "needsAdministrator",
+					error: null,
+					pending: false,
+				});
 				return;
 			}
 			const current = await session.current();
@@ -68,7 +79,11 @@ export const useBrowserSession = (
 					: { status: "signedOut", setup, error: null, pending: false },
 			);
 		} catch (error) {
-			setState({ status: "unreachable", error: message(error) });
+			setState(
+				error instanceof WrongAddressError
+					? { status: "wrongAddress", error: error.message }
+					: { status: "unreachable", error: message(error) },
+			);
 		}
 	}, [session]);
 
@@ -100,7 +115,11 @@ export const useBrowserSession = (
 
 	const createAdministrator = useCallback(
 		async (setupCode: string, username: string, password: string) => {
-			setState({ status: "needsAdministrator", error: null, pending: true });
+			setState((previous) =>
+				previous.status === "needsAdministrator"
+					? { ...previous, error: null, pending: true }
+					: previous,
+			);
 			try {
 				const signedIn = await session.createAdministrator(
 					setupCode,
@@ -110,11 +129,11 @@ export const useBrowserSession = (
 				const setup = await session.setupStatus();
 				setState({ status: "signedIn", session: signedIn, setup });
 			} catch (error) {
-				setState({
-					status: "needsAdministrator",
-					error: message(error),
-					pending: false,
-				});
+				setState((previous) =>
+					previous.status === "needsAdministrator"
+						? { ...previous, error: message(error), pending: false }
+						: previous,
+				);
 			}
 		},
 		[session],

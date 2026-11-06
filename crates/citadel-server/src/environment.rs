@@ -11,24 +11,26 @@ use crate::ServerConfig;
 pub const CONFIG_FILE: &str = "CITADEL_CONFIG";
 
 pub const LISTEN: &str = "CITADEL_LISTEN";
-pub const PUBLIC_URL: &str = "CITADEL_PUBLIC_URL";
+pub const PUBLIC_URLS: &str = "CITADEL_PUBLIC_URLS";
 pub const OPDS_PORT: &str = "CITADEL_OPDS_PORT";
 pub const OPDS_ADDRESSES: &str = "CITADEL_OPDS_ADDRESSES";
 pub const STATE_DIRECTORY: &str = "CITADEL_STATE_DIRECTORY";
 pub const WEB_DIRECTORY: &str = "CITADEL_WEB_DIRECTORY";
 pub const UPDATE_CHECK: &str = "CITADEL_UPDATE_CHECK";
 pub const LIBRARY_ROOTS: &str = "CITADEL_LIBRARY_ROOTS";
+pub const TRUSTED_PROXIES: &str = "CITADEL_TRUSTED_PROXIES";
 
 /// The variables that configure the server.
 pub const SETTINGS: &[&str] = &[
     LISTEN,
-    PUBLIC_URL,
+    PUBLIC_URLS,
     OPDS_PORT,
     OPDS_ADDRESSES,
     STATE_DIRECTORY,
     WEB_DIRECTORY,
     UPDATE_CHECK,
     LIBRARY_ROOTS,
+    TRUSTED_PROXIES,
 ];
 
 /// `CITADEL_*` variables that mean something elsewhere: the config file,
@@ -54,7 +56,6 @@ pub fn config_from(var: impl Fn(&str) -> Option<String>) -> Result<ServerConfig,
     let listen: SocketAddr = listen_text.parse().map_err(|_| {
         format!("{LISTEN} must be an address and port, such as 0.0.0.0:8081 (got {listen_text:?})")
     })?;
-    let public_url = var(PUBLIC_URL).unwrap_or_else(|| default_public_url(listen));
     let opds_port = match var(OPDS_PORT) {
         Some(text) => text
             .parse::<u16>()
@@ -78,7 +79,12 @@ pub fn config_from(var: impl Fn(&str) -> Option<String>) -> Result<ServerConfig,
 
     let mut api = Map::new();
     api.insert("listen".into(), Value::String(listen.to_string()));
-    api.insert("publicUrl".into(), Value::String(public_url));
+    if let Some(list) = var(PUBLIC_URLS) {
+        api.insert("publicUrls".into(), list_value(&list));
+    }
+    if let Some(list) = var(TRUSTED_PROXIES) {
+        api.insert("trustedProxies".into(), list_value(&list));
+    }
     if let Some(directory) = var(WEB_DIRECTORY) {
         api.insert("webDirectory".into(), Value::String(directory));
     }
@@ -92,16 +98,7 @@ pub fn config_from(var: impl Fn(&str) -> Option<String>) -> Result<ServerConfig,
         root.insert("stateDirectory".into(), Value::String(directory));
     }
     if let Some(list) = var(LIBRARY_ROOTS) {
-        root.insert(
-            "libraryRoots".into(),
-            Value::Array(
-                list.split(',')
-                    .map(str::trim)
-                    .filter(|root| !root.is_empty())
-                    .map(|root| Value::String(root.into()))
-                    .collect(),
-            ),
-        );
+        root.insert("libraryRoots".into(), list_value(&list));
     }
     if let Some(text) = var(UPDATE_CHECK) {
         let check = match text.to_ascii_lowercase().as_str() {
@@ -136,22 +133,25 @@ fn addresses(list: &[String]) -> Value {
     Value::Table(target)
 }
 
-/// Browsers on the same machine reach a server listening everywhere at
-/// localhost; anything else is reached at the address it listens on.
-fn default_public_url(listen: SocketAddr) -> String {
-    if listen.ip().is_unspecified() {
-        format!("http://localhost:{}", listen.port())
-    } else {
-        format!("http://{listen}")
-    }
+/// A comma-separated list.
+/// A list separated by commas, spaces or newlines, so a YAML block scalar
+/// in a Compose file works too.
+fn list_value(list: &str) -> Value {
+    Value::Array(
+        list.split(|character: char| character == ',' || character.is_whitespace())
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(|item| Value::String(item.into()))
+            .collect(),
+    )
 }
 
 /// Validation speaks in config-file keys; name the variable instead.
 fn in_variable_terms(error: &str) -> String {
     [
         ("api.listen", LISTEN),
-        ("api.publicUrl", PUBLIC_URL),
-        ("publicUrl", PUBLIC_URL),
+        ("api.publicUrls", PUBLIC_URLS),
+        ("api.trustedProxies", TRUSTED_PROXIES),
         ("api.webDirectory", WEB_DIRECTORY),
         ("stateDirectory", STATE_DIRECTORY),
         ("sharing.port", OPDS_PORT),
@@ -202,7 +202,11 @@ mod tests {
     fn nothing_set_is_a_server_on_this_machine() {
         let config = settings(&[]).unwrap();
         assert_eq!(config.api.listen.to_string(), "127.0.0.1:8081");
-        assert_eq!(config.api.public_url, "http://127.0.0.1:8081");
+        assert!(
+            config.api.public_urls.is_empty(),
+            "no address until the first administrator's"
+        );
+        assert!(config.api.trusted_proxies.is_none());
         assert_eq!(config.sharing.port, 8080);
         assert_eq!(
             config.sharing.target,
@@ -236,7 +240,7 @@ mod tests {
                 std::path::PathBuf::from(absolute("/libraries"))
             ]
         );
-        assert_eq!(config.api.public_url, "http://localhost:8081");
+        assert!(config.api.public_urls.is_empty());
         assert_eq!(config.sharing.target, OpdsBindTarget::AllInterfaces);
         assert_eq!(
             config.state_directory.as_deref(),
@@ -249,13 +253,28 @@ mod tests {
     fn each_setting_is_read() {
         let config = settings(&[
             (LISTEN, "127.0.0.1:9000"),
-            (PUBLIC_URL, " https://books.example.com "),
+            (
+                PUBLIC_URLS,
+                " https://books.example.com ,\n http://nas.local:8081  http://192.168.1.20:8081",
+            ),
+            (TRUSTED_PROXIES, "172.18.0.0/16"),
             (OPDS_PORT, "9001"),
             (OPDS_ADDRESSES, "127.0.0.1, ::1"),
             (UPDATE_CHECK, "TRUE"),
         ])
         .unwrap();
-        assert_eq!(config.api.public_url, "https://books.example.com");
+        assert_eq!(
+            config.api.public_urls,
+            vec![
+                "https://books.example.com",
+                "http://nas.local:8081",
+                "http://192.168.1.20:8081"
+            ]
+        );
+        assert_eq!(
+            config.api.trusted_proxies,
+            Some(vec!["172.18.0.0/16".to_string()])
+        );
         assert_eq!(config.sharing.port, 9001);
         assert_eq!(
             config.sharing.target,
@@ -278,7 +297,8 @@ mod tests {
         for (vars, expected) in [
             (vec![(LISTEN, "8081")], LISTEN),
             (vec![(LISTEN, "0.0.0.0:0")], LISTEN),
-            (vec![(PUBLIC_URL, "books.example.com")], PUBLIC_URL),
+            (vec![(PUBLIC_URLS, "books.example.com")], PUBLIC_URLS),
+            (vec![(TRUSTED_PROXIES, "the proxy")], TRUSTED_PROXIES),
             (vec![(OPDS_PORT, "0")], OPDS_PORT),
             (vec![(OPDS_PORT, "eighty")], OPDS_PORT),
             (vec![(UPDATE_CHECK, "maybe")], UPDATE_CHECK),
@@ -296,6 +316,7 @@ mod tests {
         let names = [
             "CITADEL_PUBLICURL",
             "CITADEL_PUBLIC_URL",
+            "CITADEL_PUBLIC_URLS",
             "CITADEL_CONFIG",
             "CITADEL_VERSION",
             "PATH",
@@ -303,7 +324,11 @@ mod tests {
         ];
         assert_eq!(
             unrecognized(names.iter().map(|name| name.to_string())),
-            vec!["CITADEL_OPDS_PORTS", "CITADEL_PUBLICURL"]
+            vec![
+                "CITADEL_OPDS_PORTS",
+                "CITADEL_PUBLICURL",
+                "CITADEL_PUBLIC_URL"
+            ]
         );
     }
 }

@@ -1,4 +1,6 @@
 export type {
+	ServerAddress,
+	ServerAddresses,
 	ServerRelease,
 	ServerService,
 	ServerUpdate,

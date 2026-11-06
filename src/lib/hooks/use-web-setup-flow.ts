@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { libraryCatalog } from "@/lib/services/library-catalog";
+import { serverService } from "@/lib/services/server";
 import type {
+	PublicUrls,
 	SetupEffect,
 	SetupEvent,
 	SetupSnapshot,
@@ -14,6 +16,15 @@ export interface WebSetupFlow {
 
 const message = (error: unknown) =>
 	error instanceof Error ? error.message : String(error);
+
+const readPublicUrls = async (): Promise<PublicUrls> => {
+	const addresses = await serverService.addresses();
+	return {
+		listed: addresses.addresses.map((address) => address.url),
+		current: addresses.current,
+		configFile: addresses.configFile,
+	};
+};
 
 /**
  * Imperative shell for the web setup flow: owns the machine snapshot and runs
@@ -55,12 +66,16 @@ const runEffect = async (
 	switch (effect.kind) {
 		case "load-status": {
 			try {
-				const status = await setup.status();
+				const [status, publicUrls] = await Promise.all([
+					setup.status(),
+					readPublicUrls().catch(() => null),
+				]);
 				send({
 					type: "STATUS_LOADED",
 					library: status.library,
 					browseRoot: status.browseRoot,
 					found: status.found,
+					publicUrls,
 				});
 			} catch (error) {
 				send({ type: "STATUS_FAILED", message: message(error) });
@@ -95,6 +110,18 @@ const runEffect = async (
 				send({ type: "COMMITTED", library });
 			} catch (error) {
 				send({ type: "COMMIT_FAILED", message: message(error) });
+			}
+			return;
+		}
+		case "load-addresses": {
+			try {
+				send({ type: "ADDRESSES_LOADED", urls: await readPublicUrls() });
+			} catch {
+				send({
+					type: "ADDRESSES_FAILED",
+					message:
+						"Couldn’t reach the server. If it’s restarting, try again in a moment.",
+				});
 			}
 			return;
 		}

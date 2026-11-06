@@ -6,7 +6,7 @@ use std::{
 };
 
 use axum::{
-    extract::{rejection::JsonRejection, Request, State},
+    extract::{rejection::JsonRejection, Extension, Request, State},
     http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -16,25 +16,30 @@ use citadel_core::error::{LibraryError, LibraryErrorCode};
 use serde::{Deserialize, Serialize};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use super::{ApiFailure, ApiState};
+use super::{
+    addresses::{Addresses, RequestOrigin},
+    ApiFailure, ApiState,
+};
 use crate::served::{no_library_yet, ServedLibrary};
 use citadel_core::store::{CitadelStore, User, SESSION_TTL_SECONDS};
 
 pub const SESSION_COOKIE: &str = "citadel_session";
 
-/// The origin browsers use to reach Citadel. Its scheme decides whether the
-/// session cookie is `Secure`; unsafe requests must come from this origin.
+/// An origin browsers use to reach Citadel, such as
+/// `https://books.example.com`. Its scheme decides whether the session
+/// cookie is `Secure`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublicUrl {
     origin: String,
     secure: bool,
+    host: String,
 }
 
 impl PublicUrl {
     pub fn parse(value: &str) -> Result<Self, String> {
         let invalid = || {
             format!(
-                "api.publicUrl must be the http(s) origin browsers use to reach Citadel, \
+                "api.publicUrls must be http(s) origins browsers use to reach Citadel, \
                  such as \"https://books.example.com\" (got {value:?})"
             )
         };
@@ -58,29 +63,39 @@ impl PublicUrl {
             .filter(|port| *port != default_port)
             .map(|port| format!(":{port}"))
             .unwrap_or_default();
+        let host = authority.host().to_ascii_lowercase();
         Ok(Self {
-            origin: format!(
-                "{}://{}{port}",
-                uri.scheme_str().unwrap_or_default(),
-                authority.host().to_ascii_lowercase()
-            ),
+            origin: format!("{}://{host}{port}", uri.scheme_str().unwrap_or_default()),
             secure,
+            host,
         })
     }
 
-    pub(super) fn cookie(&self, value: &str, max_age: i64) -> HeaderValue {
-        let secure = if self.secure { "; Secure" } else { "" };
-        HeaderValue::from_str(&format!(
-            "{SESSION_COOKIE}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure}"
-        ))
-        .expect("session cookies are ASCII")
+    pub fn origin(&self) -> &str {
+        &self.origin
+    }
+
+    pub fn secure(&self) -> bool {
+        self.secure
+    }
+
+    /// This machine: `localhost` or a loopback address.
+    pub fn is_loopback(&self) -> bool {
+        self.host == "localhost"
+            || self.host.ends_with(".localhost")
+            || self
+                .host
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback())
     }
 }
 
 pub(super) struct Access {
     pub accounts: Arc<CitadelStore>,
     pub served: Arc<ServedLibrary>,
-    pub public_url: PublicUrl,
+    pub addresses: Arc<Addresses>,
     /// Shared by sign-in and the setup code: a guess at either is a guess.
     backoff: Mutex<Backoff>,
     /// Printed at startup while no administrator exists; cleared once used.
@@ -91,13 +106,13 @@ impl Access {
     pub fn new(
         accounts: Arc<CitadelStore>,
         served: Arc<ServedLibrary>,
-        public_url: PublicUrl,
+        addresses: Arc<Addresses>,
         setup_code: Option<String>,
     ) -> Self {
         Self {
             accounts,
             served,
-            public_url,
+            addresses,
             backoff: Mutex::default(),
             setup_code: Mutex::new(setup_code),
         }
@@ -239,20 +254,42 @@ fn session_token(headers: &HeaderMap) -> Option<String> {
         .map(|(_, value)| value.to_string())
 }
 
-/// Cookie-authenticated requests that change state must come from the
-/// configured origin. Browsers always send `Origin` on such requests.
-pub(super) fn cross_origin(access: &Access, request_method: &Method, headers: &HeaderMap) -> bool {
+/// Cookie-authenticated requests that change state must come from the page
+/// at the address they were sent to (itself one Citadel allows, see
+/// `addresses`). Browsers always send `Origin` on such requests.
+pub(super) fn cross_origin(
+    origin: Option<&RequestOrigin>,
+    request_method: &Method,
+    headers: &HeaderMap,
+) -> bool {
     if matches!(
         *request_method,
         Method::GET | Method::HEAD | Method::OPTIONS
     ) {
         return false;
     }
-    headers.get(header::ORIGIN).is_some_and(|origin| {
-        !origin
-            .as_bytes()
-            .eq_ignore_ascii_case(access.public_url.origin.as_bytes())
-    })
+    headers
+        .get(header::ORIGIN)
+        .is_some_and(|sent| match origin {
+            Some(RequestOrigin(origin)) => !sent
+                .as_bytes()
+                .eq_ignore_ascii_case(origin.origin.as_bytes()),
+            None => true,
+        })
+}
+
+/// The session cookie for the address the request used: `Secure` over HTTPS.
+pub(super) fn session_cookie(
+    origin: Option<&RequestOrigin>,
+    value: &str,
+    max_age: i64,
+) -> HeaderValue {
+    let secure = origin.is_some_and(|RequestOrigin(origin)| origin.secure);
+    let secure = if secure { "; Secure" } else { "" };
+    HeaderValue::from_str(&format!(
+        "{SESSION_COOKIE}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure}"
+    ))
+    .expect("session cookies are ASCII")
 }
 
 pub(super) async fn blocking<T: Send + 'static>(
@@ -304,10 +341,10 @@ fn library_access(
     })
 }
 
-fn clear_cookie(access: &Access, response: &mut Response) {
+fn clear_cookie(origin: Option<&RequestOrigin>, response: &mut Response) {
     response
         .headers_mut()
-        .append(header::SET_COOKIE, access.public_url.cookie("", 0));
+        .append(header::SET_COOKIE, session_cookie(origin, "", 0));
 }
 
 /// Requires a signed-in user with a grant to the served library. Libraries a
@@ -317,7 +354,8 @@ pub(super) async fn require_session(
     mut request: Request,
     next: Next,
 ) -> Response {
-    if cross_origin(&state.access, request.method(), request.headers()) {
+    let origin = request.extensions().get::<RequestOrigin>().cloned();
+    if cross_origin(origin.as_ref(), request.method(), request.headers()) {
         return cross_origin_refused();
     }
     let had_cookie = session_token(request.headers()).is_some();
@@ -337,7 +375,7 @@ pub(super) async fn require_session(
         Ok(None) => {
             let mut response = signed_out().into_response();
             if had_cookie {
-                clear_cookie(&state.access, &mut response);
+                clear_cookie(origin.as_ref(), &mut response);
             }
             response
         }
@@ -370,11 +408,13 @@ async fn get_session(
         (status = 429, body = LibraryError), (status = 503, body = LibraryError), (status = 500, body = LibraryError)))]
 async fn sign_in(
     State(state): State<ApiState>,
+    origin: Option<Extension<RequestOrigin>>,
     method: Method,
     headers: HeaderMap,
     input: Result<Json<SignInRequest>, JsonRejection>,
 ) -> Response {
-    if cross_origin(&state.access, &method, &headers) {
+    let origin = origin.map(|Extension(origin)| origin);
+    if cross_origin(origin.as_ref(), &method, &headers) {
         return cross_origin_refused();
     }
     let Ok(Json(input)) = input else {
@@ -417,7 +457,7 @@ async fn sign_in(
     .into_response();
     response.headers_mut().insert(
         header::SET_COOKIE,
-        state.access.public_url.cookie(&token, SESSION_TTL_SECONDS),
+        session_cookie(origin.as_ref(), &token, SESSION_TTL_SECONDS),
     );
     response
 }
@@ -426,8 +466,14 @@ async fn sign_in(
     description = "End this browser's session and clear its cookie.",
     responses((status = 204), (status = 403, body = LibraryError),
         (status = 503, body = LibraryError), (status = 500, body = LibraryError)))]
-async fn sign_out(State(state): State<ApiState>, method: Method, headers: HeaderMap) -> Response {
-    if cross_origin(&state.access, &method, &headers) {
+async fn sign_out(
+    State(state): State<ApiState>,
+    origin: Option<Extension<RequestOrigin>>,
+    method: Method,
+    headers: HeaderMap,
+) -> Response {
+    let origin = origin.map(|Extension(origin)| origin);
+    if cross_origin(origin.as_ref(), &method, &headers) {
         return cross_origin_refused();
     }
     if let Some(token) = session_token(&headers) {
@@ -437,7 +483,7 @@ async fn sign_out(State(state): State<ApiState>, method: Method, headers: Header
         }
     }
     let mut response = StatusCode::NO_CONTENT.into_response();
-    clear_cookie(&state.access, &mut response);
+    clear_cookie(origin.as_ref(), &mut response);
     response
 }
 
@@ -453,19 +499,26 @@ mod tests {
     fn public_urls_are_origins_and_decide_cookie_security() {
         let https = PublicUrl::parse("https://Books.Example.com/").unwrap();
         assert_eq!(https.origin, "https://books.example.com");
-        assert!(https
-            .cookie("token", 60)
-            .to_str()
-            .unwrap()
-            .ends_with("; Secure"));
+        assert!(https.secure());
+        assert!(!https.is_loopback());
+        assert!(
+            session_cookie(Some(&RequestOrigin(https.clone())), "token", 60)
+                .to_str()
+                .unwrap()
+                .ends_with("; Secure")
+        );
         assert_eq!(
             PublicUrl::parse("https://books.example.com:443").unwrap(),
             https
         );
         let http = PublicUrl::parse("http://127.0.0.1:8081").unwrap();
         assert_eq!(http.origin, "http://127.0.0.1:8081");
-        assert!(!http
-            .cookie("token", 60)
+        assert!(http.is_loopback());
+        assert!(!session_cookie(Some(&RequestOrigin(http)), "token", 60)
+            .to_str()
+            .unwrap()
+            .contains("Secure"));
+        assert!(!session_cookie(None, "token", 60)
             .to_str()
             .unwrap()
             .contains("Secure"));

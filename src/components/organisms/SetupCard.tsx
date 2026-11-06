@@ -26,6 +26,22 @@ export const ShelfMark = () => (
 	<FluentLibraryFilled fontSize={28} aria-hidden="true" />
 );
 
+export const GlobeGlyph = () => (
+	<svg
+		width="13"
+		height="13"
+		viewBox="0 0 16 16"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.4"
+		strokeLinecap="round"
+		aria-hidden="true"
+	>
+		<circle cx="8" cy="8" r="6.25" />
+		<path d="M1.75 8h12.5M8 1.75c1.7 1.8 2.5 3.9 2.5 6.25S9.7 12.45 8 14.25M8 1.75C6.3 3.55 5.5 5.65 5.5 8s.8 4.45 2.5 6.25" />
+	</svg>
+);
+
 export const FolderGlyph = () => (
 	<svg
 		width="15"

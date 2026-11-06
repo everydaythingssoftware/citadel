@@ -63,4 +63,23 @@ describe("Web server service", () => {
 			).update(),
 		).rejects.toThrow("Busy");
 	});
+
+	it("reads the public URLs", async () => {
+		const listing = {
+			addresses: [{ url: "http://nas.local:8081" }],
+			configFile: null,
+			alwaysIncluded: "http://localhost:8081",
+			current: "http://nas.local:8081",
+			currentListed: true,
+		};
+		const server = createWebServerService({
+			baseUrl: "https://citadel.test",
+			fetch: async (request) => {
+				expect(request.method).toBe("GET");
+				expect(new URL(request.url).pathname).toBe("/api/server/addresses");
+				return json(listing);
+			},
+		});
+		await expect(server.addresses()).resolves.toEqual(listing);
+	});
 });

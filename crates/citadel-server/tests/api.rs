@@ -41,7 +41,9 @@ fn access(
     let access = api::ApiAccess {
         accounts: accounts.clone(),
         served,
-        public_url: api::PublicUrl::parse(PUBLIC_URL).unwrap(),
+        addresses: api::addresses::Addresses::fixed(vec![
+            api::PublicUrl::parse(PUBLIC_URL).unwrap()
+        ]),
         secrets: Arc::new(
             citadel_core::vault::Vault::open_or_create(&directory.join("state/secrets")).unwrap(),
         ),
@@ -193,7 +195,9 @@ async fn fixture_with_metadata(
         .await
         .unwrap();
     let staging = api::Staging::open(directory.path().join("state/uploads"), uploads).unwrap();
-    let router = api::router(source, &service, access, None, staging, metadata);
+    let router = through_proxy(api::router(
+        source, &service, access, None, staging, metadata,
+    ));
     let (status, cookie, _) = sign_in(&router, "reader", "secret-password").await;
     assert_eq!(status, StatusCode::OK);
     (
@@ -594,7 +598,14 @@ async fn browser_hosting_serves_the_frontend_publicly_and_only_falls_back_for_ht
         api::UploadConfig::default(),
     )
     .unwrap();
-    let router = api::router(source, &service, access, Some(&web), staging, metadata());
+    let router = through_proxy(api::router(
+        source,
+        &service,
+        access,
+        Some(&web),
+        staging,
+        metadata(),
+    ));
     // The frontend is public so signed-out browsers can load the sign-in page.
     for (path, accept_html, expected, expected_body) in [
         ("/", true, 200, Some("<html>Citadel frontend</html>")),
@@ -1895,7 +1906,14 @@ async fn finished_uploads_wait_a_review_window_and_survive_a_restart() {
     let (_, access) = access(directory.path(), &source);
     let staging =
         api::Staging::open(directory.path().join("state/uploads"), small_uploads()).unwrap();
-    let restarted = api::router(source, &service, access, None, staging, metadata());
+    let restarted = through_proxy(api::router(
+        source,
+        &service,
+        access,
+        None,
+        staging,
+        metadata(),
+    ));
     let (status, _, restored) = request(
         &restarted,
         "GET",
@@ -2593,4 +2611,22 @@ async fn a_book_keeps_one_identifier_of_each_type() {
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
     service.stop().await;
+}
+
+/// How a browser reaches the test server: through a TLS proxy at
+/// `PUBLIC_URL`, which sends `Host` and `X-Forwarded-Proto` on every request.
+fn through_proxy(router: axum::Router) -> axum::Router {
+    router.layer(axum::middleware::map_request(
+        |mut request: axum::http::Request<Body>| async move {
+            let headers = request.headers_mut();
+            let url = PUBLIC_URL.split_once("://").unwrap();
+            headers
+                .entry("host")
+                .or_insert(axum::http::HeaderValue::from_static(url.1));
+            headers
+                .entry("x-forwarded-proto")
+                .or_insert(axum::http::HeaderValue::from_static(url.0));
+            request
+        },
+    ))
 }

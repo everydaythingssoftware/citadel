@@ -73,7 +73,7 @@ fn real_process_serves_authenticated_catalog_and_acquisition_then_stops() {
         format!(
             r#"[api]
 listen = "127.0.0.1:{api_port}"
-publicUrl = "http://127.0.0.1:{api_port}"
+publicUrls = ["http://127.0.0.1:{api_port}"]
 
 [sharing]
 port = {port}
@@ -396,8 +396,12 @@ fn the_server_runs_from_environment_variables_alone() {
     let log = seen.join("\n");
     assert!(log.contains("setup_code="), "{log}");
     assert!(
-        log.contains(&format!("public_url=http://127.0.0.1:{api_port}")),
-        "the public URL defaults to the listener: {log}"
+        log.contains("public_urls=any"),
+        "no address is known until the first administrator's: {log}"
+    );
+    assert!(
+        log.contains(&format!("Open http://127.0.0.1:{api_port} and enter")),
+        "the setup code says where to go: {log}"
     );
     assert!(
         log.contains("CITADEL_PUBLICURL configure nothing"),

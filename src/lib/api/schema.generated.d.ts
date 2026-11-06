@@ -435,6 +435,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/server/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The public URLs browsers may reach Citadel at, where they are set, and the address this request used. Read-only: only the server's configuration sets them, and with none Citadel answers at any address. Administrators only. */
+        get: operations["getServerAddresses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/server/update": {
         parameters: {
             query?: never;
@@ -1186,6 +1203,32 @@ export interface components {
             /** Format: int32 */
             schemaVersion: number | null;
             upgradeAvailable: boolean;
+        };
+        ServerAddress: {
+            /** @description An origin, such as `https://books.example.com`. */
+            url: string;
+        };
+        ServerAddresses: {
+            /**
+             * @description The configured public URLs. Empty means Citadel answers at any
+             *     address.
+             */
+            addresses: components["schemas"]["ServerAddress"][];
+            /**
+             * @description This machine's own address on the listener's port, such as
+             *     `http://localhost:8081`. It always works, whatever the list says.
+             */
+            alwaysIncluded: string | null;
+            /**
+             * @description The config file that sets them, when the server runs from one; null
+             *     when its settings come from environment variables
+             *     (`CITADEL_PUBLIC_URLS`).
+             */
+            configFile: string | null;
+            /** @description The address this request came in on. */
+            current: string | null;
+            /** @description `current` is in the list (not merely allowed as this machine's). */
+            currentListed: boolean;
         };
         ServerVersion: {
             /** @description Version and commit together; also sent as the `Citadel-Build` header. */
@@ -3366,6 +3409,41 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getServerAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAddresses"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

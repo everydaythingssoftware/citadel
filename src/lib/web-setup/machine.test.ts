@@ -4,6 +4,7 @@ import type {
 	ServedLibrary,
 } from "@/lib/services/library-catalog/types";
 import type {
+	PublicUrls,
 	SetupEffect,
 	SetupEvent,
 	SetupSnapshot,
@@ -14,6 +15,7 @@ import {
 	ALREADY_A_LIBRARY_ERROR,
 	EMPTY_PATH_ERROR,
 	initSetup,
+	isLocalAddress,
 	NOT_A_LIBRARY_ERROR,
 	transition,
 	verdict,
@@ -78,11 +80,20 @@ const run = (
 const loaded = (
 	library: ServedLibrary | null = null,
 	found: FoundLibraries = { libraries: [], createIn: [] },
+	publicUrls: PublicUrls | null = null,
 ): SetupEvent => ({
 	type: "STATUS_LOADED",
 	library,
 	browseRoot: ROOT,
 	found,
+	publicUrls,
+});
+
+const urls = (patch: Partial<PublicUrls> = {}): PublicUrls => ({
+	listed: [],
+	current: "http://nas.local:8081",
+	configFile: null,
+	...patch,
 });
 
 describe("web setup machine", () => {
@@ -92,6 +103,93 @@ describe("web setup machine", () => {
 		const { snapshot } = run(start, [loaded()]);
 		expect(snapshot.step).toEqual({ id: "chooser" });
 		expect(snapshot.browseRoot).toBe(ROOT);
+	});
+
+	it("shows the public URLs first on a fresh setup, and can be skipped", () => {
+		const shown = run(initSetup(), [loaded(null, undefined, urls())]);
+		expect(shown.snapshot.step).toEqual({
+			id: "address",
+			urls: urls(),
+			typed: "",
+			checking: false,
+			stillMissing: false,
+			error: null,
+			next: { id: "chooser" },
+		});
+		expect(transition(shown.snapshot, { type: "BACK" }).snapshot).toBe(
+			shown.snapshot,
+		);
+		expect(
+			transition(shown.snapshot, { type: "ADDRESS_DONE" }).snapshot.step,
+		).toEqual({ id: "chooser" });
+		// Without the server's answer, or once a library exists, there's no step.
+		expect(run(initSetup(), [loaded()]).snapshot.step).toEqual({
+			id: "chooser",
+		});
+		expect(
+			run(initSetup(), [loaded(served(), undefined, urls())]).snapshot.step,
+		).toEqual({ id: "done" });
+	});
+
+	it("continues by asking the server again, until it has a public URL", () => {
+		const shown = run(initSetup(), [loaded(null, undefined, urls())]).snapshot;
+		const checking = transition(shown, { type: "ADDRESS_CHECK" });
+		expect(checking.effects).toEqual([{ kind: "load-addresses" }]);
+		expect(
+			transition(checking.snapshot, { type: "ADDRESS_CHECK" }).effects,
+		).toEqual([]);
+		expect(
+			transition(checking.snapshot, { type: "ADDRESS_DONE" }).snapshot,
+		).toBe(checking.snapshot);
+
+		const missing = transition(checking.snapshot, {
+			type: "ADDRESSES_LOADED",
+			urls: urls(),
+		}).snapshot;
+		expect(missing.step).toMatchObject({ checking: false, stillMissing: true });
+		const typed = transition(missing, {
+			type: "ADDRESS_TYPED",
+			url: "https://books.example.com",
+		}).snapshot;
+		expect(typed.step).toMatchObject({
+			typed: "https://books.example.com",
+			stillMissing: false,
+		});
+
+		const unreachable = transition(checking.snapshot, {
+			type: "ADDRESSES_FAILED",
+			message: "Couldn’t reach the server.",
+		}).snapshot;
+		expect(unreachable.step).toMatchObject({
+			checking: false,
+			error: "Couldn’t reach the server.",
+		});
+
+		const configured = urls({ listed: ["http://nas.local:8081"] });
+		const found = transition(checking.snapshot, {
+			type: "ADDRESSES_LOADED",
+			urls: configured,
+		}).snapshot;
+		expect(found.step).toMatchObject({ urls: configured, stillMissing: false });
+		expect(transition(found, { type: "ADDRESS_DONE" }).snapshot.step).toEqual({
+			id: "chooser",
+		});
+	});
+
+	it("knows this machine's own names", () => {
+		for (const local of [
+			"http://localhost:8081",
+			"http://books.localhost:8081",
+			"http://127.0.0.1:8081",
+			"http://[::1]:8081",
+		])
+			expect(isLocalAddress(local), local).toBe(true);
+		for (const other of [
+			"http://nas.local:8081",
+			"https://books.example.com",
+			"nonsense",
+		])
+			expect(isLocalAddress(other), other).toBe(false);
 	});
 
 	it("is done at once when the served library is open, and broken when it isn't", () => {

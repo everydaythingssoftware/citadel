@@ -68,6 +68,15 @@ export const BrowserLibraryGate = ({ children }: { children: ReactNode }) => {
 					<Button onClick={() => void refresh()}>Try again</Button>
 				</Notice>
 			);
+		case "wrongAddress":
+			return (
+				<Notice
+					title="Citadel isn’t set up for this address"
+					message={state.error}
+				>
+					<Button onClick={() => void refresh()}>Try again</Button>
+				</Notice>
+			);
 		case "needsAdministrator":
 			return (
 				<AdministratorSetupForm

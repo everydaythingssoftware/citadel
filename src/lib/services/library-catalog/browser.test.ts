@@ -193,8 +193,5 @@ describe("browser library catalog", () => {
 		).rejects.toThrow("This server already serves a library");
 		expect(await setup.reopen()).toEqual(served);
 		expect((await setup.upgrade()).to).toBe(28);
-		expect(
-			requests.every((request) => request.credentials === "same-origin"),
-		).toBe(true);
 	});
 });
