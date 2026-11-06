@@ -104,19 +104,30 @@
 	align-items: center;
 }
 
-.saveStatus {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	font-size: 12px;
-	color: var(--ctd-ink-soft);
-	opacity: 0;
-	transition: opacity 200ms ease-out;
+/* Wide enough for "Saving…" so the label can change without the button
+   resizing; each label rises into place as it arrives. */
+.saveButton {
+	min-width: 88px;
 }
 
-.saveStatus[data-status="saving"],
-.saveStatus[data-status="saved"] {
-	opacity: 1;
+.saveLabel {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	animation: save-label-in 180ms ease-out;
+}
+
+@keyframes save-label-in {
+	from {
+		opacity: 0;
+		transform: translateY(3px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.saveLabel {
+		animation: none;
+	}
 }
 
 .headerActions {

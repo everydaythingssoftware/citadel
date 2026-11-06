@@ -458,6 +458,10 @@ const EditBookForm = ({
 	const loadedValues = useRef(baseline);
 	const lastSaved = useRef<EditBookFormValues | null>(null);
 	const loadedBookId = useRef(book.id);
+	// Undo: the form as it was before each save, newest last. Undoing saves
+	// the older values back, without adding a step of its own.
+	const [history, setHistory] = useState<EditBookFormValues[]>([]);
+	const undoing = useRef(false);
 
 	// Refresh the form whenever the book reloads (after a save, an identifier
 	// change, a lookup); a different book starts afresh.
@@ -478,7 +482,10 @@ const EditBookForm = ({
 			}
 			return merged;
 		});
-		if (!sameBook) lastSaved.current = null;
+		if (!sameBook) {
+			lastSaved.current = null;
+			setHistory([]);
+		}
 		loadedBookId.current = book.id;
 		loadedValues.current = next;
 		setBaseline(next);
@@ -683,12 +690,6 @@ const EditBookForm = ({
 		setFieldValue("authorList", next);
 	};
 
-	const revert = () => {
-		setValues(baseline);
-		setIsEditingDescription(false);
-		setCustomValues(customSnapshot);
-	};
-
 	// Saving is automatic: leaving a field, or flipping Finished, asks for a
 	// save; Save does the same at once. A request is served after the render
 	// it was made in, so it saves what the form now shows, and saves never
@@ -700,6 +701,23 @@ const EditBookForm = ({
 	const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
 		"idle",
 	);
+
+	// Unsaved edits are dropped first; after that, each Undo steps back one
+	// save and saves the earlier values.
+	const undo = () => {
+		setIsEditingDescription(false);
+		if (hasChanges) {
+			setValues(baseline);
+			setCustomValues(customSnapshot);
+			return;
+		}
+		const previous = history.at(-1);
+		if (!previous) return;
+		setHistory((steps) => steps.slice(0, -1));
+		undoing.current = true;
+		setValues(previous);
+		requestSave();
+	};
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -715,6 +733,8 @@ const EditBookForm = ({
 		}
 		saving.current = true;
 		lastSaved.current = values;
+		if (undoing.current) undoing.current = false;
+		else setHistory((steps) => [...steps, baseline]);
 		setSaveStatus("saving");
 		void (async () => {
 			try {
@@ -868,27 +888,30 @@ const EditBookForm = ({
 						{book.title}
 					</h3>
 					<div className={styles.headerActions}>
-						{/* Saving happens by itself; this only says so, quietly. */}
-						<span
-							className={styles.saveStatus}
-							data-status={saveStatus}
-							role="status"
-						>
-							{saveStatus === "saving" && "Saving…"}
-							{saveStatus === "saved" && (
-								<>
-									<SavedCheck />
-									Saved
-								</>
-							)}
-						</span>
-						{hasChanges && saveStatus === "idle" && (
-							<Button variant="subtle" onClick={revert}>
-								Revert
+						{(hasChanges || history.length > 0) && (
+							<Button variant="subtle" onClick={undo}>
+								Undo
 							</Button>
 						)}
-						<Button variant="primary" type="submit" disabled={!hasChanges}>
-							Save
+						{/* Saving happens by itself; the button says so as it goes:
+						    Save, Saving…, ✓ Saved, then Save again. */}
+						<Button
+							variant="primary"
+							type="submit"
+							className={styles.saveButton}
+							data-status={saveStatus}
+							disabled={saveStatus === "idle" && !hasChanges}
+						>
+							<span key={saveStatus} className={styles.saveLabel}>
+								{saveStatus === "saving" && "Saving…"}
+								{saveStatus === "saved" && (
+									<>
+										<SavedCheck />
+										Saved
+									</>
+								)}
+								{saveStatus === "idle" && "Save"}
+							</span>
 						</Button>
 					</div>
 				</header>
