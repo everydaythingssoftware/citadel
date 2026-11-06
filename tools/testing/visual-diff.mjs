@@ -19,44 +19,51 @@ import { join } from "node:path";
 const TEMPLATE = String.raw`<title>Citadel Visual Diff</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-/* Layout: a sticky filter bar over a list of before · after · diff triptychs, worst change first. */
+/* Layout: a sticky control bar over wrapping horizontal strips (before · after · difference), each a synced pan-and-zoom viewport, worst change first. */
 :root {
 	--bg: oklch(95.5% 0.004 90);
 	--panel: oklch(97.5% 0.003 90);
+	--well: oklch(91% 0.004 90);
 	--ink: oklch(21% 0.004 270);
 	--ink-soft: oklch(45% 0.005 270);
 	--line: oklch(21% 0.004 270 / 0.16);
 	--accent: oklch(25% 0.005 270);
-	--accent-ink: oklch(97.5% 0.003 90);
 	--changed: oklch(62% 0.25 340);
 	--added: oklch(55% 0.14 150);
+	--chip-bg: oklch(21% 0.004 270 / 0.72);
+	--chip-ink: oklch(98% 0.003 90);
 	--font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 	--font-data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--h: 300px;
 }
 @media (prefers-color-scheme: dark) {
 	:root:not([data-theme="light"]) {
 		--bg: oklch(18.5% 0.004 270);
 		--panel: oklch(21% 0.004 270);
+		--well: oklch(15% 0.004 270);
 		--ink: oklch(94% 0.003 90);
 		--ink-soft: oklch(70% 0.004 90);
 		--line: oklch(94% 0.003 90 / 0.12);
 		--accent: oklch(94% 0.003 90);
-		--accent-ink: oklch(20% 0.004 270);
 		--changed: oklch(70% 0.22 340);
 		--added: oklch(72% 0.14 150);
+		--chip-bg: oklch(10% 0.004 270 / 0.72);
+		--chip-ink: oklch(96% 0.003 90);
 		color-scheme: dark;
 	}
 }
 :root[data-theme="dark"] {
 	--bg: oklch(18.5% 0.004 270);
 	--panel: oklch(21% 0.004 270);
+	--well: oklch(15% 0.004 270);
 	--ink: oklch(94% 0.003 90);
 	--ink-soft: oklch(70% 0.004 90);
 	--line: oklch(94% 0.003 90 / 0.12);
 	--accent: oklch(94% 0.003 90);
-	--accent-ink: oklch(20% 0.004 270);
 	--changed: oklch(70% 0.22 340);
 	--added: oklch(72% 0.14 150);
+	--chip-bg: oklch(10% 0.004 270 / 0.72);
+	--chip-ink: oklch(96% 0.003 90);
 	color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -75,6 +82,7 @@ body::before {
 	z-index: 10;
 	background: var(--panel);
 }
+button { font: inherit; color: inherit; }
 .bar {
 	position: sticky;
 	top: env(safe-area-inset-top, 0px);
@@ -83,8 +91,6 @@ body::before {
 	border-bottom: 1px solid var(--line);
 }
 .bar-inner, main {
-	max-width: 1680px;
-	margin: 0 auto;
 	padding-left: max(16px, env(safe-area-inset-left, 0px));
 	padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
@@ -93,18 +99,10 @@ body::before {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 10px 16px;
-	padding-block: 12px;
+	padding-block: 10px;
 }
-h1 {
-	margin: 0 12px 0 0;
-	font-size: 16px;
-	font-weight: 600;
-}
-.summary {
-	color: var(--ink-soft);
-	font-size: 13px;
-	font-variant-numeric: tabular-nums;
-}
+h1 { margin: 0 4px 0 0; font-size: 16px; font-weight: 600; }
+.summary { color: var(--ink-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
 .spacer { flex: 1; }
 .seg {
 	display: inline-flex;
@@ -118,20 +116,25 @@ h1 {
 	border: 0;
 	border-radius: 5px;
 	background: transparent;
-	color: var(--ink);
-	font: 500 12px var(--font-ui);
+	font-size: 12px;
+	font-weight: 500;
 	cursor: pointer;
 }
 .seg button[aria-pressed="true"] {
 	background: var(--panel);
 	box-shadow: 0 0.5px 1.5px oklch(0% 0 0 / 0.2);
 }
-.seg button:focus-visible, input:focus-visible, .shot:focus-visible {
-	outline: 2px solid var(--accent);
-	outline-offset: 2px;
+.size {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: var(--ink-soft);
 }
+.size input { width: 120px; accent-color: var(--accent); }
+.size output { min-width: 4ch; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 input[type="search"] {
-	width: 200px;
+	width: 180px;
 	max-width: 100%;
 	height: 28px;
 	padding: 0 10px;
@@ -141,106 +144,149 @@ input[type="search"] {
 	color: var(--ink);
 	font: 13px var(--font-ui);
 }
-.legend {
-	display: flex;
-	gap: 14px;
-	font-size: 12px;
-	color: var(--ink-soft);
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { font-size: 12px; color: var(--ink-soft); }
+.hint kbd {
+	padding: 0 4px;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	font: 11px var(--font-data);
 }
-.legend span::before {
-	content: "";
-	display: inline-block;
-	width: 9px;
-	height: 9px;
-	margin-right: 5px;
-	border-radius: 2px;
-	vertical-align: -1px;
-	background: var(--changed);
-}
-.legend .same::before { background: var(--ink-soft); opacity: 0.35; }
 main {
-	display: grid;
-	gap: 28px;
-	padding-block: 24px 64px;
-}
-.screen {
-	display: grid;
-	gap: 10px;
-	min-width: 0;
-}
-.screen-head {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 6px 12px;
+	align-items: flex-start;
+	gap: 24px 28px;
+	padding-block: 20px 64px;
 }
-.screen-head h2 {
+.strip {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
+}
+.strip-head {
+	display: flex;
+	align-items: baseline;
+	gap: 4px 10px;
+	min-width: 0;
+}
+.strip-head h2 {
 	margin: 0;
-	font-size: 14px;
+	font-size: 13px;
 	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
 }
 .tag {
-	font-size: 11px;
+	flex: none;
+	font-size: 10.5px;
 	font-weight: 600;
-	letter-spacing: 0.04em;
+	letter-spacing: 0.05em;
 	text-transform: uppercase;
 	color: var(--ink-soft);
 }
 .stat {
+	flex: none;
 	margin-left: auto;
 	font-family: var(--font-data);
-	font-size: 12px;
+	font-size: 11.5px;
 	font-variant-numeric: tabular-nums;
 	color: var(--ink-soft);
 }
 .stat[data-level="high"] { color: var(--changed); }
 .stat[data-level="new"] { color: var(--added); }
-.trip {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 10px;
-}
-.trip[data-phone] { grid-template-columns: repeat(3, minmax(0, 260px)); }
-figure {
-	margin: 0;
-	display: grid;
-	gap: 6px;
-	min-width: 0;
-}
-figcaption {
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
+.tools { flex: none; display: inline-flex; gap: 2px; }
+.tool {
+	height: 22px;
+	padding: 0 7px;
+	border: 1px solid transparent;
+	border-radius: 5px;
+	background: transparent;
+	font-size: 11.5px;
 	color: var(--ink-soft);
+	cursor: pointer;
 }
-.shot {
-	display: block;
-	width: 100%;
+.tool:hover { border-color: var(--line); color: var(--ink); }
+.panes {
+	display: flex;
+	gap: 6px;
+	overflow-x: auto;
 	max-width: 100%;
-	height: auto;
+	touch-action: pan-x pan-y;
+	cursor: grab;
+	user-select: none;
+	-webkit-user-select: none;
+	border-radius: 7px;
+}
+.panes[data-zoomed] { touch-action: none; }
+.panes:active { cursor: grabbing; }
+.pane {
+	position: relative;
+	flex: none;
+	height: var(--h);
+	overflow: hidden;
 	border: 1px solid var(--line);
 	border-radius: 6px;
-	background: var(--panel);
-	cursor: zoom-in;
+	background: var(--well);
+}
+.layer {
+	position: absolute;
+	inset: 0;
+	transform-origin: 0 0;
+	will-change: transform;
+}
+.layer > img, .layer > canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	-webkit-user-drag: none;
+}
+.panes[data-pixelated] .layer > * { image-rendering: pixelated; }
+.chip {
+	position: absolute;
+	top: 6px;
+	left: 6px;
+	z-index: 1;
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: var(--chip-bg);
+	color: var(--chip-ink);
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	pointer-events: none;
+}
+.zoomed {
+	position: absolute;
+	right: 6px;
+	bottom: 6px;
+	z-index: 1;
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: var(--chip-bg);
+	color: var(--chip-ink);
+	font: 10px var(--font-data);
+	pointer-events: none;
 }
 .missing {
+	position: absolute;
+	inset: 0;
 	display: grid;
 	place-items: center;
-	aspect-ratio: 1280 / 820;
-	border: 1px dashed var(--line);
-	border-radius: 6px;
-	color: var(--ink-soft);
-	font-size: 12px;
-}
-.trip[data-phone] .missing { aspect-ratio: 390 / 844; }
-.empty {
-	padding: 48px 0;
+	padding: 8px;
 	text-align: center;
 	color: var(--ink-soft);
+	font-size: 12px;
+	background: repeating-linear-gradient(135deg, transparent 0 8px, var(--line) 8px 9px);
 }
+.empty { width: 100%; padding: 48px 0; text-align: center; color: var(--ink-soft); }
 dialog {
-	width: min(1400px, calc(100vw - 32px));
+	width: calc(100vw - 32px);
+	max-width: none;
 	max-height: calc(100vh - 32px);
 	padding: 0;
 	border: 1px solid var(--line);
@@ -249,35 +295,29 @@ dialog {
 	color: var(--ink);
 	box-shadow: 0 16px 48px oklch(0% 0 0 / 0.35);
 }
-.close {
-	height: 28px;
-	padding: 0 12px;
-	border: 1px solid var(--line);
-	border-radius: 6px;
-	background: var(--bg);
-	color: var(--ink);
-	font: 500 12px var(--font-ui);
-	cursor: pointer;
-}
-dialog::backdrop { background: oklch(0% 0 0 / 0.5); }
-.zoom-head {
+dialog::backdrop { background: oklch(0% 0 0 / 0.55); }
+.big-head {
 	display: flex;
 	align-items: center;
 	gap: 12px;
 	padding: 10px 14px;
 	border-bottom: 1px solid var(--line);
 }
-.zoom-head strong { flex: 1; min-width: 0; font-size: 13px; }
-.zoom-body { overflow: auto; max-height: calc(100vh - 100px); padding: 14px; }
-.zoom-body canvas, .zoom-body img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.big-head strong { flex: 1; min-width: 0; font-size: 13px; }
+.close {
+	height: 28px;
+	padding: 0 12px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--bg);
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+}
+.big-body { display: grid; place-items: center; padding: 14px; overflow: auto; }
 @media (max-width: 760px) {
-	.trip, .trip[data-phone] { grid-template-columns: minmax(0, 1fr); }
-	.spacer { display: none; }
+	.spacer, .hint { display: none; }
 }
-@media (prefers-reduced-motion: no-preference) {
-	.shot { transition: border-color 120ms ease-out; }
-}
-.shot:hover { border-color: var(--ink-soft); }
 </style>
 
 <header class="bar">
@@ -294,29 +334,32 @@ dialog::backdrop { background: oklch(0% 0 0 / 0.5); }
 			<button type="button" id="theme-light" data-theme-filter="light" aria-pressed="false">Light</button>
 			<button type="button" id="theme-dark" data-theme-filter="dark" aria-pressed="false">Dark</button>
 		</div>
+		<label class="size" for="height">Height
+			<input type="range" id="height" min="120" max="720" step="20" value="300">
+			<output id="height-out" for="height">300</output>
+		</label>
 		<input type="search" id="filter" placeholder="Filter screens" aria-label="Filter screens">
-		<div class="legend"><span>Changed pixels</span><span class="same">Unchanged, dimmed</span></div>
+		<span class="hint">Pinch or <kbd>⌥</kbd>+scroll to zoom · drag to pan · <kbd>double-click</kbd> resets · Expand for a big view</span>
 	</div>
 </header>
 <main id="list"></main>
-<dialog id="zoom">
-	<div class="zoom-head">
-		<strong id="zoom-title"></strong>
-		<div class="seg" role="group" aria-label="View">
-			<button type="button" id="zoom-before" data-view="before" aria-pressed="false">Before</button>
-			<button type="button" id="zoom-after" data-view="after" aria-pressed="true">After</button>
-			<button type="button" id="zoom-diff" data-view="diff" aria-pressed="false">Difference</button>
-		</div>
+<dialog id="big" aria-labelledby="big-title">
+	<div class="big-head">
+		<strong id="big-title"></strong>
+		<span class="hint">Scroll to zoom · drag to pan · <kbd>0</kbd> resets</span>
 		<form method="dialog"><button type="submit" class="close">Close</button></form>
 	</div>
-	<div class="zoom-body" id="zoom-body"></div>
+	<div class="big-body" id="big-body"></div>
 </dialog>
 
 <script>
 const ENTRIES = /*__ENTRIES__*/[];
 const THRESHOLD = 24; // summed RGB difference below which a pixel counts as unchanged
-const state = { show: "changed", theme: "both", query: "" };
+const MAX_ZOOM = 24;
+const state = { show: "changed", theme: "both", query: "", height: 300 };
 const results = new Map(); // name -> { ratio, canvas }
+const sizes = new Map(); // name -> [w, h] of the captured image
+const DEFAULT_SIZE = { Desktop: [1280, 820], Phone: [390, 844], Storybook: [1100, 760] };
 
 const load = (src) =>
 	new Promise((resolve) => {
@@ -343,9 +386,8 @@ function diff(before, after) {
 	const ctx = out.getContext("2d");
 	const img = ctx.createImageData(w, h);
 	const d = img.data;
-	const mark = getComputedStyle(document.documentElement).getPropertyValue("--changed");
 	const probe = document.createElement("canvas").getContext("2d");
-	probe.fillStyle = mark.trim() || "#e0218a";
+	probe.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--changed").trim() || "#e0218a";
 	probe.fillRect(0, 0, 1, 1);
 	const [mr, mg, mb] = probe.getImageData(0, 0, 1, 1).data;
 	let changed = 0;
@@ -355,8 +397,8 @@ function diff(before, after) {
 			changed++;
 			d[i] = mr; d[i + 1] = mg; d[i + 2] = mb; d[i + 3] = 255;
 		} else {
-			const grey = (b[i] * 0.3 + b[i + 1] * 0.59 + b[i + 2] * 0.11) | 0;
-			const v = 128 + ((grey - 128) * 0.25) | 0;
+			const grey = b[i] * 0.3 + b[i + 1] * 0.59 + b[i + 2] * 0.11;
+			const v = (128 + (grey - 128) * 0.25) | 0;
 			d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
 		}
 	}
@@ -364,10 +406,10 @@ function diff(before, after) {
 	return { ratio: changed / (w * h), canvas: out };
 }
 
-function level(r) {
-	if (r === null) return "new";
-	if (r > 0.05) return "high";
-	return r > 0 ? "low" : "none";
+function level(entry, r) {
+	if (!entry.before) return "new";
+	if (!r) return "none";
+	return r.ratio > 0.05 ? "high" : r.ratio > 0 ? "low" : "none";
 }
 
 function describe(entry, r) {
@@ -376,52 +418,193 @@ function describe(entry, r) {
 	if (!r) return "Comparing…";
 	if (r.ratio === 0) return "No change";
 	const pct = r.ratio * 100;
-	return (pct < 0.1 ? "<0.1" : pct.toFixed(pct < 10 ? 1 : 0)) + "% of pixels changed";
+	return (pct < 0.1 ? "<0.1" : pct.toFixed(pct < 10 ? 1 : 0)) + "% changed";
 }
 
 function visible(entry) {
 	const r = results.get(entry.name);
 	if (state.theme !== "both" && entry.theme !== state.theme) return false;
 	if (state.query && !(entry.title + " " + entry.group + " " + entry.key).toLowerCase().includes(state.query)) return false;
-	if (state.show === "changed") {
-		if (!entry.before || !entry.after) return true;
-		return r ? r.ratio > 0 : true;
-	}
+	if (state.show === "changed" && entry.before && entry.after) return r ? r.ratio > 0 : true;
 	return true;
 }
 
 function order(a, b) {
-	const ra = results.get(a.name), rb = results.get(b.name);
 	// Biggest changes first; screens with only one side go last.
-	const score = (e, r) => (!e.before || !e.after ? -1 : r ? r.ratio : 0);
-	return score(b, rb) - score(a, ra) || a.name.localeCompare(b.name);
+	const score = (e) => (!e.before || !e.after ? -1 : results.get(e.name)?.ratio ?? 0);
+	return score(b) - score(a) || a.name.localeCompare(b.name);
 }
 
-function figure(caption, node) {
-	const f = document.createElement("figure");
-	const c = document.createElement("figcaption");
-	c.textContent = caption;
-	f.append(c, node);
-	return f;
+/* ---- Synced pan and zoom: one transform drives all three panes. ---- */
+function makeZoom(panes, layers, readout, size, freeWheel) {
+	const z = { s: 1, x: 0, y: 0 };
+	const box = () => {
+		const pane = layers[0].parentElement;
+		return { w: pane.clientWidth, h: pane.clientHeight };
+	};
+	const clamp = () => {
+		const { w, h } = box();
+		z.s = Math.min(MAX_ZOOM, Math.max(1, z.s));
+		z.x = Math.min(0, Math.max(w - w * z.s, z.x));
+		z.y = Math.min(0, Math.max(h - h * z.s, z.y));
+	};
+	const apply = () => {
+		clamp();
+		const t = "translate(" + z.x + "px," + z.y + "px) scale(" + z.s + ")";
+		for (const l of layers) l.style.transform = t;
+		// Past the screenshot's own resolution, show pixels as pixels.
+		const shown = box().h * z.s;
+		if (shown > size()[1] * 1.5) panes.dataset.pixelated = "";
+		else delete panes.dataset.pixelated;
+		for (const r of readout) r.textContent = z.s > 1.01 ? z.s.toFixed(z.s < 10 ? 1 : 0) + "×" : "";
+		for (const r of readout) r.hidden = z.s <= 1.01;
+		// Unzoomed strips let the page scroll under a finger; zoomed ones pan.
+		if (z.s > 1.01) panes.dataset.zoomed = "";
+		else delete panes.dataset.zoomed;
+	};
+	const zoomAt = (factor, px, py) => {
+		const next = Math.min(MAX_ZOOM, Math.max(1, z.s * factor));
+		z.x = px - (px - z.x) * (next / z.s);
+		z.y = py - (py - z.y) * (next / z.s);
+		z.s = next;
+		apply();
+	};
+	// Any pane's point maps to the same image point in every pane.
+	const local = (e) => {
+		const pane = e.target.closest(".pane") || layers[0].parentElement;
+		const r = pane.getBoundingClientRect();
+		return [e.clientX - r.left, e.clientY - r.top];
+	};
+	panes.addEventListener("wheel", (e) => {
+		// Pinch arrives as ctrl+wheel. In the overview a plain wheel scrolls
+		// the page, or pans a strip that is already zoomed.
+		const zoomGesture = freeWheel || e.ctrlKey || e.metaKey || e.altKey;
+		if (!zoomGesture) {
+			if (z.s <= 1.01) return;
+			e.preventDefault();
+			z.x -= e.deltaX;
+			z.y -= e.deltaY;
+			apply();
+			return;
+		}
+		e.preventDefault();
+		const [px, py] = local(e);
+		zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)), px, py);
+	}, { passive: false });
+	const pointers = new Map();
+	let pinch = null;
+	panes.addEventListener("pointerdown", (e) => {
+		if (e.pointerType === "mouse" && e.button !== 0) return;
+		panes.setPointerCapture(e.pointerId);
+		pointers.set(e.pointerId, [e.clientX, e.clientY]);
+		if (pointers.size === 2) {
+			const [[ax, ay], [bx, by]] = [...pointers.values()];
+			pinch = { d: Math.hypot(ax - bx, ay - by) };
+		}
+	});
+	panes.addEventListener("pointermove", (e) => {
+		const prev = pointers.get(e.pointerId);
+		if (!prev) return;
+		pointers.set(e.pointerId, [e.clientX, e.clientY]);
+		if (pointers.size === 2 && pinch) {
+			const [[ax, ay], [bx, by]] = [...pointers.values()];
+			const d = Math.hypot(ax - bx, ay - by);
+			const pane = layers[0].parentElement.getBoundingClientRect();
+			zoomAt(d / pinch.d, (ax + bx) / 2 - pane.left, (ay + by) / 2 - pane.top);
+			pinch.d = d;
+		} else if (pointers.size === 1 && (z.s > 1.01 || e.pointerType === "mouse")) {
+			z.x += e.clientX - prev[0];
+			z.y += e.clientY - prev[1];
+			apply();
+		}
+	});
+	const lift = (e) => {
+		pointers.delete(e.pointerId);
+		if (pointers.size < 2) pinch = null;
+	};
+	panes.addEventListener("pointerup", lift);
+	panes.addEventListener("pointercancel", lift);
+	const reset = () => { z.s = 1; z.x = 0; z.y = 0; apply(); };
+	panes.addEventListener("dblclick", reset);
+	panes.tabIndex = 0;
+	panes.addEventListener("keydown", (e) => {
+		const { w, h } = box();
+		const step = 40;
+		if (e.key === "+" || e.key === "=") zoomAt(1.5, w / 2, h / 2);
+		else if (e.key === "-") zoomAt(1 / 1.5, w / 2, h / 2);
+		else if (e.key === "0") reset();
+		else if (e.key === "ArrowLeft") { z.x += step; apply(); }
+		else if (e.key === "ArrowRight") { z.x -= step; apply(); }
+		else if (e.key === "ArrowUp") { z.y += step; apply(); }
+		else if (e.key === "ArrowDown") { z.y -= step; apply(); }
+		else return;
+		e.preventDefault();
+	});
+	apply();
+	const set = (v) => { Object.assign(z, v); apply(); };
+	return { z, apply, reset, set };
 }
 
-function missing(text) {
-	const m = document.createElement("div");
-	m.className = "missing";
-	m.textContent = text;
-	return m;
+function sizeOf(entry) {
+	return sizes.get(entry.name) || DEFAULT_SIZE[entry.group] || DEFAULT_SIZE.Desktop;
 }
 
-function shot(src, entry, view) {
-	const img = document.createElement("img");
-	img.className = "shot";
-	img.src = src;
-	img.alt = entry.title + " (" + entry.theme + "), " + view;
-	img.loading = "lazy";
-	img.tabIndex = 0;
-	img.addEventListener("click", () => openZoom(entry, view));
-	img.addEventListener("keydown", (e) => { if (e.key === "Enter") openZoom(entry, view); });
-	return img;
+/* One horizontal triptych at a given pane height. */
+function buildStrip(entry, height, freeWheel) {
+	const r = results.get(entry.name);
+	const [w, h] = sizeOf(entry);
+	const paneW = Math.round((height * w) / h);
+	const panes = document.createElement("div");
+	panes.className = "panes";
+	panes.setAttribute("role", "group");
+	panes.setAttribute("aria-label", entry.title + " " + entry.theme + ": before, after and difference. Plus and minus zoom, arrows pan, 0 resets.");
+	const layers = [], readouts = [];
+	const pane = (label, content) => {
+		const p = document.createElement("div");
+		p.className = "pane";
+		p.style.width = paneW + "px";
+		p.style.height = height + "px";
+		const chip = document.createElement("span");
+		chip.className = "chip";
+		chip.textContent = label;
+		const layer = document.createElement("div");
+		layer.className = "layer";
+		const zoomed = document.createElement("span");
+		zoomed.className = "zoomed";
+		zoomed.hidden = true;
+		if (content) layer.append(content);
+		else {
+			const m = document.createElement("div");
+			m.className = "missing";
+			m.textContent = label === "Difference" ? (entry.before && entry.after ? "Comparing…" : "Nothing to compare") : "Not captured " + (label === "Before" ? "before" : "now");
+			layer.append(m);
+		}
+		p.append(layer, chip, zoomed);
+		layers.push(layer);
+		readouts.push(zoomed);
+		panes.append(p);
+	};
+	const img = (side) => {
+		if (!entry[side]) return null;
+		const i = document.createElement("img");
+		i.src = side + "/" + entry.name;
+		i.alt = "";
+		i.draggable = false;
+		i.decoding = "async";
+		return i;
+	};
+	let diffCanvas = null;
+	if (r) {
+		diffCanvas = document.createElement("canvas");
+		diffCanvas.width = r.canvas.width;
+		diffCanvas.height = r.canvas.height;
+		diffCanvas.getContext("2d").drawImage(r.canvas, 0, 0);
+	}
+	pane("Before", img("before"));
+	pane("After", img("after"));
+	pane("Difference", diffCanvas);
+	const zoom = makeZoom(panes, layers, readouts, () => sizeOf(entry), freeWheel);
+	return { panes, zoom, height };
 }
 
 function render() {
@@ -437,29 +620,40 @@ function render() {
 	for (const entry of shown) {
 		const r = results.get(entry.name);
 		const section = document.createElement("section");
-		section.className = "screen";
+		section.className = "strip";
+		const strip = buildStrip(entry, state.height);
+		section.style.width = "min(100%, " + (strip.panes.scrollWidth || 0) + "px)";
 		const head = document.createElement("div");
-		head.className = "screen-head";
+		head.className = "strip-head";
 		const h = document.createElement("h2");
 		h.textContent = entry.title;
+		h.title = entry.name;
 		const tag = document.createElement("span");
 		tag.className = "tag";
 		tag.textContent = entry.group + " · " + entry.theme;
 		const stat = document.createElement("span");
 		stat.className = "stat";
-		stat.dataset.level = !entry.before ? "new" : level(r ? r.ratio : 0);
+		stat.dataset.level = level(entry, r);
 		stat.textContent = describe(entry, r);
-		head.append(h, tag, stat);
-		const trip = document.createElement("div");
-		trip.className = "trip";
-		if (entry.group === "Phone") trip.dataset.phone = "";
-		trip.append(
-			figure("Before", entry.before ? shot("before/" + entry.name, entry, "before") : missing("Not captured before")),
-			figure("After", entry.after ? shot("after/" + entry.name, entry, "after") : missing("Not captured now")),
-			figure("Difference", r ? diffNode(r, entry) : missing(entry.before && entry.after ? "Comparing…" : "Nothing to compare")),
-		);
-		section.append(head, trip);
+		const tools = document.createElement("span");
+		tools.className = "tools";
+		const reset = document.createElement("button");
+		reset.type = "button";
+		reset.className = "tool";
+		reset.textContent = "Reset";
+		reset.addEventListener("click", strip.zoom.reset);
+		const expand = document.createElement("button");
+		expand.type = "button";
+		expand.className = "tool";
+		expand.textContent = "Expand";
+		expand.addEventListener("click", () => openBig(entry, strip));
+		tools.append(reset, expand);
+		head.append(h, tag, stat, tools);
+		section.append(head, strip.panes);
 		list.append(section);
+		requestAnimationFrame(() => {
+			section.style.width = "min(100%, " + strip.panes.scrollWidth + "px)";
+		});
 	}
 	const done = ENTRIES.filter((e) => e.before && e.after && results.has(e.name));
 	const changed = done.filter((e) => results.get(e.name).ratio > 0).length;
@@ -468,49 +662,22 @@ function render() {
 		changed + " of " + done.length + " screens changed" + (added ? " · " + added + " new" : "") + " · " + shown.length + " shown";
 }
 
-function diffNode(r, entry) {
-	const c = document.createElement("canvas");
-	c.width = r.canvas.width; c.height = r.canvas.height;
-	c.getContext("2d").drawImage(r.canvas, 0, 0);
-	c.className = "shot";
-	c.tabIndex = 0;
-	c.setAttribute("role", "img");
-	c.setAttribute("aria-label", entry.title + " (" + entry.theme + "), difference");
-	c.addEventListener("click", () => openZoom(entry, "diff"));
-	c.addEventListener("keydown", (e) => { if (e.key === "Enter") openZoom(entry, "diff"); });
-	return c;
+function openBig(entry, from) {
+	const [w, h] = sizeOf(entry);
+	const gaps = 2 * 6 + 2 * 3;
+	const fitW = (window.innerWidth - 80 - gaps) / 3;
+	const height = Math.max(160, Math.floor(Math.min(window.innerHeight - 140, (fitW * h) / w)));
+	const k = height / from.height;
+	const big = buildStrip(entry, height, true);
+	document.getElementById("big-title").textContent = entry.title + " · " + entry.group + " · " + entry.theme + " · " + describe(entry, results.get(entry.name));
+	document.getElementById("big-body").replaceChildren(big.panes);
+	const dlg = document.getElementById("big");
+	dlg.showModal();
+	// Carry the strip's view over once the panes have their size: offsets
+	// scale with the pane.
+	big.zoom.set({ s: from.zoom.z.s, x: from.zoom.z.x * k, y: from.zoom.z.y * k });
+	big.panes.focus();
 }
-
-let zoomEntry = null;
-function openZoom(entry, view) {
-	zoomEntry = entry;
-	document.getElementById("zoom-title").textContent = entry.title + " · " + entry.theme;
-	setZoomView(view);
-	const dlg = document.getElementById("zoom");
-	if (!dlg.open) dlg.showModal();
-}
-function setZoomView(view) {
-	for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === view));
-	const body = document.getElementById("zoom-body");
-	const r = results.get(zoomEntry.name);
-	if (view === "diff") body.replaceChildren(r ? diffNode(r, zoomEntry) : missing("Nothing to compare"));
-	else if (zoomEntry[view]) {
-		const img = document.createElement("img");
-		img.src = view + "/" + zoomEntry.name;
-		img.alt = zoomEntry.title + ", " + view;
-		body.replaceChildren(img);
-	} else body.replaceChildren(missing("Not captured " + (view === "before" ? "before" : "now")));
-}
-for (const b of document.querySelectorAll("[data-view]")) b.addEventListener("click", () => setZoomView(b.dataset.view));
-document.addEventListener("keydown", (e) => {
-	if (!document.getElementById("zoom").open) return;
-	const views = ["before", "after", "diff"];
-	const current = document.querySelector('[data-view][aria-pressed="true"]')?.dataset.view;
-	if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-		const i = views.indexOf(current) + (e.key === "ArrowRight" ? 1 : -1);
-		setZoomView(views[(i + 3) % 3]);
-	}
-});
 
 for (const b of document.querySelectorAll("[data-show]")) b.addEventListener("click", () => {
 	state.show = b.dataset.show;
@@ -526,12 +693,28 @@ document.getElementById("filter").addEventListener("input", (e) => {
 	state.query = e.target.value.trim().toLowerCase();
 	render();
 });
+const heightInput = document.getElementById("height");
+try {
+	const saved = Number(localStorage.getItem("visual-diff-height"));
+	if (saved >= 120 && saved <= 720) heightInput.value = String(saved);
+} catch {}
+const setHeight = () => {
+	state.height = Number(heightInput.value);
+	document.getElementById("height-out").textContent = String(state.height);
+	try { localStorage.setItem("visual-diff-height", String(state.height)); } catch {}
+};
+setHeight();
+heightInput.addEventListener("input", () => { setHeight(); render(); });
 
 render();
 (async () => {
 	for (const entry of ENTRIES) {
-		if (!entry.before || !entry.after) continue;
-		const [a, b] = await Promise.all([load("before/" + entry.name), load("after/" + entry.name)]);
+		const [a, b] = await Promise.all([
+			entry.before ? load("before/" + entry.name) : null,
+			entry.after ? load("after/" + entry.name) : null,
+		]);
+		const any = b || a;
+		if (any) sizes.set(entry.name, [any.naturalWidth, any.naturalHeight]);
 		if (!a || !b) continue;
 		try {
 			results.set(entry.name, diff(a, b));
@@ -581,8 +764,10 @@ const label = (name) => {
 };
 
 const entries = [...new Set([...before, ...after])].sort().map((name) => {
-	if (before.has(name)) copyFileSync(join(beforeDir, name), join(outDir, "before", name));
-	if (after.has(name)) copyFileSync(join(afterDir, name), join(outDir, "after", name));
+	if (before.has(name))
+		copyFileSync(join(beforeDir, name), join(outDir, "before", name));
+	if (after.has(name))
+		copyFileSync(join(afterDir, name), join(outDir, "after", name));
 	return {
 		name,
 		theme: name.match(THEME)?.[1] ?? "light",
