@@ -39,6 +39,7 @@ import {
 	emptyFieldValue,
 } from "@/lib/custom-columns";
 import { useMetadataBookActions } from "@/lib/hooks/use-metadata-book-actions";
+import { useScrolledUnder } from "@/lib/hooks/use-scrolled-under";
 import {
 	KNOWN_LANGUAGE_NAMES,
 	codeForLanguageName,
@@ -214,6 +215,22 @@ const DeleteBookSection = ({
 	);
 };
 
+const SavedCheck = () => (
+	<svg
+		width="12"
+		height="12"
+		viewBox="0 0 12 12"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.6"
+		strokeLinecap="round"
+		strokeLinejoin="round"
+		aria-hidden="true"
+	>
+		<path d="M2.5 6.25 5 8.5l4.5-5" />
+	</svg>
+);
+
 const BackChevron = () => (
 	<svg
 		width="14"
@@ -355,7 +372,12 @@ const CustomColumnInput = ({
 	}
 };
 
-const SAVED_NOTICE_MS = 3000;
+/** Field values compare by content: lists are rebuilt on every load. */
+const sameValue = (a: unknown, b: unknown) =>
+	a === b || JSON.stringify(a) === JSON.stringify(b);
+
+/** How long the quiet "Saved" beside the Save button stays. */
+const SAVED_STATUS_MS = 2000;
 
 const errorText = (error: unknown): string =>
 	error instanceof Error ? error.message : String(error);
@@ -430,10 +452,35 @@ const EditBookForm = ({
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
 	const [newBookIdentifierLabel, setNewBookIdentifierLabel] = useState("");
 
-	// Reset the form whenever the book reloads (e.g. after identifier upserts).
+	// What the form was loaded with, and what was last sent to be saved. A
+	// reload replaces only fields that still hold one of those: a field being
+	// edited (typing on while a save runs, say) keeps what you've typed.
+	const loadedValues = useRef(baseline);
+	const lastSaved = useRef<EditBookFormValues | null>(null);
+	const loadedBookId = useRef(book.id);
+
+	// Refresh the form whenever the book reloads (after a save, an identifier
+	// change, a lookup); a different book starts afresh.
 	useEffect(() => {
 		const next = formValuesFromBook(book);
-		setValues(next);
+		const sameBook = loadedBookId.current === book.id;
+		const loaded = loadedValues.current;
+		const saved = lastSaved.current;
+		setValues((current) => {
+			if (!sameBook) return next;
+			const merged = { ...next };
+			for (const field of Object.keys(next) as (keyof EditBookFormValues)[]) {
+				const mine = current[field];
+				const untouched =
+					sameValue(mine, loaded[field]) ||
+					(saved !== null && sameValue(mine, saved[field]));
+				if (!untouched) Object.assign(merged, { [field]: mine });
+			}
+			return merged;
+		});
+		if (!sameBook) lastSaved.current = null;
+		loadedBookId.current = book.id;
+		loadedValues.current = next;
 		setBaseline(next);
 	}, [book]);
 
@@ -642,22 +689,58 @@ const EditBookForm = ({
 		setCustomValues(customSnapshot);
 	};
 
+	// Saving is automatic: leaving a field, or flipping Finished, asks for a
+	// save; Save does the same at once. A request is served after the render
+	// it was made in, so it saves what the form now shows, and saves never
+	// overlap: one asked for mid-save runs when that one is done.
+	const [saveRequest, setSaveRequest] = useState(0);
+	const requestSave = useCallback(() => setSaveRequest((n) => n + 1), []);
+	const saving = useRef(false);
+	const saveQueued = useRef(false);
+	const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
+		"idle",
+	);
+
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
+		requestSave();
+	};
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: runs once per save request, with this render's values
+	useEffect(() => {
+		if (saveRequest === 0 || !hasChanges) return;
+		if (saving.current) {
+			saveQueued.current = true;
+			return;
+		}
+		saving.current = true;
+		lastSaved.current = values;
+		setSaveStatus("saving");
 		void (async () => {
-			// The outcome replaces whatever notice is showing (a lookup's, say)
-			// in place, rather than clearing it first.
 			try {
 				await save();
-				meta.setMessage({ type: "success", text: "Saved" });
+				setSaveStatus("saved");
 			} catch (error) {
+				setSaveStatus("idle");
 				meta.setMessage({
 					type: "error",
 					text: `Couldn't save: ${errorText(error)}`,
 				});
+			} finally {
+				saving.current = false;
+				if (saveQueued.current) {
+					saveQueued.current = false;
+					requestSave();
+				}
 			}
 		})();
-	};
+	}, [saveRequest]);
+
+	useEffect(() => {
+		if (saveStatus !== "saved") return;
+		const timer = setTimeout(() => setSaveStatus("idle"), SAVED_STATUS_MS);
+		return () => clearTimeout(timer);
+	}, [saveStatus]);
 
 	const save = async () => {
 		const authorIdsFromName = await Promise.all(
@@ -711,27 +794,19 @@ const EditBookForm = ({
 	};
 	const dismissNotice = () => setMessage(null);
 
-	// "Saved" is a brief confirmation; errors stay until dismissed.
-	const savedMessage =
-		meta.message?.type === "success" && meta.message.text === "Saved"
-			? meta.message
-			: null;
-	useEffect(() => {
-		if (!savedMessage) return;
-		const timer = setTimeout(
-			() =>
-				setMessage((current) => (current === savedMessage ? null : current)),
-			SAVED_NOTICE_MS,
-		);
-		return () => clearTimeout(timer);
-	}, [savedMessage, setMessage]);
-
 	// An identifier error is about the identifier just tried, so it goes once
 	// you type in the identifiers again or the next identifier change works.
 	const identifierFailure = useRef<typeof meta.message>(null);
 	// Arriving on a book puts focus on its title, so the next Tab goes into
 	// this page rather than back through the sidebar.
 	const titleRef = useRef<HTMLHeadingElement>(null);
+	// The header names the book only once its Title field has scrolled away;
+	// above that, the field and the cover already say it.
+	const titleScrolledAway = useScrolledUnder(
+		"edit-book-title",
+		titleRef,
+		book.id,
+	);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: each book opened moves focus once
 	useEffect(() => {
 		titleRef.current?.focus({ preventScroll: true });
@@ -752,7 +827,20 @@ const EditBookForm = ({
 	};
 
 	return (
-		<form className={styles.page} onSubmit={handleSubmit}>
+		<form
+			className={styles.page}
+			onSubmit={handleSubmit}
+			onBlur={(event) => {
+				// Leaving a text field saves it; buttons and menus don't count.
+				if (
+					event.target instanceof HTMLInputElement ||
+					event.target instanceof HTMLTextAreaElement ||
+					(event.target instanceof HTMLElement &&
+						event.target.isContentEditable)
+				)
+					requestSave();
+			}}
+		>
 			{/* The header and its notice stay pinned together, so a save's outcome
 			    shows wherever the form is scrolled to. */}
 			<div className={styles.pinnedTop}>
@@ -771,11 +859,30 @@ const EditBookForm = ({
 							All Books
 						</RouterLink>
 					</div>
-					<h3 ref={titleRef} tabIndex={-1} className={styles.pageTitle}>
+					<h3
+						ref={titleRef}
+						tabIndex={-1}
+						className={styles.pageTitle}
+						data-shown={titleScrolledAway || undefined}
+					>
 						{book.title}
 					</h3>
 					<div className={styles.headerActions}>
-						{hasChanges && (
+						{/* Saving happens by itself; this only says so, quietly. */}
+						<span
+							className={styles.saveStatus}
+							data-status={saveStatus}
+							role="status"
+						>
+							{saveStatus === "saving" && "Saving…"}
+							{saveStatus === "saved" && (
+								<>
+									<SavedCheck />
+									Saved
+								</>
+							)}
+						</span>
+						{hasChanges && saveStatus === "idle" && (
 							<Button variant="subtle" onClick={revert}>
 								Revert
 							</Button>
@@ -821,7 +928,10 @@ const EditBookForm = ({
 					<BookActions
 						files={book.file_list}
 						isRead={values.isRead}
-						onReadChange={(isRead) => setFieldValue("isRead", isRead)}
+						onReadChange={(isRead) => {
+							setFieldValue("isRead", isRead);
+							requestSave();
+						}}
 					/>
 				</div>
 				<div className={styles.formColumn}>
