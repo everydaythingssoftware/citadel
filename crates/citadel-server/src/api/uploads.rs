@@ -891,36 +891,40 @@ pub(super) async fn receive(
     let mut head = Vec::new();
     let mut written = 0u64;
     let mut stream = body.into_data_stream();
-    loop {
-        let chunk = match tokio::time::timeout(IDLE_TIMEOUT, stream.next()).await {
-            Ok(Some(Ok(chunk))) => chunk,
-            Ok(None) => break,
-            Ok(Some(Err(_))) => {
-                return Err(LibraryError::invalid("The chunk was interrupted").into())
+    let receiving = async {
+        loop {
+            let chunk = match tokio::time::timeout(IDLE_TIMEOUT, stream.next()).await {
+                Ok(Some(Ok(chunk))) => chunk,
+                Ok(None) => break,
+                Ok(Some(Err(_))) => {
+                    return Err(LibraryError::invalid("The chunk was interrupted").into())
+                }
+                Err(_) => {
+                    return Err(failure(
+                        LibraryErrorCode::Unavailable,
+                        "The chunk stopped arriving",
+                    ))
+                }
+            };
+            written += chunk.len() as u64;
+            if written > limit {
+                return Err(too_large());
             }
-            Err(_) => {
-                return Err(failure(
-                    LibraryErrorCode::Unavailable,
-                    "The chunk stopped arriving",
-                ))
+            if offset == 0 && head.len() < book_file::CONTENT_CHECK_BYTES {
+                let wanted = book_file::CONTENT_CHECK_BYTES - head.len();
+                head.extend_from_slice(&chunk[..chunk.len().min(wanted)]);
             }
-        };
-        written += chunk.len() as u64;
-        if written > limit {
-            return Err(too_large());
+            file.write_all(&chunk)
+                .await
+                .map_err(|_| LibraryError::unavailable())?;
         }
-        if offset == 0 && head.len() < book_file::CONTENT_CHECK_BYTES {
-            let wanted = book_file::CONTENT_CHECK_BYTES - head.len();
-            head.extend_from_slice(&chunk[..chunk.len().min(wanted)]);
-        }
-        file.write_all(&chunk)
-            .await
-            .map_err(|_| LibraryError::unavailable())?;
+        Ok::<(), ApiFailure>(())
     }
-    file.flush()
-        .await
-        .map_err(|_| LibraryError::unavailable())?;
+    .await;
+    let flushed = file.flush().await;
     drop(file);
+    receiving?;
+    flushed.map_err(|_| LibraryError::unavailable())?;
 
     if offset == 0 {
         let needed = (book_file::CONTENT_CHECK_BYTES as u64).min(size) as usize;
