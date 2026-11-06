@@ -19,7 +19,6 @@ import buttonStyles from "@/components/ui/Button.module.css";
 import { safeAsyncEventHandler } from "@/lib/async";
 import { bookFormatRows, remoteBookDownloads } from "@/lib/book-downloads";
 import { backdropColors } from "@/lib/cover-palette";
-import { BOOK_BACKDROP, useBookBackdrop } from "@/lib/hooks/use-book-backdrop";
 import { useCoverPalette } from "@/lib/hooks/use-cover-palette";
 import { languageNameForCode } from "@/lib/languages";
 import { usePlatform } from "@/lib/platform/context";
@@ -45,7 +44,6 @@ interface BookDrawerProps {
 export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 	const coverUrl = book.cover_image?.url ?? null;
 	const palette = useCoverPalette(coverUrl);
-	const [backdrop] = useBookBackdrop();
 	const colors = palette ? backdropColors(palette) : null;
 	const washStyle = colors
 		? ({
@@ -58,12 +56,8 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 
 	return (
 		<article className={styles.drawer} style={washStyle}>
-			<header className={styles.hero} data-backdrop={backdrop}>
-				<div className={styles.backdrop} aria-hidden="true">
-					{backdrop === BOOK_BACKDROP.blurredCover && coverUrl && (
-						<img className={styles.blur} src={coverUrl} alt="" />
-					)}
-				</div>
+			<header className={styles.hero}>
+				<div className={styles.backdrop} aria-hidden="true" />
 				<div className={styles.cover}>
 					<BookCover book={book} disableFade fluid />
 					{book.is_read && (
