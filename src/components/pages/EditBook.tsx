@@ -641,6 +641,16 @@ const EditBookForm = ({
 			customChanges.length > 0,
 		[values, baseline, customChanges],
 	);
+	// What the Save button counts: Finished confirms itself, so flipping it
+	// doesn't light Save up while it saves.
+	const hasEditsToSave = useMemo(() => {
+		const { isRead: _value, ...fields } = values;
+		const { isRead: _baseline, ...baselineFields } = baseline;
+		return (
+			JSON.stringify(fields) !== JSON.stringify(baselineFields) ||
+			customChanges.length > 0
+		);
+	}, [values, baseline, customChanges]);
 
 	// Library subjects from the last lookup, offered as opt-in tag chips and
 	// folded into the tag autocomplete. Only those not already applied show.
@@ -911,7 +921,7 @@ const EditBookForm = ({
 							type="submit"
 							className={styles.saveButton}
 							data-status={saveStatus}
-							disabled={saveStatus === "idle" && !hasChanges}
+							disabled={saveStatus === "idle" && !hasEditsToSave}
 						>
 							<span key={saveStatus} className={styles.saveLabel}>
 								{saveStatus === "saving" && "Saving…"}
