@@ -23,7 +23,9 @@
 	background-color: transparent;
 	border: none;
 	border-radius: max(0px, calc(var(--ctd-radius-control) - 1px));
-	transition: background-color 120ms ease-out;
+	transition:
+		background-color 120ms ease-out,
+		color 120ms ease-out;
 }
 
 .item[data-state="off"]:hover:not([data-disabled], [data-locked]) {
@@ -39,6 +41,14 @@
 .item[data-state="on"] {
 	background-color: var(--ctd-segmented-indicator-bg);
 	box-shadow: 0 0.5px 2px oklch(0% 0 0 / 0.22);
+}
+
+.root[data-dimmed] .item {
+	color: var(--ctd-control-disabled-text);
+}
+
+.root[data-dimmed] .item[data-state="on"] {
+	box-shadow: none;
 }
 
 /* Press hook: a visual no-op by default. */

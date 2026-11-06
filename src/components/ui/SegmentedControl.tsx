@@ -22,6 +22,8 @@ export interface SegmentedControlProps {
 	onLockedClick?: (value: string) => void;
 	items: SegmentedControlItem[];
 	"aria-label"?: string;
+	/** Reads as unavailable as a whole, while a locked item says why. */
+	dimmed?: boolean;
 	className?: string;
 }
 
@@ -31,6 +33,7 @@ export const SegmentedControl = ({
 	onLockedClick,
 	items,
 	"aria-label": ariaLabel,
+	dimmed = false,
 	className,
 }: SegmentedControlProps) => (
 	<ToggleGroup.Root
@@ -47,6 +50,7 @@ export const SegmentedControl = ({
 			onChange(next);
 		}}
 		aria-label={ariaLabel}
+		data-dimmed={dimmed ? "" : undefined}
 		className={clsx(styles.root, className)}
 	>
 		{items.map((item) => {

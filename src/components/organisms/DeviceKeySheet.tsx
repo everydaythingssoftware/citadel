@@ -2,6 +2,7 @@ import { TablerCopy } from "@/components/icons/TablerCopy";
 import classes from "@/components/organisms/DeviceKeySheet.module.css";
 import { Button, IconButton, Sheet, TextInput } from "@/components/ui";
 import type { DeviceKeySheetView } from "@/lib/hooks/use-device-key-sheet";
+import { passwordRuns } from "@/lib/services/opds/device-keys";
 
 interface DeviceKeySheetProps {
 	open: boolean;
@@ -57,7 +58,17 @@ export const DeviceKeySheet = ({
 					<dt className={classes.passwordLabel}>Password</dt>
 					<dd>
 						<div className={classes.passwordRow}>
-							<code className={classes.password}>{view.key.secret}</code>
+							<code className={classes.password}>
+								{passwordRuns(view.key.secret).map((run, index) => (
+									<span
+										// biome-ignore lint/suspicious/noArrayIndexKey: runs of one fixed password never reorder
+										key={index}
+										data-kind={run.kind}
+									>
+										{run.text}
+									</span>
+								))}
+							</code>
 							<IconButton
 								aria-label="Copy password"
 								className={copied ? classes.copied : undefined}
@@ -84,9 +95,7 @@ export const DeviceKeySheet = ({
 								{copied ? "Copied" : ""}
 							</span>
 						</div>
-						<p className={classes.note}>
-							This password will only be shown once.
-						</p>
+						<p className={classes.note}>This will only be shown once.</p>
 					</dd>
 					<dt>Address</dt>
 					<dd className={address ? classes.value : classes.pending}>

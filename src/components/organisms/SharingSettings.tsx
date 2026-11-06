@@ -45,7 +45,6 @@ const PENDING_LABEL = {
 } as const satisfies Partial<Record<OpdsLifecycleState, string>>;
 /** Matches the sign-in-emphasis animation in the module CSS. */
 const SIGN_IN_EMPHASIS_MS = 1_200;
-const ALL_NETWORKS_LOCKED = "All networks requires sign-in.";
 const PORT_RANGE_MESSAGE = "Choose a port from 1 to 65535.";
 /** HTTP Basic splits `user:pass` at the first colon; the backend rejects it too. */
 const USERNAME_FORBIDDEN = ":";
@@ -438,34 +437,28 @@ const SharingPane = ({ controller, sharing, setSharing }: SharingPaneProps) => {
 							</p>
 						</div>
 					)}
-					<Row label="Reachable from" className={classes.rowTop}>
-						<div className={classes.controlStack}>
-							<SegmentedControl
-								aria-label="Reachable from"
-								value={sharing.target}
-								onChange={(next) => {
-									if (next === "localNetworks" || next === "allInterfaces") {
-										changeTarget(next);
-									}
-								}}
-								onLockedClick={pointAtSignIn}
-								items={[
-									{ value: "localNetworks", label: "Local network" },
-									{
-										value: "allInterfaces",
-										label: "All networks",
-										lockedReason: allNetworksUnlocked
-											? undefined
-											: ALL_NETWORKS_LOCKED,
-									},
-								]}
-							/>
-							{!allNetworksUnlocked && (
-								<span className={panes.rowDescription}>
-									{ALL_NETWORKS_LOCKED}
-								</span>
-							)}
-						</div>
+					<Row label="Reachable from">
+						<SegmentedControl
+							aria-label="Reachable from"
+							value={sharing.target}
+							dimmed={!allNetworksUnlocked}
+							onChange={(next) => {
+								if (next === "localNetworks" || next === "allInterfaces") {
+									changeTarget(next);
+								}
+							}}
+							onLockedClick={pointAtSignIn}
+							items={[
+								{ value: "localNetworks", label: "Local network" },
+								{
+									value: "allInterfaces",
+									label: "All networks",
+									lockedReason: allNetworksUnlocked
+										? undefined
+										: "Requires sign-in",
+								},
+							]}
+						/>
 					</Row>
 					<Row label="Port" htmlFor="sharing-port" error={portMessage}>
 						<TextInput

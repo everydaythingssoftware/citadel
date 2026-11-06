@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deviceKeyUsage } from "./device-keys";
+import { deviceKeyUsage, passwordRuns } from "./device-keys";
 
 const at = (year: number, month: number, day: number, hour = 12): number =>
 	new Date(year, month - 1, day, hour).getTime() / 1_000;
@@ -31,5 +31,26 @@ describe("deviceKeyUsage", () => {
 		expect(deviceKeyUsage(key(at(2026, 11, 3)), now)).toMatch(
 			/· Last used .*2026$/,
 		);
+	});
+});
+
+describe("passwordRuns", () => {
+	it("groups letters, digits and symbols", () => {
+		expect(passwordRuns("wren724=wolf")).toEqual([
+			{ kind: "letter", text: "wren" },
+			{ kind: "digit", text: "724" },
+			{ kind: "symbol", text: "=" },
+			{ kind: "letter", text: "wolf" },
+		]);
+	});
+
+	it("keeps every character, in order", () => {
+		const password = "Wé!!12 x";
+		expect(
+			passwordRuns(password)
+				.map((run) => run.text)
+				.join(""),
+		).toBe(password);
+		expect(passwordRuns("")).toEqual([]);
 	});
 });

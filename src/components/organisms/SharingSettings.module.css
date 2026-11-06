@@ -166,24 +166,6 @@
 	left: 0;
 }
 
-/* The picker carries a note beneath it, so the label stays level with the
- * picker rather than centring against both. */
-.rowTop.rowTop {
-	align-items: flex-start;
-}
-
-.rowTop > :first-child {
-	min-height: 1.625rem;
-	justify-content: center;
-}
-
-.controlStack {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	gap: 0.25rem;
-}
-
 /* Clicking locked All networks points here; timing mirrors
  * SIGN_IN_EMPHASIS_MS in the component. */
 .emphasized {
