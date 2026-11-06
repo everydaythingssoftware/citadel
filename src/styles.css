@@ -137,6 +137,8 @@
 	/* Space between a field's label and its box, the same for every field. */
 	--ctd-field-label-gap: 6px;
 	/* Switches stay in the marble palette: ink for on, stone for off. */
+	/* Done, achieved: a book marked finished. Used for state, never chrome. */
+	--ctd-success: oklch(52% 0.12 150);
 	--ctd-switch-on-bg: var(--ctd-accent);
 	--ctd-switch-on-knob: oklch(100% 0 0);
 	--ctd-switch-off-bg: oklch(88% 0.004 90);
@@ -258,6 +260,7 @@
 	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.4);
 	/* On is the near-white ink with a dark knob; off is a dim stone with a
 	   dimmed knob, so it doesn't glow. */
+	--ctd-success: oklch(74% 0.13 150);
 	--ctd-switch-on-bg: oklch(90% 0.004 90);
 	--ctd-switch-on-knob: oklch(22% 0.005 270);
 	--ctd-switch-off-bg: oklch(30% 0.005 270);
