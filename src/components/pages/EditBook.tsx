@@ -23,7 +23,6 @@ import {
 	Button,
 	IconButton,
 	Select,
-	Spinner,
 	TagsInput,
 	Textarea,
 	TextInput,
@@ -855,9 +854,11 @@ const EditBookForm = ({
 										setFieldValue("series", event.target.value)
 									}
 								/>
-								<span className={styles.seriesHash} aria-hidden="true">
-									#
-								</span>
+								<Tooltip label="Number in series">
+									<span className={styles.seriesHash} aria-hidden="true">
+										#
+									</span>
+								</Tooltip>
 								<TextInput
 									id="edit-book-series-index"
 									className={styles.seriesIndex}
@@ -1094,27 +1095,12 @@ const EditBookForm = ({
 					{meta.anySourceEnabled && (
 						<section className={styles.section}>
 							<FormRow label="Metadata">
-								<div className={styles.inlineControls}>
-									<Button
-										variant="default"
-										onClick={() => meta.openSearch(values.title || "")}
-									>
-										Find Book Details…
-									</Button>
-									{meta.isbnIdentifier && (
-										<Button
-											variant="default"
-											disabled={meta.isFetching}
-											onClick={() => void meta.fetchFromIsbn()}
-										>
-											{meta.isFetching ? (
-												<Spinner size={12} />
-											) : (
-												"Fill from ISBN"
-											)}
-										</Button>
-									)}
-								</div>
+								<Button
+									variant="default"
+									onClick={() => meta.openSearch(values.title || "")}
+								>
+									Find Book Details…
+								</Button>
 							</FormRow>
 						</section>
 					)}

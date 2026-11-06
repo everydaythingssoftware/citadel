@@ -369,10 +369,13 @@
 	font-size: 15px;
 }
 
-/* Series name and its number share a row; the number is a short field. */
+/* Series name and its number share a row; the # belongs to the number, so
+   it sits close to it and well clear of the name. */
 .seriesHash {
 	flex: none;
+	margin-inline: 8px -2px;
 	color: var(--ctd-ink-soft);
+	cursor: help;
 }
 
 .seriesIndex.seriesIndex {

@@ -1,23 +1,134 @@
 .actions {
 	display: grid;
-	gap: 10px;
+	gap: 8px;
 	align-content: start;
 	min-width: 0;
 }
 
-/* A full-width two-way control at button height, not a toolbar segment. */
-.readState {
+/* ---- Finished: a bordered button that turns green and stays green. ---- */
+.finished {
 	display: flex;
-	width: 100%;
-}
-
-.readState > * {
-	flex: 1;
-	height: calc(var(--ctd-control-height) - 6px);
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	height: calc(var(--ctd-control-height) + 4px);
+	padding: 0 12px;
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-control);
+	background-color: var(--ctd-control-bg-strong);
+	box-shadow: var(--ctd-control-shadow);
+	color: var(--ctd-control-text);
+	font: inherit;
 	font-size: 13px;
+	font-weight: var(--ctd-control-font-weight);
+	cursor: default;
+	transition:
+		background-color 160ms ease-out,
+		border-color 160ms ease-out,
+		color 160ms ease-out;
 }
 
-/* One bordered button split in two: the action, then the menu arrow. */
+.finished:hover {
+	background-color: var(--ctd-control-bg);
+}
+
+.finished:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-control-shadow), var(--ctd-focus-shadow);
+}
+
+.finished[aria-pressed="true"] {
+	border-color: oklch(from var(--ctd-success) l c h / 0.45);
+	background-color: oklch(from var(--ctd-success) l c h / 0.12);
+	color: oklch(from var(--ctd-success) calc(l - 0.08) c h);
+	box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .finished[aria-pressed="true"] {
+	color: var(--ctd-success);
+}
+
+.finished[aria-pressed="true"]:hover {
+	background-color: oklch(from var(--ctd-success) l c h / 0.18);
+}
+
+.mark {
+	flex: none;
+	overflow: visible;
+}
+
+.markCircle {
+	fill: transparent;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	opacity: 0.7;
+	transform-origin: 8px 8px;
+	transition:
+		fill 160ms ease-out,
+		opacity 160ms ease-out;
+}
+
+.markCheck {
+	fill: none;
+	stroke: var(--ctd-control-bg-strong);
+	stroke-width: 1.7;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-dasharray: 10;
+	stroke-dashoffset: 10;
+}
+
+.finished[aria-pressed="true"] .markCircle {
+	fill: var(--ctd-success);
+	stroke: var(--ctd-success);
+	opacity: 1;
+}
+
+.finished[aria-pressed="true"] .markCheck {
+	stroke-dashoffset: 0;
+}
+
+/* The moment of finishing: the circle pops, the check draws in, the button
+   glows a brighter green and settles. */
+.finished[data-just-finished] {
+	animation: finished-glow 700ms ease-out;
+}
+
+.finished[data-just-finished] .markCircle {
+	animation: finished-pop 360ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.finished[data-just-finished] .markCheck {
+	animation: finished-check 320ms ease-out 140ms backwards;
+}
+
+@keyframes finished-glow {
+	0% {
+		background-color: oklch(from var(--ctd-success) l c h / 0.4);
+	}
+}
+
+@keyframes finished-pop {
+	0% {
+		transform: scale(0.6);
+	}
+}
+
+@keyframes finished-check {
+	from {
+		stroke-dashoffset: 10;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.finished[data-just-finished],
+	.finished[data-just-finished] .markCircle,
+	.finished[data-just-finished] .markCheck {
+		animation: none;
+	}
+}
+
+/* ---- Files: one bordered button split into the action and its menu. ---- */
 .split {
 	display: flex;
 	height: var(--ctd-control-height);
@@ -52,9 +163,8 @@
 
 .more {
 	flex: none;
-	width: 28px;
+	width: 30px;
 	border-left: 1px solid var(--ctd-border);
-	color: var(--ctd-ink-soft);
 }
 
 .main:hover,
@@ -74,14 +184,7 @@
 }
 
 .note {
-	margin: -4px 0 0;
+	margin: 0;
 	font-size: 12px;
-	text-align: center;
 	color: var(--ctd-ink-soft);
-}
-
-@media (max-width: 640px) {
-	.note {
-		text-align: left;
-	}
 }

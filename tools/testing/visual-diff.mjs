@@ -5,6 +5,11 @@
  * The difference is computed in the browser, so the tool has no dependencies.
  *
  *   bun tools/testing/visual-diff.mjs <before-dir> <after-dir> <out-dir> [--fragment]
+ *     [--since=<earlier-dir> [--since-label=<text>]]
+ *
+ * --since adds a "Changed since" view: only the screens that differ from an
+ * earlier capture, shown against that capture, so a review round can see
+ * just what it changed.
  *
  * Serve <out-dir> over HTTP and open index.html, e.g.
  *   bunx serve <out-dir>   or   python3 -m http.server -d <out-dir>
@@ -360,6 +365,7 @@ dialog::backdrop { background: oklch(0% 0 0 / 0.55); }
 		<span class="spacer"></span>
 		<div class="seg" role="group" aria-label="Show">
 			<button type="button" id="show-changed" data-show="changed" aria-pressed="true">Changed</button>
+			<button type="button" id="show-since" data-show="since" aria-pressed="false" hidden>Changed since</button>
 			<button type="button" id="show-all" data-show="all" aria-pressed="false">All</button>
 		</div>
 		<div class="seg" role="group" aria-label="Theme">
@@ -389,10 +395,16 @@ dialog::backdrop { background: oklch(0% 0 0 / 0.55); }
 <script>
 const ENTRIES = /*__ENTRIES__*/[];
 const AREAS = /*__AREAS__*/[];
+// An earlier capture to compare the latest against ("changed since …"), or null.
+const SINCE = /*__SINCE__*/null;
 const THRESHOLD = 24; // summed RGB difference below which a pixel counts as unchanged
 const MAX_ZOOM = 24;
 const state = { show: "changed", theme: "both", query: "", height: 300 };
-const results = new Map(); // name -> { ratio, canvas }
+const results = new Map(); // name -> { ratio, canvas }, before vs after
+const sinceResults = new Map(); // the same, the SINCE capture vs after
+const baseSide = () => (state.show === "since" ? "since" : "before");
+const baseLabel = () => (state.show === "since" ? "Then (" + SINCE + ")" : "Before");
+const resultsFor = () => (state.show === "since" ? sinceResults : results);
 const sizes = new Map(); // name -> [w, h] of the captured image
 const DEFAULT_SIZE = { Desktop: [1280, 820], Phone: [390, 844], Storybook: [1100, 760] };
 
@@ -442,13 +454,13 @@ function diff(before, after) {
 }
 
 function level(entry, r) {
-	if (!entry.before) return "new";
+	if (!entry[baseSide()]) return "new";
 	if (!r) return "none";
 	return r.ratio > 0.05 ? "high" : r.ratio > 0 ? "low" : "none";
 }
 
 function describe(entry, r) {
-	if (!entry.before) return "Not captured before";
+	if (!entry[baseSide()]) return state.show === "since" ? "Not captured " + SINCE : "Not captured before";
 	if (!entry.after) return "Removed";
 	if (!r) return "Comparing…";
 	if (r.ratio === 0) return "No change";
@@ -457,10 +469,15 @@ function describe(entry, r) {
 }
 
 function visible(entry) {
-	const r = results.get(entry.name);
+	const r = resultsFor().get(entry.name);
 	if (state.theme !== "both" && entry.theme !== state.theme) return false;
 	if (state.query && !(entry.title + " " + entry.group + " " + entry.key).toLowerCase().includes(state.query)) return false;
 	if (state.show === "changed" && entry.before && entry.after) return r ? r.ratio > 0 : true;
+	if (state.show === "since") {
+		if (!entry.after) return false;
+		if (!entry.since) return true;
+		return r ? r.ratio > 0 : true;
+	}
 	return true;
 }
 
@@ -587,7 +604,7 @@ function sizeOf(entry) {
 
 /* One horizontal triptych at a given pane height. */
 function buildStrip(entry, height, freeWheel) {
-	const r = results.get(entry.name);
+	const r = resultsFor().get(entry.name);
 	const [w, h] = sizeOf(entry);
 	const paneW = Math.round((height * w) / h);
 	const panes = document.createElement("div");
@@ -612,7 +629,7 @@ function buildStrip(entry, height, freeWheel) {
 		else {
 			const m = document.createElement("div");
 			m.className = "missing";
-			m.textContent = label === "Difference" ? (entry.before && entry.after ? "Comparing…" : "Nothing to compare") : "Not captured " + (label === "Before" ? "before" : "now");
+			m.textContent = label === "Difference" ? (entry[baseSide()] && entry.after ? "Comparing…" : "Nothing to compare") : label === "After" ? "Not captured now" : "Not captured then";
 			layer.append(m);
 		}
 		p.append(layer, chip, zoomed);
@@ -636,7 +653,7 @@ function buildStrip(entry, height, freeWheel) {
 		diffCanvas.height = r.canvas.height;
 		diffCanvas.getContext("2d").drawImage(r.canvas, 0, 0);
 	}
-	pane("Before", img("before"));
+	pane(baseLabel(), img(baseSide()));
 	pane("After", img("after"));
 	pane("Difference", diffCanvas);
 	const zoom = makeZoom(panes, layers, readouts, () => sizeOf(entry), freeWheel);
@@ -678,7 +695,7 @@ function render() {
 		list.append(p);
 	}
 	for (const entry of shown) {
-		const r = results.get(entry.name);
+		const r = resultsFor().get(entry.name);
 		const section = document.createElement("section");
 		section.className = "strip";
 		const strip = buildStrip(entry, state.height);
@@ -715,11 +732,13 @@ function render() {
 			section.style.width = "min(100%, " + strip.panes.scrollWidth + "px)";
 		});
 	}
-	const done = ENTRIES.filter((e) => e.before && e.after && results.has(e.name));
-	const changed = done.filter((e) => results.get(e.name).ratio > 0).length;
-	const added = ENTRIES.filter((e) => !e.before).length;
+	const side = baseSide();
+	const res = resultsFor();
+	const done = ENTRIES.filter((e) => e[side] && e.after && res.has(e.name));
+	const changed = done.filter((e) => res.get(e.name).ratio > 0).length;
+	const added = ENTRIES.filter((e) => e.after && !e[side]).length;
 	document.getElementById("summary").textContent =
-		changed + " of " + done.length + " captures changed" + (added ? " · " + added + " not captured before" : "") + " · " + shown.length + " shown";
+		changed + " of " + done.length + " captures changed" + (state.show === "since" ? " since " + SINCE : "") + (added ? " · " + added + (state.show === "since" ? " new since then" : " not captured before") : "") + " · " + shown.length + " shown";
 }
 
 function openBig(entry, from) {
@@ -729,7 +748,7 @@ function openBig(entry, from) {
 	const height = Math.max(160, Math.floor(Math.min(window.innerHeight - 140, (fitW * h) / w)));
 	const k = height / from.height;
 	const big = buildStrip(entry, height, true);
-	document.getElementById("big-title").textContent = entry.title + " · " + entry.group + " · " + entry.theme + " · " + describe(entry, results.get(entry.name));
+	document.getElementById("big-title").textContent = entry.title + " · " + entry.group + " · " + entry.theme + " · " + describe(entry, resultsFor().get(entry.name));
 	document.getElementById("big-body").replaceChildren(big.panes);
 	const dlg = document.getElementById("big");
 	dlg.showModal();
@@ -766,6 +785,12 @@ const setHeight = () => {
 setHeight();
 heightInput.addEventListener("input", () => { setHeight(); render(); });
 
+if (SINCE) {
+	const since = document.getElementById("show-since");
+	since.textContent = "Changed since " + SINCE;
+	since.hidden = false;
+}
+
 render();
 (async () => {
 	for (const entry of ENTRIES) {
@@ -775,8 +800,10 @@ render();
 		]);
 		const any = b || a;
 		if (any) sizes.set(entry.name, [any.naturalWidth, any.naturalHeight]);
-		if (!a || !b) continue;
+		const then = SINCE && entry.since ? await load("since/" + entry.name) : null;
 		try {
+			if (then && b) sinceResults.set(entry.name, diff(then, b));
+			if (!a || !b) continue;
 			results.set(entry.name, diff(a, b));
 		} catch {
 			document.getElementById("summary").textContent =
@@ -790,10 +817,14 @@ render();
 
 const args = process.argv.slice(2);
 const fragment = args.includes("--fragment");
+const option = (name) =>
+	args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const sinceDir = option("since");
+const sinceLabel = option("since-label") ?? "the last capture";
 const [beforeDir, afterDir, outDir] = args.filter((a) => !a.startsWith("--"));
 if (!beforeDir || !afterDir || !outDir) {
 	console.error(
-		"usage: visual-diff.mjs <before-dir> <after-dir> <out-dir> [--fragment]",
+		"usage: visual-diff.mjs <before-dir> <after-dir> <out-dir> [--since=<dir> [--since-label=<text>]] [--fragment]",
 	);
 	process.exit(1);
 }
@@ -804,6 +835,8 @@ const before = pngs(beforeDir);
 const after = pngs(afterDir);
 
 mkdirSync(join(outDir, "before"), { recursive: true });
+const since = sinceDir ? pngs(sinceDir) : new Set();
+if (sinceDir) mkdirSync(join(outDir, "since"), { recursive: true });
 mkdirSync(join(outDir, "after"), { recursive: true });
 
 const THEME = /-(light|dark)\.png$/;
@@ -846,11 +879,14 @@ const entries = [...new Set([...before, ...after])].sort().map((name) => {
 		copyFileSync(join(beforeDir, name), join(outDir, "before", name));
 	if (after.has(name))
 		copyFileSync(join(afterDir, name), join(outDir, "after", name));
+	if (since.has(name))
+		copyFileSync(join(sinceDir, name), join(outDir, "since", name));
 	return {
 		name,
 		theme: name.match(THEME)?.[1] ?? "light",
 		before: before.has(name),
 		after: after.has(name),
+		since: since.has(name),
 		...label(name),
 	};
 });
@@ -858,10 +894,15 @@ const entries = [...new Set([...before, ...after])].sort().map((name) => {
 const page = TEMPLATE.replace(
 	"/*__ENTRIES__*/[]",
 	JSON.stringify(entries).replace(/</g, "\\u003c"),
-).replace(
-	"/*__AREAS__*/[]",
-	JSON.stringify([...AREAS.map(([name]) => name), "Other"]),
-);
+)
+	.replace(
+		"/*__AREAS__*/[]",
+		JSON.stringify([...AREAS.map(([name]) => name), "Other"]),
+	)
+	.replace(
+		"/*__SINCE__*/null",
+		sinceDir ? JSON.stringify(sinceLabel).replace(/</g, "\\u003c") : "null",
+	);
 writeFileSync(
 	join(outDir, "index.html"),
 	fragment
