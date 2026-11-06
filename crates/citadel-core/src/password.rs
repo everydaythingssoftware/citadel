@@ -1,4 +1,4 @@
-//! Generated passwords. App passwords (OPDS) are short and typeable on
+//! Generated passwords. OPDS device keys are short and typeable on
 //! e-readers; sign-in passwords are long because they guard a whole account.
 use rand_core::{OsRng, RngCore};
 use subtle::ConstantTimeEq;

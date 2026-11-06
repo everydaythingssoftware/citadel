@@ -1,11 +1,12 @@
 //! HTTP Basic authentication for the OPDS server.
 //!
 //! The credential snapshot is hot-swappable: listeners read it per request,
-//! so rotating or replacing credentials never interrupts a running share
-//! (desktop persistence supports reveal; external hosts can supply ephemeral users). Consecutive
+//! so creating, rotating or revoking device keys never interrupts a running
+//! share. The snapshot holds salted hashes, never keys (ADR 0013). Consecutive
 //! rejections back off exponentially, which is the online-guessing defense.
 
 use std::{
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -23,15 +24,14 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
-use subtle::ConstantTimeEq;
+use citadel_core::store::DeviceKeyVerifier;
 
 const BASIC_CHALLENGE: &str = "Basic realm=\"Citadel\", charset=\"UTF-8\"";
+/// How often a key's use is reported to the host, so busy readers (every
+/// cover is a request) don't write to the host's database each time.
+const KEY_USE_REPORT_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct OpdsAuthCredentials {
-    pub username: String,
-    pub password: String,
-}
+pub(crate) type KeyUsedHook = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Global exponential backoff on consecutive rejected attempts. With a
 /// ~30.5-bit generated password, throttling the online attacker to a couple
@@ -81,8 +81,10 @@ pub struct OpdsBasicAuth {
 struct AuthInner {
     limits: crate::limits::Limits,
     required: AtomicBool,
-    credentials: Mutex<Option<Arc<Vec<OpdsAuthCredentials>>>>,
+    credentials: Mutex<Option<Arc<Vec<DeviceKeyVerifier>>>>,
     backoff: Mutex<Backoff>,
+    key_used: Mutex<Option<KeyUsedHook>>,
+    reported: Mutex<HashMap<String, Instant>>,
 }
 
 impl Default for OpdsBasicAuth {
@@ -101,6 +103,8 @@ impl OpdsBasicAuth {
                 required: AtomicBool::new(false),
                 credentials: Mutex::new(None),
                 backoff: Mutex::new(Backoff::default()),
+                key_used: Mutex::new(None),
+                reported: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -119,11 +123,15 @@ impl OpdsBasicAuth {
     }
 
     #[cfg(test)]
-    pub(crate) fn swap_credentials(&self, credentials: Option<OpdsAuthCredentials>) {
+    pub(crate) fn swap_credentials(&self, credentials: Option<DeviceKeyVerifier>) {
         self.swap_credential_list(credentials.into_iter().collect());
     }
 
-    pub(crate) fn swap_credential_list(&self, credentials: Vec<OpdsAuthCredentials>) {
+    pub(crate) fn set_key_used_hook(&self, hook: KeyUsedHook) {
+        *self.inner.key_used.lock().unwrap() = Some(hook);
+    }
+
+    pub(crate) fn swap_credential_list(&self, credentials: Vec<DeviceKeyVerifier>) {
         *self.inner.credentials.lock().unwrap() = if credentials.is_empty() {
             None
         } else {
@@ -133,7 +141,7 @@ impl OpdsBasicAuth {
 
     fn authorize(&self, authorization: Option<&[u8]>) -> AuthOutcome {
         if !self.inner.required.load(Ordering::Relaxed) {
-            return AuthOutcome::Authorized;
+            return AuthOutcome::Authorized(None);
         }
 
         {
@@ -145,42 +153,48 @@ impl OpdsBasicAuth {
 
         let credentials = self.inner.credentials.lock().unwrap().clone();
         let parsed = authorization.and_then(parse_basic_credentials);
-        let authorized = parsed.is_some_and(|provided| {
-            credentials.is_some_and(|stored| {
-                stored
-                    .iter()
-                    .fold(false, |matched, user| matched | user.matches(&provided))
+        // Every key is checked, so timing doesn't show which one matched.
+        let matched = parsed.and_then(|provided| {
+            credentials.and_then(|stored| {
+                stored.iter().fold(None, |matched, key| {
+                    let matches = key.matches(&provided.username, &provided.password);
+                    matched.or(matches.then(|| key.key_id.clone()))
+                })
             })
         });
         {
             let mut backoff = self.inner.backoff.lock().unwrap();
-            if authorized {
+            if matched.is_some() {
                 backoff.note_success();
             } else {
                 backoff.note_rejection(Instant::now());
             }
         }
-        if authorized {
-            AuthOutcome::Authorized
-        } else {
-            AuthOutcome::Rejected
+        match matched {
+            Some(key_id) => AuthOutcome::Authorized(Some(key_id)),
+            None => AuthOutcome::Rejected,
         }
     }
-}
 
-impl OpdsAuthCredentials {
-    /// Constant-time on both fields so response timing never reveals which
-    /// characters of a guess were right. (Length is still observable from
-    /// the compare itself; at 30.5 bits of generated entropy that is noise.)
-    fn matches(&self, provided: &BasicCredentials) -> bool {
-        let username = self.username.as_bytes().ct_eq(provided.username.as_bytes());
-        let password = self.password.as_bytes().ct_eq(&provided.password);
-        bool::from(username & password)
+    /// The hook to call for `key_id` now, if one is set and the key's use
+    /// hasn't been reported within the interval.
+    fn key_use_to_report(&self, key_id: &str, now: Instant) -> Option<KeyUsedHook> {
+        let hook = self.inner.key_used.lock().unwrap().clone()?;
+        let mut reported = self.inner.reported.lock().unwrap();
+        let due = reported
+            .get(key_id)
+            .is_none_or(|last| now.duration_since(*last) >= KEY_USE_REPORT_INTERVAL);
+        if !due {
+            return None;
+        }
+        reported.insert(key_id.to_string(), now);
+        Some(hook)
     }
 }
 
 enum AuthOutcome {
-    Authorized,
+    /// With the key that signed in, when sign-in was required.
+    Authorized(Option<String>),
     Rejected,
     Backoff,
 }
@@ -200,7 +214,14 @@ pub(crate) async fn require_basic_auth(
         .get(AUTHORIZATION)
         .map(|value| value.as_bytes().to_vec());
     match auth.authorize(authorization.as_deref()) {
-        AuthOutcome::Authorized => next.run(request).await,
+        AuthOutcome::Authorized(key_id) => {
+            if let Some(key_id) = key_id {
+                if let Some(hook) = auth.key_use_to_report(&key_id, Instant::now()) {
+                    tokio::task::spawn_blocking(move || hook(&key_id));
+                }
+            }
+            next.run(request).await
+        }
         AuthOutcome::Backoff => (
             StatusCode::TOO_MANY_REQUESTS,
             [(RETRY_AFTER, HeaderValue::from_static("1"))],
@@ -261,10 +282,7 @@ mod tests {
     fn enabled_auth(username: &str, password: &str) -> OpdsBasicAuth {
         let auth = OpdsBasicAuth::new();
         auth.set_required(true);
-        auth.swap_credentials(Some(OpdsAuthCredentials {
-            username: username.to_string(),
-            password: password.to_string(),
-        }));
+        auth.swap_credentials(Some(DeviceKeyVerifier::new("key", username, password)));
         auth
     }
 
@@ -310,7 +328,7 @@ mod tests {
         for _ in 0..BACKOFF_START_THRESHOLD.saturating_sub(1) {
             assert!(matches!(auth.authorize(wrong), AuthOutcome::Rejected));
         }
-        assert!(matches!(auth.authorize(right), AuthOutcome::Authorized));
+        assert!(matches!(auth.authorize(right), AuthOutcome::Authorized(_)));
         // The failure streak was reset: more failures are answered, not refused.
         assert!(matches!(auth.authorize(wrong), AuthOutcome::Rejected));
     }
@@ -318,14 +336,15 @@ mod tests {
     #[tokio::test]
     async fn auth_not_required_bypasses_even_malformed_authorization() {
         let auth = OpdsBasicAuth::new();
-        auth.swap_credentials(Some(OpdsAuthCredentials {
-            username: "reader".to_string(),
-            password: "correct horse".to_string(),
-        }));
+        auth.swap_credentials(Some(DeviceKeyVerifier::new(
+            "key",
+            "reader",
+            "correct horse",
+        )));
 
         assert!(matches!(
             auth.authorize(Some(b"not even close to Basic")),
-            AuthOutcome::Authorized
+            AuthOutcome::Authorized(_)
         ));
         assert_eq!(
             response(auth, Some(b"not even close to Basic".to_vec()))
@@ -353,7 +372,7 @@ mod tests {
 
         assert!(matches!(
             auth.authorize(Some(&basic_header("reader", b"correct horse"))),
-            AuthOutcome::Authorized
+            AuthOutcome::Authorized(_)
         ));
         assert!(matches!(
             auth.authorize(Some(&basic_header("reader", b"wrong password"))),
@@ -374,18 +393,19 @@ mod tests {
 
         assert!(matches!(
             auth.authorize(Some(&old)),
-            AuthOutcome::Authorized
+            AuthOutcome::Authorized(_)
         ));
 
-        auth.swap_credentials(Some(OpdsAuthCredentials {
-            username: "reader".to_string(),
-            password: "second-secret".to_string(),
-        }));
+        auth.swap_credentials(Some(DeviceKeyVerifier::new(
+            "key",
+            "reader",
+            "second-secret",
+        )));
 
         assert!(matches!(auth.authorize(Some(&old)), AuthOutcome::Rejected));
         assert!(matches!(
             auth.authorize(Some(&new)),
-            AuthOutcome::Authorized
+            AuthOutcome::Authorized(_)
         ));
 
         // A clone of the handle shares the same snapshot.
@@ -450,23 +470,36 @@ mod tests {
         );
     }
     #[test]
+    fn key_use_is_reported_once_per_interval_per_key() {
+        let auth = enabled_auth("reader", "correct horse");
+        let now = Instant::now();
+        assert!(auth.key_use_to_report("key", now).is_none());
+        auth.set_key_used_hook(Arc::new(|_| {}));
+        assert!(auth.key_use_to_report("key", now).is_some());
+        assert!(auth.key_use_to_report("key", now).is_none());
+        assert!(auth.key_use_to_report("other", now).is_some());
+        assert!(auth
+            .key_use_to_report("key", now + KEY_USE_REPORT_INTERVAL)
+            .is_some());
+    }
+
+    #[test]
     fn multiple_users_have_independent_passwords() {
         let auth = OpdsBasicAuth::new();
         auth.set_required(true);
         auth.swap_credential_list(vec![
-            OpdsAuthCredentials {
-                username: "alice".into(),
-                password: "one".into(),
-            },
-            OpdsAuthCredentials {
-                username: "bob".into(),
-                password: "two:three".into(),
-            },
+            DeviceKeyVerifier::new("alice-kobo", "alice", "one"),
+            DeviceKeyVerifier::new("bob-kobo", "bob", "two:three"),
+            DeviceKeyVerifier::new("bob-phone", "bob", "four"),
         ]);
-        for (user, password) in [("alice", "one"), ("bob", "two:three")] {
+        for (user, password, key) in [
+            ("alice", "one", "alice-kobo"),
+            ("bob", "two:three", "bob-kobo"),
+            ("bob", "four", "bob-phone"),
+        ] {
             assert!(matches!(
                 auth.authorize(Some(&basic_header(user, password.as_bytes()))),
-                AuthOutcome::Authorized
+                AuthOutcome::Authorized(Some(id)) if id == key
             ));
         }
         assert!(matches!(
@@ -475,7 +508,7 @@ mod tests {
         ));
         assert!(matches!(
             auth.authorize(Some(&basic_header("bob", b"two:three"))),
-            AuthOutcome::Authorized
+            AuthOutcome::Authorized(_)
         ));
     }
 }

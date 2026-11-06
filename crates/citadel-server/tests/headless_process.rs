@@ -110,10 +110,10 @@ addresses = ["127.0.0.1"]
         );
         String::from_utf8(output.stdout).unwrap()
     };
-    let app_password = |output: &str| {
+    let device_key = |output: &str| {
         output
             .lines()
-            .find_map(|line| line.strip_prefix("OPDS app password: "))
+            .find_map(|line| line.strip_prefix("OPDS device key: "))
             .unwrap()
             .to_string()
     };
@@ -124,13 +124,14 @@ addresses = ["127.0.0.1"]
     let state_directory = state_path.join("citadel");
     assert!(state_directory.join("citadel.db").is_file());
 
-    let reader_app = app_password(&admin(
+    admin(
         &["users", "add", "reader", "--password-stdin"],
         "reader-password\n",
-    ));
+    );
+    let reader_app = device_key(&admin(&["users", "keys", "reader", "add", "Kobo"], ""));
     let reviewer = admin(&["users", "add", "reviewer"], "");
-    let reviewer_app = app_password(&reviewer);
     assert!(reviewer.contains("Sign-in password: "));
+    let reviewer_app = device_key(&admin(&["users", "keys", "reviewer", "add", "Kobo"], ""));
 
     let mut child = ServerProcess(
         server(&[])
@@ -293,7 +294,7 @@ addresses = ["127.0.0.1"]
     );
 
     // Admin changes reach the running server without a restart.
-    let rotated = app_password(&admin(&["users", "app-password", "reader", "--rotate"], ""));
+    let rotated = device_key(&admin(&["users", "keys", "reader", "rotate", "Kobo"], ""));
     admin(&["revoke", "reviewer"], "");
     std::thread::sleep(Duration::from_secs(3));
     let opds_status = |username: &str, password: &str| {
@@ -307,6 +308,13 @@ addresses = ["127.0.0.1"]
     assert_eq!(opds_status("reader", &rotated), 200);
     assert_eq!(opds_status("reader", &reader_app), 401);
     assert_eq!(opds_status("reviewer", &reviewer_app), 401);
+    // Signing in records when the key was last used.
+    std::thread::sleep(Duration::from_millis(500));
+    let keys = admin(&["users", "keys", "reader"], "");
+    assert!(
+        keys.contains("Kobo") && keys.contains("last used"),
+        "{keys}"
+    );
 
     kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);

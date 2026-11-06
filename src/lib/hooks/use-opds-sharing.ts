@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-	OpdsCredentialSecret,
-	OpdsCredentialStatus,
+	NewDeviceKey,
+	OpdsDeviceKeys,
 	OpdsErrorCode,
 	OpdsServiceStatus,
 	OpdsStartConfig,
@@ -37,22 +37,21 @@ export type RunResult<TValue> =
 
 interface OpdsSharingController {
 	status: OpdsServiceStatus | null;
-	credentials: OpdsCredentialStatus;
+	/** The local user's OPDS username and device keys; null until loaded. */
+	deviceKeys: OpdsDeviceKeys | null;
 	isLoading: boolean;
 	isActing: boolean;
 	/** A failed action's error, else the service's own failure reason. */
 	error: SharingError | null;
 	refresh: () => Promise<void>;
-	credentialSecret: () => Promise<OpdsCredentialSecret | null>;
 	start: (config: OpdsStartConfig) => Promise<SharingOutcome>;
 	reconfigure: (config: OpdsStartConfig) => Promise<SharingOutcome>;
 	stop: () => Promise<void>;
-	configureCredentials: (credentials: {
-		username: string;
-		password: string;
-	}) => Promise<boolean>;
-	generateCredentials: (username: string) => Promise<string | null>;
-	clearCredentials: () => Promise<void>;
+	/** Each returns the new key's secret, shown once; null on failure. */
+	createDeviceKey: (name: string) => Promise<NewDeviceKey | null>;
+	rotateDeviceKey: (keyId: string) => Promise<NewDeviceKey | null>;
+	revokeDeviceKey: (keyId: string) => Promise<boolean>;
+	renameUser: (username: string) => Promise<boolean>;
 }
 
 const message = (error: unknown): string =>
@@ -93,10 +92,7 @@ export const startOutcome = (
 export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 	const client = useMemo(() => opdsClientForPlatform(supported), [supported]);
 	const [status, setStatus] = useState<OpdsServiceStatus | null>(null);
-	const [credentials, setCredentials] = useState<OpdsCredentialStatus>({
-		configured: false,
-		username: null,
-	});
+	const [deviceKeys, setDeviceKeys] = useState<OpdsDeviceKeys | null>(null);
 	const [isLoading, setIsLoading] = useState(supported);
 	const [isActing, setIsActing] = useState(false);
 	const [error, setError] = useState<SharingError | null>(null);
@@ -133,24 +129,14 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 		[],
 	);
 
-	const credentialSecret =
-		useCallback(async (): Promise<OpdsCredentialSecret | null> => {
-			if (!client) return null;
-			try {
-				return await client.credentialSecret();
-			} catch {
-				return null;
-			}
-		}, [client]);
-
 	const refresh = useCallback(async () => {
 		if (!client || refreshing.current || mutating.current) return;
 		refreshing.current = true;
 		const seq = mutationSeq.current;
 		try {
-			const [nextStatus, nextCredentials] = await Promise.all([
+			const [nextStatus, nextKeys] = await Promise.all([
 				client.status(),
-				client.credentialStatus(),
+				client.deviceKeys(),
 			]);
 			// A mutation that landed while this poll was in flight publishes
 			// its own fresh status; ours is stale by definition. Polls never
@@ -158,7 +144,7 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 			// them and outlive a single poll cycle.
 			if (seq !== mutationSeq.current) return;
 			setStatus(nextStatus);
-			setCredentials(nextCredentials);
+			setDeviceKeys(nextKeys);
 		} catch {
 			// A failed poll says nothing new; the next one will recover.
 		} finally {
@@ -197,7 +183,7 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 			try {
 				const value = await action(client);
 				setStatus(await client.status());
-				setCredentials(await client.credentialStatus());
+				setDeviceKeys(await client.deviceKeys());
 				return { ok: true, value };
 			} catch (cause) {
 				const failure = { source, code: null, message: message(cause) };
@@ -235,50 +221,61 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 		await run(SHARING_ERROR_SOURCE.server, (client) => client.stop());
 	}, [run]);
 
-	const configureCredentials = useCallback(
-		async (credentials: {
-			username: string;
-			password: string;
-		}): Promise<boolean> => {
-			const result = await run(SHARING_ERROR_SOURCE.credentials, (client) =>
-				client.configureCredentials(credentials),
+	// Key changes hot-swap the live snapshot, so a running share keeps
+	// running; revoking the last key stops one that requires sign-in.
+	const createDeviceKey = useCallback(
+		async (name: string): Promise<NewDeviceKey | null> => {
+			const created = await run(SHARING_ERROR_SOURCE.credentials, (client) =>
+				client.createDeviceKey(name.trim()),
 			);
-			return result.ok;
+			return created.ok ? created.value : null;
 		},
 		[run],
 	);
 
-	const clearCredentials = useCallback(async (): Promise<void> => {
-		await run(SHARING_ERROR_SOURCE.credentials, (client) =>
-			client.clearCredentials(),
-		);
-	}, [run]);
-
-	const generateCredentials = useCallback(
-		async (username: string): Promise<string | null> => {
-			// Generate-and-set: the backend hot-swaps the live credential
-			// snapshot, so a running share keeps running through rotation.
-			const generated = await run(SHARING_ERROR_SOURCE.credentials, (client) =>
-				client.generateCredentials(username.trim()),
+	const rotateDeviceKey = useCallback(
+		async (keyId: string): Promise<NewDeviceKey | null> => {
+			const rotated = await run(SHARING_ERROR_SOURCE.credentials, (client) =>
+				client.rotateDeviceKey(keyId),
 			);
-			return generated.ok ? generated.value.password : null;
+			return rotated.ok ? rotated.value : null;
 		},
+		[run],
+	);
+
+	const revokeDeviceKey = useCallback(
+		async (keyId: string): Promise<boolean> =>
+			(
+				await run(SHARING_ERROR_SOURCE.credentials, (client) =>
+					client.revokeDeviceKey(keyId),
+				)
+			).ok,
+		[run],
+	);
+
+	const renameUser = useCallback(
+		async (username: string): Promise<boolean> =>
+			(
+				await run(SHARING_ERROR_SOURCE.credentials, (client) =>
+					client.renameUser(username.trim()),
+				)
+			).ok,
 		[run],
 	);
 
 	return {
 		status,
-		credentials,
+		deviceKeys,
 		isLoading,
 		isActing,
 		error: error ?? (status ? serviceError(status) : null),
 		refresh,
-		credentialSecret,
 		start,
 		reconfigure,
 		stop,
-		configureCredentials,
-		generateCredentials,
-		clearCredentials,
+		createDeviceKey,
+		rotateDeviceKey,
+		revokeDeviceKey,
+		renameUser,
 	};
 };

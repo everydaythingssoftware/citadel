@@ -1,6 +1,6 @@
 # 5. OPDS credentials are stored reversibly
 
-Status: Accepted - 2026-09-22. Storage location amended by ADR 0009: the password is the local user's app password in `citadel.db`, not a credential file.
+Status: Superseded by ADR 0013 - 2026-11-05. OPDS now uses per-device keys that are hashed and shown once. (Earlier, ADR 0009 amended the storage location: the password became the local user's app password in `citadel.db`, not a credential file.)
 
 ## Context
 
@@ -33,4 +33,5 @@ removed.
 
 Third-party secrets that must also be stored reversibly, such as users'
 Hardcover keys, are sealed with the vault from ADR 0011 instead. App passwords
-are planned to move into it as well (CDL-60).
+were replaced by hashed per-device keys instead of moving into the vault
+(ADR 0013).

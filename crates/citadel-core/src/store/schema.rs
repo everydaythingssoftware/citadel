@@ -3,7 +3,6 @@ diesel::table! {
         id -> Text,
         username -> Text,
         password_hash -> Nullable<Text>,
-        app_password -> Nullable<Text>,
         created_at -> BigInt,
         role -> Text,
     }
@@ -58,7 +57,19 @@ diesel::table! {
         verified_at -> Nullable<BigInt>,
     }
 }
+diesel::table! {
+    device_keys (id) {
+        id -> Text,
+        user_id -> Text,
+        name -> Text,
+        salt -> Text,
+        key_hash -> Text,
+        created_at -> BigInt,
+        last_used_at -> Nullable<BigInt>,
+    }
+}
 diesel::joinable!(sessions -> users (user_id));
+diesel::joinable!(device_keys -> users (user_id));
 diesel::joinable!(provider_credentials -> users (user_id));
 diesel::joinable!(library_grants -> users (user_id));
 diesel::joinable!(library_grants -> libraries (library_id));
@@ -67,6 +78,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     users,
     external_identities,
     sessions,
+    device_keys,
     libraries,
     library_grants,
     properties,

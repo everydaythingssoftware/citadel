@@ -1,6 +1,6 @@
 # 9. Citadel users, sessions and library grants
 
-Status: Accepted - 2026-10-27 (CDL-45)
+Status: Accepted - 2026-10-27 (CDL-45). Amended by ADR 0013: usernames are sign-in identifiers, and app passwords are replaced by hashed per-device keys.
 
 ## Context
 
@@ -19,11 +19,12 @@ hosts use it. Each host keeps it in its state directory (the server's
 (ADR 0003). It is one concrete SQLite store; traits wait for a second backend.
 Diesel embeds its migrations. Tables:
 
-- `users`: opaque UUID `id`; `username` is unique case-insensitively and for
-  display only. Sign-in passwords are Argon2id hashes and may be absent
-  (OIDC-only users, the desktop's local user). `app_password` is the user's
-  OPDS password, stored reversibly so it can be revealed again (ADR 0005); it
-  may be absent.
+- `users`: opaque UUID `id`; `username` is unique case-insensitively. It is
+  a sign-in identifier, not just a display name: OPDS Basic signs in by
+  username, so renaming a user changes what each of their readers sends
+  (ADR 0013). Sign-in passwords are Argon2id hashes and may be absent
+  (OIDC-only users, the desktop's local user). OPDS keys live in
+  `device_keys` (ADR 0013); the original `app_password` column is gone.
 - `external_identities`: `(issuer, subject)` → user. Empty until OIDC; a user
   may have several.
 - `sessions`: SHA-256 of an opaque 256-bit cookie token → user, with a 30-day
@@ -36,11 +37,11 @@ Diesel embeds its migrations. Tables:
 - `properties`: installation-wide values, such as the desktop's local user ID.
 - `library_grants`: user × library. v1 is binary access. A library a user cannot
   access is invisible: its routes answer 404, and its OPDS catalog rejects the
-  user's app password.
+  user's device keys.
 
 The store is split by concern: `users` (accounts and sign-in passwords),
-`auth` (password checks, sessions, app passwords, grants), `libraries` (the
-registry) and `migrations`.
+`auth` (password checks, sessions, grants), `device_keys` (OPDS keys, ADR
+0013), `libraries` (the registry) and `migrations`.
 
 Migrations run whenever a host opens the store. Pending migrations apply
 together in one transaction, so a failed run leaves the database as it was.
@@ -85,8 +86,8 @@ the `api.publicUrl` origin when they carry an `Origin` header. Failed sign-ins
 back off like OPDS Basic. The built frontend is public so signed-out browsers can
 load the sign-in form; all data comes from the protected API.
 
-OPDS remains HTTP Basic, checked against the app passwords of users granted the
-served library. The server reloads that list from `citadel.db` every two seconds
+OPDS remains HTTP Basic, checked against the device keys of users granted the
+served library (ADR 0013). The server reloads that list from `citadel.db` every two seconds
 so admin changes apply without a restart.
 
 The operator is the administrator. `citadel-server --config <path> users …`,
@@ -103,9 +104,9 @@ is non-exhaustive so non-human actors can follow.
 
 The desktop app has one real user, the local user, created on first launch and
 named after the OS account. It has no sign-in password and is granted every
-library it registers. Its app password is the desktop's OPDS sharing password:
-Sharing settings reveal, set, generate and clear it, and choosing an OPDS
-username renames the local user. Desktop sharing may still run without sign-in
+library it registers. Its device keys are what the desktop's readers sign in
+with: Sharing settings create, rotate and revoke them (ADR 0013), and choosing
+an OPDS username renames the local user. Desktop sharing may still run without sign-in
 on local networks; only the server always requires it.
 
 The desktop's library list is the registry. `settings.json` keeps only the
@@ -113,15 +114,15 @@ active library's Calibre UUID. Windows learn of list changes through a
 `libraries-changed` event.
 
 On first launch after upgrading, the desktop migrates once:
-`opds-credentials.json` becomes the local user's name and app password and is
-deleted (unreadable verifier-format files are discarded), and the
+`opds-credentials.json` becomes the local user's name and a device key named
+"Existing password" (ADR 0013), and is deleted (unreadable verifier-format files are discarded), and the
 `settings.json` library list is registered under each library's Calibre UUID,
 keeping display names and remapping the active library. Entries whose folder
 no longer holds a readable library are dropped, and the user is told once.
 
 ## Consequences
 
-Users, grants and app passwords are per installation, not per library:
+Users, grants and device keys are per installation, not per library:
 copying a library never copies access. The OPDS runtime no longer persists
 credentials; hosts supply them from `citadel.db`.
 

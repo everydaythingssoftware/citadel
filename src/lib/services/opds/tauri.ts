@@ -15,14 +15,13 @@ export const tauriOpdsClient: OpdsClient = {
 	stop: async () => unwrap(await commands.clbCmdStopOpds()),
 	reconfigure: async (config) =>
 		unwrap(await commands.clbCmdReconfigureOpds(config)),
-	credentialStatus: async () =>
-		unwrap(await commands.clbQueryOpdsCredentialStatus()),
-	credentialSecret: async () =>
-		unwrap(await commands.clbQueryOpdsCredentialSecret()),
-	configureCredentials: async ({ username, password }) =>
-		unwrap(await commands.clbCmdConfigureOpdsCredentials(username, password)),
-	generateCredentials: async (username) =>
-		unwrap(await commands.clbCmdGenerateOpdsCredentials(username)),
-	clearCredentials: async () =>
-		unwrap(await commands.clbCmdClearOpdsCredentials()),
+	deviceKeys: async () => unwrap(await commands.clbQueryOpdsDeviceKeys()),
+	createDeviceKey: async (name) =>
+		unwrap(await commands.clbCmdCreateOpdsDeviceKey(name)),
+	rotateDeviceKey: async (keyId) =>
+		unwrap(await commands.clbCmdRotateOpdsDeviceKey(keyId)),
+	revokeDeviceKey: async (keyId) =>
+		unwrap(await commands.clbCmdRevokeOpdsDeviceKey(keyId)),
+	renameUser: async (username) =>
+		unwrap(await commands.clbCmdRenameOpdsUser(username)),
 };

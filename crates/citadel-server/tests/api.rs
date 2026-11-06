@@ -6,11 +6,9 @@ use axum::{
     Router,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
-use citadel_core::store::CitadelStore;
+use citadel_core::store::{CitadelStore, DeviceKeyVerifier};
 use citadel_core::{contracts::LibraryBookQuery, library::LibraryService, HttpUrlBuilder};
-use citadel_opds::{
-    credential_store::OpdsCredentialSecret, OpdsBindTarget, OpdsService, OpdsStartConfig,
-};
+use citadel_opds::{OpdsBindTarget, OpdsService, OpdsStartConfig};
 use citadel_server::{api, CalibreCatalogSource};
 use libcalibre::{BookAdd, Library};
 use serde_json::{json, Value};
@@ -175,12 +173,8 @@ async fn fixture_with_metadata(
     let (_, access) = access(directory.path(), &source);
     let service = OpdsService::with_ephemeral_credentials(
         source.clone(),
-        vec![OpdsCredentialSecret {
-            username: "reader".into(),
-            password: "secret".into(),
-        }],
-    )
-    .unwrap();
+        vec![DeviceKeyVerifier::new("kobo", "reader", "secret")],
+    );
     let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = reservation.local_addr().unwrap().port();
     drop(reservation);

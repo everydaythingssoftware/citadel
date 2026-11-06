@@ -171,7 +171,8 @@ always requires sign-in. Each user has:
 - a **role**: `reader`, or `administrator` for setting the server up and
   administering it;
 - a **sign-in password** for the browser, stored as an Argon2id hash;
-- an **OPDS app password** for e-readers, revealable at any time;
+- **OPDS device keys**, one per e-reader or reading app, each shown only when
+  it's created or rotated ([ADR 0013](adr/0013-opds-device-keys.md));
 - **library access** (a grant). Users without access to the served library
   cannot see it in the browser or OPDS, administrators included: the role
   gates the server, grants gate books. A separate user, such as a child's
@@ -187,7 +188,10 @@ citadel-server --config <path> users list
 citadel-server --config <path> users add <name> [--password-stdin] [--no-grant] [--admin]
 citadel-server --config <path> users remove <name>
 citadel-server --config <path> users reset-password <name> [--password-stdin]
-citadel-server --config <path> users app-password <name> [--rotate]
+citadel-server --config <path> users keys <name>
+citadel-server --config <path> users keys <name> add <device>
+citadel-server --config <path> users keys <name> rotate <device>
+citadel-server --config <path> users keys <name> revoke <device>
 citadel-server --config <path> users promote <name>
 citadel-server --config <path> users demote <name>
 citadel-server --config <path> grant <name> [<library-id>]
@@ -198,12 +202,16 @@ citadel-server --config <path> libraries read-only <on|off> [<library-id>]
 ```
 
 `users add` grants access to the served library unless `--no-grant` is given
-(or no library is served yet), and prints a generated sign-in password and the
-OPDS app password. Generated sign-in passwords are shown only once;
+(or no library is served yet), and prints a generated sign-in password.
+Generated sign-in passwords are shown only once;
 `--password-stdin` reads one from the first line of standard input instead (at
 least 8 characters). `reset-password` also signs the user out of every
-browser. `app-password` reveals the OPDS password again, and `--rotate`
-replaces it. `promote` and `demote` change the role. `grant` and `revoke`
+browser. Readers sign in to OPDS with their username and a device key. `users
+keys <name> add <device>` prints a new key once; Citadel keeps only a hash, so
+a lost key is replaced with `rotate`, which stops the old key working. `revoke`
+removes a device's key, and `users keys <name>` lists each key with when it was
+created and last used. Because readers sign in by username, renaming a user
+means updating every one of their devices. `promote` and `demote` change the role. `grant` and `revoke`
 default to the served library. `libraries add` registers an existing Calibre
 library and serves it; one library at a time for now. Usernames are
 case-insensitive and can't contain a colon.
@@ -213,7 +221,7 @@ case-insensitive and can't contain a colon.
 `CITADEL_OPDS_USERS` and `sharing.authenticationEnabled` have been removed. Delete
 `authenticationEnabled` from `[sharing]` (the server reports it as an error),
 create a user for each former OPDS reader with `users add`, and give readers
-their new app password from `users app-password`.
+a device key from `users keys <name> add <device>`.
 
 ## State and listeners
 
@@ -298,7 +306,7 @@ Nightly and development builds don't check.
 
 Build the host with `cargo build --release -p citadel-server`. This selects the headless package and does not build Tauri. Its configuration uses `sharing.target = "localNetworks"` or `"allInterfaces"`, or the explicit-address table shown above; do not combine those forms.
 
-The Unix process test exercises the user commands, OPDS app passwords, browser sign-in, live user changes, catalog navigation, acquisition, and SIGTERM shutdown. The non-Unix Ctrl-C handler requires platform validation; it is not covered by that test. OPDS request limits are described in [Sharing](opds-sharing.md).
+The Unix process test exercises the user commands, OPDS device keys, browser sign-in, live user changes, catalog navigation, acquisition, and SIGTERM shutdown. The non-Unix Ctrl-C handler requires platform validation; it is not covered by that test. OPDS request limits are described in [Sharing](opds-sharing.md).
 
 To generate a disposable validation library, provide an EPUB you can use for testing:
 

@@ -1,6 +1,6 @@
 # 3. OPDS credentials are machine-local
 
-Status: Accepted - 2026-09-21. Storage format amended by ADR 0005: the file holds the reversible password, not a verifier. Storage amended by ADR 0009: credentials are the local user's app password in `citadel.db`, still machine-local and never inside a library.
+Status: Accepted - 2026-09-21. Storage format amended by ADR 0005: the file holds the reversible password, not a verifier. Storage amended by ADR 0009: credentials are the local user's app password in `citadel.db`, still machine-local and never inside a library. ADR 0013 replaces that password with per-device keys stored as hashes.
 
 ## Context
 
