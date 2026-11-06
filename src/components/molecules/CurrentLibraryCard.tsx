@@ -86,7 +86,7 @@ export const CurrentLibraryCard = ({
 				{onRevealInFileManager !== null && (
 					<div className={styles.row}>
 						<span className={styles.rowLabel}>Location</span>
-						<Button size="sm" variant="default" onClick={onRevealInFileManager}>
+						<Button variant="default" onClick={onRevealInFileManager}>
 							Show in Finder
 						</Button>
 					</div>

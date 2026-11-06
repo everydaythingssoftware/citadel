@@ -15,10 +15,18 @@ import type { LibraryPath } from "@/lib/platform/settings/types";
 import { renameLibrary } from "@/stores/settings/actions";
 import styles from "./LibraryListCard.module.css";
 
+/** Outcome of adding a library; a failure's message shows under the row. */
+export type AddLibraryResult = { ok: true } | { ok: false; message: string };
+
 interface LibraryListCardProps {
 	currentLibraryId: string;
 	libraries: LibraryPath[];
 	onSwitchLibrary: (id: string) => Promise<void>;
+	/**
+	 * Adds a library from a folder the user picks; null when they cancelled.
+	 * Shows an "Add Library…" row at the end of the list when set.
+	 */
+	onAddLibrary?: () => Promise<AddLibraryResult | null>;
 	/**
 	 * Story seam: pre-resolved stats per library path. When omitted (the
 	 * production path) each row fetches its own stats via useLibraryStats.
@@ -64,6 +72,7 @@ export const LibraryListCard = ({
 	libraries,
 	onSwitchLibrary,
 	statsByPath,
+	onAddLibrary,
 }: LibraryListCardProps) => {
 	const platform = usePlatform();
 	const [rename, setRename] = useState<RenameState | null>(null);
@@ -165,6 +174,7 @@ export const LibraryListCard = ({
 						}}
 					/>
 				))}
+				{onAddLibrary && <AddLibraryRow onAddLibrary={onAddLibrary} />}
 			</div>
 			<ContextMenu
 				menu={menu}
@@ -293,6 +303,57 @@ const LibraryRow = ({
 			</span>
 			<span className={styles.checkSlot} aria-hidden="true">
 				{isActive ? <CheckmarkIcon /> : null}
+			</span>
+		</button>
+	);
+};
+
+/** The list's own way to grow: pick a folder, and it joins the list. */
+const AddLibraryRow = ({
+	onAddLibrary,
+}: {
+	onAddLibrary: () => Promise<AddLibraryResult | null>;
+}) => {
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	return (
+		<button
+			type="button"
+			className={styles.libraryRow}
+			disabled={busy}
+			onClick={() => {
+				setBusy(true);
+				setError(null);
+				void onAddLibrary()
+					.then((result) => {
+						if (result && !result.ok) setError(result.message);
+					})
+					.catch((cause: unknown) =>
+						setError(cause instanceof Error ? cause.message : String(cause)),
+					)
+					.finally(() => setBusy(false));
+			}}
+		>
+			<span className={styles.addIcon} aria-hidden="true">
+				<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+					<path
+						d="M5 1v8M1 5h8"
+						stroke="currentColor"
+						strokeWidth="1.5"
+						strokeLinecap="round"
+					/>
+				</svg>
+			</span>
+			<span className={styles.rowLabels}>
+				<span className={styles.rowName}>
+					{busy ? "Adding Library…" : "Add Library…"}
+				</span>
+				<span
+					className={error ? styles.rowError : styles.rowSubtitle}
+					role={error ? "alert" : undefined}
+				>
+					{error ?? "Open a Calibre library folder from your Mac"}
+				</span>
 			</span>
 		</button>
 	);

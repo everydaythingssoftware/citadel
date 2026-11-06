@@ -1,4 +1,6 @@
 .button {
+	height: var(--ctd-control-height);
+	padding: var(--ctd-control-pad-y) var(--ctd-control-pad-x);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -33,15 +35,10 @@
 	box-shadow: var(--ctd-control-active-shadow);
 }
 
-.md {
-	height: var(--ctd-control-height);
-	padding: var(--ctd-control-pad-y) var(--ctd-control-pad-x);
-}
-
-/* sm trims 2px off the md inline padding. */
-.sm {
-	height: 22px;
-	padding: var(--ctd-control-pad-y) calc(var(--ctd-control-pad-x) - 2px);
+.button > svg {
+	flex: none;
+	width: 14px;
+	height: 14px;
 }
 
 .fullWidth {
@@ -133,11 +130,4 @@
 .subtle:disabled {
 	background-color: transparent;
 	border-color: transparent;
-}
-
-/* Touch screens: small buttons still need a finger-sized target. */
-@media (pointer: coarse) {
-	.sm {
-		height: 32px;
-	}
 }

@@ -294,12 +294,7 @@ export const AddBookButton = () => {
 	}
 
 	return (
-		<Button
-			variant="default"
-			size="sm"
-			aria-label="Add Book"
-			onClick={startAddBook}
-		>
+		<Button variant="default" aria-label="Add Book" onClick={startAddBook}>
 			<svg
 				width="13"
 				height="13"

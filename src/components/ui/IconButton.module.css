@@ -2,8 +2,9 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 26px;
-	height: 26px;
+	/* Square at the standard control height, so it sits level with buttons. */
+	width: var(--ctd-control-height);
+	height: var(--ctd-control-height);
 	padding: 0;
 	border: none;
 	border-radius: var(--ctd-radius-control);

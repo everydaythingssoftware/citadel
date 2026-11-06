@@ -105,7 +105,6 @@ export const UploadQueueRow = ({
 					// On phones the whole row taps through to review (the button
 					// stretches over it) and shows a chevron instead.
 					<Button
-						size="sm"
 						className={styles.review}
 						onClick={onReview}
 						aria-label={`Review ${item.name}`}
@@ -115,12 +114,10 @@ export const UploadQueueRow = ({
 					</Button>
 				)}
 				{item.phase === UploadPhase.failed && item.file && (
-					<Button size="sm" onClick={onRetry}>
-						Try Again
-					</Button>
+					<Button onClick={onRetry}>Try Again</Button>
 				)}
 				{item.phase === UploadPhase.rejected ? (
-					<Button size="sm" variant="subtle" onClick={onRemove}>
+					<Button variant="subtle" onClick={onRemove}>
 						Dismiss
 					</Button>
 				) : (

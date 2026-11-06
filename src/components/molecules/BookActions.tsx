@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { BookFile } from "@/bindings";
 import { GlyphDownload, GlyphOpenExternal } from "@/components/icons/RowGlyphs";
-import { ContextMenu, type ContextMenuState } from "@/components/ui";
+import { Tooltip } from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
 import { type BookFormatRow, bookFormatRows } from "@/lib/book-downloads";
 import { usePlatform } from "@/lib/platform/context";
@@ -15,7 +15,7 @@ interface BookActionsProps {
 
 /**
  * What you do with a book rather than what you edit about it: mark it
- * finished, and get at its files. One file is one button; more add a menu.
+ * finished, and get at its files.
  */
 export const BookActions = ({
 	files,
@@ -29,7 +29,7 @@ export const BookActions = ({
 			{rows.length === 0 ? (
 				<p className={styles.note}>No files</p>
 			) : (
-				<FilesButton rows={rows} />
+				<FileTiles rows={rows} />
 			)}
 		</div>
 	);
@@ -81,13 +81,13 @@ const FinishedButton = ({
 const verb = (row: BookFormatRow) =>
 	row.kind === "download" ? "Download" : "Open";
 
-const FilesButton = ({ rows }: { rows: BookFormatRow[] }) => {
+/**
+ * The book's files as small document tiles, the way Finder shows a file:
+ * the format printed on the page. Clicking one opens it in its default app
+ * (desktop) or downloads it (web); they wrap however many there are.
+ */
+const FileTiles = ({ rows }: { rows: BookFormatRow[] }) => {
 	const platform = usePlatform();
-	const [menu, setMenu] = useState<ContextMenuState | null>(null);
-	const moreRef = useRef<HTMLButtonElement>(null);
-	const [first, ...rest] = rows;
-	if (!first) return null;
-
 	const use = (row: BookFormatRow) => {
 		if (row.kind === "open") {
 			safeAsyncEventHandler(() => platform.fileOpener.openPath(row.path))();
@@ -98,61 +98,46 @@ const FilesButton = ({ rows }: { rows: BookFormatRow[] }) => {
 		link.download = "";
 		link.click();
 	};
-
-	const openMenu = () => {
-		const rect = moreRef.current?.getBoundingClientRect();
-		if (!rect) return;
-		setMenu({
-			x: rect.right - 160,
-			y: rect.bottom + 4,
-			items: rows.map((row) => ({
-				id: row.key,
-				label: `${verb(row)} ${row.label}`,
-				onSelect: () => use(row),
-			})),
-		});
-	};
-
-	const Glyph = first.kind === "download" ? GlyphDownload : GlyphOpenExternal;
 	return (
-		<>
-			<div className={styles.split}>
-				<button
-					type="button"
-					className={styles.main}
-					onClick={() => use(first)}
-				>
-					<Glyph className={styles.glyph} />
-					{verb(first)} {first.label}
-				</button>
-				{rest.length > 0 && (
-					<button
-						ref={moreRef}
-						type="button"
-						className={styles.more}
-						aria-label={`Other formats (${rest.length})`}
-						aria-haspopup="menu"
-						aria-expanded={menu !== null}
-						onClick={openMenu}
-					>
-						<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-							<path
-								d="M2.5 4.5 6 8l3.5-3.5"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="1.6"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							/>
-						</svg>
-					</button>
-				)}
-			</div>
-			<ContextMenu
-				menu={menu}
-				returnFocusRef={moreRef}
-				onClose={() => setMenu(null)}
-			/>
-		</>
+		<ul className={styles.tiles} aria-label="Files">
+			{rows.map((row) => {
+				const action = `${verb(row)} ${row.label}`;
+				return (
+					<li key={row.key}>
+						<Tooltip label={action}>
+							<button
+								type="button"
+								className={styles.tile}
+								aria-label={action}
+								onClick={() => use(row)}
+							>
+								<svg
+									className={styles.page}
+									viewBox="0 0 40 50"
+									aria-hidden="true"
+								>
+									<path
+										className={styles.paper}
+										d="M4.5 2.5h22l9 9v34a2 2 0 0 1-2 2h-29a2 2 0 0 1-2-2v-41a2 2 0 0 1 2-2Z"
+									/>
+									<path
+										className={styles.fold}
+										d="M26.5 2.5v7a2 2 0 0 0 2 2h7"
+									/>
+								</svg>
+								<span className={styles.format}>{row.label}</span>
+								<span className={styles.badge} aria-hidden="true">
+									{row.kind === "download" ? (
+										<GlyphDownload />
+									) : (
+										<GlyphOpenExternal />
+									)}
+								</span>
+							</button>
+						</Tooltip>
+					</li>
+				);
+			})}
+		</ul>
 	);
 };

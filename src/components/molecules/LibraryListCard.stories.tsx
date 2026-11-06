@@ -68,6 +68,13 @@ const render = (props: {
 				console.log("Switch to library", id);
 				return Promise.resolve();
 			}}
+			onAddLibrary={() =>
+				Promise.resolve({
+					ok: false,
+					message:
+						"That folder has no metadata.db, so it isn't a Calibre library.",
+				})
+			}
 		/>
 	</PlatformProvider>
 );

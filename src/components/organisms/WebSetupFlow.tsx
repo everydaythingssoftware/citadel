@@ -176,7 +176,6 @@ const AddressView = ({
 						<code className={styles.currentUrlValue}>{current}</code>
 						<Button
 							variant="subtle"
-							size="sm"
 							className={styles.copyButton}
 							aria-label={copied ? "Copied" : "Copy URL"}
 							onClick={() => onCopy(current)}
@@ -258,7 +257,6 @@ const BrowserPanel = ({
 			<div className={styles.browserHead}>
 				<Button
 					variant="default"
-					size="sm"
 					disabled={browser.loading || !listing?.parent}
 					aria-label="Up one folder"
 					onClick={() => onBrowseTo(listing?.parent ?? null)}
@@ -302,12 +300,11 @@ const BrowserPanel = ({
 				</div>
 			)}
 			<div className={styles.browserFoot}>
-				<Button variant="default" size="sm" onClick={onClose}>
+				<Button variant="default" onClick={onClose}>
 					Cancel
 				</Button>
 				<Button
 					variant="default"
-					size="sm"
 					disabled={browser.loading || !listing}
 					onClick={() => listing && onPick(listing.path)}
 				>
@@ -454,7 +451,6 @@ const PathView = ({
 					<div className={card.crossover}>
 						<Button
 							variant="subtle"
-							size="sm"
 							className={card.escapeBtn}
 							disabled={inert}
 							onClick={onSwitchMode}
@@ -688,7 +684,6 @@ const BrokenView = ({
 			<div className={clsx(card.crossover, card.escapesAfterDivider)}>
 				<Button
 					variant="subtle"
-					size="sm"
 					className={card.escapeBtn}
 					disabled={inert}
 					onClick={onRelocate}

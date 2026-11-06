@@ -32,7 +32,6 @@ export const UploadIndicator = ({
 		: `${summary.ready} to review`;
 	const button = (
 		<Button
-			size="sm"
 			className={styles.indicator}
 			onClick={onOpen}
 			aria-label={deadline ? `${label}. ${deadline.description}` : label}
