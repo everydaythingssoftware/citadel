@@ -28,7 +28,7 @@
 
 .menuItem {
 	margin: 1px 5px;
-	padding: 4px 8px;
+	padding: 4px 10px;
 	border: none;
 	border-radius: min(4px, var(--ctd-radius-control));
 	background: transparent;
