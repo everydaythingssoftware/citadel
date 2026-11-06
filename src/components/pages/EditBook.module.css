@@ -382,6 +382,12 @@
 	flex-wrap: nowrap;
 }
 
+/* As wide as an identifier row's two icon buttons and their gap, so both
+ * rows' fields end on the same line. */
+.addIdentifier {
+	min-width: 58px;
+}
+
 .flexGrow {
 	flex: 1;
 	min-width: 0;

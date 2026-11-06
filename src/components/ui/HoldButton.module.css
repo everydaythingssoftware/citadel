@@ -13,10 +13,12 @@
 	width: 100%;
 	min-height: 28px;
 	padding: 0 12px;
-	border: var(--ctd-control-border-width) solid
-		color-mix(in oklch, var(--ctd-danger-bg) 70%, transparent);
+	/* At rest a plain bordered button with red text (the AppKit destructive
+	   look); holding floods it red. */
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
 	border-radius: var(--ctd-radius-control);
-	background: transparent;
+	background: var(--ctd-control-bg-strong);
+	box-shadow: var(--ctd-control-shadow);
 	font: inherit;
 	font-size: 13px;
 	font-weight: 500;

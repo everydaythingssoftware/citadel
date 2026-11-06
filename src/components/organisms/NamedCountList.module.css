@@ -108,13 +108,17 @@
 	position: sticky;
 	bottom: 0;
 	display: flex;
-	justify-content: center;
 	padding: 6px 0;
 	background-color: var(--ctd-content-bg);
 	border-top: 1px solid var(--ctd-border);
 }
 
 .footerText {
+	/* Centred under the table, not the panel. */
+	width: 100%;
+	max-width: 600px;
+	margin-inline: 12px;
+	text-align: center;
 	font-size: 12px;
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);

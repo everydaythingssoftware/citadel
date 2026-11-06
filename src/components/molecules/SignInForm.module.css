@@ -1,11 +1,9 @@
 .root {
 	min-height: 100vh;
 	display: grid;
-	/* Anchored near the top rather than centred: an error line grows the
-	   card downward without moving the fields under the pointer. */
-	justify-items: center;
-	align-content: start;
-	padding: max(24px, 20vh) 16px 24px;
+	/* Centred, like the setup card that follows it, so steps don't jump. */
+	place-items: center;
+	padding: 24px 16px;
 	background: var(--ctd-bg);
 }
 

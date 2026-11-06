@@ -14,8 +14,8 @@ export const AuthorSortOrderLabel: Record<
 	keyof typeof AuthorSortOrder,
 	string
 > = {
-	nameAz: "Name (A-Z)",
-	nameZa: "Name (Z-A)",
+	nameAz: "Name (A–Z)",
+	nameZa: "Name (Z–A)",
 } as const;
 
 export const sortOrderOptions: {

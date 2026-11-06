@@ -15,6 +15,14 @@
 	container-type: inline-size;
 	/* The row stretching past its ends mustn't widen the page. */
 	overflow-x: clip;
+	/* Neighbours fade into the edges rather than being cut off by them. */
+	mask-image: linear-gradient(
+		to right,
+		transparent,
+		black 32px,
+		black calc(100% - 32px),
+		transparent
+	);
 }
 
 /* A snapping row; side padding lets the first and last covers centre. */

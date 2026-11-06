@@ -54,11 +54,11 @@ describe("softwareUpdateRowView", () => {
 		]);
 	});
 
-	it("keeps the label while downloading and shows progress", () => {
+	it("says it is downloading and shows progress", () => {
 		const view = softwareUpdateRowView(
 			state({ kind: "downloading", version: "0.7.2", progress: 0.4 }),
 		);
-		expect(view.label).toBe("Update available: 0.7.2");
+		expect(view.label).toBe("Downloading 0.7.2…");
 		expect(view.controls).toEqual([
 			{ kind: "progress", version: "0.7.2", value: 0.4 },
 		]);
