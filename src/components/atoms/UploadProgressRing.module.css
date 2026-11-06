@@ -40,7 +40,25 @@
 }
 
 .stop {
-	fill: currentColor;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+/* The × appears when the pointer or keyboard reaches the ring; touch has no
+   hover, so it's always there. */
+.button:hover .stop,
+.button:focus-visible .stop {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.stop {
+		opacity: 1;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {

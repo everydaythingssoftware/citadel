@@ -85,8 +85,20 @@ export const UploadQueueRow = ({
 						stopLabel={`Stop uploading ${item.name}`}
 					/>
 				)}
-				{(item.phase === UploadPhase.reading ||
-					item.phase === UploadPhase.adding) && (
+				{item.phase === UploadPhase.reading && (
+					// Busy, but still yours to drop: the spinner turns into an ×
+					// under the pointer, like the upload ring.
+					<button
+						type="button"
+						className={styles.busyCancel}
+						aria-label={`Stop reading ${item.name}`}
+						onClick={onRemove}
+					>
+						<Spinner size={18} className={styles.busySpinner} />
+						<XmarkGlyph className={styles.busyX} />
+					</button>
+				)}
+				{item.phase === UploadPhase.adding && (
 					<Spinner size={18} aria-label={subtitle(item)} />
 				)}
 				{item.phase === UploadPhase.ready && (
@@ -112,11 +124,10 @@ export const UploadQueueRow = ({
 						Dismiss
 					</Button>
 				) : (
-					// Every file that can still be dropped offers the same ×; an
-					// upload in flight stops from its ring, and adding (the final
-					// write to the library) runs to the end.
+					// Waiting and failed files show their ×; reading and uploading
+					// ones show it on hover; adding (the final write to the
+					// library) runs to the end.
 					(item.phase === UploadPhase.waiting ||
-						item.phase === UploadPhase.reading ||
 						item.phase === UploadPhase.failed) && (
 						<IconButton aria-label={`Remove ${item.name}`} onClick={onRemove}>
 							<XmarkGlyph />

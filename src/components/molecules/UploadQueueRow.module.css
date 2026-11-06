@@ -133,3 +133,59 @@
 		display: block;
 	}
 }
+
+/* A busy indicator that is also its own stop button: spinner at rest, ×
+   under the pointer or keyboard, × always on touch. */
+.busyCancel {
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--ctd-radius-capsule);
+	background: transparent;
+	color: var(--ctd-ink-soft);
+}
+
+.busyCancel > * {
+	grid-area: 1 / 1;
+	transition: opacity 120ms ease-out;
+}
+
+.busyX {
+	width: 14px;
+	height: 14px;
+	opacity: 0;
+}
+
+.busyCancel:hover,
+.busyCancel:focus-visible {
+	background: var(--ctd-nav-hover-bg);
+}
+
+.busyCancel:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.busyCancel:hover .busySpinner,
+.busyCancel:focus-visible .busySpinner {
+	opacity: 0;
+}
+
+.busyCancel:hover .busyX,
+.busyCancel:focus-visible .busyX {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.busySpinner {
+		opacity: 0;
+	}
+
+	.busyX {
+		opacity: 1;
+	}
+}
