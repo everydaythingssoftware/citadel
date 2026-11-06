@@ -16,33 +16,10 @@
 	border-top: 1px solid var(--ctd-border);
 }
 
+/* The standard bordered button with red text, the AppKit destructive look;
+   the confirmation dialog it opens carries the filled red button. */
 .deleteSection .deleteButton {
-	border: 2px solid
-		color-mix(in srgb, var(--ctd-danger-bg) 55%, var(--ctd-content-bg));
-	color: color-mix(in srgb, var(--ctd-danger-bg) 80%, var(--ctd-ink));
-	background: transparent;
-	box-shadow: none;
-	transition: background-color 120ms ease-out;
-}
-
-.deleteSection .deleteButton:hover:not(:disabled) {
-	background: color-mix(
-		in srgb,
-		var(--ctd-danger-bg) 10%,
-		var(--ctd-content-bg)
-	);
-}
-
-.deleteSection .deleteButton:active:not(:disabled) {
-	background: color-mix(
-		in srgb,
-		var(--ctd-danger-bg) 18%,
-		var(--ctd-content-bg)
-	);
-}
-
-.deleteSection .deleteButton:focus-visible {
-	box-shadow: var(--ctd-focus-shadow);
+	color: color-mix(in oklch, var(--ctd-danger-bg) 85%, var(--ctd-ink));
 }
 
 .deleteError {
@@ -111,9 +88,35 @@
 	border-bottom: 1px solid var(--ctd-border);
 }
 
+.pageTitle[data-shown] {
+	opacity: 1;
+	transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pageTitle {
+		transition: none;
+	}
+}
+
 .headerLead {
 	display: flex;
 	align-items: center;
+}
+
+.saveStatus {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	color: var(--ctd-ink-soft);
+	opacity: 0;
+	transition: opacity 200ms ease-out;
+}
+
+.saveStatus[data-status="saving"],
+.saveStatus[data-status="saved"] {
+	opacity: 1;
 }
 
 .headerActions {
@@ -144,6 +147,13 @@
 	margin: 0;
 	outline: none;
 	text-align: center;
+	/* Hidden (but still the page's heading) until the Title field scrolls
+	   under the header. */
+	opacity: 0;
+	transform: translateY(4px);
+	transition:
+		opacity 160ms ease-out,
+		transform 160ms ease-out;
 	font-family: var(--ctd-font-serif);
 	font-size: 16px;
 	font-weight: 600;
