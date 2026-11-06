@@ -9,7 +9,7 @@
 }
 
 /* Same card treatment as the settings groups (SettingsPanes.module.css):
-   raised surface with a hairline border and inset hairlines between rows. */
+   raised surface with a hairline border and full-width hairlines between rows. */
 .card {
 	border: 1px solid var(--ctd-border);
 	border-radius: 0.5rem;
@@ -28,7 +28,7 @@
 	content: "";
 	position: absolute;
 	top: 0;
-	left: 0.875rem;
+	left: 0;
 	right: 0;
 	height: 1px;
 	background-color: var(--ctd-border);

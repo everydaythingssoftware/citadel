@@ -59,9 +59,11 @@ impl DeviceKeyVerifier {
         }
     }
 
-    /// Constant time in the hash, so timing never shows how close a guess was.
+    /// Usernames match as browser sign-in matches them: trimmed, and ignoring
+    /// ASCII case as `users.username COLLATE NOCASE` does. Constant time in the
+    /// hash, so timing never shows how close a guess was.
     pub fn matches(&self, username: &str, key: &[u8]) -> bool {
-        if self.username != username {
+        if !self.username.eq_ignore_ascii_case(username.trim()) {
             return false;
         }
         let given = salted_hash(&self.salt, key);
@@ -347,6 +349,8 @@ mod tests {
         assert!(verifiers[0].matches("alice", kobo.secret.as_bytes()));
         assert!(!verifiers[0].matches("alice", b"wrong"));
         assert!(!verifiers[0].matches("bob", kobo.secret.as_bytes()));
+        assert!(verifiers[0].matches("ALICE", kobo.secret.as_bytes()));
+        assert!(verifiers[0].matches(" Alice ", kobo.secret.as_bytes()));
 
         let rotated = store.rotate_device_key("alice", &kobo.key.id).unwrap();
         assert_eq!(rotated.key.name, "Kobo");

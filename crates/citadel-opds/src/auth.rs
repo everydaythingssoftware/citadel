@@ -385,6 +385,20 @@ mod tests {
         assert!(matches!(auth.authorize(None), AuthOutcome::Rejected));
     }
 
+    #[test]
+    fn usernames_match_ignoring_case_but_keys_do_not() {
+        let auth = enabled_auth("reader", "correct horse");
+
+        assert!(matches!(
+            auth.authorize(Some(&basic_header("READER", b"correct horse"))),
+            AuthOutcome::Authorized(Some(_))
+        ));
+        assert!(matches!(
+            auth.authorize(Some(&basic_header("reader", b"CORRECT HORSE"))),
+            AuthOutcome::Rejected
+        ));
+    }
+
     #[tokio::test]
     async fn swapping_credentials_takes_effect_on_the_next_request_without_a_restart() {
         let auth = enabled_auth("reader", "first-secret");
