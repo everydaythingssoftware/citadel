@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
-	type CSSProperties,
 	type FormEvent,
 	useCallback,
 	useEffect,
@@ -36,13 +35,6 @@ import styles from "./Authors.module.css";
  * Shared column template so the header row and every author row align:
  * name (flexible) | sort name (fixed, hidden narrow) | count | actions.
  */
-const AUTHOR_GRID: CSSProperties = {
-	display: "grid",
-	gridTemplateColumns: "minmax(160px, 1fr) minmax(0, 260px) 72px 56px",
-	alignItems: "center",
-	columnGap: 16,
-};
-
 const authorNoun = (count: number) => (count === 1 ? "author" : "authors");
 
 const errorText = (error: unknown): string =>
@@ -192,13 +184,19 @@ export const Authors = () => {
 
 			{noMatches ? (
 				searchTerm.length > 0 ? (
-					<EmptyState title={`No authors match “${searchTerm}”`}>
+					<EmptyState
+						title={`No authors match “${searchTerm}”`}
+						description="Check the spelling, or search by surname."
+					>
 						<Button variant="default" onClick={() => setSearchTerm("")}>
 							Clear search
 						</Button>
 					</EmptyState>
 				) : (
-					<EmptyState title="No authors match these filters.">
+					<EmptyState
+						title="Every author has books"
+						description="No author is left without a book in this library."
+					>
 						<Button
 							variant="default"
 							onClick={() => setShowOnlyAuthorsWithoutBooks(false)}
@@ -211,8 +209,7 @@ export const Authors = () => {
 				<>
 					<div
 						data-authors-header=""
-						className={styles.headerRow}
-						style={AUTHOR_GRID}
+						className={clsx(styles.headerRow, styles.grid)}
 					>
 						<span className={styles.columnLabel}>Name</span>
 						<span className={clsx(styles.columnLabel, styles.visibleFromMd)}>
@@ -421,7 +418,7 @@ const AuthorRow = ({
 		// The whole row links to the library filtered by this author. The hover
 		// background, 40px min-height, and the overlay-link positioning live in
 		// styles.css (.ctd-author-row / .ctd-author-row-link).
-		<div className={clsx("ctd-author-row", styles.row)} style={AUTHOR_GRID}>
+		<div className={clsx("ctd-author-row", styles.row, styles.grid)}>
 			{/* Real anchor overlaying the row so middle-click / cmd-click /
 			    keyboard all work. The count link and the action icons sit above
 			    it (position: relative + zIndex), so they keep working on their
@@ -442,10 +439,8 @@ const AuthorRow = ({
 					{author.sortable_name}
 				</span>
 			) : (
-				<div>
-					<span className={clsx(styles.badge, styles.visibleFromMd)}>
-						No sort name
-					</span>
+				<div className={styles.visibleFromMd}>
+					<span className={styles.badge}>No sort name</span>
 				</div>
 			)}
 

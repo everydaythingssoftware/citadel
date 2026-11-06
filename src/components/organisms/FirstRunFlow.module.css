@@ -122,6 +122,7 @@
 	color: var(--ctd-ink-soft);
 	text-align: center;
 	max-width: 36ch;
+	text-wrap: balance;
 }
 
 .back {
@@ -148,7 +149,7 @@
 
 .back:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--ctd-focus-ring);
+	box-shadow: 0 0 0 2px var(--ctd-focus-ring);
 }
 
 .back:disabled {
@@ -288,7 +289,8 @@
 	align-items: center;
 	gap: 12px;
 	width: 100%;
-	padding: 11px 13px;
+	min-height: 60px;
+	padding: 10px 12px;
 	text-align: left;
 	font: inherit;
 	background: var(--ctd-control-bg-strong);
@@ -305,9 +307,7 @@
 
 .choice:focus-visible {
 	outline: none;
-	box-shadow:
-		var(--ctd-control-shadow),
-		0 0 0 3px var(--ctd-focus-ring);
+	box-shadow: var(--ctd-control-shadow), var(--ctd-focus-shadow);
 }
 
 .choice:disabled {
@@ -323,7 +323,15 @@
 }
 
 .choiceIcon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	flex: none;
+	/* One slot for every glyph, so the titles beside them line up. */
+	width: 28px;
+	height: 28px;
+	border-radius: 7px;
+	background: var(--ctd-surface-muted);
 	color: var(--ctd-ink-soft);
 }
 

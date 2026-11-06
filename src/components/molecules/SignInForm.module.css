@@ -19,15 +19,27 @@
 	box-shadow: var(--ctd-shadow-soft);
 }
 
+.mark {
+	display: flex;
+	justify-content: center;
+	margin-top: 4px;
+	color: var(--ctd-ink-soft);
+}
+
 .title {
-	margin: 0 0 4px;
-	font-size: 16px;
+	margin: 0 0 8px;
+	font-size: 17px;
 	font-weight: 600;
+	letter-spacing: -0.01em;
+	text-align: center;
 	color: var(--ctd-ink);
 }
 
+/* Reserves one line so an error doesn't shift the card. */
 .error {
-	margin: 0;
+	min-height: 16px;
+	margin: -6px 0 -4px;
+	line-height: 16px;
 	padding-inline-start: 2px;
 	color: var(--ctd-danger-bg);
 	font-size: 12px;

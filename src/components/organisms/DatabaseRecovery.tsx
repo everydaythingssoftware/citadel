@@ -58,7 +58,7 @@ export const DatabaseRecoveryCard = ({
 	useEffect(() => {
 		cardRef.current
 			?.querySelector<HTMLElement>("[data-autofocus]")
-			?.focus({ preventScroll: true });
+			?.focus({ preventScroll: true, focusVisible: false });
 	}, []);
 
 	return (

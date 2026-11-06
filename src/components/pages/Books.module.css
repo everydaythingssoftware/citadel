@@ -17,9 +17,9 @@
 	align-items: center;
 	gap: 12px;
 	flex-wrap: nowrap;
-	/* Even insets so the search field sits square with the panel's rounded
-	 * top-left corner (was 8px top / 24px left). */
-	padding: 12px;
+	/* The same bar as every list page: 24px insets line the search field up
+	 * with the first column of covers below. */
+	padding: 10px 24px;
 	background-color: var(--ctd-content-bg);
 	border-bottom: 1px solid var(--ctd-border);
 }

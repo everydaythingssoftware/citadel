@@ -34,7 +34,7 @@
 }
 
 .md {
-	height: 28px;
+	height: var(--ctd-control-height);
 	padding: var(--ctd-control-pad-y) var(--ctd-control-pad-x);
 }
 

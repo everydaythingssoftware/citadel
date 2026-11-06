@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
-import { type CSSProperties, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { SearchField } from "@/components/ui";
 import { useVirtualListRows } from "@/lib/hooks/use-virtual-list-rows";
@@ -18,17 +18,6 @@ export type BookListSearch =
 	| { series_id: number }
 	| { tag_id: number }
 	| { publisher_id: number };
-
-/**
- * Shared column template so the header row and every row align:
- * name (flexible) | count (fixed).
- */
-const ROW_GRID: CSSProperties = {
-	display: "grid",
-	gridTemplateColumns: "minmax(160px, 1fr) 72px",
-	alignItems: "center",
-	columnGap: 16,
-};
 
 interface NamedCountListProps<T extends NamedCount> {
 	/** Rows, already sorted by name. */
@@ -79,8 +68,7 @@ export const NamedCountList = <T extends NamedCount>({
 
 			<div
 				{...{ [`data-${kind}-header`]: "" }}
-				className={styles.headerRow}
-				style={ROW_GRID}
+				className={clsx(styles.headerRow, styles.grid)}
 			>
 				<span className={styles.columnLabel}>Name</span>
 				<span className={clsx(styles.columnLabel, styles.columnLabelRight)}>
@@ -153,7 +141,7 @@ const NamedCountRow = ({
 		// The whole row links to the library filtered by this entry. The hover
 		// background, 40px min-height, and the overlay-link positioning live in
 		// styles.css (.ctd-author-row / .ctd-author-row-link).
-		<div className={clsx("ctd-author-row", styles.row)} style={ROW_GRID}>
+		<div className={clsx("ctd-author-row", styles.row, styles.grid)}>
 			{/* Real anchor overlaying the row so middle-click / cmd-click /
 			    keyboard all work. The count link sits above it (position:
 			    relative + zIndex), so it keeps working without stopPropagation. */}

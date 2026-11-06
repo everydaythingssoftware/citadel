@@ -592,12 +592,20 @@ const ProviderRowShell = ({ id, status, children }: ProviderRowShellProps) => {
 					<span className={classes.rowLabel}>{descriptor.displayName}</span>
 					{status && <span className={classes.rowDescription}>{status}</span>}
 				</div>
-				<Switch
-					id={switchId}
-					checked={enabled}
-					aria-label={`Enable ${descriptor.displayName}`}
-					onCheckedChange={(checked) => void setProviderEnabled(id, checked)}
-				/>
+				{status === "Requires setup" && !enabled ? (
+					// Switching on a source that has no key would do nothing; the
+					// one useful step is the key, so offer that instead.
+					<Button size="sm" variant="default" onClick={() => setExpanded(true)}>
+						Add Key…
+					</Button>
+				) : (
+					<Switch
+						id={switchId}
+						checked={enabled}
+						aria-label={`Enable ${descriptor.displayName}`}
+						onCheckedChange={(checked) => void setProviderEnabled(id, checked)}
+					/>
+				)}
 			</div>
 			{expanded && (
 				<div className={classes.providerBody}>

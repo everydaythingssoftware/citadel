@@ -19,7 +19,7 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 4px;
-	min-height: 24px;
+	min-height: var(--ctd-control-height);
 	padding: 2px 8px;
 	border-radius: var(--ctd-radius-control);
 	background-color: var(--ctd-control-bg);

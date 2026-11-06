@@ -258,16 +258,29 @@
 }
 
 .formatLink {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin: 0 -6px;
+	padding: 4px 6px;
+	border-radius: var(--ctd-radius-control);
 	color: inherit;
 	text-decoration: none;
 }
 
 .formatLink:hover {
-	text-decoration: underline;
+	background-color: var(--ctd-nav-hover-bg);
+}
+
+.formatGlyph {
+	color: var(--ctd-ink-soft);
 }
 
 .formColumn {
 	min-width: 0;
+	/* An inspector, not a document: fields stop at a readable length. */
+	max-width: 640px;
 }
 
 .section {
@@ -319,7 +332,7 @@
 }
 
 .formRowTop .rowLabel {
-	padding-top: 8px;
+	padding-top: 4px;
 }
 
 @media (max-width: 640px) {
@@ -367,10 +380,6 @@
 .flexGrow {
 	flex: 1;
 	min-width: 0;
-}
-
-.dangerIcon {
-	color: var(--ctd-danger-bg);
 }
 
 .emptyText {

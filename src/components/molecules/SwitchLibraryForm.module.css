@@ -1,7 +1,7 @@
 .stack {
 	display: flex;
 	flex-direction: column;
-	gap: 20px;
+	gap: 16px;
 }
 
 .text {
@@ -9,4 +9,20 @@
 	font-size: 13px;
 	line-height: 1.45;
 	color: var(--ctd-ink);
+}
+
+.pathRow {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.pathInput {
+	flex: 1;
+	min-width: 0;
+}
+
+.actions {
+	display: flex;
+	justify-content: flex-end;
 }

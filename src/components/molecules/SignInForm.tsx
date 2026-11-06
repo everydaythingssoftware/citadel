@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { Button, TextInput } from "@/components/ui";
 import styles from "./SignInForm.module.css";
 
@@ -18,6 +19,9 @@ export const SignInForm = ({ onSubmit, pending, error }: SignInFormProps) => {
 	return (
 		<main className={styles.root}>
 			<form className={styles.card} onSubmit={submit} aria-busy={pending}>
+				<div className={styles.mark} aria-hidden="true">
+					<FluentLibraryFilled fontSize={28} />
+				</div>
 				<h1 className={styles.title}>Sign in to Citadel</h1>
 				<TextInput
 					label="Username"
@@ -38,13 +42,12 @@ export const SignInForm = ({ onSubmit, pending, error }: SignInFormProps) => {
 					value={password}
 					onChange={(event) => setPassword(event.currentTarget.value)}
 				/>
-				{error && (
-					<p role="alert" className={styles.error}>
-						{error}
-					</p>
-				)}
+				{/* Always present, so a message appears without the card moving. */}
+				<p role="alert" className={styles.error}>
+					{error}
+				</p>
 				<Button type="submit" variant="primary" fullWidth disabled={pending}>
-					{pending ? "Signing in…" : "Sign in"}
+					{pending ? "Signing in…" : "Sign In"}
 				</Button>
 			</form>
 		</main>

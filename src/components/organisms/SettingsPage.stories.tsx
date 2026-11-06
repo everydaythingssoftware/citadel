@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { useState } from "react";
 import panes from "@/components/organisms/SettingsPanes.module.css";
+import { SegmentedControl, Switch } from "@/components/ui";
 import {
 	SettingsSection,
 	type TSettingsSection,
@@ -16,6 +18,25 @@ const ROWS: Record<TSettingsSection, string[]> = {
 	],
 };
 
+const RowControl = ({ row }: { row: string }) => {
+	const [theme, setTheme] = useState("auto");
+	const [on, setOn] = useState(row !== "Hardcover");
+	return row === "Appearance" ? (
+		<SegmentedControl
+			aria-label="Appearance"
+			value={theme}
+			onChange={setTheme}
+			items={[
+				{ value: "auto", label: "Auto" },
+				{ value: "light", label: "Light" },
+				{ value: "dark", label: "Dark" },
+			]}
+		/>
+	) : (
+		<Switch checked={on} onCheckedChange={setOn} />
+	);
+};
+
 /** Stand-in content: the real sections read the app's stores. */
 const Section = ({ section }: { section: TSettingsSection }) => (
 	<div className={panes.groups}>
@@ -25,6 +46,7 @@ const Section = ({ section }: { section: TSettingsSection }) => (
 					<div className={panes.rowLabels}>
 						<span className={panes.rowLabel}>{row}</span>
 					</div>
+					<RowControl row={row} />
 				</div>
 			))}
 		</div>

@@ -772,10 +772,10 @@ const resolveView = (
 						lede={
 							hasFound
 								? "Found in the folders mounted for libraries:"
-								: "This server keeps books in a Calibre-compatible library on its own disk."
+								: "This server keeps books in a Calibre‑compatible library on its own disk."
 						}
 						adoptDescription="Use a Calibre library already on the server."
-						createDescription="Create an empty library in a folder on the server."
+						createDescription="Make an empty library in a folder on the server."
 						onAdopt={() => send({ type: "CHOOSE_ADOPT" })}
 						onStartNew={() => send({ type: "CHOOSE_CREATE" })}
 						found={

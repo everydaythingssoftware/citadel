@@ -18,7 +18,7 @@
 .filterBar {
 	display: flex;
 	align-items: center;
-	gap: 16px;
+	gap: 12px;
 	flex-shrink: 0;
 	padding: 10px 24px;
 	border-bottom: 1px solid var(--ctd-border);
@@ -32,6 +32,18 @@
 	padding: 6px 24px;
 	background-color: var(--ctd-content-bg);
 	border-bottom: 1px solid var(--ctd-border);
+}
+
+/* Shared column template so the header row and every row align. Columns
+ * stop at reading length; the trailing track takes what's left. */
+.grid {
+	display: grid;
+	grid-template-columns: minmax(160px, 360px) minmax(0, 280px) 64px 56px minmax(
+			0,
+			1fr
+		);
+	align-items: center;
+	column-gap: 16px;
 }
 
 .columnLabel {
@@ -166,6 +178,23 @@
 @media (max-width: 61.99em) {
 	.visibleFromMd {
 		display: none;
+	}
+
+	.grid {
+		grid-template-columns: minmax(0, 1fr) 64px 56px;
+	}
+}
+
+/* Row actions appear with the row's hover or focus; touch keeps them shown. */
+@media (hover: hover) {
+	.actions {
+		opacity: 0;
+		transition: opacity 120ms ease-out;
+	}
+
+	:global(.ctd-author-row):hover .actions,
+	:global(.ctd-author-row):focus-within .actions {
+		opacity: 1;
 	}
 }
 

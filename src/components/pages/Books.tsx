@@ -406,13 +406,19 @@ export const Books = ({
 					<EmptyLibrary />
 				) : noMatches ? (
 					trimmedQuery.length > 0 ? (
-						<EmptyState title={`No books match “${trimmedQuery}”`}>
+						<EmptyState
+							title={`No books match “${trimmedQuery}”`}
+							description="Search looks at titles and authors. Check the spelling, or try fewer words."
+						>
 							<Button variant="default" onClick={() => setQuery("")}>
 								Clear search
 							</Button>
 						</EmptyState>
 					) : (
-						<EmptyState title="No books match these filters.">
+						<EmptyState
+							title="No books match these filters"
+							description="Every book here is filtered out. Show all books to see the whole library."
+						>
 							<Button
 								variant="default"
 								onClick={() => {
