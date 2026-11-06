@@ -154,13 +154,17 @@
 	position: sticky;
 	bottom: 0;
 	display: flex;
-	justify-content: center;
 	padding: 6px 0;
 	background-color: var(--ctd-content-bg);
 	border-top: 1px solid var(--ctd-border);
 }
 
 .footerText {
+	/* Centred under the table, not the panel. */
+	width: 100%;
+	max-width: 880px;
+	margin-inline: 12px;
+	text-align: center;
 	font-size: 12px;
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
@@ -187,7 +191,7 @@
 	}
 
 	.grid {
-		grid-template-columns: minmax(0, 1fr) 56px 56px;
+		grid-template-columns: minmax(0, 1fr) 48px 72px;
 	}
 }
 
@@ -223,4 +227,11 @@
 	margin: 12px 0 0;
 	color: var(--ctd-danger-border);
 	font-size: 13px;
+}
+
+@media (pointer: coarse) {
+	.actionIcon {
+		width: 32px;
+		height: 32px;
+	}
 }

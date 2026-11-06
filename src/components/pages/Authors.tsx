@@ -189,7 +189,7 @@ export const Authors = () => {
 						description="Check the spelling, or search by surname."
 					>
 						<Button variant="default" onClick={() => setSearchTerm("")}>
-							Clear search
+							Clear Search
 						</Button>
 					</EmptyState>
 				) : (

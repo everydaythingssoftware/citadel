@@ -1068,6 +1068,7 @@ const EditBookForm = ({
 									/>
 									<Button
 										variant="default"
+										className={styles.addIdentifier}
 										disabled={newBookIdentifierLabel.trim() === ""}
 										onClick={() => {
 											onUpsertIdentifier(

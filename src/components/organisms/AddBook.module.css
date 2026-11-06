@@ -1,0 +1,11 @@
+/* Phones: the toolbar keeps just the plus; the label is the button's name. */
+@media (max-width: 47.99em) {
+	.label {
+		display: none;
+	}
+
+	.button {
+		width: var(--ctd-control-height);
+		padding: 0;
+	}
+}

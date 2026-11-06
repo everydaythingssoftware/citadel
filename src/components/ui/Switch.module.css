@@ -72,3 +72,20 @@
 .thumb[data-state="checked"] {
 	transform: translateX(17px);
 }
+
+/* Touch screens: a switch as tall as the 32px small buttons beside it. */
+@media (pointer: coarse) {
+	.track {
+		width: 52px;
+		height: 32px;
+	}
+
+	.thumb {
+		width: 28px;
+		height: 28px;
+	}
+
+	.thumb[data-state="checked"] {
+		transform: translateX(21px);
+	}
+}

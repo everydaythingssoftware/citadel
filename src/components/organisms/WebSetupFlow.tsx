@@ -381,7 +381,7 @@ const PathView = ({
 					<TextInput
 						label="Folder on the server"
 						name="path"
-						placeholder="/srv/books"
+						placeholder={browser ? browser.path : "/srv/books"}
 						autoComplete="off"
 						autoCapitalize="none"
 						spellCheck={false}

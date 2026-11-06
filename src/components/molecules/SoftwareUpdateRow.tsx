@@ -26,7 +26,7 @@ export const SoftwareUpdateRow = ({
 
 	return (
 		// Keyed by the label so the row fades in only when its text changes.
-		// Steps that keep the text (checking, downloading) swap their
+		// Steps that keep the text (checking) swap their
 		// controls in place.
 		<div key={label} className={styles.enter}>
 			<div className={styles.row}>

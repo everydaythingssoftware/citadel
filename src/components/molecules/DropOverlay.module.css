@@ -16,7 +16,7 @@
 			oklch(98% 0.005 85 / 0.1),
 			oklch(98% 0.005 85 / 0) 45%
 		),
-		oklch(22% 0.006 270 / 0.58);
+		oklch(20% 0.006 270 / 0.72);
 	backdrop-filter: blur(36px) saturate(1.6) brightness(0.95);
 	opacity: 0;
 	visibility: hidden;
@@ -45,7 +45,7 @@
 	gap: 6px;
 	text-align: center;
 	color: oklch(99% 0.003 90);
-	text-shadow: 0 1px 2px oklch(0% 0 0 / 0.3);
+	text-shadow: 0 1px 2px oklch(0% 0 0 / 0.4);
 }
 
 .title {
@@ -59,7 +59,7 @@
 .hint {
 	margin: 0;
 	font-size: 14px;
-	opacity: 0.85;
+	opacity: 0.92;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -411,7 +411,7 @@ export const Books = ({
 							description="Search looks at titles and authors. Check the spelling, or try fewer words."
 						>
 							<Button variant="default" onClick={() => setQuery("")}>
-								Clear search
+								Clear Search
 							</Button>
 						</EmptyState>
 					) : (

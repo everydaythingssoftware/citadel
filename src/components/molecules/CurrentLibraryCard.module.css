@@ -39,7 +39,8 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 1rem;
-	min-height: 2.375rem;
+	/* Tall enough for the name field, so every row matches it. */
+	min-height: 2.625rem;
 	padding: 0.4375rem 0.875rem;
 }
 

@@ -14,6 +14,7 @@ import {
 	title as addBookFormTitle,
 } from "@/components/molecules/AddBookForm";
 import { Button, Sheet } from "@/components/ui";
+import styles from "./AddBook.module.css";
 import {
 	applyMetadataToBook,
 	type PendingMetadata,
@@ -298,6 +299,7 @@ export const AddBookButton = () => {
 			variant="default"
 			size="sm"
 			aria-label="Add Book"
+			className={styles.button}
 			onClick={startAddBook}
 		>
 			<svg
@@ -314,7 +316,7 @@ export const AddBookButton = () => {
 					strokeLinecap="round"
 				/>
 			</svg>
-			Add Book…
+			<span className={styles.label}>Add Book…</span>
 		</Button>
 	);
 };

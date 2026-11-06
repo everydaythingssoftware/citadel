@@ -138,7 +138,7 @@ export const softwareUpdateRowView = ({
 			};
 		case "downloading":
 			return {
-				label: `Update available: ${status.version}`,
+				label: `Downloading ${status.version}…`,
 				controls: [
 					{ kind: "progress", version: status.version, value: status.progress },
 				],

@@ -27,14 +27,17 @@ export const UploadProgressRing = ({
 	const ring = (
 		<svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
 			<circle className={styles.track} cx="12" cy="12" r="10" />
-			<circle
-				className={styles.arc}
-				cx="12"
-				cy="12"
-				r="10"
-				strokeDasharray={`${CIRCUMFERENCE * value} ${CIRCUMFERENCE}`}
-				transform="rotate(-90 12 12)"
-			/>
+			{/* A zero-length arc still paints its round cap as a stray dot. */}
+			{value > 0 && (
+				<circle
+					className={styles.arc}
+					cx="12"
+					cy="12"
+					r="10"
+					strokeDasharray={`${CIRCUMFERENCE * value} ${CIRCUMFERENCE}`}
+					transform="rotate(-90 12 12)"
+				/>
+			)}
 			{onStop && (
 				<rect className={styles.stop} x="9" y="9" width="6" height="6" rx="1" />
 			)}

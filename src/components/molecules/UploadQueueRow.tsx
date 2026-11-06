@@ -78,11 +78,22 @@ export const UploadQueueRow = ({
 				</span>
 			</div>
 			<div className={styles.trailing}>
-				{item.phase === UploadPhase.uploading && (
+				{/* Waiting and uploading share one ring with a stop button, so
+				    every file that can still be stopped is stopped the same way. */}
+				{(item.phase === UploadPhase.uploading ||
+					item.phase === UploadPhase.waiting) && (
 					<UploadProgressRing
-						progress={item.size ? item.sentBytes / item.size : 0}
+						progress={
+							item.phase === UploadPhase.uploading && item.size
+								? item.sentBytes / item.size
+								: 0
+						}
 						onStop={onRemove}
-						stopLabel={`Stop uploading ${item.name}`}
+						stopLabel={
+							item.phase === UploadPhase.uploading
+								? `Stop uploading ${item.name}`
+								: `Remove ${item.name}`
+						}
 					/>
 				)}
 				{(item.phase === UploadPhase.reading ||
@@ -112,8 +123,7 @@ export const UploadQueueRow = ({
 						Dismiss
 					</Button>
 				) : (
-					(item.phase === UploadPhase.waiting ||
-						item.phase === UploadPhase.failed) && (
+					item.phase === UploadPhase.failed && (
 						<IconButton aria-label={`Remove ${item.name}`} onClick={onRemove}>
 							<XmarkGlyph />
 						</IconButton>
