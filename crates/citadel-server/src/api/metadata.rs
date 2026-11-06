@@ -169,6 +169,13 @@ impl Metadata {
         Ok(Self::with_client(config, client))
     }
 
+    /// Providers skipped for a while after failing repeatedly.
+    pub fn skipped_providers(
+        &self,
+    ) -> Vec<(citadel_metadata::MetadataProvider, std::time::Duration)> {
+        self.client.skipped_providers()
+    }
+
     /// For tests that point the client at local stand-ins for providers.
     pub fn with_client(config: MetadataConfig, client: MetadataClient) -> Self {
         Self {

@@ -197,6 +197,10 @@ impl ServedLibrary {
         self
     }
 
+    pub fn state_directory(&self) -> &Path {
+        &self.state_directory
+    }
+
     pub fn accounts(&self) -> &Arc<CitadelStore> {
         &self.accounts
     }

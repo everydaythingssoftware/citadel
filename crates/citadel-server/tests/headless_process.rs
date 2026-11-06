@@ -213,7 +213,9 @@ addresses = ["127.0.0.1"]
         observed.push(lines_rx.recv_timeout(Duration::from_secs(5)).unwrap());
     }
     assert!(
-        observed.iter().any(|line| line.contains("setup_code=")),
+        observed
+            .iter()
+            .any(|line| line.contains("\"setup_code\":\"")),
         "{observed:?}"
     );
     let api_origin = format!("http://127.0.0.1:{api_port}");
@@ -394,7 +396,7 @@ fn the_server_runs_from_environment_variables_alone() {
         }
     }
     let log = seen.join("\n");
-    assert!(log.contains("setup_code="), "{log}");
+    assert!(log.contains("\"setup_code\":\""), "{log}");
     assert!(
         log.contains("public_urls=any"),
         "no address is known until the first administrator's: {log}"
@@ -415,4 +417,101 @@ fn the_server_runs_from_environment_variables_alone() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn a_database_from_a_newer_citadel_keeps_the_server_answering_with_the_reason() {
+    let directory = tempfile::tempdir().unwrap();
+    let state = directory.path().join("state");
+    std::fs::create_dir_all(&state).unwrap();
+    drop(citadel_core::store::CitadelStore::open(&state.join("citadel.db")).unwrap());
+    rusqlite::Connection::open(state.join("citadel.db"))
+        .unwrap()
+        .execute(
+            "INSERT INTO __diesel_schema_migrations (version) VALUES ('29991231000000')",
+            [],
+        )
+        .unwrap();
+    let api_port = free_port();
+    let with_settings = |command: &mut Command| {
+        command
+            .env_remove("CITADEL_CONFIG")
+            .env("CITADEL_LISTEN", format!("127.0.0.1:{api_port}"))
+            .env("CITADEL_OPDS_PORT", free_port().to_string())
+            .env("CITADEL_STATE_DIRECTORY", &state);
+    };
+    let mut command = Command::new(env!("CARGO_BIN_EXE_citadel-server"));
+    with_settings(&mut command);
+    let mut child = ServerProcess(
+        command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let (lines, received) = mpsc::channel();
+    for stream in [
+        Box::new(child.stdout.take().unwrap()) as Box<dyn std::io::Read + Send>,
+        Box::new(child.stderr.take().unwrap()),
+    ] {
+        let lines = lines.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let _ = lines.send(line);
+            }
+        });
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut seen = Vec::new();
+    while !seen
+        .iter()
+        .any(|line: &String| line.contains("health=failing"))
+    {
+        let wait = deadline.saturating_duration_since(Instant::now());
+        match received.recv_timeout(wait) {
+            Ok(line) => seen.push(line),
+            Err(_) => panic!("server did not keep answering: {seen:#?}"),
+        }
+    }
+    let log = seen.join("\n");
+    assert!(log.contains("newer version of Citadel"), "{log}");
+
+    let mut health = Command::new(env!("CARGO_BIN_EXE_citadel-server"));
+    with_settings(&mut health);
+    let output = health.arg("health").output().unwrap();
+    assert!(!output.status.success());
+    let said = String::from_utf8_lossy(&output.stderr);
+    assert!(said.contains("health=failing database=failing"), "{said}");
+
+    let client = reqwest::blocking::Client::new();
+    let refused = client
+        .get(format!("http://127.0.0.1:{api_port}/api/setup"))
+        .send()
+        .unwrap();
+    assert_eq!(refused.status().as_u16(), 503);
+    let body: serde_json::Value = refused.json().unwrap();
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("Citadel can't start"),
+        "{body}"
+    );
+    let health: serde_json::Value = client
+        .get(format!("http://127.0.0.1:{api_port}/api/health"))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert!(
+        health["checks"][0]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("newer version of Citadel"),
+        "{health}"
+    );
+
+    kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
+    let status = child.wait().unwrap();
+    assert!(!status.success(), "stopping still reports the failure");
 }

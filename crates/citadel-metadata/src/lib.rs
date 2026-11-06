@@ -119,6 +119,12 @@ impl MetadataClient {
         })
     }
 
+    /// Providers skipped for a while after failing repeatedly, with how long
+    /// they stay skipped.
+    pub fn skipped_providers(&self) -> Vec<(MetadataProvider, std::time::Duration)> {
+        self.guards.skipped(std::time::Instant::now())
+    }
+
     /// Free-text search a provider. A clean "no results" is `Ok(vec![])`.
     pub async fn search(
         &self,

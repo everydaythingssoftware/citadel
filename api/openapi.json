@@ -1955,6 +1955,32 @@
         ]
       }
     },
+    "/api/health": {
+      "get": {
+        "description": "How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only.",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library": {
       "get": {
         "operationId": "getLibrary",
@@ -4522,6 +4548,57 @@
             "description": "Provider vocabulary or thesaurus when one is declared."
           }
         }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "checks"
+        ],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HealthCheck"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "The worst of the checks."
+          }
+        }
+      },
+      "HealthCheck": {
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What is wrong or how it stands. Administrators only."
+          },
+          "name": {
+            "type": "string",
+            "description": "`database`, `providerKeys`, `library`, `webApp`, `opds`, `metadata`,\n`stateDisk` or `libraryDisk`."
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        }
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "degraded",
+          "failing"
+        ]
       },
       "Identifier": {
         "type": "object",

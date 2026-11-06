@@ -30,6 +30,7 @@ use citadel_core::{store::CitadelStore, vault::Vault};
 mod account;
 pub mod addresses;
 mod edits;
+pub mod health;
 mod metadata;
 mod server;
 mod session;
@@ -89,6 +90,9 @@ struct ApiState {
     metadata: Arc<Metadata>,
     secrets: Arc<Vault>,
     updates: Arc<crate::updates::Updates>,
+    /// For health checks.
+    opds: citadel_opds::OpdsService,
+    web_directory: Option<std::path::PathBuf>,
 }
 
 // Keep slots inside blocking tasks so timed-out HTTP requests cannot queue
@@ -468,6 +472,7 @@ pub fn openapi() -> OpenApi {
         .merge(setup::administrator_routes())
         .merge(server::public_routes())
         .merge(server::administrator_routes())
+        .merge(health::routes())
         .split_for_parts();
     // These handlers are mounted from OPDS so byte streaming, range support and
     // containment checks have one implementation across both transports.
@@ -557,12 +562,15 @@ pub fn router(
         metadata,
         secrets,
         updates,
+        opds: service.clone(),
+        web_directory: web_directory.map(std::path::Path::to_path_buf),
     };
     let address_state = state.clone();
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes()
         .merge(setup::public_routes())
         .merge(server::public_routes())
+        .merge(health::routes())
         .split_for_parts();
     let (administration, _) = setup::administrator_routes()
         .merge(server::administrator_routes())
@@ -642,6 +650,51 @@ impl ApiConfig {
                 .collect(),
         }
     }
+}
+
+/// What the server answers when it can't open `citadel.db`: health fails
+/// with the reason, every other API call answers 503 with it, and the web
+/// app still loads to show it. Nobody can sign in, so the reason is public.
+pub fn unavailable_router(reason: String, web_directory: Option<&std::path::Path>) -> Router {
+    let reason = Arc::new(reason);
+    let health_reason = reason.clone();
+    let router = Router::new()
+        .route(
+            "/api/health",
+            axum::routing::get(move || {
+                let reason = health_reason.clone();
+                async move {
+                    health::Health::of(vec![health::HealthCheck {
+                        name: "database".into(),
+                        status: health::HealthStatus::Failing,
+                        detail: Some(reason.to_string()),
+                    }])
+                    .into_response()
+                }
+            }),
+        )
+        .route(
+            "/api/version",
+            axum::routing::get(|| async { server::version_json() }),
+        )
+        .route(
+            "/api/{*rest}",
+            axum::routing::any(move || {
+                let reason = reason.clone();
+                async move {
+                    ApiFailure(LibraryError::new(
+                        LibraryErrorCode::Unavailable,
+                        format!("Citadel can't start: {reason}"),
+                    ))
+                    .into_response()
+                }
+            }),
+        );
+    let router = match web_directory {
+        Some(directory) => router.fallback_service(web::router(directory)),
+        None => router,
+    };
+    router.layer(axum::middleware::from_fn(server::name_the_build))
 }
 
 const JSON_BODY_BYTES: usize = 1024 * 1024;

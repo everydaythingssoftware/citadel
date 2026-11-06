@@ -1,4 +1,6 @@
 import { createCitadelHttpClient } from "@/lib/api/client";
+
+export { ServerUnreachableError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema.generated";
 
 export type SessionInfo = components["schemas"]["SessionInfo"];

@@ -117,6 +117,22 @@ impl Guards {
     }
 }
 
+impl Guards {
+    /// Providers skipped after repeated failures, and for how much longer.
+    pub fn skipped(&self, now: Instant) -> Vec<(MetadataProvider, Duration)> {
+        let mut skipped: Vec<(MetadataProvider, Duration)> = self
+            .providers
+            .values()
+            .filter_map(|guard| {
+                let until = guard.lock().open_until.filter(|until| *until > now)?;
+                Some((guard.provider, until - now))
+            })
+            .collect();
+        skipped.sort_by_key(|(provider, _)| provider.display_name());
+        skipped
+    }
+}
+
 impl ProviderGuard {
     fn lock(&self) -> std::sync::MutexGuard<'_, GuardState> {
         self.state
@@ -334,6 +350,19 @@ mod tests {
         state.record(guard.provider, None, &Ok(()), much_later);
         assert_eq!(state.consecutive_failures, 0);
         assert_eq!(state.open_until, None);
+    }
+
+    #[test]
+    fn skipped_providers_are_listed_until_their_cooldown_ends() {
+        let guards = Guards::new();
+        let now = Instant::now();
+        assert!(guards.skipped(now).is_empty());
+        let loc = &guards.providers[&MetadataProvider::Loc];
+        for _ in 0..FAILURE_THRESHOLD {
+            loc.lock().record(loc.provider, None, &upstream(), now);
+        }
+        assert_eq!(guards.skipped(now), vec![(MetadataProvider::Loc, OPEN_FOR)]);
+        assert!(guards.skipped(now + OPEN_FOR).is_empty());
     }
 
     #[test]

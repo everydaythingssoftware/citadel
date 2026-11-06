@@ -46,10 +46,32 @@ export interface ServerAddresses {
 	currentListed: boolean;
 }
 
+export const HEALTH_STATUS = {
+	ok: "ok",
+	degraded: "degraded",
+	failing: "failing",
+} as const;
+export type HealthStatus = (typeof HEALTH_STATUS)[keyof typeof HEALTH_STATUS];
+
+export interface HealthCheck {
+	name: string;
+	status: HealthStatus;
+	/** Administrators only. */
+	detail: string | null;
+}
+
+/** How each part of the server is doing. */
+export interface ServerHealth {
+	status: HealthStatus;
+	checks: HealthCheck[];
+}
+
 /** The server itself, rather than its library. */
 export interface ServerService {
 	/** Null when signed out. */
 	update(): Promise<ServerUpdate | null>;
 	/** Administrators only. */
 	addresses(): Promise<ServerAddresses>;
+	/** Answers whether or not the server is well (503 included). */
+	health(): Promise<ServerHealth>;
 }

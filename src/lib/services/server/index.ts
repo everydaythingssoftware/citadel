@@ -1,4 +1,7 @@
 export type {
+	HealthCheck,
+	HealthStatus,
+	ServerHealth,
 	ServerAddress,
 	ServerAddresses,
 	ServerRelease,
@@ -7,5 +10,5 @@ export type {
 	ServerUpdateDetails,
 	UpdateChecks,
 } from "./types";
-export { UPDATE_CHECKS } from "./types";
+export { HEALTH_STATUS, UPDATE_CHECKS } from "./types";
 export { webServerService as serverService } from "./web";

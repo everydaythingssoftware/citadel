@@ -79,6 +79,33 @@ docker exec citadel citadel-server users list
 
 The container reports its health to Docker through `citadel-server health`.
 
+### Health
+
+`GET /api/health` says how each part of the server is doing, at any address
+and without signing in, so Docker, Uptime Kuma and similar can ask it:
+
+```json
+{"status": "degraded", "checks": [
+  {"name": "database", "status": "ok", "detail": null},
+  {"name": "library", "status": "degraded", "detail": null}, …]}
+```
+
+Each check is `ok`, `degraded` (working, but an administrator should look) or
+`failing`; the overall status is the worst of them. It answers 200 unless
+something is failing, then 503. The checks are `database` (citadel.db),
+`providerKeys` (saved keys the vault can still read), `library` (set up,
+reachable, writable or read-only by choice), `webApp`, `opds`, `metadata`
+(providers skipped after repeated failures), and free space as `stateDisk`
+and `libraryDisk` (degraded under 1 GB; under 50 MB the state disk fails).
+Signed-in administrators get each check's reason, which can name paths. When a
+check isn't `ok`, Settings → General opens with a "Citadel needs attention"
+notice listing what to fix; when everything is fine it shows nothing.
+
+If Citadel can't open `citadel.db`, for example because a newer Citadel
+already migrated it, the server doesn't exit. It keeps answering: health fails
+with the reason, every other API call answers 503 with it, and the browser
+shows it. The log says the same. Fix the cause and restart.
+
 ## Run it from source
 
 Copy `crates/citadel-server/example-config.toml`, set the listeners, and
@@ -99,8 +126,22 @@ A fresh server has no administrator and no library. It prints a one-time
 setup code when it starts:
 
 ```text
-citadel_server setup_code=K7QD-M2XV-H9RW message="No administrator yet. Open http://127.0.0.1:8081 and enter this code to create the administrator account."
+================================================================
+  Set up Citadel
+
+  Open http://localhost:8081
+  (or this server's address, port 8081) and enter this setup code:
+
+      K7QD-M2XV-H9RW
+
+  It creates the administrator account. Until then, a new
+  code is printed each time the server starts.
+================================================================
+
+{"citadel_server":"setup_code","setup_code":"K7QD-M2XV-H9RW","url":"http://localhost:8081"}
 ```
+
+The last line is JSON, for scripts that read the log.
 
 Open Citadel in a browser, enter the code with a username and password, and you are
 the administrator. Setup then shows the server's public URLs, or the line that

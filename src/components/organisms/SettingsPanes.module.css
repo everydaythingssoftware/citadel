@@ -364,3 +364,54 @@
 .providerBody .inlineNote {
 	margin: 0;
 }
+
+/* What an administrator should fix, shown only when something needs it.
+   A tinted edge marks it out without shouting; the reasons do the work. */
+.problems {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 0.75rem 0.875rem;
+	border: 1px solid var(--ctd-border);
+	border-left: 3px solid oklch(0.72 0.15 75);
+	border-radius: 0.5rem;
+	background-color: var(--ctd-surface);
+}
+
+.problems[data-status="failing"] {
+	border-left-color: var(--ctd-danger-bg);
+}
+
+.problemsTitle {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
+.problemsList {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.problemsList li {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+}
+
+.problemName {
+	font-size: 0.8125rem;
+	color: var(--ctd-ink);
+}
+
+.problemDetail {
+	font-size: 0.75rem;
+	line-height: 1.4;
+	color: var(--ctd-ink-soft);
+	overflow-wrap: anywhere;
+}

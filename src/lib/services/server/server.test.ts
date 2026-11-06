@@ -82,4 +82,27 @@ describe("Web server service", () => {
 		});
 		await expect(server.addresses()).resolves.toEqual(listing);
 	});
+
+	it("reads health from a failing server too", async () => {
+		const failing = {
+			status: "failing",
+			checks: [
+				{
+					name: "database",
+					status: "failing",
+					detail: "citadel.db was updated by a newer version of Citadel",
+				},
+			],
+		};
+		const server = createWebServerService({
+			baseUrl: "https://citadel.test",
+			fetch: async () => json(failing, 503),
+		});
+		await expect(server.health()).resolves.toEqual(failing);
+		const broken = createWebServerService({
+			baseUrl: "https://citadel.test",
+			fetch: async () => new Response("bad gateway", { status: 502 }),
+		});
+		await expect(broken.health()).rejects.toThrow("(502)");
+	});
 });
