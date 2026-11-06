@@ -7,14 +7,14 @@ Citadel shares the active Calibre library as a read-only OPDS 1.x catalog while 
 1. Open **Settings → Sharing** with a library open.
 2. Choose local networks, or all networks. Sharing on all networks requires reader sign-in.
 3. Keep port 8080 unless another service uses it.
-4. If using sign-in, generate or set a username and password. You can reveal the saved password later or replace it without restarting sharing.
-5. Turn sharing on and copy one of the displayed catalog URLs.
+4. Turn sharing on and copy one of the displayed catalog URLs.
+5. If using sign-in, add a device for each reader app. Each gets its own password, shown only once. Reader apps can't sign in until they have one, and adding, rotating or revoking one doesn't interrupt sharing.
 
-Add the URL and any configured credentials to an OPDS 1.x reader. For example, in KOReader use **File browser → OPDS catalog → Add new**.
+Add the URL, your username and the device's password to an OPDS 1.x reader. For example, in KOReader use **File browser → OPDS catalog → Add new**.
 
 The root catalog links to all books, recently modified books, unread books, authors, series, tags and genres. Search is advertised through OpenSearch. Genre browsing uses Citadel's assigned genres, independently of tags; an unassigned collection has an empty genre feed. Facet counts include downloadable books only. Fileless books and unsafe or missing files are excluded from acquisition pages.
 
-Switching libraries stops sharing; start it again for the new library. Quitting Citadel also stops sharing. Clearing sign-in credentials stops a running share; replacing them takes effect on the next request.
+Switching libraries stops sharing; start it again for the new library. Quitting Citadel also stops sharing. Rotating or revoking a device password takes effect on that device's next request.
 
 ## Network access
 

@@ -55,8 +55,6 @@ pub async fn clb_cmd_rotate_opds_device_key(
     Ok(rotated)
 }
 
-/// Revoking the last key stops a running share that requires sign-in (see
-/// `OpdsService::clear_credentials`).
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_cmd_revoke_opds_device_key(
@@ -65,13 +63,8 @@ pub async fn clb_cmd_revoke_opds_device_key(
     key_id: String,
 ) -> Result<OpdsDeviceKeys, OpdsStatusError> {
     account.revoke_device_key(&key_id).map_err(unexpected)?;
-    let keys = account.device_keys().map_err(unexpected)?;
-    if keys.keys.is_empty() {
-        service.clear_credentials().await?;
-    } else {
-        sync_credentials(&service, &account)?;
-    }
-    Ok(keys)
+    sync_credentials(&service, &account)?;
+    account.device_keys().map_err(unexpected)
 }
 
 /// Every device signs in with the new name from the next request on.

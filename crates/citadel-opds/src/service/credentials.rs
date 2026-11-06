@@ -1,4 +1,4 @@
-//! The credential half of [`OpdsService`]: status, replace, clear.
+//! The credential half of [`OpdsService`]: status and replace.
 //! A child of `service` so it can reach the service's private state without
 //! visibility holes.
 
@@ -8,7 +8,6 @@ use citadel_core::store::DeviceKeyVerifier;
 
 use super::OpdsService;
 use crate::credential_store::OpdsCredentialStatus;
-use crate::OpdsStatusError;
 
 impl OpdsService {
     pub fn credential_status(&self) -> OpdsCredentialStatus {
@@ -36,16 +35,6 @@ impl OpdsService {
     ) -> OpdsCredentialStatus {
         self.replace_credentials(vec![DeviceKeyVerifier::new("key", &username, &password)]);
         self.credential_status()
-    }
-
-    /// Clearing credentials while sharing is gated on them must stop sharing:
-    /// the running server's bind policy advertises credential-gated reach,
-    /// and a snapshot with no secret could only reject everyone.
-    pub async fn clear_credentials(&self) -> Result<OpdsCredentialStatus, OpdsStatusError> {
-        self.stop_if_active().await;
-        self.inner.credentials.replace(Vec::new());
-        self.swap_auth_from_store();
-        Ok(self.credential_status())
     }
 
     pub(super) fn swap_auth_from_store(&self) {

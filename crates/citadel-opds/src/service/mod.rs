@@ -533,20 +533,6 @@ impl OpdsService {
         }
     }
 
-    /// Clearing credentials while sharing is live stops sharing: the
-    /// all-networks bind policy exists only while credentials exist, and a
-    /// required auth snapshot with no secret could only reject everyone.
-    /// Configure and generate do NOT stop; they hot-swap the snapshot.
-    async fn stop_if_active(&self) {
-        let listeners = {
-            let mut state = self.inner.state.lock().unwrap();
-            state.stop()
-        };
-        if let Some(listeners) = listeners {
-            listeners.drain().await;
-        }
-    }
-
     pub async fn status(&self) -> OpdsServiceStatus {
         let library_id = active_library_id(self.inner.source.clone());
         let mut status = OpdsServiceStatus::from(&*self.inner.state.lock().unwrap());
@@ -674,22 +660,11 @@ impl OpdsService {
             });
         }
 
-        let gated = if config.authentication_enabled {
-            if self.inner.credentials.is_empty() {
-                return Err(OpdsStatusError {
-                    code: OpdsErrorCode::AuthRequired,
-                    message: "Reader sign-in needs a device key. Create one, then turn sharing on."
-                        .to_string(),
-                });
-            }
-            true
-        } else {
-            false
-        };
-        // Credentials configured is the only thing that unlocks serving
-        // beyond the local network.
+        // Requiring sign-in is the only thing that unlocks serving beyond the
+        // local network. A share with no device keys yet is fine: it runs and
+        // rejects every request until one is added.
         let policy = BindPolicy {
-            allow_global: gated,
+            allow_global: config.authentication_enabled,
         };
         if let OpdsBindTarget::Addresses { addresses } = &config.target {
             super::network::validate_explicit_addresses(addresses, policy.allow_global).map_err(
@@ -1550,7 +1525,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn clearing_credentials_while_gated_stops_sharing() {
+    async fn sign_in_required_shares_run_with_or_without_credentials() {
         let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(Vec::new()));
         let listeners = Arc::new(FakeListeners::default());
@@ -1561,7 +1536,7 @@ mod tests {
             Duration::from_secs(1),
         );
 
-        service.configure_credentials("reader".to_string(), "correct-horse".to_string());
+        // No credentials yet: all networks is allowed, and nobody can get in.
         let started = service
             .start(OpdsStartConfig {
                 target: OpdsBindTarget::AllInterfaces,
@@ -1571,12 +1546,16 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(started.state, OpdsLifecycleState::Running);
-        assert_eq!(listeners.active.lock().unwrap().len(), 2);
+        assert!(service.inner.auth.required());
+        assert!(!service.credential_status().configured);
 
-        let status = service.clear_credentials().await.unwrap();
-        assert!(!status.configured);
-        assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
-        assert!(listeners.active.lock().unwrap().is_empty());
+        // Adding and then removing the last one never interrupts the share.
+        service.configure_credentials("reader".to_string(), "correct-horse".to_string());
+        service.replace_credentials(Vec::new());
+        assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
+        assert_eq!(listeners.active.lock().unwrap().len(), 2);
+        assert!(service.inner.auth.required());
+        service.stop().await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1639,13 +1618,13 @@ mod tests {
         service.start(config(8080)).await.unwrap();
         assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
 
-        // No credentials stored: requiring sign-in must be rejected up front,
-        // not after the live share has been torn down.
+        // All networks without sign-in must be rejected up front, not after
+        // the live share has been torn down.
         let rejected = service
             .reconfigure(OpdsStartConfig {
-                target: OpdsBindTarget::LocalNetworks,
+                target: OpdsBindTarget::AllInterfaces,
                 port: 8080,
-                authentication_enabled: true,
+                authentication_enabled: false,
             })
             .await;
         assert_eq!(rejected.unwrap_err().code, OpdsErrorCode::AuthRequired);

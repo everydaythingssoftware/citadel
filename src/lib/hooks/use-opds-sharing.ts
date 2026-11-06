@@ -44,6 +44,7 @@ interface OpdsSharingController {
 	/** A failed action's error, else the service's own failure reason. */
 	error: SharingError | null;
 	refresh: () => Promise<void>;
+	clearError: () => void;
 	start: (config: OpdsStartConfig) => Promise<SharingOutcome>;
 	reconfigure: (config: OpdsStartConfig) => Promise<SharingOutcome>;
 	stop: () => Promise<void>;
@@ -128,6 +129,8 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 		},
 		[],
 	);
+
+	const clearError = useCallback(() => setError(null), []);
 
 	const refresh = useCallback(async () => {
 		if (!client || refreshing.current || mutating.current) return;
@@ -270,6 +273,7 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 		isActing,
 		error: error ?? (status ? serviceError(status) : null),
 		refresh,
+		clearError,
 		start,
 		reconfigure,
 		stop,
