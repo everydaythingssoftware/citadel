@@ -21,6 +21,11 @@ export interface DrawerProps {
 	 * Callers can preventDefault here and focus a more useful default.
 	 */
 	onOpenAutoFocus?: (event: Event) => void;
+	/**
+	 * Content runs to the drawer's edges and under the close button, for a
+	 * header with its own background; the content sets its own padding.
+	 */
+	bleed?: boolean;
 }
 
 /** A right-edge slide-over panel, e.g. for book details. */
@@ -32,6 +37,7 @@ export const Drawer = ({
 	width = 420,
 	onCloseAutoFocus,
 	onOpenAutoFocus,
+	bleed = false,
 }: DrawerProps) => (
 	<Dialog.Root open={open} onOpenChange={onOpenChange}>
 		<Dialog.Portal>
@@ -39,6 +45,7 @@ export const Drawer = ({
 			{/* No Dialog.Description; aria-describedby={undefined} silences the Radix warning. */}
 			<Dialog.Content
 				className={styles.content}
+				data-bleed={bleed || undefined}
 				style={{ width: `min(${width}px, calc(100vw - 32px))` }}
 				aria-describedby={undefined}
 				onCloseAutoFocus={onCloseAutoFocus}

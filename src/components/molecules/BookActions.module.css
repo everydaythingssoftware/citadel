@@ -52,6 +52,24 @@
 	background-color: oklch(from var(--ctd-success) l c h / 0.18);
 }
 
+/* Ink: the book's green check lives elsewhere (on the cover), so the
+   pressed button stays monochrome. */
+.finished[data-tone="ink"][aria-pressed="true"] {
+	border-color: var(--ctd-border-strong);
+	background-color: var(--ctd-control-bg-strong);
+	color: var(--ctd-ink);
+	box-shadow: var(--ctd-control-shadow);
+}
+
+:global(:root[data-theme="dark"])
+	.finished[data-tone="ink"][aria-pressed="true"] {
+	color: var(--ctd-ink);
+}
+
+.finished[data-tone="ink"][aria-pressed="true"]:hover {
+	background-color: var(--ctd-control-bg);
+}
+
 .mark {
 	flex: none;
 	overflow: visible;
@@ -86,6 +104,15 @@
 
 .finished[aria-pressed="true"] .markCheck {
 	stroke-dashoffset: 0;
+}
+
+.finished[data-tone="ink"][aria-pressed="true"] .markCircle {
+	fill: var(--ctd-ink);
+	stroke: var(--ctd-ink);
+}
+
+.finished[data-tone="ink"][data-just-finished] {
+	animation: none;
 }
 
 /* The moment of finishing: the circle pops, the check draws in, the button

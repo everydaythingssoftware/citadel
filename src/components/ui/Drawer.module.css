@@ -79,6 +79,19 @@
 	padding: 16px;
 }
 
+.content[data-bleed] .header {
+	position: absolute;
+	top: 0;
+	right: 0;
+	z-index: 1;
+	padding: 14px 16px;
+	border-bottom: 0;
+}
+
+.content[data-bleed] .body {
+	padding: 0;
+}
+
 @keyframes drawer-overlay-in {
 	from {
 		opacity: 0;
