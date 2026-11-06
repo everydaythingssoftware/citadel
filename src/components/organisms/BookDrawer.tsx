@@ -4,6 +4,7 @@ import DOMPurify from "dompurify";
 import {
 	type CSSProperties,
 	Fragment,
+	useEffect,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -11,9 +12,9 @@ import {
 import type { Identifier, LibraryBook } from "@/bindings";
 import { BookCover } from "@/components/atoms/BookCover";
 import { EditGlyph } from "@/components/icons/EditGlyph";
-import { GlyphOpenExternal } from "@/components/icons/RowGlyphs";
+import { TablerCopy } from "@/components/icons/TablerCopy";
 import { FileTiles } from "@/components/molecules/BookActions";
-import { Button } from "@/components/ui";
+import { Button, Tooltip } from "@/components/ui";
 import buttonStyles from "@/components/ui/Button.module.css";
 import { safeAsyncEventHandler } from "@/lib/async";
 import { bookFormatRows, remoteBookDownloads } from "@/lib/book-downloads";
@@ -23,7 +24,12 @@ import { useCoverPalette } from "@/lib/hooks/use-cover-palette";
 import { languageNameForCode } from "@/lib/languages";
 import { usePlatform } from "@/lib/platform/context";
 import { formatSeriesIndex } from "@/lib/series";
-import { useLibraryStore, useSeriesList } from "@/stores/library/store";
+import {
+	useLibraryActions,
+	useLibraryStore,
+	useSeriesList,
+	useTags,
+} from "@/stores/library/store";
 import styles from "./BookDrawer.module.css";
 
 interface BookDrawerProps {
@@ -33,7 +39,7 @@ interface BookDrawerProps {
 
 /**
  * The book at a glance: cover and title over a wash of the cover's own
- * colours, what you can do with it right under the title, then what it's
+ * colours with what you can do right under the title, then what it's
  * about, its tags, files and details.
  */
 export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
@@ -61,9 +67,9 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 				<div className={styles.cover}>
 					<BookCover book={book} disableFade fluid />
 					{book.is_read && (
-						<span className={styles.coverCheck} title="Finished">
+						<span className={styles.seal} role="img" aria-label="Finished">
 							<svg viewBox="0 0 16 16" aria-hidden="true">
-								<path d="M4.5 8.25 7 10.6 11.5 5.8" />
+								<path d="M4.25 8.4 6.9 10.9 11.75 5.6" />
 							</svg>
 						</span>
 					)}
@@ -71,23 +77,13 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 				<div className={styles.heading}>
 					<h2 className={styles.title}>{book.title}</h2>
 					<Byline book={book} onClose={onClose} />
-					<BookActionsRow book={book} />
+					<Actions book={book} className={styles.actions} />
 				</div>
 			</header>
+			<Actions book={book} className={styles.phoneActions} />
 			<div className={styles.body}>
 				<Description html={book.description} />
-				{book.tag_list.length > 0 && (
-					<section className={styles.section}>
-						<h3 className={styles.sectionTitle}>Tags</h3>
-						<ul className={styles.tags}>
-							{book.tag_list.map((tag) => (
-								<li key={tag} className={styles.tag}>
-									{tag}
-								</li>
-							))}
-						</ul>
-					</section>
-				)}
+				<Tags book={book} onClose={onClose} />
 				<Files book={book} />
 				<Details book={book} />
 			</div>
@@ -109,7 +105,7 @@ const Byline = ({ book, onClose }: BookDrawerProps) => {
 			? seriesList.find((series) => series.name === book.series)?.id
 			: undefined;
 	return (
-		<div className={styles.byline}>
+		<>
 			{book.author_list.length > 0 && (
 				<p className={styles.authors}>
 					by{" "}
@@ -147,29 +143,41 @@ const Byline = ({ book, onClose }: BookDrawerProps) => {
 					)}
 				</p>
 			)}
-		</div>
+		</>
 	);
 };
 
-const BookActionsRow = ({ book }: { book: LibraryBook }) => {
+/** Read (desktop) or Download (web), and Edit. Finished lives in the editor. */
+const Actions = ({
+	book,
+	className,
+}: {
+	book: LibraryBook;
+	className?: string;
+}) => {
 	const platform = usePlatform();
 	const navigate = useNavigate();
 	const canEdit = useLibraryStore((state) => state.library?.readOnly === false);
 	const localFile = book.file_list.find((file) => "Local" in file);
-	const canRead =
-		platform.capabilities.canOpenLocalPaths && localFile !== undefined;
+	const localPath =
+		platform.capabilities.canOpenLocalPaths &&
+		localFile !== undefined &&
+		"Local" in localFile
+			? localFile.Local.path
+			: null;
 	const download = remoteBookDownloads(book.file_list)[0];
 
 	return (
-		<div className={styles.actions}>
-			{canRead && localFile && "Local" in localFile ? (
+		<div className={className}>
+			{localPath !== null ? (
 				<Button
 					variant="primary"
 					data-drawer-initial-focus=""
 					onClick={safeAsyncEventHandler(() =>
-						platform.fileOpener.openPath(localFile.Local.path),
+						platform.fileOpener.openPath(localPath),
 					)}
 				>
+					<BookGlyph />
 					Read
 				</Button>
 			) : (
@@ -205,17 +213,43 @@ const BookActionsRow = ({ book }: { book: LibraryBook }) => {
 	);
 };
 
+const BookGlyph = () => (
+	<svg
+		viewBox="0 0 16 16"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.3"
+		strokeLinejoin="round"
+		aria-hidden="true"
+	>
+		<path d="M8 4.2C6.6 3.2 4.7 2.9 2.5 3.2v9c2.2-.3 4.1 0 5.5 1 1.4-1 3.3-1.3 5.5-1v-9c-2.2-.3-4.1 0-5.5 1Zm0 0v9" />
+	</svg>
+);
+
+const Chevron = ({ up }: { up: boolean }) => (
+	<svg
+		viewBox="0 0 10 10"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.5"
+		strokeLinecap="round"
+		strokeLinejoin="round"
+		aria-hidden="true"
+		style={up ? { transform: "rotate(180deg)" } : undefined}
+	>
+		<path d="M2.5 3.75 5 6.25l2.5-2.5" />
+	</svg>
+);
+
 const Description = ({ html }: { html: string | null }) => {
 	const textRef = useRef<HTMLDivElement>(null);
 	const [expanded, setExpanded] = useState(false);
 	const [overflows, setOverflows] = useState(false);
 	useLayoutEffect(() => {
 		const element = textRef.current;
-		if (!element) return;
-		const measure = () => {
-			if (!expanded)
-				setOverflows(element.scrollHeight > element.clientHeight + 1);
-		};
+		if (!element || expanded) return;
+		const measure = () =>
+			setOverflows(element.scrollHeight > element.clientHeight + 1);
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(element);
@@ -223,11 +257,10 @@ const Description = ({ html }: { html: string | null }) => {
 	}, [expanded]);
 	if (html === null || html.trim().length === 0) return null;
 	return (
-		<section className={styles.section}>
-			<h3 className={styles.sectionTitle}>Description</h3>
+		<section className={styles.description}>
 			<div
 				ref={textRef}
-				className={clsx("description-html", styles.description)}
+				className={clsx("description-html", styles.descriptionText)}
 				data-clamped={(!expanded && overflows) || undefined}
 				data-expanded={expanded || undefined}
 				// biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized with DOMPurify
@@ -241,8 +274,44 @@ const Description = ({ html }: { html: string | null }) => {
 					onClick={() => setExpanded(!expanded)}
 				>
 					{expanded ? "Less" : "More"}
+					<Chevron up={expanded} />
 				</Button>
 			)}
+		</section>
+	);
+};
+
+const Tags = ({ book, onClose }: BookDrawerProps) => {
+	const tags = useTags();
+	const actions = useLibraryActions();
+	useEffect(() => {
+		if (tags === null && book.tag_list.length > 0) void actions.loadTags();
+	}, [tags, book.tag_list.length, actions]);
+	if (book.tag_list.length === 0) return null;
+	return (
+		<section className={styles.section}>
+			<h3 className={styles.sectionTitle}>Tags</h3>
+			<ul className={styles.tags}>
+				{book.tag_list.map((name) => {
+					const id = tags?.find((tag) => tag.name === name)?.id;
+					return (
+						<li key={name}>
+							{id !== undefined ? (
+								<Link
+									to="/"
+									search={{ tag_id: id }}
+									onClick={onClose}
+									className={styles.tag}
+								>
+									{name}
+								</Link>
+							) : (
+								<span className={styles.tag}>{name}</span>
+							)}
+						</li>
+					);
+				})}
+			</ul>
 		</section>
 	);
 };
@@ -258,6 +327,8 @@ const Files = ({ book }: { book: LibraryBook }) => {
 	);
 };
 
+const amazon = (value: string) => `https://www.amazon.com/dp/${value}`;
+
 const IDENTIFIERS: Record<
 	string,
 	{ name: string; url?: (value: string) => string }
@@ -267,18 +338,9 @@ const IDENTIFIERS: Record<
 		name: "Goodreads",
 		url: (value) => `https://www.goodreads.com/book/show/${value}`,
 	},
-	amazon: {
-		name: "Amazon",
-		url: (value) => `https://www.amazon.com/dp/${value}`,
-	},
-	asin: {
-		name: "Amazon",
-		url: (value) => `https://www.amazon.com/dp/${value}`,
-	},
-	"mobi-asin": {
-		name: "Amazon",
-		url: (value) => `https://www.amazon.com/dp/${value}`,
-	},
+	amazon: { name: "Amazon", url: amazon },
+	asin: { name: "Amazon", url: amazon },
+	"mobi-asin": { name: "Amazon", url: amazon },
 	google: {
 		name: "Google Books",
 		url: (value) => `https://books.google.com/books?id=${value}`,
@@ -287,22 +349,54 @@ const IDENTIFIERS: Record<
 	url: { name: "Link", url: (value) => value },
 };
 
+/** ISBN first, then the sites in the order above, then anything else. */
+const IDENTIFIER_ORDER = Object.keys(IDENTIFIERS);
+const identifierRank = (identifier: Identifier): number => {
+	const rank = IDENTIFIER_ORDER.indexOf(identifier.label.toLowerCase());
+	return rank === -1 ? IDENTIFIER_ORDER.length : rank;
+};
+
+const formatAdded = (iso: string): string | null => {
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return null;
+	return date.toLocaleDateString(undefined, {
+		day: "numeric",
+		month: "short",
+		year: "numeric",
+	});
+};
+
 const Details = ({ book }: { book: LibraryBook }) => {
+	const added = formatAdded(book.added_at);
 	const languages = book.language_list.map(languageNameForCode).join(", ");
-	if (languages.length === 0 && book.identifier_list.length === 0) return null;
+	if (
+		added === null &&
+		languages.length === 0 &&
+		book.identifier_list.length === 0
+	)
+		return null;
 	return (
 		<section className={styles.section}>
 			<h3 className={styles.sectionTitle}>Details</h3>
 			<dl className={styles.details}>
+				{added !== null && (
+					<>
+						<dt>Added</dt>
+						<dd>{added}</dd>
+					</>
+				)}
 				{languages.length > 0 && (
 					<>
 						<dt>Language</dt>
 						<dd>{languages}</dd>
 					</>
 				)}
-				{book.identifier_list.map((identifier) => (
-					<IdentifierRow key={identifier.label} identifier={identifier} />
-				))}
+				{book.identifier_list
+					.slice()
+					.sort((a, b) => identifierRank(a) - identifierRank(b))
+					.map((identifier) => (
+						<IdentifierRow key={identifier.label} identifier={identifier} />
+					))}
 			</dl>
 		</section>
 	);
@@ -310,35 +404,58 @@ const Details = ({ book }: { book: LibraryBook }) => {
 
 const IdentifierRow = ({ identifier }: { identifier: Identifier }) => {
 	const platform = usePlatform();
+	const [copied, setCopied] = useState(false);
+	useEffect(() => {
+		if (!copied) return;
+		const timer = setTimeout(() => setCopied(false), 1500);
+		return () => clearTimeout(timer);
+	}, [copied]);
 	const known = IDENTIFIERS[identifier.label.toLowerCase()];
+	const name = known?.name ?? identifier.label.toUpperCase();
 	const url = known?.url?.(identifier.value);
 	return (
 		<>
-			<dt>{known?.name ?? identifier.label.toUpperCase()}</dt>
-			<dd className={styles.identifier}>
+			<dt>{name}</dt>
+			<dd>
 				{url ? (
 					<a
-						className={styles.link}
+						className={styles.external}
 						href={url}
 						target="_blank"
 						rel="noreferrer"
+						title={`Open on ${name}`}
 					>
-						{identifier.value}
-						<GlyphOpenExternal className={styles.openGlyph} />
+						<span className={styles.value}>{identifier.value}</span>
+						<svg
+							className={styles.arrow}
+							viewBox="0 0 12 12"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.3"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M3.5 8.5 8.5 3.5M4.5 3.5h4v4" />
+						</svg>
 					</a>
 				) : (
 					<span className={styles.value}>{identifier.value}</span>
 				)}
 				{!url && platform.capabilities.canCopyToClipboard && (
-					<Button
-						variant="subtle"
-						className={styles.copy}
-						onClick={safeAsyncEventHandler(() =>
-							platform.clipboard.writeText(identifier.value),
-						)}
-					>
-						Copy
-					</Button>
+					<Tooltip label={copied ? "Copied" : `Copy ${name}`} openDelay={200}>
+						<button
+							type="button"
+							className={styles.copy}
+							aria-label={`Copy ${name}`}
+							onClick={safeAsyncEventHandler(async () => {
+								await platform.clipboard.writeText(identifier.value);
+								setCopied(true);
+							})}
+						>
+							<TablerCopy />
+						</button>
+					</Tooltip>
 				)}
 			</dd>
 		</>

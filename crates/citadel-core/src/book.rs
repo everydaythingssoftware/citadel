@@ -77,6 +77,10 @@ pub struct LibraryBook {
     /// Canonical Calibre language codes (ISO 639-2/3, e.g. `eng`, `fra`),
     /// ordered. Empty when the book has no language metadata.
     pub language_list: Vec<String>,
+
+    /// When the book was added to the library (Calibre's `timestamp`), as an
+    /// RFC 3339 UTC date-time.
+    pub added_at: String,
 }
 
 impl LibraryBook {
@@ -111,6 +115,10 @@ impl LibraryBook {
             series: book.series.clone(),
             series_index: book.series_index,
             language_list: book.language_codes.clone(),
+            added_at: book
+                .created_at
+                .and_utc()
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             cover_image: book_cover_url(book, library_path, url_builder, cache_bust_cover),
             file_list: book
                 .files

@@ -1,3 +1,4 @@
+/* Values follow the round 7 "BH2" drawer mockup. */
 .drawer {
 	--wash-1: var(--wash-1-light, transparent);
 	--wash-2: var(--wash-2-light, transparent);
@@ -18,8 +19,8 @@
 	display: grid;
 	grid-template-columns: 120px minmax(0, 1fr);
 	align-items: end;
-	gap: 20px;
-	padding: 52px 24px 28px;
+	gap: 18px;
+	padding: 48px 24px 24px;
 }
 
 /* The colour spans the drawer's full width and eases out by the end of the
@@ -46,7 +47,6 @@
 
 .hero[data-backdrop="colour"] .backdrop {
 	background: linear-gradient(100deg, var(--wash-1) 20%, var(--wash-2) 100%);
-	transition: opacity 240ms ease-out;
 }
 
 /* Trial: the cover itself, blurred well past recognition. */
@@ -66,99 +66,85 @@
 
 .cover {
 	position: relative;
-	align-self: end;
 	min-width: 0;
 }
 
-.cover > * {
-	box-shadow: var(--ctd-cover-shadow);
-}
-
-/* Finished, shown once: the green lives on the cover, not the button. */
-.coverCheck {
+/* Finished, shown once: the green lives on the cover. */
+.seal {
 	position: absolute;
-	right: -8px;
-	bottom: -8px;
+	right: -9px;
+	bottom: -9px;
+	z-index: 2;
 	display: grid;
 	place-items: center;
-	width: 24px;
-	height: 24px;
-	border: 2px solid var(--ctd-surface);
+	width: 28px;
+	height: 28px;
 	border-radius: 50%;
 	background-color: var(--ctd-success);
-	animation: check-in 260ms cubic-bezier(0.3, 1.6, 0.5, 1);
+	box-shadow:
+		0 0 0 3px var(--ctd-surface),
+		0 2px 6px oklch(0% 0 0 / 0.3);
+	color: white;
 }
 
-.coverCheck svg {
-	width: 14px;
-	height: 14px;
+:global(:root[data-theme="dark"]) .seal {
+	background-color: oklch(58% 0.13 150);
+	color: oklch(16% 0.02 150);
+}
+
+.seal svg {
+	width: 15px;
+	height: 15px;
 	fill: none;
-	stroke: white;
+	stroke: currentColor;
 	stroke-width: 2;
 	stroke-linecap: round;
 	stroke-linejoin: round;
 }
 
-@keyframes check-in {
-	from {
-		transform: scale(0.5);
-		opacity: 0;
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.coverCheck {
-		animation: none;
-	}
-}
-
 .heading {
-	display: flex;
-	flex-direction: column;
 	min-width: 0;
 }
 
 .title {
 	display: -webkit-box;
-	margin: 0 0 6px;
+	margin: 0;
 	overflow: hidden;
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;
+	line-clamp: 2;
 	font-family: var(--ctd-font-serif);
-	font-size: 24px;
+	font-size: 28px;
 	font-weight: 600;
-	line-height: 1.2;
+	line-height: 1.17;
+	letter-spacing: -0.012em;
 	color: var(--ctd-ink);
-	text-wrap: balance;
+	text-wrap: pretty;
 	overflow-wrap: anywhere;
 }
 
-.byline {
-	display: grid;
-	gap: 2px;
-	margin-bottom: 14px;
-	font-size: 13px;
-	line-height: 1.4;
-}
-
-.authors,
-.series {
-	margin: 0;
-}
-
 .authors {
+	margin: 8px 0 0;
+	font-size: 13.5px;
 	color: var(--ctd-ink);
 }
 
 .series {
+	margin: 2px 0 0;
+	overflow: hidden;
+	font-size: 12.5px;
 	color: var(--ctd-ink-soft);
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.link {
+.link:any-link {
 	color: inherit;
+	white-space: nowrap;
 	text-decoration: underline;
-	text-decoration-color: oklch(from currentColor l c h / 0.35);
-	text-underline-offset: 2px;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 2.5px;
+	text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
 }
 
 .link:hover {
@@ -167,8 +153,17 @@
 
 .actions {
 	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
+	gap: 6px;
+	margin-top: 14px;
+}
+
+.actions > * {
+	padding-inline: 10px;
+}
+
+/* On phones the actions leave the hero for a row of their own. */
+.phoneActions {
+	display: none;
 }
 
 .download:any-link {
@@ -180,50 +175,57 @@
 .body {
 	display: grid;
 	gap: 24px;
-	padding: 4px 24px 32px;
+	padding: 2px 24px 28px;
 }
 
 .section {
-	display: grid;
-	gap: 8px;
 	min-width: 0;
 }
 
 .sectionTitle {
-	margin: 0;
+	margin: 0 0 10px;
 	font-size: 12px;
 	font-weight: 600;
 	color: var(--ctd-ink-soft);
 }
 
 .description {
-	font-size: 13px;
-	line-height: 20px;
+	display: grid;
+	justify-items: start;
+	min-width: 0;
+}
+
+.descriptionText {
+	font-size: 13.5px;
+	line-height: 1.6;
 	color: var(--ctd-ink);
 }
 
-.description :global(p) {
-	margin: 0 0 20px;
+.descriptionText :global(p) {
+	margin: 0 0 0.8em;
 }
 
-.description :global(p:last-child) {
+.descriptionText :global(p:last-child) {
 	margin-bottom: 0;
 }
 
-.description[data-clamped] {
-	max-height: 100px;
+/* Four lines, the last fading out. */
+.descriptionText:not([data-expanded]) {
+	max-height: calc(1.6em * 4);
 	overflow: hidden;
-	mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
 }
 
-.description:not([data-clamped]):not([data-expanded]) {
-	max-height: 100px;
-	overflow: hidden;
+.descriptionText[data-clamped] {
+	mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), transparent);
 }
 
 .more {
-	justify-self: start;
-	margin-left: -8px;
+	margin: 2px 0 0 -12px;
+}
+
+.more svg {
+	width: 10px;
+	height: 10px;
 }
 
 .tags {
@@ -236,20 +238,34 @@
 }
 
 .tag {
-	padding: 3px 10px;
-	border-radius: 999px;
-	background-color: var(--ctd-surface-muted);
+	display: inline-flex;
+	align-items: center;
+	height: 26px;
+	padding: 0 11px;
+	border: 1px solid var(--ctd-border);
+	border-radius: 13px;
 	font-size: 12px;
 	color: var(--ctd-ink);
+	white-space: nowrap;
+}
+
+.tag:any-link {
+	color: var(--ctd-ink);
+	text-decoration: none;
+}
+
+.tag:any-link:hover {
+	border-color: var(--ctd-border-strong);
+	background-color: var(--ctd-nav-hover-bg);
 }
 
 .details {
 	display: grid;
-	grid-template-columns: max-content minmax(0, 1fr);
+	grid-template-columns: 84px minmax(0, 1fr);
 	align-items: center;
-	gap: 6px 24px;
+	gap: 7px 12px;
 	margin: 0;
-	font-size: 13px;
+	font-size: 12.5px;
 }
 
 .details dt {
@@ -257,22 +273,12 @@
 }
 
 .details dd {
+	display: flex;
+	align-items: center;
+	gap: 4px;
 	min-width: 0;
 	margin: 0;
 	color: var(--ctd-ink);
-}
-
-.identifier {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.identifier .link {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	font-variant-numeric: tabular-nums;
 }
 
 .value {
@@ -280,29 +286,131 @@
 	overflow-wrap: anywhere;
 }
 
-.openGlyph {
+/* The whole value is the link; the arrow says it leaves Citadel. */
+.external:any-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: -2px -4px;
+	padding: 2px 4px;
+	border-radius: 4px;
+	color: var(--ctd-ink);
+	text-decoration: none;
+}
+
+.external:hover {
+	background-color: var(--ctd-nav-hover-bg);
+}
+
+.arrow {
+	flex: none;
 	width: 12px;
 	height: 12px;
 	color: var(--ctd-ink-soft);
 }
 
 .copy {
-	margin-block: -4px;
+	display: inline-grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--ctd-ink-soft);
 }
 
-/* Phones: a smaller cover keeps the title column readable. */
+.copy:hover {
+	background-color: var(--ctd-nav-hover-bg);
+	color: var(--ctd-ink);
+}
+
+.copy:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.copy svg {
+	width: 12px;
+	height: 12px;
+}
+
+/* ---- Phones ---- */
 @media (max-width: 36em) {
 	.hero {
-		grid-template-columns: 96px minmax(0, 1fr);
 		gap: 16px;
-		padding: 52px 16px 24px;
+		padding: 52px 20px 20px;
 	}
 
 	.title {
-		font-size: 21px;
+		font-size: 25px;
+	}
+
+	.authors {
+		font-size: 14.5px;
+	}
+
+	.series {
+		font-size: 13.5px;
+		white-space: normal;
+	}
+
+	.actions {
+		display: none;
+	}
+
+	.phoneActions {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+		padding: 0 20px;
+	}
+
+	.phoneActions > :first-child:not(:last-child) {
+		grid-column: 1 / -1;
 	}
 
 	.body {
-		padding: 4px 16px 32px;
+		gap: 26px;
+		padding: 24px 20px 28px;
+	}
+
+	.sectionTitle {
+		font-size: 13px;
+	}
+
+	.descriptionText {
+		font-size: 15px;
+		line-height: 1.55;
+	}
+
+	.descriptionText:not([data-expanded]) {
+		max-height: calc(1.55em * 4);
+	}
+
+	.descriptionText[data-clamped] {
+		mask-image: linear-gradient(
+			to bottom,
+			#000 calc(100% - 1.55em),
+			transparent
+		);
+	}
+
+	.more {
+		margin-left: -14px;
+	}
+
+	.tag {
+		height: 30px;
+		padding: 0 13px;
+		border-radius: 15px;
+		font-size: 13.5px;
+	}
+
+	.details {
+		grid-template-columns: 92px minmax(0, 1fr);
+		gap: 8px 12px;
+		font-size: 14px;
 	}
 }
