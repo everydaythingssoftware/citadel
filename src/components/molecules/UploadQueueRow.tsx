@@ -6,7 +6,7 @@ import {
 	ChevronRightGlyph,
 	XmarkGlyph,
 } from "@/components/icons/UploadGlyphs";
-import { Button, IconButton, Spinner } from "@/components/ui";
+import { Button, IconButton } from "@/components/ui";
 import { type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import styles from "./UploadQueueRow.module.css";
 
@@ -98,7 +98,13 @@ export const UploadQueueRow = ({
 				)}
 				{(item.phase === UploadPhase.reading ||
 					item.phase === UploadPhase.adding) && (
-					<Spinner size={18} aria-label={subtitle(item)} />
+					<span className={styles.ringSlot}>
+						<UploadProgressRing
+							progress={0}
+							indeterminate
+							label={subtitle(item)}
+						/>
+					</span>
 				)}
 				{item.phase === UploadPhase.ready && (
 					// On phones the whole row taps through to review (the button

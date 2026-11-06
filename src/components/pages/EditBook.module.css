@@ -229,6 +229,22 @@
 	min-width: 0;
 }
 
+/* Phones: the cover beside Finished and Formats, not above empty space. */
+@media (max-width: 640px) {
+	.sideColumn {
+		display: grid;
+		grid-template-columns: 120px minmax(0, 1fr);
+		grid-template-rows: auto 1fr;
+		column-gap: 16px;
+		row-gap: 12px;
+		align-items: start;
+	}
+
+	.sideColumn > :first-child {
+		grid-row: 1 / span 2;
+	}
+}
+
 .sideSection {
 	border-top: 1px solid var(--ctd-border);
 	padding-top: 12px;

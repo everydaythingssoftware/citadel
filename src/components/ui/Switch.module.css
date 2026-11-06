@@ -73,6 +73,13 @@
 	transform: translateX(17px);
 }
 
+/* On the grey dark-mode track the white knob needs a firmer edge. */
+:global(:root[data-theme="dark"]) .thumb {
+	box-shadow:
+		0 0 0 0.5px oklch(0% 0 0 / 0.35),
+		0 1px 3px oklch(0% 0 0 / 0.5);
+}
+
 /* Touch screens: a switch as tall as the 32px small buttons beside it. */
 @media (pointer: coarse) {
 	.track {

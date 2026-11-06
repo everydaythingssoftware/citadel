@@ -191,7 +191,12 @@
 	}
 
 	.grid {
-		grid-template-columns: minmax(0, 1fr) 48px 72px;
+		grid-template-columns: minmax(0, 1fr) 48px 32px;
+	}
+
+	/* No reserved trash slot: the pencil sits at the row's end. */
+	.actionSpacer {
+		display: none;
 	}
 }
 

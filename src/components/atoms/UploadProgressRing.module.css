@@ -43,8 +43,22 @@
 	fill: currentColor;
 }
 
+.spinning svg {
+	animation: ring-turn 900ms linear infinite;
+}
+
+@keyframes ring-turn {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.arc {
 		transition: none;
+	}
+
+	.spinning svg {
+		animation: none;
 	}
 }

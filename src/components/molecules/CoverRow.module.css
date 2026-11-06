@@ -3,6 +3,14 @@
 	position: relative;
 	height: calc(var(--cover-width) * 1.5 + 20px);
 	overflow: hidden;
+	/* Neighbours fade into the edges rather than being cut off by them. */
+	mask-image: linear-gradient(
+		to right,
+		transparent,
+		black 32px,
+		black calc(100% - 32px),
+		transparent
+	);
 	/* Vertical swipes still scroll the review; sideways ones move the covers. */
 	touch-action: pan-y;
 	user-select: none;
