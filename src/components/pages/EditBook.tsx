@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useLibraryActions, useLibraryStore } from "@/stores/library/store";
 import { Link as RouterLink } from "@tanstack/react-router";
 import DOMPurify from "dompurify";
@@ -52,6 +53,7 @@ import { TrashGlyph } from "../icons/TrashGlyph";
 import { BookActions } from "../molecules/BookActions";
 import { MetadataSearchModal } from "../molecules/MetadataSearchModal";
 import { RichTextEditor } from "../molecules/RichTextEditor";
+import buttonStyles from "@/components/ui/Button.module.css";
 import styles from "./EditBook.module.css";
 
 /**
@@ -756,15 +758,18 @@ const EditBookForm = ({
 			<div className={styles.pinnedTop}>
 				<header className={styles.pageHeader}>
 					<div className={styles.headerLead}>
-						<Tooltip label="Back to library">
-							<RouterLink
-								to="/"
-								aria-label="Back to library"
-								className={styles.backLink}
-							>
-								<BackChevron />
-							</RouterLink>
-						</Tooltip>
+						{/* Says where it goes, at the height of every other button. */}
+						<RouterLink
+							to="/"
+							className={clsx(
+								buttonStyles.button,
+								buttonStyles.subtle,
+								styles.backLink,
+							)}
+						>
+							<BackChevron />
+							All Books
+						</RouterLink>
 						<h3 ref={titleRef} tabIndex={-1} className={styles.pageTitle}>
 							{book.title}
 						</h3>
