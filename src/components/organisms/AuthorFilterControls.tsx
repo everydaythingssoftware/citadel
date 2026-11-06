@@ -1,4 +1,4 @@
-import { SearchField, Select, Switch } from "@/components/ui";
+import { Checkbox, SearchField, Select } from "@/components/ui";
 import {
 	type AuthorSortOrderValue,
 	sortOrderOptions,
@@ -24,7 +24,6 @@ export const AuthorFilterControls = ({
 				display: "flex",
 				width: "100%",
 				minWidth: 100,
-				justifyContent: "space-between",
 				alignItems: "center",
 				flexWrap: "wrap",
 				gap: 12,
@@ -34,7 +33,7 @@ export const AuthorFilterControls = ({
 				placeholder="Search authors"
 				value={filters.searchTerm}
 				onChange={(event) => onSearchChange(event.currentTarget.value)}
-				style={{ minWidth: "28ch" }}
+				style={{ flex: "1 1 220px", maxWidth: 320 }}
 			/>
 
 			<Select
@@ -46,8 +45,8 @@ export const AuthorFilterControls = ({
 				onChange={(value) => onSortOrderChange(value as AuthorSortOrderValue)}
 			/>
 
-			<Switch
-				label="Without books"
+			<Checkbox
+				label="Without books only"
 				checked={filters.showOnlyAuthorsWithoutBooks}
 				onCheckedChange={onShowOnlyAuthorsWithoutBooksChange}
 			/>

@@ -39,12 +39,12 @@
 
 .track[data-state="checked"],
 .track[data-state="checked"]:hover:not(:disabled) {
-	background-color: var(--ctd-accent);
-	border-color: var(--ctd-accent-strong);
+	background-color: var(--ctd-switch-on-bg);
+	border-color: transparent;
 }
 
 .track[data-state="checked"]:active:not(:disabled) {
-	background-color: var(--ctd-accent-strong);
+	background-color: oklch(from var(--ctd-switch-on-bg) calc(l - 0.05) c h);
 }
 
 .track:focus-visible {
@@ -71,8 +71,4 @@
 
 .thumb[data-state="checked"] {
 	transform: translateX(17px);
-	/* The monochrome accent is near-white in dark mode, so the knob takes
-	 * the on-accent ink there (white knob on white track was invisible);
-	 * in light mode accent-text is white, the native knob color. */
-	background-color: var(--ctd-accent-text);
 }

@@ -129,7 +129,11 @@
 	   pushed-in look. The defaults are visual no-ops. */
 	--ctd-control-active-translate: none;
 	--ctd-control-active-shadow: var(--ctd-control-shadow);
-	--ctd-focus-shadow: 0 0 0 3px var(--ctd-focus-ring);
+	--ctd-focus-shadow: 0 0 0 2px var(--ctd-focus-ring);
+	/* One height for every regular control: fields, pop-ups and buttons line
+	   up on any row they share. */
+	--ctd-control-height: 28px;
+	--ctd-switch-on-bg: var(--ctd-accent);
 	--ctd-popover-shadow: var(--ctd-shadow-lift);
 	--ctd-dialog-shadow: var(--ctd-shadow-lift);
 
@@ -243,6 +247,9 @@
 		0 2px 6px oklch(0% 0 0 / 0.45), 0 16px 32px oklch(0% 0 0 / 0.5);
 	--ctd-content-bg: var(--pal-base);
 	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.4);
+	/* A near-white track would need a dark knob; a mid-grey one keeps the
+	   native white knob and still reads as on. */
+	--ctd-switch-on-bg: oklch(62% 0.004 270);
 	--ctd-scrollbar-thumb: oklch(from var(--pal-text) l c h / 0.35);
 	--ctd-control-shadow: 0 0.5px 1.5px oklch(0% 0 0 / 0.4);
 	--ctd-field-inner-shadow: inset 0 0.5px 1px oklch(0% 0 0 / 0.2);
@@ -285,6 +292,10 @@ body {
 
 /* iOS zooms into any field with text under 16px and doesn't zoom back out. */
 @media (pointer: coarse) {
+	:root {
+		--ctd-control-height: 36px;
+	}
+
 	/* :root lifts this above single-class component rules. */
 	:root :is(input, textarea, select) {
 		font-size: max(16px, 1em);
@@ -382,7 +393,7 @@ textarea {
 /* Replace the UA focus rectangle with the shared halo (cf. .ctd-author-row-link). */
 .ctd-nav-link:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 3px var(--ctd-focus-ring);
+	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
 }
 
 /* Sidebar settings (gear) button: same hover token as the nav rows. */
@@ -416,5 +427,5 @@ textarea {
 
 .ctd-author-row-link:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 3px var(--ctd-focus-ring);
+	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
 }

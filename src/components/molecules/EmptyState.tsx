@@ -18,8 +18,8 @@ export interface EmptyStateProps {
 }
 
 /**
- * Quiet, illustration-free placeholder for empty grids/lists and zero-result
- * filters (DESIGN.md: neutral chrome, no empty-state art). Fills the height of
+ * Quiet placeholder for empty grids/lists and zero-result
+ * filters, marked by a faint line-drawn shelf (DESIGN.md: neutral chrome). Fills the height of
  * its scroll container and centers a heading, optional description, and an
  * action row.
  */
@@ -31,6 +31,20 @@ export const EmptyState = ({
 	return (
 		<div className={styles.root}>
 			<div className={styles.inner}>
+				<svg
+					className={styles.mark}
+					width="36"
+					height="36"
+					viewBox="0 0 36 36"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="1.5"
+					strokeLinejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M6 7.5h6.5v21H6zM14.5 7.5H21v21h-6.5z" />
+					<path d="m23.2 9.4 6.1-1.6 5.2 19.6-6 1.6z" />
+				</svg>
 				<h2 className={styles.title}>{title}</h2>
 				{description !== undefined && (
 					<p className={styles.description}>{description}</p>

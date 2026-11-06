@@ -19,7 +19,7 @@
 	 * collapses to the browser's ~20ch default width. */
 	width: 100%;
 	box-sizing: border-box;
-	height: 24px;
+	height: var(--ctd-control-height);
 	padding: 0 8px;
 	font-family: inherit;
 	font-size: 13px;

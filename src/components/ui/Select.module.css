@@ -3,7 +3,7 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
-	height: 24px;
+	height: var(--ctd-control-height);
 	padding: 0 4px 0 10px;
 	font-size: 13px;
 	font-family: inherit;

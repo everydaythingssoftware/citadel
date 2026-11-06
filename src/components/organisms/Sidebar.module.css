@@ -47,7 +47,7 @@
 	border-radius: var(--ctd-radius-control);
 	font-size: 14px;
 	line-height: 1.2;
-	color: var(--ctd-ink-soft);
+	color: var(--ctd-ink);
 	text-decoration: none;
 	transition:
 		background-color 140ms ease,

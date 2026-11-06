@@ -49,6 +49,12 @@ import { deepLinkForIdentifier } from "@/lib/metadata-providers/registry";
 import { formatSeriesIndex } from "@/lib/series";
 import { remoteBookDownloads } from "@/lib/book-downloads";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
+import {
+	GlyphDownload,
+	GlyphLookUp,
+	GlyphOpenExternal,
+	GlyphRemove,
+} from "../icons/RowGlyphs";
 import { BookCover } from "../atoms/BookCover";
 import { MetadataSearchModal } from "../molecules/MetadataSearchModal";
 import { RichTextEditor } from "../molecules/RichTextEditor";
@@ -254,7 +260,8 @@ const Formats = ({
 				{remoteBookDownloads(book.file_list).map((file) => (
 					<li key={file.url} className={styles.formatItem}>
 						<a className={styles.formatLink} href={file.url} download>
-							{file.label} ↓
+							<span>{file.label}</span>
+							<GlyphDownload className={styles.formatGlyph} />
 						</a>
 					</li>
 				))}
@@ -998,7 +1005,11 @@ const EditBookForm = ({
 														disabled={meta.isFetching}
 														onClick={() => void meta.fetchFromIsbn()}
 													>
-														{meta.isFetching ? <Spinner size={12} /> : "↓"}
+														{meta.isFetching ? (
+															<Spinner size={12} />
+														) : (
+															<GlyphLookUp />
+														)}
 													</IconButton>
 												</Tooltip>
 											)}
@@ -1010,14 +1021,13 @@ const EditBookForm = ({
 														void meta.openIdentifierLink(label, value)
 													}
 												>
-													↗
+													<GlyphOpenExternal />
 												</IconButton>
 											</Tooltip>
 										)}
 										<Tooltip label="Remove identifier">
 											<IconButton
 												aria-label="Remove identifier"
-												className={styles.dangerIcon}
 												onClick={() => {
 													onDeleteIdentifier(book.id, id)
 														.then(clearIdentifierFailure)
@@ -1026,20 +1036,20 @@ const EditBookForm = ({
 														);
 												}}
 											>
-												×
+												<GlyphRemove />
 											</IconButton>
 										</Tooltip>
 									</div>
 								</FormRow>
 							))}
 							<FormRow
-								label="New identifier"
+								label="Add identifier"
 								htmlFor="edit-book-new-identifier"
 							>
 								<div className={styles.inlineControls}>
 									<TextInput
 										id="edit-book-new-identifier"
-										placeholder="ISBN"
+										placeholder="Type, e.g. ISBN or Goodreads"
 										className={styles.flexGrow}
 										value={newBookIdentifierLabel}
 										onChange={(event) => {
@@ -1049,6 +1059,7 @@ const EditBookForm = ({
 									/>
 									<Button
 										variant="default"
+										disabled={newBookIdentifierLabel.trim() === ""}
 										onClick={() => {
 											onUpsertIdentifier(
 												book.id,

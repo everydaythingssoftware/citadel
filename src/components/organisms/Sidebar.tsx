@@ -135,7 +135,10 @@ const SidebarPure = ({
 		detachShelf,
 	]);
 
-	const isAllBooksActive = currentPathname === "/" && activeShelfId === null;
+	// A book opened from the grid still belongs to All Books.
+	const isAllBooksActive =
+		(currentPathname === "/" || currentPathname.startsWith("/books/")) &&
+		activeShelfId === null;
 
 	return (
 		<div className={styles.root}>

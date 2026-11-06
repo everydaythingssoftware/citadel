@@ -12,13 +12,20 @@
 	flex-direction: column;
 	align-items: center;
 	text-align: center;
-	gap: 8px;
-	max-width: 420px;
+	gap: 6px;
+	max-width: 360px;
+	/* Optical centre sits a little above the geometric one. */
+	margin-top: -6vh;
+}
+
+.mark {
+	margin-bottom: 4px;
+	color: oklch(from var(--ctd-ink-soft) l c h / 0.6);
 }
 
 .title {
 	margin: 0;
-	font-size: 16px;
+	font-size: 15px;
 	font-weight: 600;
 	line-height: 1.3;
 	color: var(--ctd-ink);
@@ -26,9 +33,10 @@
 
 .description {
 	margin: 0;
-	font-size: 14px;
+	font-size: 13px;
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
+	text-wrap: pretty;
 }
 
 .actions {

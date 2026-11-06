@@ -54,6 +54,13 @@
 	display: none;
 }
 
+/* With no sidebar beside it, the panel runs to the window edge: no left
+   hairline or corner to meet. */
+.shell:not([data-sidebar-open]) .content {
+	border-left: 0;
+	border-top-left-radius: 0;
+}
+
 .main {
 	display: grid;
 	grid-template-rows: 1fr;
@@ -118,6 +125,7 @@
 		width: 200px;
 		background-color: var(--ctd-surface);
 		border-right: 1px solid var(--ctd-border);
+		box-shadow: 8px 0 24px oklch(0% 0 0 / 0.14);
 		z-index: 105;
 		overflow-y: auto;
 	}
@@ -126,7 +134,7 @@
 	.scrim {
 		display: block;
 		position: fixed;
-		inset: 46px 0 0;
+		inset: 0;
 		z-index: 104;
 		padding: 0;
 		border: 0;

@@ -8,7 +8,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
-	min-height: 24px;
+	min-height: var(--ctd-control-height);
 	padding: 0 10px 0 27px;
 	/* Capsule clamps to half the 24px height, matching the old 12px. */
 	border-radius: var(--ctd-radius-capsule);

@@ -1,7 +1,6 @@
 /**
- * The AppKit pop-up button affordance: stacked up/down chevrons in a small
- * accent-filled rounded square, pinned to the control's right edge. Wired as
- * the global Select rightSection in src/lib/theme.ts.
+ * The AppKit pop-up button affordance: stacked up/down chevrons pinned to the
+ * control's right edge, drawn plain in secondary ink as current macOS does.
  */
 export const MacPopUpChevrons = () => (
 	<span
@@ -9,8 +8,6 @@ export const MacPopUpChevrons = () => (
 		style={{
 			width: 16,
 			height: 16,
-			borderRadius: 4,
-			background: "var(--ctd-accent)",
 			display: "inline-flex",
 			alignItems: "center",
 			justifyContent: "center",
@@ -19,15 +16,15 @@ export const MacPopUpChevrons = () => (
 	>
 		<svg
 			width="8"
-			height="10"
-			viewBox="0 0 8 10"
+			height="11"
+			viewBox="0 0 8 11"
 			fill="none"
 			aria-hidden="true"
 		>
 			<path
-				d="M1 3.5L4 1l3 2.5M1 6.5L4 9l3-2.5"
-				stroke="var(--ctd-accent-text)"
-				strokeWidth="1.3"
+				d="M1 4L4 1.25 7 4M1 7l3 2.75L7 7"
+				stroke="var(--ctd-ink-soft)"
+				strokeWidth="1.4"
 				strokeLinecap="round"
 				strokeLinejoin="round"
 			/>

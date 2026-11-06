@@ -65,7 +65,7 @@
 
 .searchResult:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--ctd-focus-ring);
+	box-shadow: 0 0 0 2px var(--ctd-focus-ring);
 }
 
 .searchResult + .searchResult {

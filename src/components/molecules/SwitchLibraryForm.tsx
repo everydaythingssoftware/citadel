@@ -17,9 +17,8 @@ export const SelectFirstLibrary = (props: SelectFirstLibraryProps) => {
 	return (
 		<div className={styles.stack}>
 			<p className={styles.text}>
-				Select the folder where your Calibre library is. This is a folder that
-				contains a metadata.db file as well as folders for each author in your
-				library.
+				Choose your Calibre library folder: the one with a metadata.db file and
+				a folder for each author.
 			</p>
 			<SwitchLibraryForm {...props} />
 		</div>
@@ -39,6 +38,13 @@ export const SwitchLibraryForm = ({
 }: AddLibraryPathFormProps) => {
 	const [libraryPath, setLibraryPath] = useState("");
 	const [error, setError] = useState<string | undefined>(undefined);
+	const choose = safeAsyncEventHandler(async () => {
+		const libPathOption = await addNewLibraryByPath();
+		if (!libPathOption.isSome) return;
+
+		setLibraryPath(libPathOption.value);
+		setError(undefined);
+	});
 
 	return (
 		<form
@@ -46,7 +52,7 @@ export const SwitchLibraryForm = ({
 			onSubmit={(event) => {
 				event.preventDefault();
 				if (libraryPath === "") {
-					setError("Library path is required");
+					setError("Choose a library folder first.");
 					return;
 				}
 				safeAsyncEventHandler(async () => {
@@ -55,29 +61,28 @@ export const SwitchLibraryForm = ({
 				})();
 			}}
 		>
-			<FormField
-				label="Library path"
-				description="This folder contains your metadata.db"
-				error={error}
-			>
+			<FormField label="Library folder" error={error}>
 				{/* The path comes from the native directory picker, never from
 				    typing, so the field is read-only and a pointer-down opens
-				    the picker (same interaction as before). */}
-				<TextInput
-					value={libraryPath}
-					readOnly
-					onPointerDown={safeAsyncEventHandler(async () => {
-						const libPathOption = await addNewLibraryByPath();
-						if (!libPathOption.isSome) return;
-
-						setLibraryPath(libPathOption.value);
-						setError(undefined);
-					})}
-				/>
+				    the picker, as Choose… does. */}
+				<div className={styles.pathRow}>
+					<TextInput
+						className={styles.pathInput}
+						value={libraryPath}
+						placeholder="No folder chosen"
+						readOnly
+						onPointerDown={choose}
+					/>
+					<Button variant="default" onClick={choose}>
+						Choose…
+					</Button>
+				</div>
 			</FormField>
-			<Button variant="primary" fullWidth type="submit" disabled={!libraryPath}>
-				Add library
-			</Button>
+			<div className={styles.actions}>
+				<Button variant="primary" type="submit" disabled={!libraryPath}>
+					Add Library
+				</Button>
+			</div>
 		</form>
 	);
 };

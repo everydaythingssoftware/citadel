@@ -31,12 +31,11 @@ export const SoftwareUpdateRow = ({
 		<div key={label} className={styles.enter}>
 			<div className={styles.row}>
 				<span className={styles.labels}>
-					<span className={styles.label} title={detail}>
-						{label}
-					</span>
+					<span className={styles.label}>{label}</span>
 					{description && (
 						<span className={styles.description}>{description}</span>
 					)}
+					{detail && <span className={styles.detail}>{detail}</span>}
 				</span>
 				<div className={styles.controls}>
 					{controls.map((control) => (
@@ -83,11 +82,18 @@ const Control = ({
 			);
 		case "progress":
 			return (
-				<ProgressBar
-					className={styles.progress}
-					value={control.value}
-					aria-label={`Downloading Citadel ${control.version}`}
-				/>
+				<>
+					<ProgressBar
+						className={styles.progress}
+						value={control.value}
+						aria-label={`Downloading Citadel ${control.version}`}
+					/>
+					{control.value !== null && (
+						<span className={styles.percent} aria-hidden="true">
+							{Math.round(control.value * 100)}%
+						</span>
+					)}
+				</>
 			);
 		case "restartNow":
 			return (

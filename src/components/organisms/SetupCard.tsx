@@ -165,7 +165,7 @@ export const ChooserView = ({
 	disabled,
 	onAdopt,
 	onStartNew,
-	lede = "Citadel keeps your books in a Calibre-compatible library.",
+	lede = "Citadel keeps your books in a Calibre‑compatible library.",
 	adoptDescription = "Open your existing library folder.",
 	createDescription = "Create an empty library at ~/Citadel.",
 	found,
@@ -395,6 +395,10 @@ export const MorphCard = ({
 	}, [ghost]);
 
 	// Focus choreography: on every morph (and first mount), focus the primary.
+	// The first view's focus is the page's own doing, not the user's: no ring
+	// until they reach for the keyboard. Later views follow how the user got
+	// there.
+	const firstFocus = useRef(true);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: prevKey re-runs the focus move for each incoming view
 	useLayoutEffect(() => {
 		const view = viewRef.current;
@@ -402,7 +406,11 @@ export const MorphCard = ({
 		const target = view.querySelector<HTMLElement>(
 			"[data-autofocus]:not(:disabled)",
 		);
-		(target ?? view).focus({ preventScroll: true });
+		(target ?? view).focus({
+			preventScroll: true,
+			focusVisible: firstFocus.current ? false : undefined,
+		});
+		firstFocus.current = false;
 	}, [prevKey]);
 
 	// If the primary was still disabled when the view mounted (e.g. create's
