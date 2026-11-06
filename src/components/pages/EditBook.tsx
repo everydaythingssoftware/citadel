@@ -47,14 +47,10 @@ import {
 } from "@/lib/languages";
 import { deepLinkForIdentifier } from "@/lib/metadata-providers/registry";
 import { formatSeriesIndex } from "@/lib/series";
-import { remoteBookDownloads } from "@/lib/book-downloads";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
-import {
-	GlyphDownload,
-	GlyphOpenExternal,
-	GlyphRemove,
-} from "../icons/RowGlyphs";
+import { GlyphOpenExternal, GlyphRemove } from "../icons/RowGlyphs";
 import { BookCover } from "../atoms/BookCover";
+import { BookFormatsPanel } from "../molecules/BookFormatsPanel";
 import { MetadataSearchModal } from "../molecules/MetadataSearchModal";
 import { RichTextEditor } from "../molecules/RichTextEditor";
 import styles from "./EditBook.module.css";
@@ -238,39 +234,8 @@ const BackChevron = () => (
 	</svg>
 );
 
-const Formats = ({
-	book,
-	style,
-	...props
-}: { book: LibraryBook } & HTMLProps<HTMLDivElement>) => {
-	return (
-		<div style={style} {...props}>
-			<div className={styles.sectionLabel}>Formats</div>
-			<ul className={styles.formatList}>
-				{book.file_list.flatMap((file) =>
-					"Local" in file
-						? [
-								<li key={file.Local.mime_type} className={styles.formatItem}>
-									{file.Local.mime_type}
-								</li>,
-							]
-						: [],
-				)}
-				{remoteBookDownloads(book.file_list).map((file) => (
-					<li key={file.url} className={styles.formatItem}>
-						<a className={styles.formatLink} href={file.url} download>
-							<span>{file.label}</span>
-							<GlyphDownload className={styles.formatGlyph} />
-						</a>
-					</li>
-				))}
-			</ul>
-		</div>
-	);
-};
-
 const Cover = ({ book }: { book: LibraryBook } & HTMLProps<HTMLDivElement>) => {
-	return <BookCover book={book} disableFade />;
+	return <BookCover book={book} disableFade fluid />;
 };
 
 interface EditBookFormValues {
@@ -854,20 +819,24 @@ const EditBookForm = ({
 			<div className={styles.layout}>
 				<div className={styles.sideColumn}>
 					<Cover book={book} />
-					<div className={styles.finishedRow}>
-						<label
-							className={styles.finishedLabel}
-							htmlFor="edit-book-finished"
-						>
-							Finished
-						</label>
-						<Switch
-							id="edit-book-finished"
-							checked={values.isRead}
-							onCheckedChange={(checked) => setFieldValue("isRead", checked)}
-						/>
+					<div className={styles.sideStack}>
+						<div className={styles.statePanel}>
+							<label
+								className={styles.finishedLabel}
+								htmlFor="edit-book-finished"
+							>
+								Finished
+							</label>
+							<Switch
+								id="edit-book-finished"
+								checked={values.isRead}
+								onCheckedChange={(checked) => setFieldValue("isRead", checked)}
+							/>
+						</div>
 					</div>
-					<Formats book={book} className={styles.sideSection} />
+					<div className={styles.formatsSlot}>
+						<BookFormatsPanel files={book.file_list} />
+					</div>
 				</div>
 				<div className={styles.formColumn}>
 					<section className={styles.section}>

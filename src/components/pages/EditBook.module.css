@@ -10,7 +10,7 @@
 	justify-content: flex-end;
 	flex-wrap: wrap;
 	gap: 16px;
-	max-width: 852px;
+	max-width: 872px;
 	margin: 0 24px 24px;
 	padding: 20px 0 0;
 	border-top: 1px solid var(--ctd-border);
@@ -100,8 +100,8 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 16px;
-	/* Content stops with the form (900px); the bar's hairline still spans. */
-	padding: 10px max(24px, calc(100% - 876px)) 10px 24px;
+	/* Content stops with the form (920px); the bar's hairline still spans. */
+	padding: 10px max(24px, calc(100% - 896px)) 10px 24px;
 	min-height: 49px;
 	background-color: var(--ctd-content-bg);
 	border-bottom: 1px solid var(--ctd-border);
@@ -207,10 +207,10 @@
 	/* AppKit inspector label gutter: right-aligned labels, fixed width. */
 	--edit-label-width: 120px;
 	display: grid;
-	grid-template-columns: 180px minmax(0, 1fr);
+	grid-template-columns: 200px minmax(0, 1fr);
 	column-gap: 32px;
 	align-items: start;
-	max-width: 900px;
+	max-width: 920px;
 	padding: 20px 24px 36px;
 	flex: 1;
 }
@@ -229,73 +229,63 @@
 	min-width: 0;
 }
 
-/* Phones: the cover beside Finished and Formats, not above empty space. */
-@media (max-width: 640px) {
-	.sideColumn {
-		display: grid;
-		grid-template-columns: 120px minmax(0, 1fr);
-		grid-template-rows: auto 1fr;
-		column-gap: 16px;
-		row-gap: 12px;
-		align-items: start;
-	}
-
-	.sideColumn > :first-child {
-		grid-row: 1 / span 2;
-	}
+/* The cover is followed by 16px, the panels by 12px between them. */
+.sideColumn > :first-child {
+	margin-bottom: 4px;
 }
 
-.sideSection {
-	border-top: 1px solid var(--ctd-border);
-	padding-top: 12px;
+.sideStack,
+.formatsSlot {
+	min-width: 0;
 }
 
-/* macOS-style settings row: label left, switch right. */
-.finishedRow {
+/* Your state for this book, in the same grouped panel as the formats. */
+.statePanel {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	width: 100%;
+	gap: 12px;
+	min-height: 34px;
+	padding: 0 12px;
+	border: 1px solid var(--ctd-border);
+	border-radius: 8px;
+}
+
+:global(:root[data-theme="dark"]) .statePanel {
+	background-color: var(--pal-mantle);
 }
 
 .finishedLabel {
 	font-size: 13px;
+	font-weight: 500;
 	color: var(--ctd-ink);
 	user-select: none;
 }
 
-.formatList {
-	list-style: none;
-	margin: 8px 0 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
+/* Phones: the cover beside your state, the formats full width beneath. */
+@media (max-width: 640px) {
+	.sideColumn {
+		display: grid;
+		grid-template-columns: 104px minmax(0, 1fr);
+		gap: 16px;
+		align-items: start;
+	}
+
+	/* A grid item won't shrink below the image's own width without this. */
+	.sideColumn > :first-child {
+		min-width: 0;
+		margin-bottom: 0;
+	}
+
+	.formatsSlot {
+		grid-column: 1 / -1;
+	}
 }
 
-.formatItem {
-	font-size: 13px;
-	color: var(--ctd-ink);
-}
-
-.formatLink {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-	margin: 0 -6px;
-	padding: 4px 6px;
-	border-radius: var(--ctd-radius-control);
-	color: inherit;
-	text-decoration: none;
-}
-
-.formatLink:hover {
-	background-color: var(--ctd-nav-hover-bg);
-}
-
-.formatGlyph {
-	color: var(--ctd-ink-soft);
+@media (pointer: coarse) {
+	.statePanel {
+		min-height: 44px;
+	}
 }
 
 .formColumn {

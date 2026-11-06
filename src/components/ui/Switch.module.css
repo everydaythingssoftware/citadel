@@ -22,19 +22,20 @@
 	padding: 0;
 	/* Capsule clamps to half the 22px height, matching the old 11px. */
 	border-radius: var(--ctd-radius-capsule);
-	background-color: var(--ctd-surface-muted);
-	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	position: relative;
+	background-color: var(--ctd-switch-off-bg);
+	border: var(--ctd-control-border-width) solid var(--ctd-switch-off-border);
 	transition:
 		background-color 150ms ease-out,
 		border-color 150ms ease-out;
 }
 
 .track:hover:not(:disabled) {
-	background-color: oklch(from var(--ctd-surface-muted) calc(l - 0.02) c h);
+	background-color: oklch(from var(--ctd-switch-off-bg) calc(l - 0.02) c h);
 }
 
 .track:active:not(:disabled) {
-	background-color: oklch(from var(--ctd-surface-muted) calc(l - 0.04) c h);
+	background-color: oklch(from var(--ctd-switch-off-bg) calc(l - 0.04) c h);
 }
 
 .track[data-state="checked"],
@@ -61,8 +62,8 @@
 	width: 18px;
 	height: 18px;
 	border-radius: 50%;
-	background-color: oklch(100% 0 0);
-	box-shadow: 0 0.5px 2px oklch(0% 0 0 / 0.25);
+	background-color: var(--ctd-switch-off-knob);
+	box-shadow: var(--ctd-switch-knob-shadow);
 	transform: translateX(1px);
 	transition:
 		transform 150ms ease-out,
@@ -71,28 +72,29 @@
 
 .thumb[data-state="checked"] {
 	transform: translateX(17px);
+	background-color: var(--ctd-switch-on-knob);
 }
 
-/* On the grey dark-mode track the white knob needs a firmer edge. */
-:global(:root[data-theme="dark"]) .thumb {
-	box-shadow:
-		0 0 0 0.5px oklch(0% 0 0 / 0.35),
-		0 1px 3px oklch(0% 0 0 / 0.5);
-}
-
-/* Touch screens: a little larger than the desktop switch, smaller than iOS's. */
+/* Touch screens: a touch larger to look at, with a 44pt-tall hit area that
+   reaches past the track invisibly. */
 @media (pointer: coarse) {
 	.track {
-		width: 44px;
-		height: 26px;
+		width: 40px;
+		height: 24px;
+	}
+
+	.track::before {
+		content: "";
+		position: absolute;
+		inset: -10px -2px;
 	}
 
 	.thumb {
-		width: 22px;
-		height: 22px;
+		width: 20px;
+		height: 20px;
 	}
 
 	.thumb[data-state="checked"] {
-		transform: translateX(19px);
+		transform: translateX(17px);
 	}
 }

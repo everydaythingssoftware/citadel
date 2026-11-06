@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { remoteBookDownloads } from "./book-downloads";
+import { bookFormatRows, remoteBookDownloads } from "./book-downloads";
 
 describe("remote book downloads", () => {
 	it("offers HTTP files with a format label and preserves encoded filenames", () => {
@@ -31,5 +31,30 @@ describe("remote book downloads", () => {
 				{ Remote: { url: "https://books.example/%invalid" } },
 			]),
 		).toEqual([]);
+	});
+});
+
+describe("bookFormatRows", () => {
+	it("opens local files and downloads remote ones, sorted by format", () => {
+		const rows = bookFormatRows([
+			{ Remote: { url: "https://example.org/api/books/1/files/PDF/book.pdf" } },
+			{
+				Local: {
+					path: "/lib/Author/Book (1)/Book.epub",
+					mime_type: "application/epub+zip",
+				},
+			},
+		]);
+		expect(rows.map((row) => [row.kind, row.label])).toEqual([
+			["open", "EPUB"],
+			["download", "PDF"],
+		]);
+	});
+
+	it("names a local file without an extension by its MIME type", () => {
+		const [row] = bookFormatRows([
+			{ Local: { path: "/lib/book", mime_type: "application/pdf" } },
+		]);
+		expect(row?.label).toBe("application/pdf");
 	});
 });
