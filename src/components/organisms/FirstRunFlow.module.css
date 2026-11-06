@@ -121,7 +121,7 @@
 	font-size: 13px;
 	color: var(--ctd-ink-soft);
 	text-align: center;
-	max-width: 36ch;
+	max-width: 44ch;
 	text-wrap: balance;
 }
 
@@ -133,7 +133,7 @@
 	align-items: center;
 	gap: 2px;
 	font: inherit;
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 500;
 	color: var(--ctd-ink-soft);
 	background: none;

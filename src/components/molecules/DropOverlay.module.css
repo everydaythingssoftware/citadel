@@ -16,7 +16,7 @@
 			oklch(98% 0.005 85 / 0.1),
 			oklch(98% 0.005 85 / 0) 45%
 		),
-		oklch(24% 0.006 270 / 0.42);
+		oklch(22% 0.006 270 / 0.58);
 	backdrop-filter: blur(36px) saturate(1.6) brightness(0.95);
 	opacity: 0;
 	visibility: hidden;

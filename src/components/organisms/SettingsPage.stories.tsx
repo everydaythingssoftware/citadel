@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import panes from "@/components/organisms/SettingsPanes.module.css";
-import { SegmentedControl, Switch } from "@/components/ui";
+import { Button, SegmentedControl, Switch } from "@/components/ui";
 import {
 	SettingsSection,
 	type TSettingsSection,
@@ -20,7 +20,14 @@ const ROWS: Record<TSettingsSection, string[]> = {
 
 const RowControl = ({ row }: { row: string }) => {
 	const [theme, setTheme] = useState("auto");
-	const [on, setOn] = useState(row !== "Hardcover");
+	const [on, setOn] = useState(true);
+	if (row === "Hardcover") {
+		return (
+			<Button size="sm" variant="default">
+				Add Key…
+			</Button>
+		);
+	}
 	return row === "Appearance" ? (
 		<SegmentedControl
 			aria-label="Appearance"

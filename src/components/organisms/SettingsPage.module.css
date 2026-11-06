@@ -44,6 +44,8 @@
 
 .sectionTitle {
 	margin: 0;
+	/* On the same edge as the note beneath it (SettingsPanes .paneNote). */
+	padding-inline: 0.125rem;
 	font-size: 13px;
 	font-weight: 600;
 	color: var(--ctd-ink);

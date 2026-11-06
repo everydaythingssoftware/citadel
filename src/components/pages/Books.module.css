@@ -37,6 +37,8 @@
 
 /* Keeps "Unread only" on one line; the search field gives up the room. */
 .unreadToggle {
+	display: flex;
+	align-items: center;
 	flex: none;
 	white-space: nowrap;
 }

@@ -10,6 +10,7 @@
 	justify-content: flex-end;
 	flex-wrap: wrap;
 	gap: 16px;
+	max-width: 852px;
 	margin: 0 24px 24px;
 	padding: 20px 0 0;
 	border-top: 1px solid var(--ctd-border);
@@ -99,7 +100,9 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 16px;
-	padding: 12px 24px;
+	/* Content stops with the form (900px); the bar's hairline still spans. */
+	padding: 10px max(24px, calc(100% - 876px)) 10px 24px;
+	min-height: 49px;
 	background-color: var(--ctd-content-bg);
 	border-bottom: 1px solid var(--ctd-border);
 }
@@ -137,6 +140,7 @@
 
 .pageTitle {
 	margin: 0;
+	outline: none;
 	font-family: var(--ctd-font-serif);
 	font-size: 16px;
 	font-weight: 600;
@@ -206,6 +210,7 @@
 	grid-template-columns: 180px minmax(0, 1fr);
 	column-gap: 32px;
 	align-items: start;
+	max-width: 900px;
 	padding: 20px 24px 36px;
 	flex: 1;
 }
@@ -391,7 +396,6 @@
 /* Description HTML display */
 .descriptionHtml {
 	line-height: 1.5;
-	max-width: 65ch;
 	overflow-wrap: break-word;
 }
 

@@ -4,6 +4,7 @@ import {
 	sortOrderOptions,
 	type UseAuthorFiltersReturn,
 } from "@/lib/hooks/use-author-filters";
+import styles from "./AuthorFilterControls.module.css";
 
 interface AuthorFilterControlsProps {
 	filters: UseAuthorFiltersReturn["filters"];
@@ -19,21 +20,12 @@ export const AuthorFilterControls = ({
 	onShowOnlyAuthorsWithoutBooksChange,
 }: AuthorFilterControlsProps) => {
 	return (
-		<div
-			style={{
-				display: "flex",
-				width: "100%",
-				minWidth: 100,
-				alignItems: "center",
-				flexWrap: "wrap",
-				gap: 12,
-			}}
-		>
+		<div className={styles.controls}>
 			<SearchField
 				placeholder="Search authors"
 				value={filters.searchTerm}
 				onChange={(event) => onSearchChange(event.currentTarget.value)}
-				style={{ flex: "1 1 220px", maxWidth: 320 }}
+				className={styles.search}
 			/>
 
 			<Select
@@ -46,7 +38,7 @@ export const AuthorFilterControls = ({
 			/>
 
 			<Checkbox
-				label="Without books only"
+				label="No books"
 				checked={filters.showOnlyAuthorsWithoutBooks}
 				onCheckedChange={onShowOnlyAuthorsWithoutBooksChange}
 			/>

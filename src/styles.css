@@ -249,7 +249,7 @@
 	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.4);
 	/* A near-white track would need a dark knob; a mid-grey one keeps the
 	   native white knob and still reads as on. */
-	--ctd-switch-on-bg: oklch(62% 0.004 270);
+	--ctd-switch-on-bg: oklch(68% 0.004 270);
 	--ctd-scrollbar-thumb: oklch(from var(--pal-text) l c h / 0.35);
 	--ctd-control-shadow: 0 0.5px 1.5px oklch(0% 0 0 / 0.4);
 	--ctd-field-inner-shadow: inset 0 0.5px 1px oklch(0% 0 0 / 0.2);

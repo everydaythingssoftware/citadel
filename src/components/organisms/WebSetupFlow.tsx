@@ -257,7 +257,7 @@ const BrowserPanel = ({
 		<section className={styles.browser} aria-label="Folders on the server">
 			<div className={styles.browserHead}>
 				<Button
-					variant="subtle"
+					variant="default"
 					size="sm"
 					disabled={browser.loading || !listing?.parent}
 					aria-label="Up one folder"
@@ -296,10 +296,13 @@ const BrowserPanel = ({
 					))}
 				</ul>
 			) : (
-				<div className={styles.browserEmpty}>No folders inside.</div>
+				<div className={styles.browserEmpty}>
+					<FolderGlyph />
+					This folder has no folders inside it.
+				</div>
 			)}
 			<div className={styles.browserFoot}>
-				<Button variant="subtle" size="sm" onClick={onClose}>
+				<Button variant="default" size="sm" onClick={onClose}>
 					Cancel
 				</Button>
 				<Button
@@ -374,38 +377,33 @@ const PathView = ({
 					: "Choose the folder on the server that holds metadata.db."}
 			</p>
 			<div className={styles.field}>
-				<TextInput
-					label="Folder on the server"
-					name="path"
-					placeholder="/srv/books"
-					autoComplete="off"
-					autoCapitalize="none"
-					spellCheck={false}
-					value={path}
-					disabled={inert}
-					data-autofocus="true"
-					onChange={(event) => onPathChange(event.currentTarget.value)}
-				/>
+				<div className={styles.fieldInput}>
+					<TextInput
+						label="Folder on the server"
+						name="path"
+						placeholder="/srv/books"
+						autoComplete="off"
+						autoCapitalize="none"
+						spellCheck={false}
+						value={path}
+						disabled={inert}
+						data-autofocus="true"
+						onChange={(event) => onPathChange(event.currentTarget.value)}
+					/>
+				</div>
+				{!browser && (
+					<Button variant="default" disabled={busy} onClick={onOpenBrowser}>
+						Browse…
+					</Button>
+				)}
 			</div>
-			{browser ? (
+			{browser && (
 				<BrowserPanel
 					browser={browser}
 					onBrowseTo={onBrowseTo}
 					onPick={onPick}
 					onClose={onCloseBrowser}
 				/>
-			) : (
-				<div className={styles.browseRow}>
-					<Button
-						variant="subtle"
-						size="sm"
-						className={card.escapeBtn}
-						disabled={busy}
-						onClick={onOpenBrowser}
-					>
-						Browse the Server…
-					</Button>
-				</div>
 			)}
 			{error !== null && <ErrLine text={error} />}
 			{error === null && result.kind === "checking" && (
@@ -448,7 +446,7 @@ const PathView = ({
 					type="submit"
 					variant="primary"
 					fullWidth
-					disabled={inert || result.kind === "error"}
+					disabled={inert || result.kind === "error" || path.trim() === ""}
 				>
 					{busy ? <BusyLabel text="Checking…" /> : "Continue"}
 				</Button>
@@ -775,7 +773,7 @@ const resolveView = (
 								: "This server keeps books in a Calibre‑compatible library on its own disk."
 						}
 						adoptDescription="Use a Calibre library already on the server."
-						createDescription="Make an empty library in a folder on the server."
+						createDescription="Make an empty library on the server."
 						onAdopt={() => send({ type: "CHOOSE_ADOPT" })}
 						onStartNew={() => send({ type: "CHOOSE_CREATE" })}
 						found={

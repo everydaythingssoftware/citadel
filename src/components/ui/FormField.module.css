@@ -1,11 +1,13 @@
 .field {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 2px;
 }
 
 .label {
+	padding-inline-start: 2px;
 	font-size: 13px;
+	line-height: 1;
 	color: var(--ctd-ink-soft);
 }
 
