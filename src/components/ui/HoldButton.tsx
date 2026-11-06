@@ -5,6 +5,7 @@ import {
 	HoldState,
 	useHoldToConfirm,
 } from "@/lib/hooks/use-hold-to-confirm";
+import buttonStyles from "./Button.module.css";
 import styles from "./HoldButton.module.css";
 
 export interface HoldButtonProps {
@@ -36,7 +37,13 @@ export const HoldButton = ({
 		<span className={clsx(styles.wrap, className)}>
 			<button
 				type="button"
-				className={styles.button}
+				// The standard bordered button; only the red text and the hold
+				// fill are its own.
+				className={clsx(
+					buttonStyles.button,
+					buttonStyles.default,
+					styles.button,
+				)}
 				data-state={hold.state === HoldState.idle ? undefined : hold.state}
 				// Alternating between two identical shakes replays it on every
 				// quick click without remounting (and losing focus).
