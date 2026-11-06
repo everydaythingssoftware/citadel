@@ -79,7 +79,7 @@ pub struct UserSummary {
 }
 
 impl CitadelStore {
-    /// Creates a reader with a sign-in password and a generated OPDS app password.
+    /// Creates a reader with a sign-in password. OPDS needs a device key too.
     pub fn create_user(&self, username: &str, password: &str) -> Result<User> {
         self.create_user_with_role(username, password, Role::Reader)
     }
@@ -111,7 +111,6 @@ impl CitadelStore {
                     users::id.eq(&user.id),
                     users::username.eq(&user.username),
                     users::password_hash.eq(Some(hash)),
-                    users::app_password.eq(crate::password::generate_app_password()),
                     users::created_at.eq(unix_now()),
                     users::role.eq(user.role.as_str()),
                 ))
@@ -214,7 +213,7 @@ impl CitadelStore {
     }
 
     /// The desktop installation's own user, created on first use. It has no
-    /// sign-in password and no app password until sharing needs one.
+    /// sign-in password and no device keys until sharing needs one.
     pub fn local_user(&self, default_username: &str) -> Result<User> {
         let mut connection = self.connection();
         connection.immediate_transaction(|connection| {
@@ -283,7 +282,7 @@ fn validate_username(username: &str) -> Result<String> {
             "Usernames can be at most {USERNAME_MAX_CHARS} characters."
         )));
     }
-    // HTTP Basic (OPDS app passwords) splits `user:pass` at the first colon.
+    // HTTP Basic (OPDS device keys) splits `user:pass` at the first colon.
     if username.contains(':') || username.chars().any(char::is_control) {
         return Err(StoreError::Invalid(
             "Usernames can't contain a colon (:) or control characters.".into(),
@@ -353,7 +352,7 @@ mod tests {
         let local = store.local_user("phil").unwrap();
         assert_eq!(local.username, "phil 2");
         assert_eq!(store.local_user("someone else").unwrap(), local);
-        assert!(store.app_password(&local.username).unwrap().is_none());
+        assert!(store.device_keys(&local.username).unwrap().is_empty());
         assert!(store
             .verify_password(&local.username, "")
             .unwrap()

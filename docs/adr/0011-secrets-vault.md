@@ -7,7 +7,7 @@ Status: Accepted - 2026-10-30 (CDL-56)
 Hardcover lookups need a personal account token, and Hardcover's terms tie a
 token to its owner, so a shared server can't hold one key for everyone: each
 user brings their own (CDL-56). Citadel has to send the token to Hardcover, so
-it must be stored reversibly, as app passwords are (ADR 0005). Unlike a
+it must be stored reversibly, as app passwords then were (ADR 0005). Unlike a
 generated app password, a leaked Hardcover token works against a third-party
 account. Secrets like that are stored encrypted even when the key sits beside
 the database: copies of `citadel.db` travel further (backups, bug reports,
@@ -45,7 +45,8 @@ instructions, so an operator mistake never silently invalidates every key.
   protects copies of the database alone, not a compromised host.
 - Rotation can be added later: decrypt with the old `key_id`, reseal with the
   new one; rows already name their key.
-- App passwords remain plaintext in `users.app_password` for now; moving them
-  into the vault is CDL-60.
+- OPDS credentials don't use the vault: app passwords were replaced by
+  per-device keys stored only as salted hashes and shown once (ADR 0013), so
+  there is nothing to decrypt.
 - The desktop keeps its Hardcover key in `settings.json` until CDL-62 moves it
   to the local user's row.

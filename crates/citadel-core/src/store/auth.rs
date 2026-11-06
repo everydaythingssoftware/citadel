@@ -1,5 +1,4 @@
-//! Who may do what: sign-in checks, browser sessions, OPDS app passwords and
-//! library grants.
+//! Who may do what: sign-in checks, browser sessions and library grants.
 use std::sync::OnceLock;
 
 use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
@@ -19,12 +18,6 @@ use super::{
 pub const SESSION_TTL_SECONDS: i64 = 30 * 24 * 60 * 60;
 /// Sliding expiry is refreshed at most this often, so reads stay reads.
 const SESSION_REFRESH_SECONDS: i64 = 60 * 60;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AppCredential {
-    pub username: String,
-    pub password: String,
-}
 
 impl CitadelStore {
     /// Returns the user when the password matches. Unknown users still pay
@@ -116,43 +109,6 @@ impl CitadelStore {
         Ok(())
     }
 
-    /// The user's OPDS app password, if they have one.
-    pub fn app_password(&self, username: &str) -> Result<Option<AppCredential>> {
-        let user = self.user(username)?;
-        let password = users::table
-            .filter(users::id.eq(&user.id))
-            .select(users::app_password)
-            .first::<Option<String>>(&mut *self.connection())?;
-        Ok(password.map(|password| AppCredential {
-            username: user.username,
-            password,
-        }))
-    }
-
-    /// Sets or clears the OPDS app password; the desktop lets its user choose one.
-    pub fn set_app_password(&self, username: &str, password: Option<&str>) -> Result<()> {
-        let user = self.user(username)?;
-        if password.is_some_and(str::is_empty) {
-            return Err(StoreError::Invalid("App passwords can't be empty.".into()));
-        }
-        diesel::update(users::table.filter(users::id.eq(&user.id)))
-            .set(users::app_password.eq(password))
-            .execute(&mut *self.connection())?;
-        Ok(())
-    }
-
-    pub fn rotate_app_password(&self, username: &str) -> Result<AppCredential> {
-        let user = self.user(username)?;
-        let password = crate::password::generate_app_password();
-        diesel::update(users::table.filter(users::id.eq(&user.id)))
-            .set(users::app_password.eq(&password))
-            .execute(&mut *self.connection())?;
-        Ok(AppCredential {
-            username: user.username,
-            password,
-        })
-    }
-
     pub fn grant(&self, username: &str, library_id: &str) -> Result<()> {
         let user = self.user(username)?;
         let mut connection = self.connection();
@@ -187,20 +143,6 @@ impl CitadelStore {
                 .filter(library_grants::library_id.eq(library_id)),
         ))
         .get_result(&mut *self.connection())?)
-    }
-
-    /// OPDS app passwords for every user who can see `library_id`.
-    pub fn app_credentials(&self, library_id: &str) -> Result<Vec<AppCredential>> {
-        Ok(users::table
-            .inner_join(library_grants::table)
-            .filter(library_grants::library_id.eq(library_id))
-            .order(users::username)
-            .filter(users::app_password.is_not_null())
-            .select((users::username, users::app_password.assume_not_null()))
-            .load::<(String, String)>(&mut *self.connection())?
-            .into_iter()
-            .map(|(username, password)| AppCredential { username, password })
-            .collect())
     }
 }
 
@@ -256,30 +198,14 @@ mod tests {
     }
 
     #[test]
-    fn grants_scope_access_and_opds_app_passwords() {
+    fn grants_scope_access() {
         let (_directory, store, library) = store();
         let alice = store.create_user("alice", "correct horse").unwrap();
         store.create_user("kid", "another password").unwrap();
         assert!(!store.can_access(&alice.id, &library.id).unwrap());
-        assert!(store.app_credentials(&library.id).unwrap().is_empty());
         store.grant("alice", &library.id).unwrap();
         store.grant("alice", &library.id).unwrap();
         assert!(store.can_access(&alice.id, &library.id).unwrap());
-        let app = store.app_password("alice").unwrap().unwrap();
-        assert_eq!(
-            store.app_credentials(&library.id).unwrap(),
-            vec![app.clone()]
-        );
-        let rotated = store.rotate_app_password("alice").unwrap();
-        assert_ne!(rotated.password, app.password);
-        assert_eq!(store.app_password("alice").unwrap(), Some(rotated));
-        store.set_app_password("alice", None).unwrap();
-        assert!(store.app_credentials(&library.id).unwrap().is_empty());
-        store.set_app_password("alice", Some("chosen")).unwrap();
-        assert_eq!(
-            store.app_credentials(&library.id).unwrap()[0].password,
-            "chosen"
-        );
         assert!(matches!(
             store.grant("alice", "missing"),
             Err(StoreError::NotFound(_))
@@ -291,7 +217,7 @@ mod tests {
         assert!(!store.can_access(&alice.id, &library.id).unwrap());
         store.grant("alice", &library.id).unwrap();
         store.remove_user("alice").unwrap();
-        assert!(store.app_credentials(&library.id).unwrap().is_empty());
+        assert!(!store.can_access(&alice.id, &library.id).unwrap());
         assert!(matches!(store.user("alice"), Err(StoreError::NotFound(_))));
     }
 }

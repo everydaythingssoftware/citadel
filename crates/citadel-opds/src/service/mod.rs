@@ -492,13 +492,15 @@ impl OpdsService {
     /// persistence and calls `replace_credentials` when they change.
     pub fn with_ephemeral_credentials(
         source: Arc<dyn CatalogSource>,
-        users: Vec<crate::credential_store::OpdsCredentialSecret>,
-    ) -> Result<Self, OpdsStatusError> {
-        Ok(Self::with_dependencies_and_credentials(
+        verifiers: Vec<citadel_core::store::DeviceKeyVerifier>,
+    ) -> Self {
+        let service = Self::with_dependencies_and_credentials(
             source,
-            OpdsCredentialStore::new(credentials::validate_user_list(users)?),
+            OpdsCredentialStore::new(verifiers),
             ServiceDependencies::default(),
-        ))
+        );
+        service.swap_auth_from_store();
+        service
     }
 
     #[cfg(test)]
@@ -672,22 +674,22 @@ impl OpdsService {
             });
         }
 
-        let stored = if config.authentication_enabled {
-            let stored = self.inner.credentials.get();
-            if stored.is_none() {
+        let gated = if config.authentication_enabled {
+            if self.inner.credentials.is_empty() {
                 return Err(OpdsStatusError {
                     code: OpdsErrorCode::AuthRequired,
-                    message: "Reader sign-in needs a password. Generate or set one, then turn sharing on.".to_string(),
+                    message: "Reader sign-in needs a device key. Create one, then turn sharing on."
+                        .to_string(),
                 });
             }
-            stored
+            true
         } else {
-            None
+            false
         };
         // Credentials configured is the only thing that unlocks serving
         // beyond the local network.
         let policy = BindPolicy {
-            allow_global: stored.is_some(),
+            allow_global: gated,
         };
         if let OpdsBindTarget::Addresses { addresses } = &config.target {
             super::network::validate_explicit_addresses(addresses, policy.allow_global).map_err(
@@ -994,41 +996,12 @@ mod tests {
     }
 
     #[test]
-    fn ephemeral_users_reject_duplicate_names_and_empty_passwords() {
-        use crate::credential_store::OpdsCredentialSecret;
-        let users = vec![
-            OpdsCredentialSecret {
-                username: "reader".into(),
-                password: "one".into(),
-            },
-            OpdsCredentialSecret {
-                username: " reader ".into(),
-                password: "two".into(),
-            },
-        ];
-        assert!(OpdsService::with_ephemeral_credentials(missing_source(), users).is_err());
-        assert!(OpdsService::with_ephemeral_credentials(
-            missing_source(),
-            vec![OpdsCredentialSecret {
-                username: "reader".into(),
-                password: String::new()
-            }]
-        )
-        .is_err());
-    }
-
-    #[test]
     fn host_supplied_users_can_be_replaced() {
-        use crate::credential_store::OpdsCredentialSecret;
-        let reader = |name: &str| OpdsCredentialSecret {
-            username: name.into(),
-            password: "secret".into(),
-        };
+        use citadel_core::store::DeviceKeyVerifier;
+        let reader = |name: &str| DeviceKeyVerifier::new(name, name, "secret");
         let service =
-            OpdsService::with_ephemeral_credentials(missing_source(), vec![reader("one")]).unwrap();
-        service
-            .replace_credentials(vec![reader("two"), reader("three")])
-            .unwrap();
+            OpdsService::with_ephemeral_credentials(missing_source(), vec![reader("one")]);
+        service.replace_credentials(vec![reader("two"), reader("three")]);
         let names: Vec<_> = service
             .inner
             .credentials
@@ -1037,10 +1010,7 @@ mod tests {
             .map(|user| user.username)
             .collect();
         assert_eq!(names, ["two", "three"]);
-        assert!(service
-            .replace_credentials(vec![reader("two"), reader("two")])
-            .is_err());
-        service.replace_credentials(Vec::new()).unwrap();
+        service.replace_credentials(Vec::new());
         assert!(!service.credential_status().configured);
     }
 
@@ -1502,9 +1472,7 @@ mod tests {
             Duration::from_secs(1),
         );
 
-        service
-            .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .unwrap();
+        service.configure_credentials("reader".to_string(), "correct-horse".to_string());
         let started = service
             .start(OpdsStartConfig {
                 target: OpdsBindTarget::AllInterfaces,
@@ -1522,8 +1490,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn generating_credentials_while_running_keeps_sharing_live() {
-        // Generate hot-swaps the live credential snapshot; rotation never
+    async fn replacing_credentials_while_running_keeps_sharing_live() {
+        // Replacing hot-swaps the live credential snapshot; rotation never
         // reads as "sharing turned off".
         let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(vec![lan(
@@ -1538,14 +1506,11 @@ mod tests {
             Duration::from_secs(1),
         );
 
-        service
-            .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .unwrap();
+        service.configure_credentials("reader".to_string(), "correct-horse".to_string());
         service.start(config(8080)).await.unwrap();
         assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
 
-        let generated = service.generate_credentials("reader".to_string()).unwrap();
-        assert!(!generated.password.is_empty());
+        service.configure_credentials("reader".to_string(), "battery-staple".to_string());
         // The snapshot swapped in place: the share never went down.
         assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
         assert_eq!(listeners.active.lock().unwrap().len(), 1);
@@ -1563,9 +1528,7 @@ mod tests {
             Duration::from_millis(10),
         );
 
-        service
-            .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .unwrap();
+        service.configure_credentials("reader".to_string(), "correct-horse".to_string());
         let started = service
             .start(OpdsStartConfig {
                 target: OpdsBindTarget::LocalNetworks,
@@ -1578,9 +1541,7 @@ mod tests {
 
         // The poll reads the live snapshot per attempt, so reconfiguring
         // mid-wait is safe: it keeps waiting and will bind the latest secret.
-        service
-            .configure_credentials("other".to_string(), "battery-staple".to_string())
-            .unwrap();
+        service.configure_credentials("other".to_string(), "battery-staple".to_string());
         assert_eq!(
             service.status().await.state,
             OpdsLifecycleState::WaitingForInterface
@@ -1600,9 +1561,7 @@ mod tests {
             Duration::from_secs(1),
         );
 
-        service
-            .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .unwrap();
+        service.configure_credentials("reader".to_string(), "correct-horse".to_string());
         let started = service
             .start(OpdsStartConfig {
                 target: OpdsBindTarget::AllInterfaces,
@@ -1635,9 +1594,7 @@ mod tests {
             Duration::from_secs(1),
         );
 
-        service
-            .configure_credentials("reader".to_string(), "correct-horse".to_string())
-            .unwrap();
+        service.configure_credentials("reader".to_string(), "correct-horse".to_string());
         service
             .start(OpdsStartConfig {
                 target: OpdsBindTarget::LocalNetworks,
@@ -1695,19 +1652,6 @@ mod tests {
         assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
         assert!(!listeners.active.lock().unwrap().is_empty());
         service.stop().await;
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn configure_credentials_rejects_a_colon_in_the_username() {
-        let source = test_source();
-        let interfaces = Arc::new(FakeInterfaces::new(vec![]));
-        let listeners = Arc::new(FakeListeners::default());
-        let service = service_with(source, interfaces, listeners, Duration::from_secs(1));
-
-        let rejected =
-            service.configure_credentials("me:home".to_string(), "correct-horse".to_string());
-        assert!(rejected.is_err());
-        assert!(!service.credential_status().configured);
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -7,7 +7,6 @@ pub mod credential_store;
 mod identity;
 mod limits;
 pub mod network;
-pub mod password;
 pub mod service;
 mod xml;
 

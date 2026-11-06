@@ -7,7 +7,7 @@ use std::io::BufRead;
 
 use citadel_core::{
     password::generate_sign_in_password,
-    store::{CitadelStore, RegisteredLibrary, Role},
+    store::{CitadelStore, DeviceKey, NewDeviceKey, RegisteredLibrary, Role},
 };
 use libcalibre::Library;
 
@@ -18,7 +18,10 @@ pub const USAGE: &str = "commands:
   users add <name> [--password-stdin] [--no-grant] [--admin]
   users remove <name>
   users reset-password <name> [--password-stdin]
-  users app-password <name> [--rotate]
+  users keys <name>
+  users keys <name> add <device>
+  users keys <name> rotate <device>
+  users keys <name> revoke <device>
   users promote <name>
   users demote <name>
   grant <name> [<library-id>]
@@ -27,8 +30,10 @@ pub const USAGE: &str = "commands:
   libraries add <absolute path> [--read-only]
   libraries read-only <on|off> [<library-id>]
 
-Without a command, the server starts. Generated passwords are printed once;
---password-stdin reads the sign-in password from the first line of stdin.
+Without a command, the server starts. Generated passwords and OPDS device
+keys are printed once; --password-stdin reads the sign-in password from the
+first line of stdin. Readers sign in to OPDS with their username and a device
+key, one per e-reader or app.
 Administrators set the server up in the browser; `users promote` is the way
 back in when none can sign in.";
 
@@ -58,7 +63,6 @@ fn execute(
     let known_flags: &[&str] = match positional.as_slice() {
         ["users", "add", _] => &["--password-stdin", "--no-grant", "--admin"],
         ["users", "reset-password", _] => &["--password-stdin"],
-        ["users", "app-password", _] => &["--rotate"],
         ["libraries", "add", _] => &["--read-only"],
         _ => &[],
     };
@@ -126,9 +130,6 @@ fn execute(
                     "No library is set up yet; access is granted when one is.".to_string()
                 }
             };
-            let app = accounts
-                .rotate_app_password(&user.username)
-                .map_err(error)?;
             let mut output = vec![
                 format!(
                     "Created {} {} ({}).",
@@ -141,13 +142,16 @@ fn execute(
             if generated {
                 output.push(format!("Sign-in password: {password}"));
             }
-            output.push(format!("OPDS app password: {}", app.password));
+            output.push(format!(
+                "For OPDS, give each of their devices a key with `users keys {} add <device>`.",
+                user.username
+            ));
             Ok(output.join("\n"))
         }
         ["users", "remove", name] => {
             accounts.remove_user(name).map_err(error)?;
             Ok(format!(
-                "Removed user {name}; their sessions and app password stop working."
+                "Removed user {name}; their sessions and device keys stop working."
             ))
         }
         ["users", "reset-password", name] => {
@@ -159,19 +163,48 @@ fn execute(
             }
             Ok(output)
         }
-        ["users", "app-password", name] => {
-            let existing = if flag("--rotate") {
-                None
-            } else {
-                accounts.app_password(name).map_err(error)?
-            };
-            let credential = match existing {
-                Some(credential) => credential,
-                None => accounts.rotate_app_password(name).map_err(error)?,
-            };
+        ["users", "keys", name] => {
+            let keys = accounts.device_keys(name).map_err(error)?;
+            if keys.is_empty() {
+                return Ok(format!(
+                    "{name} has no device keys. Create one with `users keys {name} add <device>`."
+                ));
+            }
+            Ok(keys
+                .iter()
+                .map(|key| {
+                    let last_used = key.last_used_at.map_or_else(
+                        || "never used".to_string(),
+                        |at| format!("last used {}", date(at)),
+                    );
+                    format!(
+                        "{}\tcreated {}\t{last_used}",
+                        key.name,
+                        date(key.created_at)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"))
+        }
+        ["users", "keys", name, "add", device] => {
+            let created = accounts.create_device_key(name, device).map_err(error)?;
+            Ok(shown_once(&created))
+        }
+        ["users", "keys", name, "rotate", device] => {
+            let key = find_key(accounts, name, device)?;
+            let rotated = accounts.rotate_device_key(name, &key.id).map_err(error)?;
             Ok(format!(
-                "OPDS username: {}\nOPDS app password: {}",
-                credential.username, credential.password
+                "The old key for {} stopped working.\n{}",
+                key.name,
+                shown_once(&rotated)
+            ))
+        }
+        ["users", "keys", name, "revoke", device] => {
+            let key = find_key(accounts, name, device)?;
+            accounts.revoke_device_key(name, &key.id).map_err(error)?;
+            Ok(format!(
+                "Revoked {name}'s key for {}; that device can no longer sign in.",
+                key.name
             ))
         }
         ["users", "promote", name] => {
@@ -290,6 +323,31 @@ fn execute(
     }
 }
 
+fn find_key(accounts: &CitadelStore, username: &str, device: &str) -> Result<DeviceKey, String> {
+    accounts
+        .device_keys(username)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|key| key.name.eq_ignore_ascii_case(device.trim()) || key.id == device)
+        .ok_or_else(|| {
+            format!("{username} has no device key named '{device}'. See `users keys {username}`.")
+        })
+}
+
+fn shown_once(created: &NewDeviceKey) -> String {
+    format!(
+        "Key for {}, shown only now:\nOPDS username: {}\nOPDS device key: {}",
+        created.key.name, created.username, created.secret
+    )
+}
+
+fn date(unix_seconds: i64) -> String {
+    chrono::DateTime::from_timestamp(unix_seconds, 0).map_or_else(
+        || unix_seconds.to_string(),
+        |at| at.format("%Y-%m-%d %H:%M UTC").to_string(),
+    )
+}
+
 fn read_password<B: BufRead>(mut lines: std::io::Lines<B>) -> Result<String, String> {
     let line = lines
         .next()
@@ -341,8 +399,8 @@ mod tests {
             .unwrap();
         assert_eq!(alice.role, Role::Reader);
         assert!(accounts.can_access(&alice.id, &library.id).unwrap());
-        let app = accounts.app_password("alice").unwrap().unwrap();
-        assert!(output.contains(&app.password));
+        assert!(output.contains("users keys alice add"), "{output}");
+        assert!(accounts.device_keys("alice").unwrap().is_empty());
         let listed = command(&accounts, Some(&library), "users list", "").unwrap();
         assert!(listed.contains("alice") && listed.contains("has access"));
         assert!(listed.contains("reader"));
@@ -385,22 +443,58 @@ mod tests {
     }
 
     #[test]
-    fn app_passwords_reveal_and_rotate() {
+    fn device_keys_are_shown_once_rotated_and_revoked() {
         let (_directory, accounts, library) = fixture();
         command(&accounts, Some(&library), "users add alice", "").unwrap();
-        let revealed = command(&accounts, Some(&library), "users app-password alice", "").unwrap();
-        assert_eq!(
-            revealed,
-            command(&accounts, Some(&library), "users app-password alice", "").unwrap()
+        let key = |output: &str| {
+            output
+                .lines()
+                .find_map(|line| line.strip_prefix("OPDS device key: "))
+                .unwrap()
+                .to_string()
+        };
+        assert!(command(&accounts, Some(&library), "users keys alice", "")
+            .unwrap()
+            .contains("no device keys"));
+        let kobo =
+            key(&command(&accounts, Some(&library), "users keys alice add Kobo", "").unwrap());
+        let verifies = |secret: &str| {
+            accounts
+                .user_device_key_verifiers("alice")
+                .unwrap()
+                .iter()
+                .any(|verifier| verifier.matches("alice", secret.as_bytes()))
+        };
+        assert!(verifies(&kobo));
+        let listed = command(&accounts, Some(&library), "users keys alice", "").unwrap();
+        assert!(
+            listed.contains("Kobo") && listed.contains("never used"),
+            "{listed}"
         );
-        let rotated = command(
+        assert!(!listed.contains(&kobo));
+        let rotated = key(&command(
             &accounts,
             Some(&library),
-            "users app-password alice --rotate",
+            "users keys alice rotate kobo",
+            "",
+        )
+        .unwrap());
+        assert!(!verifies(&kobo) && verifies(&rotated));
+        assert!(command(
+            &accounts,
+            Some(&library),
+            "users keys alice revoke Phone",
+            ""
+        )
+        .is_err());
+        command(
+            &accounts,
+            Some(&library),
+            "users keys alice revoke Kobo",
             "",
         )
         .unwrap();
-        assert_ne!(revealed, rotated);
+        assert!(!verifies(&rotated));
     }
 
     #[test]

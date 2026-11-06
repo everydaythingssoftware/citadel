@@ -65,7 +65,7 @@ fn fresh_with(
             .with_library_roots(roots),
     );
     served.open_registered().unwrap();
-    let service = OpdsService::with_ephemeral_credentials(source.clone(), Vec::new()).unwrap();
+    let service = OpdsService::with_ephemeral_credentials(source.clone(), Vec::new());
     let access = api::ApiAccess {
         accounts: accounts.clone(),
         served: served.clone(),

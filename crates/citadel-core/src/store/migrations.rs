@@ -42,7 +42,13 @@ struct Marker {
     attempts: u32,
 }
 
+diesel::define_sql_function!(fn citadel_sha256_hex(input: Text) -> Text);
+
 pub(super) fn migrate(connection: &mut SqliteConnection, path: &Path) -> Result<()> {
+    // The device-key migration hashes existing app passwords in SQL.
+    citadel_sha256_hex_utils::register_impl(connection, |input: String| {
+        super::device_keys::sha256_hex(input.as_bytes())
+    })?;
     migrate_with(connection, path, &MIGRATIONS)
 }
 
@@ -657,6 +663,35 @@ mod tests {
         assert!(!sidecar(&path, "migrating").exists());
         assert!(!partial.exists());
         assert_eq!(backup_versions(&path), ["20260101000000"]);
+    }
+
+    #[test]
+    fn app_passwords_become_hashed_existing_password_keys() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("citadel.db");
+        {
+            let mut connection = connect(&path);
+            diesel::migration::MigrationConnection::setup(&mut connection).unwrap();
+            for migration in MIGRATIONS.migrations().unwrap() {
+                if migration.name().version().to_string().as_str() < "20261106000000" {
+                    connection.run_migration(&migration).unwrap();
+                }
+            }
+            connection
+                .batch_execute(
+                    "INSERT INTO users (id, username, app_password, created_at) \
+                     VALUES ('a', 'alice', 'wren724=wolf', 1), ('b', 'bob', NULL, 1);",
+                )
+                .unwrap();
+        }
+        let store = super::super::CitadelStore::open(&path).unwrap();
+        let keys = store.device_keys("alice").unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].name, "Existing password");
+        assert!(
+            store.user_device_key_verifiers("alice").unwrap()[0].matches("alice", b"wren724=wolf")
+        );
+        assert!(store.device_keys("bob").unwrap().is_empty());
     }
 
     #[test]

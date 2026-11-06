@@ -17,10 +17,14 @@ use std::{
 };
 
 use chrono::NaiveDateTime;
-use citadel_core::{error::LibraryError, password::generate_setup_code, store::CitadelStore};
+use citadel_core::{
+    error::LibraryError,
+    password::generate_setup_code,
+    store::{CitadelStore, DeviceKeyVerifier},
+};
 use citadel_opds::{
-    credential_store::OpdsCredentialSecret, CatalogBookQuery, CatalogFacet, CatalogSource,
-    OpdsBindTarget, OpdsLifecycleState, OpdsService, OpdsServiceStatus, OpdsStartConfig,
+    CatalogBookQuery, CatalogFacet, CatalogSource, OpdsBindTarget, OpdsLifecycleState, OpdsService,
+    OpdsServiceStatus, OpdsStartConfig,
 };
 use libcalibre::{BookId, BookPage, CalibreError, Library, ResolvedBookAsset};
 use serde::Deserialize;
@@ -51,7 +55,7 @@ pub struct ServerConfig {
 }
 
 /// OPDS listener settings. Reader sign-in is always required: each Citadel
-/// user signs in to OPDS with their app password.
+/// user signs in to OPDS with their username and a device key.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SharingConfig {
@@ -501,8 +505,8 @@ pub(crate) fn validate_config(config: &ServerConfig) -> Result<(), String> {
     if config.sharing.authentication_enabled.is_some() {
         return Err(
             "sharing.authenticationEnabled has been removed: Citadel server always \
-             requires sign-in. Delete the line; readers use their Citadel app password \
-             (`citadel-server --config <path> users app-password <name>`)."
+             requires sign-in. Delete the line; readers use a Citadel device key \
+             (`citadel-server --config <path> users keys <name> add <device>`)."
                 .into(),
         );
     }
@@ -598,24 +602,18 @@ fn open_secrets(
     Ok(Arc::new(vault))
 }
 
-/// The OPDS readers: users granted the served library, with their app
-/// passwords. Empty until a library is chosen and someone is granted it.
+/// The OPDS readers' device keys: those of users granted the served library.
+/// Empty until a library is chosen and someone is granted it.
 fn opds_users(
     accounts: &CitadelStore,
     library_id: Option<&str>,
-) -> Result<Vec<OpdsCredentialSecret>, String> {
+) -> Result<Vec<DeviceKeyVerifier>, String> {
     let Some(library_id) = library_id else {
         return Ok(Vec::new());
     };
-    Ok(accounts
-        .app_credentials(library_id)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|credential| OpdsCredentialSecret {
-            username: credential.username,
-            password: credential.password,
-        })
-        .collect())
+    accounts
+        .library_device_key_verifiers(library_id)
+        .map_err(|error| error.to_string())
 }
 
 pub async fn run(config: ServerConfig) -> Result<(), String> {
@@ -673,8 +671,13 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     };
 
     let users = opds_users(&accounts, served.library_id().as_deref())?;
-    let service = OpdsService::with_ephemeral_credentials(source.clone(), users.clone())
-        .map_err(|error| error.message)?;
+    let service = OpdsService::with_ephemeral_credentials(source.clone(), users.clone());
+    let touched = accounts.clone();
+    service.on_device_key_used(move |key_id| {
+        if let Err(error) = touched.touch_device_key(key_id) {
+            eprintln!("citadel_server warning=\"could not record device key use: {error}\"");
+        }
+    });
     let mut opds_started = false;
     let mut last_status = service.status().await;
     if ensure_opds_started(
@@ -912,8 +915,9 @@ async fn ensure_opds_started(
 }
 
 /// The admin CLI and the setup routes change `citadel.db`; pick up added,
-/// removed and re-granted users and rotated app passwords without a restart.
-/// Returns how many readers the served library has.
+/// removed and re-granted users and new, rotated and revoked device keys
+/// without a restart.
+/// Returns how many device keys the served library's readers have.
 async fn refresh_opds_users(
     service: &OpdsService,
     accounts: &Arc<CitadelStore>,
@@ -925,10 +929,8 @@ async fn refresh_opds_users(
     let result = match users {
         Ok(Ok(users)) => {
             let count = users.len();
-            service
-                .replace_credentials(users)
-                .map(|()| count)
-                .map_err(|error| error.message)
+            service.replace_credentials(users);
+            Ok(count)
         }
         Ok(Err(error)) => Err(error),
         Err(error) => Err(error.to_string()),
@@ -1167,7 +1169,7 @@ mod tests {
         .unwrap();
         let error = validate_config(&config).unwrap_err();
         assert!(error.contains("always requires sign-in"), "{error}");
-        assert!(error.contains("users app-password"), "{error}");
+        assert!(error.contains("users keys"), "{error}");
 
         let config: ServerConfig =
             toml::from_str(&format!("libraryPath = \"/srv/books\"\n{SHARING}{API}")).unwrap();

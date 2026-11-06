@@ -1,21 +1,31 @@
 //! The desktop's local user in `citadel.db` (ADR 0009). Desktop writes are
-//! attributed to it, and its app password is the OPDS sharing password.
-use std::path::Path;
+//! attributed to it, and its device keys are what OPDS readers sign in with
+//! (ADR 0013).
+use std::{path::Path, sync::Arc};
 
 use citadel_core::{
-    store::{CitadelStore, StoreError, User},
+    store::{CitadelStore, DeviceKey, DeviceKeyVerifier, NewDeviceKey, StoreError, User},
     Actor,
 };
-use citadel_opds::credential_store::{OpdsCredentialSecret, OpdsCredentialStatus};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub const DATABASE: &str = "citadel.db";
 /// Pre-CDL-45 desktop sharing credentials; migrated into `citadel.db` once.
 const LEGACY_CREDENTIALS: &str = "opds-credentials.json";
+/// What a password carried over from before device keys is called.
+pub const EXISTING_PASSWORD_KEY: &str = "Existing password";
 
 pub struct LocalAccount {
-    store: CitadelStore,
+    store: Arc<CitadelStore>,
     user_id: String,
+}
+
+/// The local user's OPDS username and device keys, never their secrets.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct OpdsDeviceKeys {
+    pub username: String,
+    pub keys: Vec<DeviceKey>,
 }
 
 #[derive(Deserialize)]
@@ -46,14 +56,19 @@ impl LocalAccount {
             .unwrap_or_default();
         let user = store.local_user(&default_name)?;
         let account = Self {
-            store,
+            store: Arc::new(store),
             user_id: user.id.clone(),
         };
         if legacy_path.exists() {
-            if let Some(legacy) = legacy {
-                account
-                    .configure(&legacy.username, &legacy.password)
-                    .map_err(StoreError::Storage)?;
+            if let Some(legacy) = legacy.filter(|legacy| !legacy.password.is_empty()) {
+                let user = account
+                    .store
+                    .rename_user(&user.username, &legacy.username)?;
+                account.store.import_device_key(
+                    &user.username,
+                    EXISTING_PASSWORD_KEY,
+                    &legacy.password,
+                )?;
             }
             std::fs::remove_file(&legacy_path).map_err(io)?;
         }
@@ -62,6 +77,10 @@ impl LocalAccount {
 
     pub fn store(&self) -> &CitadelStore {
         &self.store
+    }
+
+    pub fn shared_store(&self) -> Arc<CitadelStore> {
+        self.store.clone()
     }
 
     pub fn actor(&self) -> Actor {
@@ -74,45 +93,49 @@ impl LocalAccount {
         self.store.local_user("").map_err(message)
     }
 
-    pub fn opds_credentials(&self) -> Result<Option<OpdsCredentialSecret>, String> {
+    pub fn device_keys(&self) -> Result<OpdsDeviceKeys, String> {
         let user = self.user()?;
-        Ok(self
-            .store
-            .app_password(&user.username)
-            .map_err(message)?
-            .map(|credential| OpdsCredentialSecret {
-                username: credential.username,
-                password: credential.password,
-            }))
-    }
-
-    pub fn opds_status(&self) -> Result<OpdsCredentialStatus, String> {
-        let credentials = self.opds_credentials()?;
-        Ok(OpdsCredentialStatus {
-            configured: credentials.is_some(),
-            username: credentials.map(|credentials| credentials.username),
+        Ok(OpdsDeviceKeys {
+            keys: self.store.device_keys(&user.username).map_err(message)?,
+            username: user.username,
         })
     }
 
-    /// The OPDS username is the local user's name, so choosing one renames them.
-    pub fn configure(&self, username: &str, password: &str) -> Result<(), String> {
-        if password.is_empty() {
-            return Err("Reader sign-in needs a non-empty username and password.".into());
-        }
+    pub fn opds_verifiers(&self) -> Result<Vec<DeviceKeyVerifier>, String> {
         let user = self.user()?;
-        let user = self
-            .store
-            .rename_user(&user.username, username)
-            .map_err(message)?;
         self.store
-            .set_app_password(&user.username, Some(password))
+            .user_device_key_verifiers(&user.username)
             .map_err(message)
     }
 
-    pub fn clear(&self) -> Result<(), String> {
+    pub fn create_device_key(&self, name: &str) -> Result<NewDeviceKey, String> {
         let user = self.user()?;
         self.store
-            .set_app_password(&user.username, None)
+            .create_device_key(&user.username, name)
+            .map_err(message)
+    }
+
+    pub fn rotate_device_key(&self, key_id: &str) -> Result<NewDeviceKey, String> {
+        let user = self.user()?;
+        self.store
+            .rotate_device_key(&user.username, key_id)
+            .map_err(message)
+    }
+
+    pub fn revoke_device_key(&self, key_id: &str) -> Result<(), String> {
+        let user = self.user()?;
+        self.store
+            .revoke_device_key(&user.username, key_id)
+            .map_err(message)
+    }
+
+    /// The OPDS username is the local user's name, so every device signs in
+    /// with the new name afterwards.
+    pub fn rename(&self, username: &str) -> Result<(), String> {
+        let user = self.user()?;
+        self.store
+            .rename_user(&user.username, username)
+            .map(drop)
             .map_err(message)
     }
 }
@@ -126,7 +149,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn legacy_sharing_credentials_become_the_local_users_app_password() {
+    fn legacy_sharing_credentials_become_an_existing_password_key() {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(
             directory.path().join(LEGACY_CREDENTIALS),
@@ -135,13 +158,11 @@ mod tests {
         .unwrap();
         let account = LocalAccount::open(directory.path()).unwrap();
         assert!(!directory.path().join(LEGACY_CREDENTIALS).exists());
-        assert_eq!(
-            account.opds_credentials().unwrap(),
-            Some(OpdsCredentialSecret {
-                username: "reader".into(),
-                password: "wren724=wolf".into(),
-            })
-        );
+        let keys = account.device_keys().unwrap();
+        assert_eq!(keys.username, "reader");
+        assert_eq!(keys.keys.len(), 1);
+        assert_eq!(keys.keys[0].name, EXISTING_PASSWORD_KEY);
+        assert!(account.opds_verifiers().unwrap()[0].matches("reader", b"wren724=wolf"));
         let actor = account.actor();
         drop(account);
         let reopened = LocalAccount::open(directory.path()).unwrap();
@@ -150,7 +171,7 @@ mod tests {
     }
 
     #[test]
-    fn unreadable_legacy_files_are_discarded_and_sharing_can_be_cleared() {
+    fn unreadable_legacy_files_are_discarded_and_keys_are_managed() {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(
             directory.path().join(LEGACY_CREDENTIALS),
@@ -159,15 +180,15 @@ mod tests {
         .unwrap();
         let account = LocalAccount::open(directory.path()).unwrap();
         assert!(!directory.path().join(LEGACY_CREDENTIALS).exists());
-        assert!(!account.opds_status().unwrap().configured);
-        account.configure("kid", "secret").unwrap();
-        assert_eq!(
-            account.opds_status().unwrap().username.as_deref(),
-            Some("kid")
-        );
-        account.clear().unwrap();
-        assert_eq!(account.opds_credentials().unwrap(), None);
-        assert!(account.configure("bad:name", "secret").is_err());
-        assert!(account.configure("kid", "").is_err());
+        assert!(account.device_keys().unwrap().keys.is_empty());
+        let kobo = account.create_device_key("Kobo").unwrap();
+        account.rename("kid").unwrap();
+        assert!(account.opds_verifiers().unwrap()[0].matches("kid", kobo.secret.as_bytes()));
+        let rotated = account.rotate_device_key(&kobo.key.id).unwrap();
+        assert!(account.opds_verifiers().unwrap()[0].matches("kid", rotated.secret.as_bytes()));
+        account.revoke_device_key(&rotated.key.id).unwrap();
+        assert!(account.opds_verifiers().unwrap().is_empty());
+        assert!(account.rename("bad:name").is_err());
+        assert!(account.create_device_key(" ").is_err());
     }
 }

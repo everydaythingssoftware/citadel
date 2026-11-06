@@ -2,8 +2,8 @@
 //! identities, the library registry and library grants. Hosts keep it in their
 //! state directory, never inside a library (ADR 0003, ADR 0009).
 //!
-//! [`users`] owns accounts, [`auth`] owns sign-in, sessions, app passwords and
-//! grants, [`libraries`] owns the registry, [`migrations`] brings the file
+//! [`users`] owns accounts, [`auth`] owns sign-in, sessions and grants,
+//! [`device_keys`] owns OPDS device keys, [`libraries`] owns the registry, [`migrations`] brings the file
 //! up to date when it is opened, and [`recovery`] gets a host past a file it
 //! can't open.
 use std::{
@@ -17,14 +17,16 @@ use diesel::{connection::SimpleConnection, prelude::*, sqlite::SqliteConnection}
 
 mod auth;
 mod credentials;
+mod device_keys;
 mod libraries;
 mod migrations;
 mod recovery;
 mod schema;
 mod users;
 
-pub use auth::{AppCredential, SESSION_TTL_SECONDS};
+pub use auth::SESSION_TTL_SECONDS;
 pub use credentials::{CredentialSecret, ProviderCredential};
+pub use device_keys::{DeviceKey, DeviceKeyVerifier, NewDeviceKey};
 pub use libraries::{canonical_path, RegisteredLibrary};
 pub use recovery::Backup;
 pub use users::{Role, User, UserSummary};

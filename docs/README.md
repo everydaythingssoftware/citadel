@@ -10,7 +10,8 @@ browser engine installed on the user's system.
 
 - **[Frontend service boundaries](adr/0008-frontend-service-boundaries.md)** - Library, LibraryCatalog, Metadata, Platform and adapter-only runtime imports
 - **[Shared Rust operations and HTTP contracts](adr/0007-shared-library-contract.md)** - Core/desktop/server boundaries and generated bindings
-- **[Citadel users and sessions](adr/0009-citadel-users-and-sessions.md)** - Server accounts database, browser sessions, OPDS app passwords and library grants
+- **[Citadel users and sessions](adr/0009-citadel-users-and-sessions.md)** - Server accounts database, browser sessions and library grants
+- **[OPDS device keys](adr/0013-opds-device-keys.md)** - Per-device OPDS keys: generated, hashed, shown once, rotated and revoked
 - **[Server administrators and web setup](adr/0012-server-administrators-and-web-setup.md)** - Roles, the printed setup code, the served library in citadel.db and the setup routes
 
 `ai-docs/` is point-in-time AI-generated analysis; it may not reflect the current code.

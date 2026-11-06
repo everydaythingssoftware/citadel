@@ -417,40 +417,51 @@ async clbCmdUpdateNow() : Promise<Result<UpdateNowOutcome, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async clbQueryOpdsCredentialStatus() : Promise<Result<OpdsCredentialStatus, OpdsStatusError>> {
+async clbQueryOpdsDeviceKeys() : Promise<Result<OpdsDeviceKeys, OpdsStatusError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_credential_status") };
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_device_keys") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
 /**
- * Stores the credentials and hot-swaps them into a running share.
+ * The new key is returned once and hot-swapped into a running share.
  */
-async clbCmdConfigureOpdsCredentials(username: string, password: string) : Promise<Result<OpdsCredentialStatus, OpdsStatusError>> {
+async clbCmdCreateOpdsDeviceKey(name: string) : Promise<Result<NewDeviceKey, OpdsStatusError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_configure_opds_credentials", { username, password }) };
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_create_opds_device_key", { name }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async clbCmdGenerateOpdsCredentials(username: string) : Promise<Result<GeneratedOpdsCredentials, OpdsStatusError>> {
+async clbCmdRotateOpdsDeviceKey(keyId: string) : Promise<Result<NewDeviceKey, OpdsStatusError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_generate_opds_credentials", { username }) };
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_rotate_opds_device_key", { keyId }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
 /**
- * Clearing stops a running share that requires sign-in (see
+ * Revoking the last key stops a running share that requires sign-in (see
  * `OpdsService::clear_credentials`).
  */
-async clbCmdClearOpdsCredentials() : Promise<Result<OpdsCredentialStatus, OpdsStatusError>> {
+async clbCmdRevokeOpdsDeviceKey(keyId: string) : Promise<Result<OpdsDeviceKeys, OpdsStatusError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_clear_opds_credentials") };
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_revoke_opds_device_key", { keyId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Every device signs in with the new name from the next request on.
+ */
+async clbCmdRenameOpdsUser(username: string) : Promise<Result<OpdsDeviceKeys, OpdsStatusError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_rename_opds_user", { username }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -483,14 +494,6 @@ async clbCmdReconfigureOpds(config: OpdsStartConfig) : Promise<Result<OpdsServic
 async clbQueryOpdsStatus() : Promise<Result<OpdsServiceStatus, OpdsStatusError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_status") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async clbQueryOpdsCredentialSecret() : Promise<Result<OpdsCredentialSecret | null, OpdsStatusError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_query_opds_credential_secret") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -649,10 +652,9 @@ export type DetectionSource =
  */
 "default-folder"
 /**
- * Returned when credentials are generated; the password is also stored
- * reversibly (ADR 0005) so the UI can reveal it again later.
+ * What a user sees of a key after creating it: never the secret.
  */
-export type GeneratedOpdsCredentials = { username: string; password: string }
+export type DeviceKey = { id: string; name: string; createdAt: number; lastUsedAt: number | null }
 export type GenreCandidate = { name: string; 
 /**
  * Stable provider field identity, such as `hardcover:genre` or
@@ -778,17 +780,19 @@ export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: s
 export type MetadataProvider = "hardcover" | "loc" | "dnb" | "k10plus" | "openlibrary"
 export type NewAuthor = { name: string; sortable_name: string | null }
 /**
+ * A key just created or rotated, with its secret, which is not kept.
+ */
+export type NewDeviceKey = { key: DeviceKey; username: string; secret: string }
+/**
  * Where sharing listens. `AllInterfaces` is meant to be paired with
  * credentials (see the auth integration) since it serves every network the
  * computer can reach.
  */
 export type OpdsBindTarget = "localNetworks" | "allInterfaces" | { addresses: { addresses: string[] } }
 /**
- * The stored secret, for the reader UI's reveal flow. The password is kept
- * reversibly on purpose (ADR 0005); the app process may show it to its user.
+ * The local user's OPDS username and device keys, never their secrets.
  */
-export type OpdsCredentialSecret = { username: string; password: string }
-export type OpdsCredentialStatus = { configured: boolean; username: string | null }
+export type OpdsDeviceKeys = { username: string; keys: DeviceKey[] }
 export type OpdsErrorCode = "invalidPort" | "libraryNotReady" | "authRequired" | "configurationConflict" | "interfaceUnavailable" | "portUnavailable" | "permissionDenied" | "listenerFailed" | "unexpected"
 export type OpdsLifecycleState = "stopped" | "starting" | "running" | "waitingForInterface" | "error"
 export type OpdsServiceStatus = { state: OpdsLifecycleState; activeLibraryId: string | null; urls: string[]; error: OpdsStatusError | null; 

@@ -209,7 +209,7 @@ mod tests {
                 .unwrap(),
             library
         );
-        store.create_user("alice", "correct horse").unwrap();
+        let alice = store.create_user("alice", "correct horse").unwrap();
         store.grant("alice", LIBRARY_ID).unwrap();
         std::fs::rename(
             directory.path().join("library"),
@@ -223,7 +223,7 @@ mod tests {
         drop(store);
         let reopened = CitadelStore::open(&directory.path().join("citadel.db")).unwrap();
         assert_eq!(reopened.libraries().unwrap(), vec![moved.clone()]);
-        assert_eq!(reopened.app_credentials(LIBRARY_ID).unwrap().len(), 1);
+        assert!(reopened.can_access(&alice.id, LIBRARY_ID).unwrap());
         assert_eq!(moved.display_name, "library");
         assert!(reopened
             .register_library(" ", directory.path(), None)

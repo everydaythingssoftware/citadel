@@ -1,26 +1,18 @@
 import type {
-	GeneratedOpdsCredentials,
-	OpdsCredentialSecret,
-	OpdsCredentialStatus,
+	NewDeviceKey,
+	OpdsDeviceKeys,
 	OpdsServiceStatus,
 	OpdsStartConfig,
 } from "@/bindings";
-
-export interface OpdsCredentials {
-	username: string;
-	password: string;
-}
 
 export interface OpdsClient {
 	status(): Promise<OpdsServiceStatus>;
 	start(config: OpdsStartConfig): Promise<OpdsServiceStatus>;
 	stop(): Promise<OpdsServiceStatus>;
 	reconfigure(config: OpdsStartConfig): Promise<OpdsServiceStatus>;
-	credentialStatus(): Promise<OpdsCredentialStatus>;
-	credentialSecret(): Promise<OpdsCredentialSecret | null>;
-	configureCredentials(
-		credentials: OpdsCredentials,
-	): Promise<OpdsCredentialStatus>;
-	generateCredentials(username: string): Promise<GeneratedOpdsCredentials>;
-	clearCredentials(): Promise<OpdsCredentialStatus>;
+	deviceKeys(): Promise<OpdsDeviceKeys>;
+	createDeviceKey(name: string): Promise<NewDeviceKey>;
+	rotateDeviceKey(keyId: string): Promise<NewDeviceKey>;
+	revokeDeviceKey(keyId: string): Promise<OpdsDeviceKeys>;
+	renameUser(username: string): Promise<OpdsDeviceKeys>;
 }

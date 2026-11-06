@@ -96,15 +96,15 @@ fn command_builder() -> Builder<tauri::Wry> {
             app_updates::clb_cmd_update_later,
             app_updates::clb_cmd_update_now,
             // OPDS sharing commands
-            opds::clb_query_opds_credential_status,
-            opds::clb_cmd_configure_opds_credentials,
-            opds::clb_cmd_generate_opds_credentials,
-            opds::clb_cmd_clear_opds_credentials,
+            opds::clb_query_opds_device_keys,
+            opds::clb_cmd_create_opds_device_key,
+            opds::clb_cmd_rotate_opds_device_key,
+            opds::clb_cmd_revoke_opds_device_key,
+            opds::clb_cmd_rename_opds_user,
             opds::clb_cmd_start_opds,
             opds::clb_cmd_stop_opds,
             opds::clb_cmd_reconfigure_opds,
             opds::clb_query_opds_status,
-            opds::clb_query_opds_credential_secret,
             // Window commands
             menu::clb_cmd_open_settings,
             menu::clb_cmd_open_software_update,
@@ -170,9 +170,14 @@ fn run_tauri_backend() -> std::io::Result<()> {
             let sharing = citadel_opds::OpdsService::with_ephemeral_credentials(
                 Arc::new(opds_state.clone()),
                 Vec::new(),
-            )
-            .map_err(|error| error.message)?;
+            );
             opds::sync_credentials(&sharing, &account).map_err(|error| error.message)?;
+            let store = account.shared_store();
+            sharing.on_device_key_used(move |key_id| {
+                if let Err(error) = store.touch_device_key(key_id) {
+                    log::warn!("could not record device key use: {error}");
+                }
+            });
             app.manage(account);
             app.manage(sharing);
 
