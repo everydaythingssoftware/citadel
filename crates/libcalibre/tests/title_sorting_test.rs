@@ -85,3 +85,22 @@ proptest! {
         );
     }
 }
+
+#[test]
+fn only_a_leading_article_moves() {
+    for (title, sorted) in [
+        ("The Hobbit", "Hobbit, The"),
+        ("the hobbit", "hobbit, the"),
+        (
+            "An Instance of the Fingerpost",
+            "Instance of the Fingerpost, An",
+        ),
+        ("DATA Science", "DATA Science"),
+        ("Diana The Huntress", "Diana The Huntress"),
+        ("Tale of A City", "Tale of A City"),
+        ("Theory of Everything", "Theory of Everything"),
+        ("Anathem", "Anathem"),
+    ] {
+        assert_eq!(sort_book_title(title.to_string()), sorted, "{title}");
+    }
+}
