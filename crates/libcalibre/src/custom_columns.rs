@@ -11,8 +11,8 @@
 //!   `custom_column_{n}` value table plus a `books_custom_column_{n}_link`
 //!   link table.
 //!
-//! The DDL emitted by [`create`] matches Calibre's `create_custom_column`
-//! (src/calibre/db/backend.py) exactly, including its triggers and views.
+//! [`create`] builds a column's tables, indexes, triggers and views from the
+//! templates in `sql/`, so Calibre finds the objects it expects.
 
 use std::collections::HashMap;
 
@@ -306,8 +306,7 @@ fn is_valid_label(label: &str) -> bool {
 }
 
 /// Create a custom column: inserts the `custom_columns` row and creates the
-/// value/link tables, indexes, triggers, and (for normalized columns) views,
-/// exactly as Calibre's `create_custom_column` does.
+/// value/link tables, indexes, triggers, and (for normalized columns) views.
 pub(crate) fn create(
     conn: &mut SqliteConnection,
     spec: &CustomColumnSpec,
@@ -382,120 +381,35 @@ pub(crate) fn create(
     get_column(conn, new_id)
 }
 
+const VALUE_TABLE_SQL: &str = include_str!("sql/custom_column_value.sql");
+const NORMALIZED_TABLES_SQL: &str = include_str!("sql/custom_column_normalized.sql");
+
 /// DDL for non-normalized datatypes (bool, int, float, datetime, comments,
-/// composite). Verbatim from Calibre's `create_custom_column`.
-fn non_normalized_table_ddl(n: i32, dt: &str, collate: &str) -> String {
-    format!(
-        r#"CREATE TABLE custom_column_{n}(
-    id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    book  INTEGER,
-    value {dt} NOT NULL {collate},
-    UNIQUE(book));
-CREATE INDEX custom_column_{n}_idx ON custom_column_{n} (book);
-CREATE TRIGGER fkc_insert_custom_column_{n}
-        BEFORE INSERT ON custom_column_{n}
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from books WHERE id=NEW.book) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: book not in books')
-            END;
-        END;
-CREATE TRIGGER fkc_update_custom_column_{n}
-        BEFORE UPDATE OF book ON custom_column_{n}
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from books WHERE id=NEW.book) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: book not in books')
-            END;
-        END;
-"#
-    )
+/// composite).
+fn non_normalized_table_ddl(n: i32, value_type: &str, collate: &str) -> String {
+    VALUE_TABLE_SQL
+        .replace("{n}", &n.to_string())
+        .replace("{value_type}", value_type)
+        .replace("{collate}", collate)
 }
 
 /// DDL for normalized datatypes (text, series, enumeration, rating).
-/// Verbatim from Calibre's `create_custom_column`, including the `UPDATE OF
-/// author` oddity in the `_b` trigger.
-fn normalized_table_ddl(n: i32, dt: &str, collate: &str, kind: &CustomColumnKind) -> String {
-    let s_index = if *kind == CustomColumnKind::Series {
+fn normalized_table_ddl(
+    n: i32,
+    value_type: &str,
+    collate: &str,
+    kind: &CustomColumnKind,
+) -> String {
+    let series_extra = if *kind == CustomColumnKind::Series {
         "extra REAL,"
     } else {
         ""
     };
-    format!(
-        r#"CREATE TABLE custom_column_{n}(
-    id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    value {dt} NOT NULL {collate},
-    link TEXT NOT NULL DEFAULT "",
-    UNIQUE(value));
-CREATE INDEX custom_column_{n}_idx ON custom_column_{n} (value {collate});
-CREATE TABLE books_custom_column_{n}_link(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    book INTEGER NOT NULL,
-    value INTEGER NOT NULL,
-    {s_index}
-    UNIQUE(book, value)
-    );
-CREATE INDEX books_custom_column_{n}_link_aidx ON books_custom_column_{n}_link (value);
-CREATE INDEX books_custom_column_{n}_link_bidx ON books_custom_column_{n}_link (book);
-CREATE TRIGGER fkc_update_books_custom_column_{n}_link_a
-        BEFORE UPDATE OF book ON books_custom_column_{n}_link
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from books WHERE id=NEW.book) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: book not in books')
-            END;
-        END;
-CREATE TRIGGER fkc_update_books_custom_column_{n}_link_b
-        BEFORE UPDATE OF author ON books_custom_column_{n}_link
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from custom_column_{n} WHERE id=NEW.value) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: value not in custom_column_{n}')
-            END;
-        END;
-CREATE TRIGGER fkc_insert_books_custom_column_{n}_link
-        BEFORE INSERT ON books_custom_column_{n}_link
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from books WHERE id=NEW.book) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: book not in books')
-                WHEN (SELECT id from custom_column_{n} WHERE id=NEW.value) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: value not in custom_column_{n}')
-            END;
-        END;
-CREATE TRIGGER fkc_delete_books_custom_column_{n}_link
-        AFTER DELETE ON custom_column_{n}
-        BEGIN
-            DELETE FROM books_custom_column_{n}_link WHERE value=OLD.id;
-        END;
-CREATE VIEW tag_browser_custom_column_{n} AS SELECT
-    id,
-    value,
-    (SELECT COUNT(id) FROM books_custom_column_{n}_link WHERE value=custom_column_{n}.id) count,
-    (SELECT AVG(r.rating)
-     FROM books_custom_column_{n}_link,
-          books_ratings_link as bl,
-          ratings as r
-     WHERE books_custom_column_{n}_link.value=custom_column_{n}.id and bl.book=books_custom_column_{n}_link.book and
-           r.id = bl.rating and r.rating <> 0) avg_rating,
-    value AS sort
-FROM custom_column_{n};
-CREATE VIEW tag_browser_filtered_custom_column_{n} AS SELECT
-    id,
-    value,
-    (SELECT COUNT(books_custom_column_{n}_link.id) FROM books_custom_column_{n}_link WHERE value=custom_column_{n}.id AND
-    books_list_filter(book)) count,
-    (SELECT AVG(r.rating)
-     FROM books_custom_column_{n}_link,
-          books_ratings_link as bl,
-          ratings as r
-     WHERE books_custom_column_{n}_link.value=custom_column_{n}.id AND bl.book=books_custom_column_{n}_link.book AND
-           r.id = bl.rating AND r.rating <> 0 AND
-           books_list_filter(bl.book)) avg_rating,
-    value AS sort
-FROM custom_column_{n};
-"#
-    )
+    NORMALIZED_TABLES_SQL
+        .replace("{n}", &n.to_string())
+        .replace("{value_type}", value_type)
+        .replace("{collate}", collate)
+        .replace("{series_extra}", series_extra)
 }
 
 // =============================================================================

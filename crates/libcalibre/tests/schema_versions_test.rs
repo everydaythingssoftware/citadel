@@ -224,3 +224,100 @@ fn read_only_handles_refuse_to_upgrade_without_touching_the_file() {
     assert_eq!(std::fs::read(&database).unwrap(), before);
     assert!(upgrade_backups(&database).unwrap().is_empty());
 }
+
+/// Every table's columns, index's columns, trigger's table and view's columns,
+/// as SQLite reports them: a schema's shape, whatever its SQL text.
+fn catalogue(database: &Path) -> Vec<String> {
+    use rusqlite::functions::FunctionFlags;
+    let conn = Connection::open(database).unwrap();
+    // Views call these; the host registers them on each connection.
+    for function in ["books_list_filter", "title_sort"] {
+        conn.create_scalar_function(function, 1, FunctionFlags::SQLITE_DETERMINISTIC, |_| Ok(1))
+            .unwrap();
+    }
+    let objects: Vec<(String, String, String)> = conn
+        .prepare(
+            "SELECT type, name, tbl_name FROM sqlite_master \
+             WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
+        )
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    let mut entries = Vec::new();
+    for (kind, name, table) in objects {
+        let detail: Vec<String> = match kind.as_str() {
+            "table" | "view" => conn
+                .prepare(&format!("PRAGMA table_xinfo('{name}')"))
+                .unwrap()
+                .query_map([], |row| {
+                    Ok(format!(
+                        "{} {} notnull={} default={:?} pk={}",
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, i64>(5)?
+                    ))
+                })
+                .unwrap()
+                .map(Result::unwrap)
+                .collect(),
+            "index" => conn
+                .prepare(&format!("PRAGMA index_xinfo('{name}')"))
+                .unwrap()
+                .query_map([], |row| {
+                    Ok(format!(
+                        "{:?} {:?}",
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(4)?
+                    ))
+                })
+                .unwrap()
+                .map(Result::unwrap)
+                .collect(),
+            _ => Vec::new(),
+        };
+        entries.push(format!("{kind} {name} on {table}: {}", detail.join(", ")));
+    }
+    entries
+}
+
+#[test]
+fn a_new_library_and_an_upgraded_calibre_library_have_the_same_schema() {
+    let (_created_dir, created) = setup_with_library();
+    let (_upgraded_dir, mut upgraded) = setup_with_schema_26_library();
+    upgraded.upgrade().unwrap().unwrap();
+
+    let created = catalogue(created.database_path());
+    let upgraded = catalogue(upgraded.database_path());
+    let differences: Vec<_> = created
+        .iter()
+        .filter(|entry| !upgraded.contains(entry))
+        .map(|entry| format!("only in new: {entry}"))
+        .chain(
+            upgraded
+                .iter()
+                .filter(|entry| !created.contains(entry))
+                .map(|entry| format!("only in upgraded: {entry}")),
+        )
+        .collect();
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn a_migration_that_meets_an_unexpected_schema_fails_and_changes_nothing() {
+    let (temp, database) = fixture_copy();
+    // A version-26 library already holding what migration 26 -> 27 creates.
+    Connection::open(&database)
+        .unwrap()
+        .execute_batch("CREATE TABLE books_pages_link (book INTEGER PRIMARY KEY)")
+        .unwrap();
+
+    let error = open(temp.path()).upgrade().unwrap_err();
+    assert!(error.to_string().contains("books_pages_link"), "{error}");
+    assert_eq!(user_version(&database), 26);
+    assert!(!columns(&database, "books").is_empty());
+    assert!(columns(&database, "books").contains(&"isbn".to_string()));
+}

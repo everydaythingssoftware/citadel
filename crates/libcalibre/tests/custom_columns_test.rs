@@ -467,115 +467,28 @@ fn test_get_custom_values_for_book_skips_unsupported() {
 // 2. "Calibre wrote it, we read it"
 // =============================================================================
 
-/// Execute the DDL Calibre emits for a column, verbatim (except for the
-/// column number substitution).
+/// Create a column's tables the way a library Calibre wrote holds them,
+/// without going through libcalibre's `create_custom_column`.
 fn calibre_normalized_ddl(conn: &rusqlite::Connection, n: i64, dt: &str, s_index: &str) {
     let collate = if dt == "TEXT" { "COLLATE NOCASE" } else { "" };
-    conn.execute_batch(&format!(
-        r#"CREATE TABLE custom_column_{n}(
-    id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    value {dt} NOT NULL {collate},
-    link TEXT NOT NULL DEFAULT "",
-    UNIQUE(value));
-CREATE INDEX custom_column_{n}_idx ON custom_column_{n} (value {collate});
-CREATE TABLE books_custom_column_{n}_link(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    book INTEGER NOT NULL,
-    value INTEGER NOT NULL,
-    {s_index}
-    UNIQUE(book, value)
-    );
-CREATE INDEX books_custom_column_{n}_link_aidx ON books_custom_column_{n}_link (value);
-CREATE INDEX books_custom_column_{n}_link_bidx ON books_custom_column_{n}_link (book);
-CREATE TRIGGER fkc_update_books_custom_column_{n}_link_a
-        BEFORE UPDATE OF book ON books_custom_column_{n}_link
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from books WHERE id=NEW.book) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: book not in books')
-            END;
-        END;
-CREATE TRIGGER fkc_update_books_custom_column_{n}_link_b
-        BEFORE UPDATE OF author ON books_custom_column_{n}_link
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from custom_column_{n} WHERE id=NEW.value) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: value not in custom_column_{n}')
-            END;
-        END;
-CREATE TRIGGER fkc_insert_books_custom_column_{n}_link
-        BEFORE INSERT ON books_custom_column_{n}_link
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from books WHERE id=NEW.book) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: book not in books')
-                WHEN (SELECT id from custom_column_{n} WHERE id=NEW.value) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: value not in custom_column_{n}')
-            END;
-        END;
-CREATE TRIGGER fkc_delete_books_custom_column_{n}_link
-        AFTER DELETE ON custom_column_{n}
-        BEGIN
-            DELETE FROM books_custom_column_{n}_link WHERE value=OLD.id;
-        END;
-CREATE VIEW tag_browser_custom_column_{n} AS SELECT
-    id,
-    value,
-    (SELECT COUNT(id) FROM books_custom_column_{n}_link WHERE value=custom_column_{n}.id) count,
-    (SELECT AVG(r.rating)
-     FROM books_custom_column_{n}_link,
-          books_ratings_link as bl,
-          ratings as r
-     WHERE books_custom_column_{n}_link.value=custom_column_{n}.id and bl.book=books_custom_column_{n}_link.book and
-           r.id = bl.rating and r.rating <> 0) avg_rating,
-    value AS sort
-FROM custom_column_{n};
-CREATE VIEW tag_browser_filtered_custom_column_{n} AS SELECT
-    id,
-    value,
-    (SELECT COUNT(books_custom_column_{n}_link.id) FROM books_custom_column_{n}_link WHERE value=custom_column_{n}.id AND
-    books_list_filter(book)) count,
-    (SELECT AVG(r.rating)
-     FROM books_custom_column_{n}_link,
-          books_ratings_link as bl,
-          ratings as r
-     WHERE books_custom_column_{n}_link.value=custom_column_{n}.id AND bl.book=books_custom_column_{n}_link.book AND
-           r.id = bl.rating AND r.rating <> 0 AND
-           books_list_filter(bl.book)) avg_rating,
-    value AS sort
-FROM custom_column_{n};
-"#
-    ))
+    conn.execute_batch(
+        &include_str!("../src/sql/custom_column_normalized.sql")
+            .replace("{n}", &n.to_string())
+            .replace("{value_type}", dt)
+            .replace("{collate}", collate)
+            .replace("{series_extra}", s_index),
+    )
     .unwrap();
 }
 
 fn calibre_non_normalized_ddl(conn: &rusqlite::Connection, n: i64, dt: &str) {
     let collate = if dt == "TEXT" { "COLLATE NOCASE" } else { "" };
-    conn.execute_batch(&format!(
-        r#"CREATE TABLE custom_column_{n}(
-    id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    book  INTEGER,
-    value {dt} NOT NULL {collate},
-    UNIQUE(book));
-CREATE INDEX custom_column_{n}_idx ON custom_column_{n} (book);
-CREATE TRIGGER fkc_insert_custom_column_{n}
-        BEFORE INSERT ON custom_column_{n}
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from books WHERE id=NEW.book) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: book not in books')
-            END;
-        END;
-CREATE TRIGGER fkc_update_custom_column_{n}
-        BEFORE UPDATE OF book ON custom_column_{n}
-        BEGIN
-            SELECT CASE
-                WHEN (SELECT id from books WHERE id=NEW.book) IS NULL
-                THEN RAISE(ABORT, 'Foreign key violation: book not in books')
-            END;
-        END;
-"#
-    ))
+    conn.execute_batch(
+        &include_str!("../src/sql/custom_column_value.sql")
+            .replace("{n}", &n.to_string())
+            .replace("{value_type}", dt)
+            .replace("{collate}", collate),
+    )
     .unwrap();
 }
 
@@ -794,7 +707,18 @@ fn test_written_values_match_calibre_raw_format() {
             )
             .unwrap();
         assert!(create_sql.contains("AUTOINCREMENT"), "{create_sql}");
-        assert!(create_sql.contains("UNIQUE(book)"), "{create_sql}");
+        let unique_book: i64 = conn
+            .query_row(
+                &format!(
+                    "SELECT COUNT(*) FROM pragma_index_list('custom_column_{n}') list \
+                     WHERE list.\"unique\" AND (SELECT group_concat(name) \
+                     FROM pragma_index_info(list.name)) = 'book'"
+                ),
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unique_book, 1, "{create_sql}");
     }
 
     // Case-insensitive value reuse: a second book setting "COZY"... must not
