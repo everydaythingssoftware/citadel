@@ -9,7 +9,8 @@ repository = "https://github.com/everydaythingssoftware/citadel"
 readme = "README.md"
 keywords = ["calibre", "ebook", "library", "sqlite", "epub"]
 categories = ["database", "parser-implementations"]
-exclude = ["diesel.toml"]
+# The fixture is a schema dump of a library Calibre 7.2 made, for upgrade tests.
+exclude = ["diesel.toml", "tests/fixtures/"]
 
 [dependencies]
 chrono = "0.4.31"
@@ -43,7 +44,7 @@ fastrand = "2.3"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 insta = { version = "1.40", features = ["yaml"] }
 proptest = "1.4"
-rusqlite = "0.32"
+rusqlite = { version = "0.32", features = ["functions"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 tempfile = "3.8"
