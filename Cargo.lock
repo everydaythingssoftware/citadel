@@ -714,7 +714,7 @@ dependencies = [
 
 [[package]]
 name = "citadel-desktop"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "axum",
  "chrono",
@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "citadel-server"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "axum",
  "base64 0.22.1",

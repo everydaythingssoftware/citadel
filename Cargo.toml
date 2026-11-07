@@ -11,7 +11,7 @@ members = [
 
 [workspace.package]
 # citadel-desktop and citadel-server release together under one version.
-version = "0.7.1"
+version = "0.7.2"
 rust-version = "1.97.1"
 
 # Cover thumbnail generation decodes/resizes JPEGs through these crates;
