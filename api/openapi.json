@@ -3941,7 +3941,10 @@
           "subjects",
           "genre_candidates",
           "language_code",
-          "slug"
+          "slug",
+          "series",
+          "series_index",
+          "collection"
         ],
         "properties": {
           "authors": {
@@ -3949,6 +3952,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A publisher's collection with its number (e.g. \"Folio junior 899\"), as\ndistinct from a narrative series. Applied only to a Calibre custom\ncolumn labelled `collection` when the library has one."
           },
           "cover_id": {
             "type": [
@@ -3991,7 +4001,7 @@
           },
           "provider_id": {
             "type": "string",
-            "description": "Provider-native id: hardcover id (stringified), LCCN, DNB control\nnumber, or Open Library OLID."
+            "description": "Provider-native id: hardcover id (stringified), LCCN, DNB control\nnumber, BnF ARK name, or Open Library OLID."
           },
           "publisher": {
             "type": [
@@ -4005,6 +4015,20 @@
               "null"
             ],
             "format": "int32"
+          },
+          "series": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Narrative series (not a publisher's collection); BnF only for now."
+          },
+          "series_index": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
           },
           "slug": {
             "type": [
@@ -5146,6 +5170,7 @@
           "loc",
           "dnb",
           "k10plus",
+          "bnf",
           "openlibrary"
         ]
       },

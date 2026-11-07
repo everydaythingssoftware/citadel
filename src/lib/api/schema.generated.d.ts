@@ -773,6 +773,12 @@ export interface components {
         BookMetadata: {
             authors: string[];
             /**
+             * @description A publisher's collection with its number (e.g. "Folio junior 899"), as
+             *     distinct from a narrative series. Applied only to a Calibre custom
+             *     column labelled `collection` when the library has one.
+             */
+            collection: string | null;
+            /**
              * @description Opaque ID for this result's cover, for previews and applying it.
              *     Expires an hour after the result was last returned.
              */
@@ -790,12 +796,16 @@ export interface components {
             provider: components["schemas"]["MetadataProvider"];
             /**
              * @description Provider-native id: hardcover id (stringified), LCCN, DNB control
-             *     number, or Open Library OLID.
+             *     number, BnF ARK name, or Open Library OLID.
              */
             provider_id: string;
             publisher: string | null;
             /** Format: int32 */
             release_year: number | null;
+            /** @description Narrative series (not a publisher's collection); BnF only for now. */
+            series: string | null;
+            /** Format: double */
+            series_index: number | null;
             /** @description Hardcover deep-link slug; `None` for other providers. */
             slug: string | null;
             /** @description Subject headings, mapped to tag suggestions on the frontend. */
@@ -1160,7 +1170,7 @@ export interface components {
          *     and the frontend registry keys.
          * @enum {string}
          */
-        MetadataProvider: "hardcover" | "loc" | "dnb" | "k10plus" | "openlibrary";
+        MetadataProvider: "hardcover" | "loc" | "dnb" | "k10plus" | "bnf" | "openlibrary";
         MetadataProviderInfo: {
             /** @description Whether this user can look books up with the provider right now. */
             available: boolean;
