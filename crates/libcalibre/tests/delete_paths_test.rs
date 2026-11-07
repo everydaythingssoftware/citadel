@@ -98,7 +98,12 @@ fn inaccessible_folder_preserves_records() {
     let author = temp.path().join("Blocked");
     std::fs::create_dir_all(author.join("Book")).unwrap();
     set_path(&lib, book.id, "Blocked/Book");
-    std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0)).unwrap();
+    std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o0)).unwrap();
+    if std::fs::read_dir(&author).is_ok() {
+        std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
+        eprintln!("skipped: this process can read a mode-000 folder (running as root?)");
+        return;
+    }
     let result = lib.delete_books(&[book.id]);
     std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
     assert!(result.is_err());

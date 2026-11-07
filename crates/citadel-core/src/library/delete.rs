@@ -258,7 +258,12 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let lib = TestLibrary::new();
         let author = lib.root().join("Author");
-        std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0)).unwrap();
+        std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o0)).unwrap();
+        if std::fs::read_dir(&author).is_ok() {
+            std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
+            eprintln!("skipped: this process can read a mode-000 folder (running as root?)");
+            return;
+        }
         let result = remove_book_dir(lib.root(), &lib.book(), |_| {
             panic!("inaccessible path must not be removed")
         });

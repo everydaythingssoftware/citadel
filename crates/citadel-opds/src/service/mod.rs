@@ -1440,6 +1440,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn real_factory_binds_dual_wildcards_on_one_port() {
+        if StdTcpListener::bind(("::", 0)).is_err() {
+            eprintln!("skipped: this machine has no IPv6");
+            return;
+        }
         let probe = StdTcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = probe.local_addr().unwrap().port();
         drop(probe);
