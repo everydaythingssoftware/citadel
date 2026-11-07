@@ -1,41 +1,30 @@
 use std::collections::HashSet;
 use std::ops::Not;
+use std::sync::LazyLock;
 
 use regex::Regex;
 
-/// Creates a sortable book title by moving leading articles to the end.
-///
-/// Moves articles (A, An, The) from the beginning of a title to the end,
-/// separated by a comma. This matches Calibre's title sorting behavior.
-///
-/// Based on Calibre's implementation:
-/// https://github.com/kovidgoyal/calibre/blob/7f3ccb333d906f5867636dd0dc4700b495e5ae6f/src/calibre/library/database.py#L61C1-L69C54
-///
-/// ## Examples
-/// ```
-/// use libcalibre::sorting::sort_book_title;
-/// let title = "A War of the Worlds";
-/// let sorted = sort_book_title(title);
-/// assert_eq!(sorted, "War of the Worlds, A");
-/// ```
+/// Creates a sortable book title by moving a leading article (A, An, The,
+/// in any case) to the end after a comma. Articles elsewhere in the title
+/// stay put.
 ///
 /// ```
 /// use libcalibre::sorting::sort_book_title;
-/// let title = "The Great Gatsby";
-/// let sorted = sort_book_title(title);
-/// assert_eq!(sorted, "Great Gatsby, The");
+/// assert_eq!(sort_book_title("The Great Gatsby"), "Great Gatsby, The");
+/// assert_eq!(sort_book_title("A War of the Worlds"), "War of the Worlds, A");
+/// assert_eq!(sort_book_title("Diana The Huntress"), "Diana The Huntress");
 /// ```
 pub fn sort_book_title(title: &str) -> String {
-    let title_pattern = r"(A|The|An)\s+";
-    let title_pattern_regex = Regex::new(title_pattern).unwrap();
+    static LEADING_ARTICLE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)^\s*(a|an|the)\s+").expect("valid pattern"));
 
-    if let Some(matched) = title_pattern_regex.find(title) {
-        let preposition = matched.as_str();
-        let new_title = format!("{}, {}", title.replacen(preposition, "", 1), preposition);
-        return new_title.trim().to_string();
+    match LEADING_ARTICLE.captures(title) {
+        Some(found) => {
+            let rest = title[found[0].len()..].trim();
+            format!("{rest}, {}", &found[1])
+        }
+        None => title.to_string(),
     }
-
-    title.to_string()
 }
 
 /// These titles are moved to the end of an author's name when sorting.
