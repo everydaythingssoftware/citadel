@@ -1,12 +1,15 @@
-//! Calibre's `metadata.db` schema versions: the version a new library is
-//! created at, and Calibre's own steps for moving older libraries forward.
+//! `metadata.db` schema versions: the version a new library is created at,
+//! and moving older libraries forward to it.
 //!
-//! Calibre keeps the version in `PRAGMA user_version` and upgrades one step
-//! at a time; the steps here do what Calibre's do. Citadel supports a window: a library below [`MINIMUM_SCHEMA_VERSION`] is
-//! refused with advice to open it in Calibre once, and anything from there up
-//! opens unmodified, since libcalibre reads nothing the later steps add.
-//! Nothing upgrades on open; hosts call [`crate::Library::upgrade`] when the
-//! person agrees, and a backup of the database is written first.
+//! The version lives in `PRAGMA user_version`. libcalibre supports a window:
+//! a library below [`MINIMUM_SCHEMA_VERSION`] is refused with advice to open
+//! it in Calibre once, and anything from there up opens unmodified, since
+//! libcalibre reads nothing later versions add. Nothing upgrades on open;
+//! hosts call [`crate::Library::upgrade`] when the person agrees, and a
+//! backup of the database is written first.
+//!
+//! `sql/schema.sql` describes the current schema and is idempotent, so the
+//! same script creates a library and brings an older one up to date.
 use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -19,7 +22,7 @@ use diesel::{
 
 use crate::{error::CalibreError, util::ValidDbPath};
 
-/// The version Calibre writes today and new libraries are created at.
+/// The version current Calibre writes, and new libraries are created at.
 pub const SCHEMA_VERSION: i32 = 28;
 /// The oldest version Citadel opens: anything Calibre has written since 2021.
 pub const MINIMUM_SCHEMA_VERSION: i32 = 25;
@@ -28,9 +31,11 @@ const BACKUPS_KEPT: usize = 3;
 const BACKUP_INFIX: &str = ".backup-";
 const PARTIAL_SUFFIX: &str = ".partial";
 
-const CREATE_SQL: &str = include_str!("schema_versions/create_28.sql");
-const UPGRADE_26_TO_27: &str = include_str!("schema_versions/upgrade_26_to_27.sql");
-const UPGRADE_27_TO_28: &str = include_str!("schema_versions/upgrade_27_to_28.sql");
+const SCHEMA_SQL: &str = include_str!("sql/schema.sql");
+/// `application_id` of a Calibre library: "cali" in ASCII.
+const APPLICATION_ID: i32 = 0x6361_6c69;
+/// `books` columns that versions before 27 had and current libraries drop.
+const RETIRED_BOOK_COLUMNS: [&str; 3] = ["flags", "isbn", "lccn"];
 
 /// What [`crate::Library::upgrade`] did.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -95,19 +100,20 @@ pub(crate) fn supported_version(conn: &mut SqliteConnection) -> Result<i32, Cali
     Ok(version)
 }
 
-/// Fills an empty database with Calibre's current schema and the library's
+/// Fills an empty database with the current schema and the library's
 /// identity row.
 pub(crate) fn create(conn: &mut SqliteConnection, uuid: &str) -> Result<(), diesel::result::Error> {
-    conn.batch_execute(CREATE_SQL)?;
+    conn.batch_execute(SCHEMA_SQL)?;
+    stamp_current(conn)?;
     sql_query("INSERT INTO library_id (uuid) VALUES (?)")
         .bind::<Text, _>(uuid)
         .execute(conn)?;
     Ok(())
 }
 
-/// Runs every pending step in one exclusive transaction after backing the
-/// database up. `None` when the library is already current, in which case
-/// nothing is written.
+/// Brings the library up to [`SCHEMA_VERSION`] in one exclusive transaction
+/// after backing the database up. `None` when the library is already
+/// current, in which case nothing is written.
 pub(crate) fn upgrade(
     conn: &mut SqliteConnection,
     database_path: &Path,
@@ -118,24 +124,31 @@ pub(crate) fn upgrade(
     }
     let backup = backup(conn, database_path, from)?;
     conn.exclusive_transaction(|conn| {
-        let mut version = from;
-        while version < SCHEMA_VERSION {
-            match version {
-                25 => upgrade_25_to_26(conn)?,
-                26 => upgrade_26_to_27(conn)?,
-                27 => conn.batch_execute(UPGRADE_27_TO_28)?,
-                _ => unreachable!("every version from the minimum has a step"),
+        add_link_columns(conn)?;
+        conn.batch_execute(SCHEMA_SQL)?;
+        sql_query(
+            "INSERT OR IGNORE INTO books_pages_link (book, needs_scan) SELECT id, 1 FROM books",
+        )
+        .execute(conn)?;
+        let columns = columns_of(conn, "books")?;
+        for column in RETIRED_BOOK_COLUMNS {
+            if columns.iter().any(|existing| existing == column) {
+                conn.batch_execute(&format!("ALTER TABLE books DROP COLUMN {column}"))?;
             }
-            version += 1;
-            conn.batch_execute(&format!("PRAGMA user_version = {version}"))?;
         }
-        Ok::<_, diesel::result::Error>(())
+        stamp_current(conn)
     })?;
     Ok(Some(SchemaUpgrade {
         from,
         to: SCHEMA_VERSION,
         backup,
     }))
+}
+
+fn stamp_current(conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
+    conn.batch_execute(&format!(
+        "PRAGMA application_id = {APPLICATION_ID}; PRAGMA user_version = {SCHEMA_VERSION};"
+    ))
 }
 
 fn columns_of(
@@ -150,10 +163,10 @@ fn columns_of(
         .collect())
 }
 
-/// Calibre's step from 25 to 26: link columns on the standard and
-/// normalized custom-column tables. Each is skipped when its table is missing
-/// or already has one.
-fn upgrade_25_to_26(conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
+/// Version 26 gave category tables, and normalized custom-column value
+/// tables, a `link` column. Each is skipped when its table is missing or
+/// already has one.
+fn add_link_columns(conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
     let mut tables: Vec<String> = sql_query("SELECT id FROM custom_columns WHERE normalized")
         .load::<ColumnId>(conn)?
         .into_iter()
@@ -172,19 +185,6 @@ fn upgrade_25_to_26(conn: &mut SqliteConnection) -> Result<(), diesel::result::E
         conn.batch_execute(&format!(
             "ALTER TABLE {table} ADD COLUMN link TEXT NOT NULL DEFAULT ''"
         ))?;
-    }
-    Ok(())
-}
-
-/// Calibre's step from 26 to 27: page counts, the rebuilt `meta` view, the
-/// application id, then the unused `books` columns that still exist.
-fn upgrade_26_to_27(conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
-    conn.batch_execute(UPGRADE_26_TO_27)?;
-    let columns = columns_of(conn, "books")?;
-    for column in ["flags", "isbn", "lccn"] {
-        if columns.iter().any(|existing| existing == column) {
-            conn.batch_execute(&format!("ALTER TABLE books DROP COLUMN {column}"))?;
-        }
     }
     Ok(())
 }

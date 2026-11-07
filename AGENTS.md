@@ -18,7 +18,7 @@
 - **citadel.db**: `citadel_core::store` owns Citadel's own database (users with a `reader`/`administrator` role, sessions, library registry keyed by Calibre UUID, the served library, grants, provider credentials sealed by `citadel_core::vault` per ADR 0011). Desktop keeps it in app data with one local user; the server in its state directory and sets itself up from the browser with a printed setup code. See `docs/adr/0009-citadel-users-and-sessions.md` and `docs/adr/0012-server-administrators-and-web-setup.md`.
 - **Frontend services**: Library owns selected-library operations, LibraryCatalog owns discovery/opening, Metadata owns provider lookups, and Platform owns native capabilities. Runtime Tauri/generated-command imports are adapter-only (`bun lint:boundaries`). See `docs/adr/0008-frontend-service-boundaries.md`.
 - **Tauri state**: Global state managed via CitadelState in `src-tauri/src/state.rs`
-- **Database**: SQLite Calibre library, Diesel schema in `crates/libcalibre/src/schema.rs`. `crates/libcalibre/src/schema_versions.rs` creates new libraries at Calibre's current schema version and ports Calibre's own upgrade steps; libraries older than its minimum are refused, and nothing upgrades on open.
+- **Database**: SQLite Calibre library, Diesel schema in `crates/libcalibre/src/schema.rs`. `crates/libcalibre/src/schema_versions.rs` creates new libraries at Calibre's current schema version and upgrades older ones from the idempotent `crates/libcalibre/src/sql/schema.sql`; libraries older than its minimum are refused, and nothing upgrades on open. libcalibre's SQL is written from a behavioural spec of Calibre's schema, not from Calibre's source: don't paste Calibre's SQL or code into it.
 
 ## Code Style
 

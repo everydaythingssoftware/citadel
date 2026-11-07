@@ -1,6 +1,5 @@
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
-use diesel::sql_query;
 
 use crate::error::CalibreError;
 use crate::sorting;
@@ -13,83 +12,20 @@ use crate::sorting;
 ///
 /// "Unused" is allowed because this function is called from SQL, and registered
 /// with the database connection.
-///
-/// Based on Calibre's implementation:
-/// https://github.com/kovidgoyal/calibre/blob/7f3ccb333d906f5867636dd0dc4700b495e5ae6f/src/calibre/library/database.py#L61C1-L69C54
 #[allow(unused)]
 pub fn sort_book_title(title: String) -> String {
     sorting::sort_book_title(&title)
 }
 
 /// Converts author name to APA-style sortable format for SQL.
-///
-/// Based on Calibre's implementation:
-/// https://github.com/kovidgoyal/calibre/blob/master/src/calibre/ebooks/metadata/__init__.py
 #[allow(unused)]
 pub fn sort_author_name(name: String) -> String {
     sorting::sort_author_name_apa(&name)
 }
 
-/// Registers SQLite triggers for maintaining data integrity.
-///
-/// This function registers triggers that Calibre uses to:
-/// - Auto-generate `sort` and `uuid` fields on book insert
-/// - Update `sort` field when book title changes
-/// - Cascade delete related records when a book is deleted
-///
-/// Triggers are registered using "DROP TRIGGER IF EXISTS" for idempotency,
-/// so this function can be safely called multiple times.
-pub fn register_triggers(conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
-    // Books insert trigger - auto-generate sort and uuid
-    sql_query("DROP TRIGGER IF EXISTS books_insert_trg").execute(conn)?;
-    sql_query(
-        "CREATE TRIGGER books_insert_trg AFTER INSERT ON books
-         BEGIN
-             UPDATE books SET sort=title_sort(NEW.title), uuid=uuid4()
-             WHERE id=NEW.id;
-         END;",
-    )
-    .execute(conn)?;
-
-    // Books update trigger - update sort when title changes
-    sql_query("DROP TRIGGER IF EXISTS books_update_trg").execute(conn)?;
-    sql_query(
-        "CREATE TRIGGER books_update_trg AFTER UPDATE ON books
-         BEGIN
-             UPDATE books SET sort=title_sort(NEW.title)
-             WHERE id=NEW.id AND OLD.title <> NEW.title;
-         END;",
-    )
-    .execute(conn)?;
-
-    // Books delete trigger - cascade delete related records
-    sql_query("DROP TRIGGER IF EXISTS books_delete_trg").execute(conn)?;
-    sql_query(
-        "CREATE TRIGGER books_delete_trg AFTER DELETE ON books
-         BEGIN
-             DELETE FROM books_authors_link WHERE book=OLD.id;
-             DELETE FROM books_publishers_link WHERE book=OLD.id;
-             DELETE FROM books_ratings_link WHERE book=OLD.id;
-             DELETE FROM books_series_link WHERE book=OLD.id;
-             DELETE FROM books_tags_link WHERE book=OLD.id;
-             DELETE FROM books_languages_link WHERE book=OLD.id;
-             DELETE FROM data WHERE book=OLD.id;
-             DELETE FROM last_read_positions WHERE book=OLD.id;
-             DELETE FROM annotations WHERE book=OLD.id;
-             DELETE FROM comments WHERE book=OLD.id;
-             DELETE FROM conversion_options WHERE book=OLD.id;
-             DELETE FROM books_plugin_data WHERE book=OLD.id;
-             DELETE FROM identifiers WHERE book=OLD.id;
-         END;",
-    )
-    .execute(conn)?;
-
-    Ok(())
-}
-
-// Custom SQL functions Calibre relies on. Declared at module scope (rather than
-// inside the establishing fn) so they can be registered on any connection.
-// See: https://github.com/kovidgoyal/calibre/blob/7f3ccb333d906f5867636dd0dc4700b495e5ae6f/src/calibre/library/database.py#L55-L70
+// SQL functions a Calibre library's triggers call. Declared at module scope
+// (rather than inside the establishing fn) so they can be registered on any
+// connection.
 define_sql_function!(fn title_sort(title: diesel::sql_types::Text) -> diesel::sql_types::Text);
 define_sql_function!(fn uuid4() -> diesel::sql_types::Text);
 define_sql_function!(fn author_to_author_sort(name: diesel::sql_types::Text) -> diesel::sql_types::Text);
@@ -135,11 +71,8 @@ fn apply_pragmas(conn: &mut SqliteConnection) -> Result<(), diesel::result::Erro
 /// Per-connection setup: PRAGMAs plus the custom SQL functions. Both are
 /// scoped to a single SQLite connection, so every connection needs them.
 ///
-/// Triggers are deliberately NOT registered here: they are persistent database
-/// objects (stored in `sqlite_master`), and re-running their DROP/CREATE DDL
-/// from every connection would serialize on the write lock and open a window
-/// where a concurrent insert fires no trigger. [`establish_connection`]
-/// registers them once per writable connection instead.
+/// Triggers are not touched: they are persistent objects in the library's
+/// schema, created with it, and a library's own are left as they are.
 ///
 /// Function registration is best-effort (matching the historical behaviour);
 /// PRAGMA failures propagate.
@@ -161,14 +94,6 @@ pub fn establish_connection(
         .ok_or_else(|| CalibreError::NonUtf8Path(db_path.as_ref().to_path_buf()))?;
     let mut connection = SqliteConnection::establish(db_path).map_err(CalibreError::database)?;
     prepare_connection(&mut connection)?;
-
-    // Register triggers for data integrity and automatic field generation.
-    // Best-effort: a fresh or non-Calibre database may lack the `books` table
-    // the triggers attach to, and that must not fail opening the connection.
-    register_triggers(&mut connection)
-        .map_err(|e| eprintln!("Failed to register triggers: {}", e))
-        .ok();
-
     Ok(connection)
 }
 

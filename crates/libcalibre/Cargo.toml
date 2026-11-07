@@ -9,7 +9,8 @@ repository = "https://github.com/everydaythingssoftware/citadel"
 readme = "README.md"
 keywords = ["calibre", "ebook", "library", "sqlite", "epub"]
 categories = ["database", "parser-implementations"]
-exclude = ["diesel.toml"]
+# The fixture is a schema dump of a library Calibre 7.2 made, for upgrade tests.
+exclude = ["diesel.toml", "tests/fixtures/"]
 
 [dependencies]
 chrono = "0.4.31"
