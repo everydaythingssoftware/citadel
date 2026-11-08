@@ -1,8 +1,12 @@
 import { useCallback } from "react";
-import { libraryCatalog } from "@/lib/services/library-catalog";
 import { toast } from "@/components/ui";
-import { ADOPT_INVALID_ERROR } from "@/lib/first-run/machine";
+import {
+	ADOPT_INVALID_ERROR,
+	createErrorCodeFor,
+	createErrorFor,
+} from "@/lib/first-run/machine";
 import type { LibraryPath } from "@/lib/platform/settings/types";
+import { libraryCatalog } from "@/lib/services/library-catalog";
 import { LibraryState, useLibraryStore } from "@/stores/library/store";
 import { createLibrary, setActiveLibrary } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
@@ -24,6 +28,11 @@ export interface LibrarySelection {
 	switchTo: (id: string) => Promise<void>;
 	/** Validates a folder, adds it as a library, and switches to it. */
 	adoptLibrary: (absolutePath: string) => Promise<AdoptLibraryResult>;
+	/**
+	 * Creates an empty Calibre library in a folder (empty or not yet made),
+	 * adds it, and switches to it. Refusals come back as messages.
+	 */
+	createNewLibrary: (absolutePath: string) => Promise<AdoptLibraryResult>;
 }
 
 export const useLibrarySelection = (): LibrarySelection => {
@@ -84,5 +93,29 @@ export const useLibrarySelection = (): LibrarySelection => {
 		[],
 	);
 
-	return { libraries, activeLibrary, switchTo, adoptLibrary };
+	const createNewLibrary = useCallback(
+		async (absolutePath: string): Promise<AdoptLibraryResult> => {
+			try {
+				await libraryCatalog.create(absolutePath);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					message: createErrorFor(createErrorCodeFor(message), message).message,
+				};
+			}
+			const newLibraryId = await createLibrary(absolutePath);
+			await setActiveLibrary(newLibraryId);
+			return { ok: true };
+		},
+		[],
+	);
+
+	return {
+		libraries,
+		activeLibrary,
+		switchTo,
+		adoptLibrary,
+		createNewLibrary,
+	};
 };

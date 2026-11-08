@@ -1,7 +1,7 @@
-import { createWebPlatform } from "@/lib/platform/create";
 import type { Meta, StoryObj } from "@storybook/react";
 import type { LibraryStatsState } from "@/lib/hooks/use-library-stats";
 import { PlatformProvider } from "@/lib/platform/context";
+import { createWebPlatform } from "@/lib/platform/create";
 import type { LibraryPath } from "@/lib/platform/settings/types";
 import type { PlatformAdapter } from "@/lib/platform/types";
 import { LibraryListCard } from "./LibraryListCard";
@@ -73,6 +73,13 @@ const render = (props: {
 					ok: false,
 					message:
 						"That folder has no metadata.db, so it isn't a Calibre library.",
+				})
+			}
+			onCreateLibrary={() =>
+				Promise.resolve({
+					ok: false,
+					message:
+						"This folder already contains files. Pick an empty folder for a new library.",
 				})
 			}
 		/>
