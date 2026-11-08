@@ -256,7 +256,16 @@ const restoreCreate = (
 	picking: false,
 });
 
-const createErrorFor = (
+const CREATE_COMMAND_ERROR_CODES: Readonly<Record<string, CreateErrorCode>> = {
+	"create-library/folder-not-empty": "folder-not-empty",
+	"create-library/already-a-library": "already-a-library",
+};
+
+/** Classifies a `clb_cmd_create_library` failure by its exact error string. */
+export const createErrorCodeFor = (commandError: string): CreateErrorCode =>
+	CREATE_COMMAND_ERROR_CODES[commandError] ?? "create-failed";
+
+export const createErrorFor = (
 	code: CreateErrorCode,
 	message: string,
 ): CreateError => {

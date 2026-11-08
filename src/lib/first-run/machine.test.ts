@@ -8,6 +8,8 @@ import type {
 import {
 	CREATE_EXISTING_ERROR,
 	CREATE_NONEMPTY_ERROR,
+	createErrorCodeFor,
+	createErrorFor,
 	initFlow,
 	transition,
 } from "./machine";
@@ -689,5 +691,33 @@ describe("terminal + guard behavior", () => {
 			{ type: "GRACE_ELAPSED" },
 		]);
 		expect(snapshot.step).toMatchObject({ id: "opening", phase: "staged" });
+	});
+});
+
+describe("create-library error mapping", () => {
+	it("classifies the command's refusals by their exact strings", () => {
+		expect(createErrorCodeFor("create-library/folder-not-empty")).toBe(
+			"folder-not-empty",
+		);
+		expect(createErrorCodeFor("create-library/already-a-library")).toBe(
+			"already-a-library",
+		);
+		expect(createErrorCodeFor("Failed to create library: disk full")).toBe(
+			"create-failed",
+		);
+	});
+
+	it("gives refusals friendly messages and passes other failures through", () => {
+		expect(
+			createErrorFor("folder-not-empty", "create-library/folder-not-empty")
+				.message,
+		).toBe(CREATE_NONEMPTY_ERROR);
+		expect(
+			createErrorFor("already-a-library", "create-library/already-a-library")
+				.message,
+		).toBe(CREATE_EXISTING_ERROR);
+		expect(createErrorFor("create-failed", "disk full").message).toBe(
+			"disk full",
+		);
 	});
 });

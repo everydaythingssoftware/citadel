@@ -72,7 +72,7 @@ const PlusIcon = () => (
  * not by this component.
  */
 export const LibraryPicker = () => {
-	const { libraries, activeLibrary, switchTo, adoptLibrary } =
+	const { libraries, activeLibrary, switchTo, adoptLibrary, createNewLibrary } =
 		useLibrarySelection();
 	const platform = usePlatform();
 
@@ -177,6 +177,32 @@ export const LibraryPicker = () => {
 		})();
 	};
 
+	const newLibrary = () => {
+		void (async () => {
+			try {
+				const path = await platform.dialogs.openDirectory({
+					title: "Choose a Folder for Your New Library",
+				});
+				if (path === null) return;
+				const result = await createNewLibrary(path);
+				if (!result.ok) {
+					toast.show({
+						id: "library-picker-create-failed",
+						title: "Couldn't create a library there",
+						message: result.message,
+					});
+				}
+			} catch (error) {
+				console.error("Creating a library failed:", error);
+				toast.show({
+					id: "library-picker-create-failed",
+					title: "Couldn't create a library there",
+					message: error instanceof Error ? error.message : String(error),
+				});
+			}
+		})();
+	};
+
 	const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
 		const items = Array.from(
 			menuRef.current?.querySelectorAll<HTMLButtonElement>(
@@ -265,6 +291,18 @@ export const LibraryPicker = () => {
 						<PlusIcon />
 					</span>
 					<span className={styles.menuName}>Add Library…</span>
+				</button>
+				<button
+					type="button"
+					role="menuitem"
+					className={styles.menuRow}
+					onClick={() => {
+						newLibrary();
+						setOpen(false);
+					}}
+				>
+					<span className={styles.menuCheck} />
+					<span className={styles.menuName}>New Library…</span>
 				</button>
 			</div>,
 			document.body,

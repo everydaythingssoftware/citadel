@@ -14,8 +14,8 @@ import {
 	ServerProviderKey,
 	serverKeyStatus,
 } from "@/components/organisms/ServerProviderKey";
-import { GlobeGlyph } from "@/components/organisms/SetupCard";
 import classes from "@/components/organisms/SettingsPanes.module.css";
+import { GlobeGlyph } from "@/components/organisms/SetupCard";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
 import {
 	Button,
@@ -25,16 +25,16 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
+import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
-import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { useServerAddresses } from "@/lib/hooks/use-server-addresses";
 import { useServerHealth } from "@/lib/hooks/use-server-health";
-import { healthCheckLabel, healthChecksInOrder } from "@/lib/server-health";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
 import { usePlatform } from "@/lib/platform/context";
+import { healthCheckLabel, healthChecksInOrder } from "@/lib/server-health";
 import {
 	SettingsSection,
 	type TSettingsSection,
@@ -479,7 +479,7 @@ const PublicUrlLine = ({
 );
 
 const LibraryTab = () => {
-	const { libraries, activeLibrary, switchTo, adoptLibrary } =
+	const { libraries, activeLibrary, switchTo, adoptLibrary, createNewLibrary } =
 		useLibrarySelection();
 	const platform = usePlatform();
 
@@ -492,6 +492,15 @@ const LibraryTab = () => {
 		// library's row becomes current once it has opened.
 		return adoptLibrary(path);
 	}, [platform, adoptLibrary]);
+
+	const createLibrary =
+		useCallback(async (): Promise<AddLibraryResult | null> => {
+			const path = await platform.dialogs.openDirectory({
+				title: "Choose a Folder for Your New Library",
+			});
+			if (path === null) return null;
+			return createNewLibrary(path);
+		}, [platform, createNewLibrary]);
 
 	const revealActiveLibrary = useCallback(() => {
 		if (!activeLibrary) return;
@@ -513,6 +522,7 @@ const LibraryTab = () => {
 				libraries={libraries}
 				onSwitchLibrary={switchTo}
 				onAddLibrary={addLibrary}
+				onCreateLibrary={createLibrary}
 			/>
 			<CurrentLibraryCard
 				library={activeLibrary}

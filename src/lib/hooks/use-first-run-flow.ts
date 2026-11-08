@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { libraryCatalog } from "@/lib/services/library-catalog";
 import type {
 	FlowEffect,
 	FlowEvent,
@@ -7,12 +6,14 @@ import type {
 	FlowSnapshot,
 } from "@/lib/first-run/machine";
 import {
+	createErrorCodeFor,
 	GRACE_MS,
 	initFlow,
 	transition,
 	VALIDATE_SPINNER_DELAY_MS,
 } from "@/lib/first-run/machine";
 import { usePlatform } from "@/lib/platform/context";
+import { libraryCatalog } from "@/lib/services/library-catalog";
 import { LibraryState, useLibraryStore } from "@/stores/library/store";
 import { createLibrary, setActiveLibrary } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
@@ -21,11 +22,6 @@ import { useSettings } from "@/stores/settings/store";
  * spinner reads as a real check instead of a broken button. A successful
  * check proceeds immediately. */
 const RETRY_MIN_DWELL_MS = 400;
-
-const CREATE_ERROR_CODES = {
-	"create-library/folder-not-empty": "folder-not-empty",
-	"create-library/already-a-library": "already-a-library",
-} as const;
 
 export interface FirstRunFlow {
 	snapshot: FlowSnapshot;
@@ -226,10 +222,11 @@ const runEffect = async (
 				send({ type: "CREATED" });
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				const code =
-					CREATE_ERROR_CODES[message as keyof typeof CREATE_ERROR_CODES] ??
-					"create-failed";
-				send({ type: "CREATE_FAILED", code, message });
+				send({
+					type: "CREATE_FAILED",
+					code: createErrorCodeFor(message),
+					message,
+				});
 			}
 			return;
 		}
