@@ -91,6 +91,7 @@ export const webLibraryCatalog: LibraryCatalog = {
 	isValid: async () => false,
 	detect: async () => null,
 	defaultNewPath: unavailable,
+	inspectFolder: unavailable,
 	stats: unavailable,
 	syncStatus: async () => ({ synced: false, provider: null }),
 	list: async () => [],

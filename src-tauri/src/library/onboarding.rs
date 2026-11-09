@@ -109,6 +109,65 @@ pub fn default_new_library_path(home: &Path) -> String {
     home.join("Citadel").to_string_lossy().into_owned()
 }
 
+/// What a folder picked for "Add Library…" holds, so the app can offer the
+/// right next step instead of refusing the folder.
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum LibraryFolderContents {
+    /// The folder is a Calibre library.
+    Library,
+    /// A Calibre library sits directly inside the folder.
+    LibraryInside {
+        library_path: String,
+        /// Unused name for a new library folder, should the user want one.
+        suggested_name: String,
+    },
+    /// Empty, or missing: a library can be created right there.
+    Empty,
+    /// Holds other files: a new library needs its own folder inside.
+    OtherFiles { suggested_name: String },
+}
+
+const NEW_LIBRARY_FOLDER_NAME: &str = "Calibre Library";
+
+pub fn inspect_library_folder(folder: &Path) -> std::io::Result<LibraryFolderContents> {
+    if libcalibre::util::get_db_path(&folder.to_string_lossy()).is_some() {
+        return Ok(LibraryFolderContents::Library);
+    }
+    if libcalibre::create_target_blocker(folder)?.is_none() {
+        return Ok(LibraryFolderContents::Empty);
+    }
+    let suggested_name = unused_folder_name(folder);
+    match first_library_inside(folder)? {
+        Some(library_path) => Ok(LibraryFolderContents::LibraryInside {
+            library_path,
+            suggested_name,
+        }),
+        None => Ok(LibraryFolderContents::OtherFiles { suggested_name }),
+    }
+}
+
+/// Visible subfolders holding a `metadata.db`, first by name.
+fn first_library_inside(folder: &Path) -> std::io::Result<Option<String>> {
+    let mut libraries: Vec<String> = std::fs::read_dir(folder)?
+        .filter_map(Result::ok)
+        .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.path().to_string_lossy().into_owned())
+        .filter(|path| libcalibre::util::get_db_path(path).is_some())
+        .collect();
+    libraries.sort();
+    Ok(libraries.into_iter().next())
+}
+
+/// "Calibre Library", then "Calibre Library 2", 3, … until one is free.
+fn unused_folder_name(folder: &Path) -> String {
+    std::iter::once(NEW_LIBRARY_FOLDER_NAME.to_string())
+        .chain((2..).map(|n| format!("{NEW_LIBRARY_FOLDER_NAME} {n}")))
+        .find(|name| !folder.join(name).exists())
+        .unwrap_or_else(|| NEW_LIBRARY_FOLDER_NAME.to_string())
+}
+
 pub fn path_sync_status(path: &Path) -> SyncStatus {
     match sync_provider(path) {
         Some(provider) => SyncStatus {
@@ -442,5 +501,72 @@ mod tests {
         // Best-effort by design: Seafile and plain local paths report unsynced.
         assert!(!path_sync_status(Path::new("/Users/test/Seafile/Books")).synced);
         assert!(!path_sync_status(Path::new("/Users/test/Documents/Books")).synced);
+    }
+
+    // ---- inspect_library_folder ---------------------------------------------
+
+    #[test]
+    fn inspect_recognises_a_library() {
+        let tmp = tempfile::tempdir().unwrap();
+        make_library(tmp.path());
+        assert_eq!(
+            inspect_library_folder(tmp.path()).unwrap(),
+            LibraryFolderContents::Library
+        );
+    }
+
+    #[test]
+    fn inspect_treats_missing_and_junk_only_folders_as_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(
+            inspect_library_folder(&tmp.path().join("New")).unwrap(),
+            LibraryFolderContents::Empty
+        );
+        fs::write(tmp.path().join(".DS_Store"), b"").unwrap();
+        assert_eq!(
+            inspect_library_folder(tmp.path()).unwrap(),
+            LibraryFolderContents::Empty
+        );
+    }
+
+    #[test]
+    fn inspect_finds_the_first_library_one_folder_down() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("notes.txt"), b"hi").unwrap();
+        make_library(&tmp.path().join("Zebra Books"));
+        make_library(&tmp.path().join("Calibre Library"));
+        make_library(&tmp.path().join(".hidden"));
+        assert_eq!(
+            inspect_library_folder(tmp.path()).unwrap(),
+            LibraryFolderContents::LibraryInside {
+                library_path: tmp
+                    .path()
+                    .join("Calibre Library")
+                    .to_string_lossy()
+                    .into_owned(),
+                suggested_name: "Calibre Library 2".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn inspect_offers_an_unused_folder_name_beside_other_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("notes.txt"), b"hi").unwrap();
+        fs::create_dir(tmp.path().join("Photos")).unwrap();
+        assert_eq!(
+            inspect_library_folder(tmp.path()).unwrap(),
+            LibraryFolderContents::OtherFiles {
+                suggested_name: "Calibre Library".to_string()
+            }
+        );
+        fs::create_dir(tmp.path().join("Calibre Library")).unwrap();
+        fs::create_dir(tmp.path().join("Calibre Library 2")).unwrap();
+        assert_eq!(
+            inspect_library_folder(tmp.path()).unwrap(),
+            LibraryFolderContents::OtherFiles {
+                suggested_name: "Calibre Library 3".to_string()
+            }
+        );
     }
 }

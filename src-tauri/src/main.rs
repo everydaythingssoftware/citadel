@@ -44,6 +44,7 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::query::clb_query_library_stats,
             library::query::clb_query_path_sync_status,
             library::query::clb_query_default_new_library_path,
+            library::query::clb_query_inspect_library_folder,
             // Library registry (citadel.db)
             library::registry::clb_query_libraries,
             library::registry::clb_cmd_register_library,

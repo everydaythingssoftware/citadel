@@ -1,4 +1,4 @@
-import { type ReactNode, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import {
 	ContextMenu,
@@ -15,23 +15,10 @@ import type { LibraryPath } from "@/lib/platform/settings/types";
 import { renameLibrary } from "@/stores/settings/actions";
 import styles from "./LibraryListCard.module.css";
 
-/** Outcome of adding a library; a failure's message shows under the row. */
-export type AddLibraryResult = { ok: true } | { ok: false; message: string };
-
 interface LibraryListCardProps {
 	currentLibraryId: string;
 	libraries: LibraryPath[];
 	onSwitchLibrary: (id: string) => Promise<void>;
-	/**
-	 * Adds a library from a folder the user picks; null when they cancelled.
-	 * Shows an "Add Library…" row at the end of the list when set.
-	 */
-	onAddLibrary?: () => Promise<AddLibraryResult | null>;
-	/**
-	 * Creates an empty library in a folder the user picks; null when they
-	 * cancelled. Shows a "New Library…" row at the end of the list when set.
-	 */
-	onCreateLibrary?: () => Promise<AddLibraryResult | null>;
 	/**
 	 * Story seam: pre-resolved stats per library path. When omitted (the
 	 * production path) each row fetches its own stats via useLibraryStats.
@@ -77,8 +64,6 @@ export const LibraryListCard = ({
 	libraries,
 	onSwitchLibrary,
 	statsByPath,
-	onAddLibrary,
-	onCreateLibrary,
 }: LibraryListCardProps) => {
 	const platform = usePlatform();
 	const [rename, setRename] = useState<RenameState | null>(null);
@@ -180,24 +165,6 @@ export const LibraryListCard = ({
 						}}
 					/>
 				))}
-				{onAddLibrary && (
-					<LibraryActionRow
-						label="Add Library…"
-						busyLabel="Adding Library…"
-						hint="Open a Calibre library folder from your Mac"
-						icon={<PlusCircleIcon />}
-						onAction={onAddLibrary}
-					/>
-				)}
-				{onCreateLibrary && (
-					<LibraryActionRow
-						label="New Library…"
-						busyLabel="Creating Library…"
-						hint="Start an empty library in a new folder"
-						icon={<NewFolderIcon />}
-						onAction={onCreateLibrary}
-					/>
-				)}
 			</div>
 			<ContextMenu
 				menu={menu}
@@ -326,74 +293,6 @@ const LibraryRow = ({
 			</span>
 			<span className={styles.checkSlot} aria-hidden="true">
 				{isActive ? <CheckmarkIcon /> : null}
-			</span>
-		</button>
-	);
-};
-
-const PlusCircleIcon = () => (
-	<svg className={styles.addIcon} viewBox="0 0 16 16" aria-hidden="true">
-		<path
-			fillRule="evenodd"
-			d="M8 .75a7.25 7.25 0 1 0 0 14.5A7.25 7.25 0 1 0 8 .75ZM7.2 4.75h1.6V7.2h2.45v1.6H8.8v2.45H7.2V8.8H4.75V7.2H7.2Z"
-		/>
-	</svg>
-);
-
-const NewFolderIcon = () => (
-	<svg className={styles.addIcon} viewBox="0 0 16 16" aria-hidden="true">
-		<path
-			fillRule="evenodd"
-			d="M1 3.5A1.5 1.5 0 0 1 2.5 2h3.38a1.5 1.5 0 0 1 1.06.44L8.12 3.6H13.5A1.5 1.5 0 0 1 15 5.1v7.4a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9Zm6.25 3.75v1.5h-1.5v1.5h1.5v1.5h1.5v-1.5h1.5v-1.5h-1.5v-1.5h-1.5Z"
-		/>
-	</svg>
-);
-
-interface LibraryActionRowProps {
-	label: string;
-	busyLabel: string;
-	hint: string;
-	icon: ReactNode;
-	onAction: () => Promise<AddLibraryResult | null>;
-}
-
-/** The list's own ways to grow: pick a folder, and a library joins the list. */
-const LibraryActionRow = ({
-	label,
-	busyLabel,
-	hint,
-	icon,
-	onAction,
-}: LibraryActionRowProps) => {
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	return (
-		<button
-			type="button"
-			className={styles.libraryRow}
-			disabled={busy}
-			onClick={() => {
-				setBusy(true);
-				setError(null);
-				void onAction()
-					.then((result) => {
-						if (result && !result.ok) setError(result.message);
-					})
-					.catch((cause: unknown) =>
-						setError(cause instanceof Error ? cause.message : String(cause)),
-					)
-					.finally(() => setBusy(false));
-			}}
-		>
-			{icon}
-			<span className={styles.rowLabels}>
-				<span className={styles.rowName}>{busy ? busyLabel : label}</span>
-				<span
-					className={error ? styles.rowError : styles.rowSubtitle}
-					role={error ? "alert" : undefined}
-				>
-					{error ?? hint}
-				</span>
 			</span>
 		</button>
 	);

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { toast } from "@/components/ui";
+import { AddLibraryDialog } from "@/components/organisms/AddLibraryDialog";
 import { POPOVER_ATTRIBUTE } from "@/components/ui/popover-interop";
+import { useAddLibraryFlow } from "@/lib/hooks/use-add-library-flow";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
-import { usePlatform } from "@/lib/platform/context";
 import styles from "./LibraryPicker.module.css";
 
 interface MenuRect {
@@ -15,7 +15,6 @@ interface MenuRect {
 
 const MENU_MIN_WIDTH = 180;
 const MENU_GAP = 6;
-const INVALID_TOAST_ID = "library-picker-invalid";
 
 const ChevronDown = () => (
 	<svg width="8" height="5" viewBox="0 0 8 5" fill="none" aria-hidden="true">
@@ -72,9 +71,8 @@ const PlusIcon = () => (
  * not by this component.
  */
 export const LibraryPicker = () => {
-	const { libraries, activeLibrary, switchTo, adoptLibrary, createNewLibrary } =
-		useLibrarySelection();
-	const platform = usePlatform();
+	const { libraries, activeLibrary, switchTo } = useLibrarySelection();
+	const addLibrary = useAddLibraryFlow();
 
 	const [open, setOpen] = useState(false);
 	const [menuRect, setMenuRect] = useState<MenuRect | null>(null);
@@ -150,58 +148,6 @@ export const LibraryPicker = () => {
 	}, [open]);
 
 	if (!activeLibrary) return null;
-
-	const addLibrary = () => {
-		void (async () => {
-			try {
-				const path = await platform.dialogs.openDirectory({
-					title: "Select Calibre Library Folder",
-				});
-				if (path === null) return;
-				const result = await adoptLibrary(path);
-				if (!result.ok) {
-					toast.show({
-						id: INVALID_TOAST_ID,
-						title: "Not a Calibre library",
-						message: result.message,
-					});
-				}
-			} catch (error) {
-				console.error("Adding a library failed:", error);
-				toast.show({
-					id: "library-picker-add-failed",
-					title: "Couldn't add that folder",
-					message: error instanceof Error ? error.message : String(error),
-				});
-			}
-		})();
-	};
-
-	const newLibrary = () => {
-		void (async () => {
-			try {
-				const path = await platform.dialogs.openDirectory({
-					title: "Choose a Folder for Your New Library",
-				});
-				if (path === null) return;
-				const result = await createNewLibrary(path);
-				if (!result.ok) {
-					toast.show({
-						id: "library-picker-create-failed",
-						title: "Couldn't create a library there",
-						message: result.message,
-					});
-				}
-			} catch (error) {
-				console.error("Creating a library failed:", error);
-				toast.show({
-					id: "library-picker-create-failed",
-					title: "Couldn't create a library there",
-					message: error instanceof Error ? error.message : String(error),
-				});
-			}
-		})();
-	};
 
 	const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
 		const items = Array.from(
@@ -283,7 +229,7 @@ export const LibraryPicker = () => {
 					role="menuitem"
 					className={styles.menuRow}
 					onClick={() => {
-						addLibrary();
+						addLibrary.start();
 						setOpen(false);
 					}}
 				>
@@ -291,18 +237,6 @@ export const LibraryPicker = () => {
 						<PlusIcon />
 					</span>
 					<span className={styles.menuName}>Add Library…</span>
-				</button>
-				<button
-					type="button"
-					role="menuitem"
-					className={styles.menuRow}
-					onClick={() => {
-						newLibrary();
-						setOpen(false);
-					}}
-				>
-					<span className={styles.menuCheck} />
-					<span className={styles.menuName}>New Library…</span>
 				</button>
 			</div>,
 			document.body,
@@ -332,6 +266,7 @@ export const LibraryPicker = () => {
 				</span>
 			</button>
 			{menu}
+			<AddLibraryDialog step={addLibrary.step} send={addLibrary.send} />
 		</>
 	);
 };
