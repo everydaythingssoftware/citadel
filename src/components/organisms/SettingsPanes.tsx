@@ -5,11 +5,9 @@ import { F7Gear } from "@/components/icons/F7Gear";
 import { F7Wifi } from "@/components/icons/F7Wifi";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { CurrentLibraryCard } from "@/components/molecules/CurrentLibraryCard";
-import {
-	type AddLibraryResult,
-	LibraryListCard,
-} from "@/components/molecules/LibraryListCard";
+import { LibraryListCard } from "@/components/molecules/LibraryListCard";
 import { SoftwareUpdateRow } from "@/components/molecules/SoftwareUpdateRow";
+import { AddLibraryDialog } from "@/components/organisms/AddLibraryDialog";
 import {
 	ServerProviderKey,
 	serverKeyStatus,
@@ -25,6 +23,7 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
+import { useAddLibraryFlow } from "@/lib/hooks/use-add-library-flow";
 import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
@@ -479,28 +478,9 @@ const PublicUrlLine = ({
 );
 
 const LibraryTab = () => {
-	const { libraries, activeLibrary, switchTo, adoptLibrary, createNewLibrary } =
-		useLibrarySelection();
+	const { libraries, activeLibrary, switchTo } = useLibrarySelection();
+	const addLibrary = useAddLibraryFlow();
 	const platform = usePlatform();
-
-	const addLibrary = useCallback(async (): Promise<AddLibraryResult | null> => {
-		const path = await platform.dialogs.openDirectory({
-			title: "Choose a Calibre Library Folder",
-		});
-		if (path === null) return null;
-		// Settings stays open, as when switching from the list: the new
-		// library's row becomes current once it has opened.
-		return adoptLibrary(path);
-	}, [platform, adoptLibrary]);
-
-	const createLibrary =
-		useCallback(async (): Promise<AddLibraryResult | null> => {
-			const path = await platform.dialogs.openDirectory({
-				title: "Choose a Folder for Your New Library",
-			});
-			if (path === null) return null;
-			return createNewLibrary(path);
-		}, [platform, createNewLibrary]);
 
 	const revealActiveLibrary = useCallback(() => {
 		if (!activeLibrary) return;
@@ -517,13 +497,21 @@ const LibraryTab = () => {
 
 	return (
 		<div className={classes.groups}>
-			<LibraryListCard
-				currentLibraryId={activeLibrary.id}
-				libraries={libraries}
-				onSwitchLibrary={switchTo}
-				onAddLibrary={addLibrary}
-				onCreateLibrary={createLibrary}
-			/>
+			<div>
+				<LibraryListCard
+					currentLibraryId={activeLibrary.id}
+					libraries={libraries}
+					onSwitchLibrary={switchTo}
+				/>
+				<div className={classes.libraryActions}>
+					<Button
+						disabled={addLibrary.step.id !== "idle"}
+						onClick={addLibrary.start}
+					>
+						Add Library…
+					</Button>
+				</div>
+			</div>
 			<CurrentLibraryCard
 				library={activeLibrary}
 				onRevealInFileManager={
@@ -532,6 +520,7 @@ const LibraryTab = () => {
 						: null
 				}
 			/>
+			<AddLibraryDialog step={addLibrary.step} send={addLibrary.send} />
 		</div>
 	);
 };

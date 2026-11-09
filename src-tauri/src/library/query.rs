@@ -179,6 +179,17 @@ pub fn clb_query_path_sync_status(path: String) -> SyncStatus {
     onboarding::path_sync_status(Path::new(&path))
 }
 
+/// What a folder picked for "Add Library…" holds: a library, one a level
+/// down, nothing, or other files. Decides the next step the app offers.
+#[tauri::command]
+#[specta::specta]
+pub fn clb_query_inspect_library_folder(
+    path: String,
+) -> Result<onboarding::LibraryFolderContents, String> {
+    onboarding::inspect_library_folder(Path::new(&path))
+        .map_err(|e| format!("Failed to inspect '{path}': {e}"))
+}
+
 /// Suggested folder for a brand-new library (`~/Citadel`). Resolved only —
 /// nothing is created until `clb_cmd_create_library`.
 #[tauri::command]

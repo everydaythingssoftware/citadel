@@ -84,6 +84,18 @@ async clbQueryDefaultNewLibraryPath() : Promise<Result<string, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * What a folder picked for "Add Library…" holds: a library, one a level
+ * down, nothing, or other files. Decides the next step the app offers.
+ */
+async clbQueryInspectLibraryFolder(path: string) : Promise<Result<LibraryFolderContents, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_inspect_library_folder", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbQueryLibraries() : Promise<Result<LibraryEntry[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_libraries") };
@@ -759,6 +771,27 @@ export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited
  * The server has no room to store more.
  */
 "storageFull" | "internal"
+/**
+ * What a folder picked for "Add Library…" holds, so the app can offer the
+ * right next step instead of refusing the folder.
+ */
+export type LibraryFolderContents = 
+/**
+ * The folder is a Calibre library.
+ */
+{ kind: "library" } | 
+/**
+ * A Calibre library sits directly inside the folder.
+ */
+{ kind: "libraryInside"; library_path: string; suggested_name: string } | 
+/**
+ * Empty, or missing: a library can be created right there.
+ */
+{ kind: "empty" } | 
+/**
+ * Holds other files: a new library needs its own folder inside.
+ */
+{ kind: "otherFiles"; suggested_name: string }
 export type LibraryIdChange = { previousId: string; id: string }
 export type LibraryPublisher = { id: number; name: string; book_count: number }
 export type LibrarySeries = { id: number; name: string; book_count: number }

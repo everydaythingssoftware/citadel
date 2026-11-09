@@ -122,26 +122,3 @@
 .libraryRow[data-active] .rowName {
 	font-weight: 600;
 }
-
-/* The add row: a plus knocked out of a filled circle, where the other rows
-   have a filled book; the same size, weight and colour. */
-.addIcon {
-	flex-shrink: 0;
-	width: 1rem;
-	height: 1rem;
-	color: var(--ctd-ink-soft);
-}
-
-.addIcon path {
-	fill: currentColor;
-}
-
-.rowError {
-	font-size: 0.75rem;
-	line-height: 1.35;
-	color: var(--ctd-danger-ink);
-}
-
-.libraryRow:disabled {
-	opacity: 0.6;
-}

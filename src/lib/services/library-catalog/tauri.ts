@@ -29,6 +29,8 @@ export const tauriLibraryCatalog: LibraryCatalog = {
 	detect: () => commands.clbQueryDetectCalibreLibrary(),
 	defaultNewPath: async () =>
 		unwrap(await commands.clbQueryDefaultNewLibraryPath()),
+	inspectFolder: async (path) =>
+		unwrap(await commands.clbQueryInspectLibraryFolder(path)),
 	stats: async (path) => unwrap(await commands.clbQueryLibraryStats(path)),
 	syncStatus: (path) => commands.clbQueryPathSyncStatus(path),
 	list: async () => unwrap(await commands.clbQueryLibraries()),

@@ -1,0 +1,133 @@
+/* Same stacking plane and motion as ui/AlertDialog. */
+.overlay {
+	position: fixed;
+	inset: 0;
+	background-color: oklch(0% 0 0 / 0.18);
+	z-index: 112;
+}
+
+.overlay[data-state="open"] {
+	animation: add-library-overlay-in 160ms ease-out;
+}
+
+.content {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 300px;
+	max-width: calc(100vw - 32px);
+	padding: 20px 16px 16px;
+	background-color: var(--ctd-surface);
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-panel);
+	box-shadow: var(--ctd-dialog-shadow);
+	text-align: center;
+	z-index: 113;
+}
+
+.content[data-state="open"] {
+	animation: add-library-in 160ms ease-out;
+}
+
+.content:focus {
+	outline: none;
+}
+
+.form {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+}
+
+.icon {
+	width: 44px;
+	height: 44px;
+	margin-bottom: 6px;
+	color: var(--ctd-ink-soft);
+}
+
+.icon[data-tone="folder"] path {
+	fill: var(--ctd-accent);
+}
+
+.icon[data-tone="folder"] .iconMark {
+	fill: none;
+	stroke: var(--ctd-surface);
+}
+
+.title {
+	margin: 0;
+	overflow-wrap: anywhere;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
+.description {
+	margin: 0;
+	font-size: 11px;
+	line-height: 1.45;
+	color: var(--ctd-ink-soft);
+}
+
+.nameInput {
+	width: 100%;
+}
+
+.nameField {
+	align-self: stretch;
+	margin-top: 8px;
+	text-align: left;
+}
+
+.path {
+	max-width: 100%;
+	margin-top: 4px;
+	padding: 4px 8px;
+	border-radius: var(--ctd-radius-control);
+	background-color: var(--ctd-surface-muted);
+	font-family: ui-monospace, "SF Mono", Menlo, monospace;
+	font-size: 11px;
+	color: var(--ctd-ink-soft);
+	overflow-wrap: anywhere;
+}
+
+.error {
+	margin: 4px 0 0;
+	font-size: 11px;
+	line-height: 1.45;
+	color: var(--ctd-danger-ink);
+}
+
+.buttons {
+	display: flex;
+	align-self: stretch;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.alternative {
+	margin-top: 2px;
+}
+
+@keyframes add-library-overlay-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes add-library-in {
+	from {
+		transform: translate(-50%, -50%) scale(0.96);
+		opacity: 0;
+	}
+	to {
+		transform: translate(-50%, -50%) scale(1);
+		opacity: 1;
+	}
+}

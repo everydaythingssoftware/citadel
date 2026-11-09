@@ -2,6 +2,7 @@ import type {
 	DetectedLibrary,
 	LegacyLibraryImport,
 	LibraryEntry,
+	LibraryFolderContents,
 	LibraryStats,
 	SyncStatus,
 } from "@/bindings";
@@ -46,6 +47,8 @@ export interface LibraryCatalog {
 	isValid(path: string): Promise<boolean>;
 	detect(): Promise<DetectedLibrary | null>;
 	defaultNewPath(): Promise<string>;
+	/** What a folder picked for "Add Library…" holds; changes nothing. */
+	inspectFolder(path: string): Promise<LibraryFolderContents>;
 	stats(path: string): Promise<LibraryStats>;
 	syncStatus(path: string): Promise<SyncStatus>;
 	/** Registered libraries, keyed by Calibre library UUID (ADR 0009). */

@@ -36,6 +36,7 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbQueryIsPathValidLibrary",
 		"clbQueryDetectCalibreLibrary",
 		"clbQueryDefaultNewLibraryPath",
+		"clbQueryInspectLibraryFolder",
 		"clbQueryLibraryStats",
 		"clbQueryPathSyncStatus",
 		"clbQueryLibraries",
