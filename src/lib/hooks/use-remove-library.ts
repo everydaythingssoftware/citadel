@@ -2,47 +2,40 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui";
 import {
 	entryIds,
-	type PendingRemoval,
-	removalNeedsConfirmation,
-	withPendingRemovals,
-} from "@/lib/library-list/pending-removals";
+	type LeavingLibrary,
+	withLeavingLibraries,
+} from "@/lib/library-list/leaving-libraries";
 import { usePlatform } from "@/lib/platform/context";
 import type { LibraryPath } from "@/lib/platform/settings/types";
 import { libraryCatalog } from "@/lib/services/library-catalog";
-import {
-	removeLibrary,
-	restoreLibrary,
-	setActiveLibrary,
-} from "@/stores/settings/actions";
+import { removeLibrary, setActiveLibrary } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
 
-/** How long a removed library's row offers Undo. */
-export const UNDO_WINDOW_MS = 8000;
-/** The placeholder's closing wipe (LibraryListCard.module.css), plus slack. */
-const CLOSE_MS = 300;
+/** Lets the dialog finish closing before the row starts to wipe away. */
+const DIALOG_CLOSE_MS = 150;
+/** The row's wipe (LibraryListCard.module.css), plus slack. */
+const WIPE_MS = 300;
 
 export type RemoveLibraryStep =
 	| { id: "idle" }
 	| {
 			id: "confirm";
 			library: LibraryPath;
-			busy: boolean;
-			error: string | null;
+			/** Forgetting it sends the library window back to first run. */
+			isLast: boolean;
 	  };
 
 export interface RemoveLibrary {
-	/** The confirmation, asked only before removing the last library. */
 	step: RemoveLibraryStep;
-	/** Removed libraries still showing their "Removed … · Undo" row. */
-	pending: PendingRemoval[];
-	remove: (library: LibraryPath) => void;
-	undo: (id: string) => void;
+	/** Forgotten libraries whose rows are still wiping away. */
+	leaving: LeavingLibrary[];
+	request: (library: LibraryPath) => void;
 	confirm: () => void;
 	cancel: () => void;
 }
 
 /**
- * Where to go when the open library is removed: the next library in the
+ * Where to go when the open library is forgotten: the next library in the
  * list, then the ones before it, nearest first.
  */
 export const successorsOf = (
@@ -60,9 +53,6 @@ export const successorsOf = (
 const isValidLibrary = (path: string) =>
 	libraryCatalog.isValid(path).catch(() => false);
 
-const messageOf = (error: unknown) =>
-	error instanceof Error ? error.message : String(error);
-
 /** Opens the nearest other library that still opens, if any. */
 const switchAwayFrom = async (id: string) => {
 	const { libraryPaths } = useSettings.getState();
@@ -74,163 +64,80 @@ const switchAwayFrom = async (id: string) => {
 	}
 };
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
- * "Remove": the library is forgotten at once (switching away first if it
- * is open) and its row turns into "Removed … · Undo" for a few seconds, then
- * wipes away. Undo puts it back exactly, and reopens it if it was open.
- * Only the last library asks first: removing it sends the library window
- * back to first run, and Settings, a separate window, hides.
+ * "Forget…": one confirmation that says the books stay where they are, then
+ * Citadel forgets the library (switching away first if it is open) and its
+ * row wipes away. Forgetting the last library sends the library window back
+ * to first run, and Settings, a separate window, hides.
  */
 export const useRemoveLibrary = (): RemoveLibrary => {
 	const platform = usePlatform();
 	const [step, setStep] = useState<RemoveLibraryStep>({ id: "idle" });
-	const [pending, setPendingState] = useState<PendingRemoval[]>([]);
-	const pendingRef = useRef<PendingRemoval[]>([]);
-	const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+	const [leaving, setLeavingState] = useState<LeavingLibrary[]>([]);
+	const leavingRef = useRef<LeavingLibrary[]>([]);
+	const mounted = useRef(true);
 
-	const setPending = useCallback(
-		(update: (current: PendingRemoval[]) => PendingRemoval[]) => {
-			pendingRef.current = update(pendingRef.current);
-			setPendingState(pendingRef.current);
+	useEffect(
+		() => () => {
+			mounted.current = false;
 		},
 		[],
 	);
 
-	const patch = useCallback(
-		(id: string, changes: Partial<PendingRemoval>) =>
-			setPending((current) =>
-				current.map((removal) =>
-					removal.library.id === id ? { ...removal, ...changes } : removal,
-				),
-			),
-		[setPending],
+	const setLeaving = useCallback(
+		(update: (current: LeavingLibrary[]) => LeavingLibrary[]) => {
+			leavingRef.current = update(leavingRef.current);
+			if (mounted.current) setLeavingState(leavingRef.current);
+		},
+		[],
 	);
 
-	const drop = useCallback(
-		(id: string) =>
-			setPending((current) =>
-				current.filter((removal) => removal.library.id !== id),
-			),
-		[setPending],
-	);
-
-	const clearTimer = useCallback((id: string) => {
-		const timer = timers.current.get(id);
-		if (timer !== undefined) clearTimeout(timer);
-		timers.current.delete(id);
+	const request = useCallback((library: LibraryPath) => {
+		const isLast = useSettings.getState().libraryPaths.length <= 1;
+		setStep({ id: "confirm", library, isLast });
 	}, []);
 
-	const scheduleClose = useCallback(
-		(id: string) => {
-			clearTimer(id);
-			timers.current.set(
-				id,
-				setTimeout(() => {
-					patch(id, { phase: "closing" });
-					timers.current.set(
-						id,
-						setTimeout(() => {
-							timers.current.delete(id);
-							drop(id);
-						}, CLOSE_MS),
-					);
-				}, UNDO_WINDOW_MS),
-			);
-		},
-		[clearTimer, patch, drop],
-	);
-
-	useEffect(() => {
-		const active = timers.current;
-		return () => {
-			for (const timer of active.values()) clearTimeout(timer);
-			active.clear();
-		};
-	}, []);
-
-	const remove = useCallback(
-		(library: LibraryPath) => {
-			const { activeLibraryId, libraryPaths } = useSettings.getState();
-			if (pendingRef.current.some((p) => p.library.id === library.id)) return;
-			if (removalNeedsConfirmation(libraryPaths.length)) {
-				setStep({ id: "confirm", library, busy: false, error: null });
-				return;
-			}
-			const wasActive = activeLibraryId === library.id;
-			// The placeholder goes in first, so the row turns into it the moment
-			// the library leaves the list, without a frame of either missing.
-			setPending((current) => [
-				...current,
-				{
-					library,
-					before: entryIds(withPendingRemovals(libraryPaths, current)),
-					wasActive,
-					phase: "placeholder",
-					error: null,
-				},
-			]);
-			void (async () => {
-				try {
-					if (wasActive) await switchAwayFrom(library.id);
-					await removeLibrary(library.id);
-					scheduleClose(library.id);
-				} catch (error) {
-					drop(library.id);
-					toast.show({
-						title: `Couldn’t remove “${library.displayName}”`,
-						message: messageOf(error),
-					});
-				}
-			})();
-		},
-		[setPending, scheduleClose, drop],
-	);
-
-	const undo = useCallback(
-		(id: string) => {
-			const removal = pendingRef.current.find((p) => p.library.id === id);
-			if (removal?.phase !== "placeholder") return;
-			clearTimer(id);
-			patch(id, { phase: "restoring", error: null });
-			void (async () => {
-				try {
-					await restoreLibrary(id);
-					if (removal.wasActive) await setActiveLibrary(id);
-					drop(id);
-				} catch (error) {
-					patch(id, { phase: "placeholder", error: messageOf(error) });
-					scheduleClose(id);
-				}
-			})();
-		},
-		[clearTimer, patch, drop, scheduleClose],
-	);
-
-	const cancel = useCallback(() => {
-		setStep((current) =>
-			current.id === "confirm" && current.busy ? current : { id: "idle" },
-		);
-	}, []);
+	const cancel = useCallback(() => setStep({ id: "idle" }), []);
 
 	const confirm = useCallback(() => {
-		if (step.id !== "confirm" || step.busy) return;
-		const { library } = step;
-		setStep({ ...step, busy: true, error: null });
+		if (step.id !== "confirm") return;
+		const { library, isLast } = step;
+		setStep({ id: "idle" });
+		const id = library.id;
 		void (async () => {
 			try {
-				await removeLibrary(library.id);
-				if (!platform.window.isMain) void platform.window.hide();
-				setStep({ id: "idle" });
+				await wait(DIALOG_CLOSE_MS);
+				if (isLast) {
+					await removeLibrary(id);
+					if (!platform.window.isMain) void platform.window.hide();
+					return;
+				}
+				const { activeLibraryId, libraryPaths } = useSettings.getState();
+				// Held in place first, so the row wipes away rather than vanishing.
+				setLeaving((current) => [
+					...current,
+					{
+						library,
+						before: entryIds(withLeavingLibraries(libraryPaths, current)),
+					},
+				]);
+				if (activeLibraryId === id) await switchAwayFrom(id);
+				await removeLibrary(id);
+				await wait(WIPE_MS);
 			} catch (error) {
-				setStep({
-					id: "confirm",
-					library,
-					busy: false,
-					error: messageOf(error),
+				toast.show({
+					title: `Couldn’t forget “${library.displayName}”`,
+					message: error instanceof Error ? error.message : String(error),
 				});
+			} finally {
+				setLeaving((current) =>
+					current.filter((entry) => entry.library.id !== id),
+				);
 			}
 		})();
-	}, [step, platform]);
+	}, [step, platform, setLeaving]);
 
-	return { step, pending, remove, undo, confirm, cancel };
+	return { step, leaving, request, confirm, cancel };
 };

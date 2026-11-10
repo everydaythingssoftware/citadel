@@ -5,11 +5,12 @@ Status: Accepted - 2026-11-10.
 ## Context
 
 Citadel had one toast style, a top-right banner, used mostly for failures and
-background progress. Designing "remove a library" raised the question of where
-the confirmation and an Undo should live. A toast repeated what the list
-already showed, at the far side of the window from the action, and a dialog
-before every removal guarded a change that is easy to undo. Without a rule,
-each feature would pick its own.
+background progress. Designing how to take a library out of Citadel raised
+where confirmation, reassurance and any Undo should live. We tried a toast
+(it repeated what the list already showed, far from the action), Undo with no
+dialog (nothing told people their books were safe, so nobody would risk the
+button), and a dialog plus Undo (redundant). Without a rule, each feature
+would pick its own.
 
 ## Decision
 
@@ -17,46 +18,44 @@ Feedback has three tiers. Use the first that fits.
 
 1. **In place (the default).** An action taken on screen confirms on screen,
    where it happened: a row changes or leaves, a checkmark moves, a field shows
-   its own error, an Undo appears in the spot it undoes. If the change is
-   visible, nothing else announces it.
+   its own error. If the change is visible, nothing else announces it.
 2. **Banners (rare).** The top-right toast (`ui/toast.tsx`) is for things that
    happen out of view or in the background: an import finishing, an update
    ready, background work failing, or a failure with no surface left to show
    it on. It does not confirm something the person just did, and has no action
    buttons.
-3. **Dialogs (rarer).** Only before something that can't be undone in place,
-   such as removing the last library or deleting books from disk. Anything
-   that can be undone skips the dialog.
+3. **Dialogs (rare, for rare actions).** See below.
 
-### Undo in place
+### Confirmation or Undo
 
-The pattern, first used for removing a library (`LibraryListCard`,
-`useRemoveLibrary`):
-
-- The action happens at once; there is no "are you sure". Dropping the
-  dialog must not drop what it said: when people might fear losing data, say
-  what the action does and doesn't touch before they act (a hint beside the
-  button: "Removes it from Citadel. Your books stay on disk.") and again
-  after ("Removed “…” · files kept").
-- The item's row turns into a short "Removed “…” · Undo" placeholder in the
-  same spot. The border below rises over the row while its text stays fixed,
-  then the placeholder fades in.
-- After 8 seconds the placeholder closes the same way. Several can be pending
-  at once, each with its own timer, and each keeps its place in the list
-  whatever else is removed or restored.
-- Undo puts the item back exactly: same place, same state. The backend keeps
-  what it needs for that (`CitadelStore::restore_library` restores the
-  library's order and grants), rather than re-creating the item.
-- A failed Undo says so in the placeholder, not in a banner.
-- Buttons for actions that act at once have no ellipsis ("Remove"); one that
-  opens a dialog does ("Remove…").
+- **Frequent, low-stakes actions act at once and offer Undo in place.** A
+  dialog every time would be friction.
+- **Rare, deliberate actions get one confirmation and no Undo**, the way the
+  system's "Forget This Network…" does. The dialog costs little because the
+  action is rare, and it is the right moment to say what happens.
+- Either way, **say what is and isn't affected before people act**, when they
+  might fear losing data. The best place is the action's own name; a dialog's
+  text is next. Hint text beside a button is a patch for a label that isn't
+  doing its job.
+- A button that opens a dialog ends in "…"; one that acts at once doesn't.
 - Motion respects `prefers-reduced-motion`.
+
+### Example: forgetting a library
+
+- The action is **Forget…**, on the library's row menu and as the last row of
+  the Current Library card. "Forget" is the system's word for "stop
+  remembering this; nothing is deleted", so the label reassures before the
+  click.
+- One dialog: "Forget “…”? Citadel will stop showing this library. Your books
+  stay where they are." Forgetting the only library adds that Citadel returns
+  to the welcome screen.
+- Then the row wipes away in place: the border below rises over it while its
+  text stays fixed. No banner, no Undo.
 
 ## Consequences
 
 - New features start from "where on screen does this show?" rather than
   reaching for a toast.
-- Undo needs real support from the data layer: a snapshot to restore from, not
-  a second "create".
-- Edit → Undo (⌘Z) should undo the same actions as the in-place Undo. It isn't
-  wired up yet; when it is, the in-place Undo stays as the visible shortcut.
+- Choosing Undo means real support from the data layer (a snapshot to restore
+  from, not a second "create"), so it is reserved for actions frequent enough
+  to need it.

@@ -11,10 +11,9 @@ import {
 	useLibraryStats,
 } from "@/lib/hooks/use-library-stats";
 import {
-	type PendingRemoval,
-	removalNeedsConfirmation,
-	withPendingRemovals,
-} from "@/lib/library-list/pending-removals";
+	type LeavingLibrary,
+	withLeavingLibraries,
+} from "@/lib/library-list/leaving-libraries";
 import { usePlatform } from "@/lib/platform/context";
 import type { LibraryPath } from "@/lib/platform/settings/types";
 import { renameLibrary } from "@/stores/settings/actions";
@@ -24,11 +23,10 @@ interface LibraryListCardProps {
 	currentLibraryId: string;
 	libraries: LibraryPath[];
 	onSwitchLibrary: (id: string) => Promise<void>;
-	/** Adds "Remove" to each row's menu when set. */
+	/** Adds "Forget…" to each row's menu when set. */
 	onRemoveLibrary?: (library: LibraryPath) => void;
-	/** Libraries just removed, shown as "Removed … · Undo" rows in place. */
-	pendingRemovals?: readonly PendingRemoval[];
-	onUndoRemove?: (id: string) => void;
+	/** Libraries just forgotten, held in place while their rows wipe away. */
+	leavingLibraries?: readonly LeavingLibrary[];
 	/**
 	 * Story seam: pre-resolved stats per library path. When omitted (the
 	 * production path) each row fetches its own stats via useLibraryStats.
@@ -75,8 +73,7 @@ export const LibraryListCard = ({
 	onSwitchLibrary,
 	statsByPath,
 	onRemoveLibrary,
-	pendingRemovals = [],
-	onUndoRemove,
+	leavingLibraries = [],
 }: LibraryListCardProps) => {
 	const platform = usePlatform();
 	const [rename, setRename] = useState<RenameState | null>(null);
@@ -138,10 +135,8 @@ export const LibraryListCard = ({
 		}
 		if (onRemoveLibrary) {
 			items.push({
-				id: "remove",
-				label: removalNeedsConfirmation(libraries.length)
-					? "Remove…"
-					: "Remove",
+				id: "forget",
+				label: "Forget…",
 				onSelect: () => onRemoveLibrary(library),
 			});
 		}
@@ -149,12 +144,10 @@ export const LibraryListCard = ({
 		setMenu({ x, y, items });
 	};
 
-	const entries = withPendingRemovals(libraries, pendingRemovals);
-	// The top row's divider is hidden; while rows above close, the next row
-	// takes over, its divider fading as the gap shuts.
-	const firstShown = entries.findIndex(
-		(entry) => entry.kind === "library" || entry.removal.phase !== "closing",
-	);
+	const entries = withLeavingLibraries(libraries, leavingLibraries);
+	// The top row's divider is hidden; while rows above wipe away, the next
+	// row takes over, its divider fading as the gap shuts.
+	const firstShown = entries.findIndex((entry) => entry.kind === "library");
 
 	const closeMenu = () => {
 		setMenu(null);
@@ -165,29 +158,21 @@ export const LibraryListCard = ({
 		<div>
 			<h4 className={styles.cardTitle}>Libraries</h4>
 			<div className={styles.card}>
-				{entries.map((entry, index) => {
-					const library =
-						entry.kind === "library" ? entry.library : entry.removal.library;
-					const removal = entry.kind === "removed" ? entry.removal : null;
-					const state =
-						removal === null
-							? "live"
-							: removal.phase === "closing"
-								? "closing"
-								: "placeholder";
+				{entries.map(({ kind, library }, index) => {
+					const isLeaving = kind === "leaving";
 					return (
 						<div
 							key={library.id}
 							className={styles.slot}
-							data-state={state}
+							data-state={isLeaving ? "leaving" : "live"}
 							data-first={index === firstShown || undefined}
 						>
 							<LibraryRow
 								library={library}
-								isRemoved={removal !== null}
-								isActive={removal === null && library.id === currentLibraryId}
+								isRemoved={isLeaving}
+								isActive={!isLeaving && library.id === currentLibraryId}
 								isMenuTarget={library.id === menuTargetId}
-								isRenaming={removal === null && rename?.id === library.id}
+								isRenaming={!isLeaving && rename?.id === library.id}
 								renameDraft={rename?.draft ?? ""}
 								renameError={rename?.error ?? null}
 								statsOverride={statsByPath?.get(library.absolutePath)}
@@ -211,12 +196,6 @@ export const LibraryListCard = ({
 									openMenu(library, x, y);
 								}}
 							/>
-							{removal !== null && state === "placeholder" && (
-								<RemovedPlaceholder
-									removal={removal}
-									onUndo={() => onUndoRemove?.(library.id)}
-								/>
-							)}
 						</div>
 					);
 				})}
@@ -232,7 +211,7 @@ export const LibraryListCard = ({
 
 interface LibraryRowProps {
 	library: LibraryPath;
-	/** Shown behind its placeholder only: inert, and fading as it closes. */
+	/** Forgotten and wiping away: inert, and hidden from assistive tech. */
 	isRemoved: boolean;
 	isActive: boolean;
 	isMenuTarget: boolean;
@@ -328,8 +307,8 @@ const LibraryRow = ({
 			className={styles.libraryRow}
 			data-active={isActive || undefined}
 			data-menu-target={isMenuTarget || undefined}
-			// A removed row stays mounted behind its placeholder so it can fade
-			// in place; it takes no input and is hidden from assistive tech.
+			// A forgotten row stays mounted while it wipes away; it takes no
+			// input and is hidden from assistive tech.
 			disabled={isRemoved}
 			tabIndex={isRemoved ? -1 : undefined}
 			aria-hidden={isRemoved || undefined}
@@ -358,64 +337,5 @@ const LibraryRow = ({
 				{isActive ? <CheckmarkIcon /> : null}
 			</span>
 		</button>
-	);
-};
-
-const UndoGlyph = () => (
-	<svg
-		width="12"
-		height="12"
-		viewBox="0 0 16 16"
-		fill="none"
-		aria-hidden="true"
-	>
-		<path
-			d="M5.5 3 2.5 6l3 3"
-			stroke="currentColor"
-			strokeWidth="1.6"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-		/>
-		<path
-			d="M3 6h6.5a4 4 0 0 1 0 8H7"
-			stroke="currentColor"
-			strokeWidth="1.6"
-			strokeLinecap="round"
-		/>
-	</svg>
-);
-
-/** "Removed “…” · Undo", in the removed row's place for a few seconds. */
-const RemovedPlaceholder = ({
-	removal,
-	onUndo,
-}: {
-	removal: PendingRemoval;
-	onUndo: () => void;
-}) => {
-	const name = removal.library.displayName;
-	return (
-		<div className={styles.placeholder} role="status">
-			{removal.error ? (
-				<span className={styles.placeholderError}>
-					Couldn’t undo: {removal.error}
-				</span>
-			) : (
-				<>
-					<span className={styles.placeholderText}>Removed “{name}”</span>
-					<span className={styles.placeholderNote}>· files kept</span>
-				</>
-			)}
-			<button
-				type="button"
-				className={styles.undo}
-				disabled={removal.phase === "restoring"}
-				aria-label={`Undo removing “${name}”`}
-				onClick={onUndo}
-			>
-				<UndoGlyph />
-				Undo
-			</button>
-		</div>
 	);
 };

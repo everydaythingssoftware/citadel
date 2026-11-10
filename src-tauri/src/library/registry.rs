@@ -1,18 +1,11 @@
 //! The desktop's library list, kept in `citadel.db` and keyed by each
 //! library's Calibre UUID (ADR 0009). Every change is broadcast so all
 //! windows show the same list.
-use std::{collections::HashMap, sync::Mutex};
-
 use serde::{Deserialize, Serialize};
 use tauri_specta::Event;
 
 use crate::account::LocalAccount;
-use citadel_core::store::{RegisteredLibrary, RemovedLibrary};
-
-/// What each library removed this session held, so Undo can put it back
-/// exactly. Kept in memory only: after a restart, re-adding starts over.
-#[derive(Default)]
-pub struct RecentlyRemoved(Mutex<HashMap<String, RemovedLibrary>>);
+use citadel_core::store::RegisteredLibrary;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -139,43 +132,13 @@ pub fn clb_cmd_rename_library(
 pub fn clb_cmd_remove_library(
     handle: tauri::AppHandle,
     account: tauri::State<'_, LocalAccount>,
-    removed: tauri::State<'_, RecentlyRemoved>,
     id: String,
 ) -> Result<(), String> {
-    let snapshot = account
+    account
         .store()
         .remove_library(&id)
         .map_err(|error| error.to_string())?;
-    removed
-        .0
-        .lock()
-        .map_err(|error| error.to_string())?
-        .insert(id, snapshot);
     broadcast(&handle, &account)
-}
-
-/// Undoes `clb_cmd_remove_library` for a library removed this session: same
-/// place in the list, same grants.
-#[tauri::command]
-#[specta::specta]
-pub fn clb_cmd_restore_library(
-    handle: tauri::AppHandle,
-    account: tauri::State<'_, LocalAccount>,
-    removed: tauri::State<'_, RecentlyRemoved>,
-    id: String,
-) -> Result<LibraryEntry, String> {
-    let snapshot = removed
-        .0
-        .lock()
-        .map_err(|error| error.to_string())?
-        .remove(&id)
-        .ok_or_else(|| "This library can no longer be restored.".to_string())?;
-    let library = account
-        .store()
-        .restore_library(&snapshot)
-        .map_err(|error| error.to_string())?;
-    broadcast(&handle, &account)?;
-    Ok(library.into())
 }
 
 #[tauri::command]

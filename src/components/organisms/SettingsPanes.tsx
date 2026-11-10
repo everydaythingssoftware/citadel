@@ -32,7 +32,6 @@ import { useRemoveLibrary } from "@/lib/hooks/use-remove-library";
 import { useServerAddresses } from "@/lib/hooks/use-server-addresses";
 import { useServerHealth } from "@/lib/hooks/use-server-health";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
-import { removalNeedsConfirmation } from "@/lib/library-list/pending-removals";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
 import { usePlatform } from "@/lib/platform/context";
@@ -513,11 +512,10 @@ const LibraryTab = () => {
 					onSwitchLibrary={switchTo}
 					onRemoveLibrary={
 						platform.capabilities.supportsNativeWindows
-							? removeLibrary.remove
+							? removeLibrary.request
 							: undefined
 					}
-					pendingRemovals={removeLibrary.pending}
-					onUndoRemove={removeLibrary.undo}
+					leavingLibraries={removeLibrary.leaving}
 				/>
 				<div className={classes.libraryActions}>
 					<Button
@@ -532,10 +530,9 @@ const LibraryTab = () => {
 				library={activeLibrary}
 				onRemove={
 					platform.capabilities.supportsNativeWindows
-						? () => removeLibrary.remove(activeLibrary)
+						? () => removeLibrary.request(activeLibrary)
 						: null
 				}
-				removeNeedsConfirmation={removalNeedsConfirmation(libraries.length)}
 				onRevealInFileManager={
 					platform.capabilities.canRevealInFileManager
 						? revealActiveLibrary

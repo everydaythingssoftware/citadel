@@ -4,7 +4,7 @@ use std::path::Path;
 use diesel::{prelude::*, sqlite::SqliteConnection};
 
 use super::{
-    schema::{libraries, library_grants, properties, users},
+    schema::{libraries, properties},
     unix_now, CitadelStore, Result, StoreError,
 };
 
@@ -19,30 +19,6 @@ pub struct RegisteredLibrary {
     pub display_name: String,
     /// Served without changes, for libraries managed elsewhere.
     pub read_only: bool,
-}
-
-/// Everything [`CitadelStore::remove_library`] took away, so
-/// [`CitadelStore::restore_library`] can put the library back exactly: same
-/// place in the list, same grants.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RemovedLibrary {
-    library: RegisteredLibrary,
-    created_at: i64,
-    rowid: i64,
-    grants: Vec<(String, i64)>,
-    was_active: bool,
-}
-
-impl RemovedLibrary {
-    pub fn library(&self) -> &RegisteredLibrary {
-        &self.library
-    }
-}
-
-#[derive(QueryableByName)]
-struct RowId {
-    #[diesel(sql_type = diesel::sql_types::BigInt)]
-    rowid: i64,
 }
 
 type LibraryRow = (String, String, String, bool);
@@ -139,99 +115,20 @@ impl CitadelStore {
     }
 
     /// Forgets a library: its registry entry, every grant to it, and the host's
-    /// choice of it as the active library. The library's folder is untouched.
-    /// Returns what was removed, for [`Self::restore_library`]; registering
-    /// the folder again instead starts over, without the old grants.
-    pub fn remove_library(&self, id: &str) -> Result<RemovedLibrary> {
+    /// choice of it as the active library. The library's folder is untouched,
+    /// so registering it again brings it back, without its old grants.
+    pub fn remove_library(&self, id: &str) -> Result<()> {
         self.connection().immediate_transaction(|connection| {
-            let library = library(connection, id)?;
-            let created_at = libraries::table
-                .filter(libraries::id.eq(id))
-                .select(libraries::created_at)
-                .first::<i64>(connection)?;
-            let rowid = diesel::sql_query("SELECT rowid FROM libraries WHERE id = ?")
-                .bind::<diesel::sql_types::Text, _>(id)
-                .get_result::<RowId>(connection)?
-                .rowid;
-            let grants = library_grants::table
-                .filter(library_grants::library_id.eq(id))
-                .select((library_grants::user_id, library_grants::created_at))
-                .load::<(String, i64)>(connection)?;
-            let was_active = diesel::delete(
+            known_library(connection, id)?;
+            diesel::delete(
                 properties::table
                     .filter(properties::key.eq(ACTIVE_LIBRARY_PROPERTY))
                     .filter(properties::value.eq(id)),
             )
-            .execute(connection)?
-                > 0;
-            diesel::delete(libraries::table.filter(libraries::id.eq(id))).execute(connection)?;
-            Ok(RemovedLibrary {
-                library,
-                created_at,
-                rowid,
-                grants,
-                was_active,
-            })
-        })
-    }
-
-    /// Undoes [`Self::remove_library`]: the entry returns to its old place in
-    /// the list with the grants of users who still exist. A library that was
-    /// registered again in the meantime is left as it is.
-    pub fn restore_library(&self, removed: &RemovedLibrary) -> Result<RegisteredLibrary> {
-        let id = removed.library.id.as_str();
-        let mut connection = self.connection();
-        connection.immediate_transaction(|connection| {
-            let exists: bool = diesel::select(diesel::dsl::exists(
-                libraries::table.filter(libraries::id.eq(id)),
-            ))
-            .get_result(connection)?;
-            if exists {
-                return Ok::<_, StoreError>(());
-            }
-            let rowid_taken = diesel::sql_query("SELECT rowid FROM libraries WHERE rowid = ?")
-                .bind::<diesel::sql_types::BigInt, _>(removed.rowid)
-                .get_result::<RowId>(connection)
-                .optional()?
-                .is_some();
-            let rowid = (!rowid_taken).then_some(removed.rowid);
-            diesel::sql_query(
-                "INSERT INTO libraries (rowid, id, path, display_name, created_at, read_only) \
-                 VALUES (?, ?, ?, ?, ?, ?)",
-            )
-            .bind::<diesel::sql_types::Nullable<diesel::sql_types::BigInt>, _>(rowid)
-            .bind::<diesel::sql_types::Text, _>(id)
-            .bind::<diesel::sql_types::Text, _>(&removed.library.path)
-            .bind::<diesel::sql_types::Text, _>(&removed.library.display_name)
-            .bind::<diesel::sql_types::BigInt, _>(removed.created_at)
-            .bind::<diesel::sql_types::Bool, _>(removed.library.read_only)
             .execute(connection)?;
-            for (user_id, granted_at) in &removed.grants {
-                let user_exists: bool = diesel::select(diesel::dsl::exists(
-                    users::table.filter(users::id.eq(user_id)),
-                ))
-                .get_result(connection)?;
-                if user_exists {
-                    diesel::insert_or_ignore_into(library_grants::table)
-                        .values((
-                            library_grants::user_id.eq(user_id),
-                            library_grants::library_id.eq(id),
-                            library_grants::created_at.eq(granted_at),
-                        ))
-                        .execute(connection)?;
-                }
-            }
-            if removed.was_active {
-                diesel::insert_or_ignore_into(properties::table)
-                    .values((
-                        properties::key.eq(ACTIVE_LIBRARY_PROPERTY),
-                        properties::value.eq(id),
-                    ))
-                    .execute(connection)?;
-            }
+            diesel::delete(libraries::table.filter(libraries::id.eq(id))).execute(connection)?;
             Ok(())
-        })?;
-        library(&mut connection, id)
+        })
     }
 
     /// The library the host serves, if one was chosen and is still registered.
@@ -260,11 +157,6 @@ impl CitadelStore {
     pub fn libraries(&self) -> Result<Vec<RegisteredLibrary>> {
         Ok(libraries::table
             .order(libraries::created_at)
-            // Libraries registered in the same second keep their insertion
-            // order, which restore_library preserves through the rowid.
-            .then_order_by(diesel::dsl::sql::<diesel::sql_types::BigInt>(
-                "libraries.rowid",
-            ))
             .select(LIBRARY_COLUMNS)
             .load::<LibraryRow>(&mut *self.connection())?
             .into_iter()
@@ -410,8 +302,7 @@ mod tests {
         store.grant("alice", &other.id).unwrap();
         store.set_active_library(&library.id).unwrap();
 
-        let removed = store.remove_library(&library.id).unwrap();
-        assert_eq!(removed.library(), &library);
+        store.remove_library(&library.id).unwrap();
 
         assert_eq!(store.libraries().unwrap(), vec![other.clone()]);
         assert_eq!(store.active_library().unwrap(), None);
@@ -425,40 +316,5 @@ mod tests {
             .register_library(&library.id, Path::new(&library.path), None)
             .unwrap();
         assert!(!store.can_access(&alice.id, &library.id).unwrap());
-    }
-
-    #[test]
-    fn restoring_a_removed_library_puts_back_its_place_grants_and_active_choice() {
-        let (directory, store, first) = store();
-        let folders = ["second", "third"].map(|name| {
-            let folder = directory.path().join(name);
-            std::fs::create_dir(&folder).unwrap();
-            folder
-        });
-        let second = store
-            .register_library("second-uuid", &folders[0], Some("Second"))
-            .unwrap();
-        let third = store
-            .register_library("third-uuid", &folders[1], None)
-            .unwrap();
-        let alice = store.create_user("alice", "alice password").unwrap();
-        store.grant("alice", &second.id).unwrap();
-        store.set_active_library(&second.id).unwrap();
-
-        let removed = store.remove_library(&second.id).unwrap();
-        assert_eq!(
-            store.libraries().unwrap(),
-            vec![first.clone(), third.clone()]
-        );
-
-        assert_eq!(store.restore_library(&removed).unwrap(), second);
-        assert_eq!(
-            store.libraries().unwrap(),
-            vec![first, second.clone(), third]
-        );
-        assert!(store.can_access(&alice.id, &second.id).unwrap());
-        assert_eq!(store.active_library().unwrap(), Some(second.clone()));
-        // Restoring twice, or after re-adding, changes nothing.
-        assert_eq!(store.restore_library(&removed).unwrap(), second);
     }
 }
