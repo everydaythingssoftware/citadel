@@ -396,15 +396,16 @@ const RemovedPlaceholder = ({
 	const name = removal.library.displayName;
 	return (
 		<div className={styles.placeholder} role="status">
-			<span
-				className={
-					removal.error ? styles.placeholderError : styles.placeholderText
-				}
-			>
-				{removal.error
-					? `Couldn’t undo: ${removal.error}`
-					: `Removed “${name}”`}
-			</span>
+			{removal.error ? (
+				<span className={styles.placeholderError}>
+					Couldn’t undo: {removal.error}
+				</span>
+			) : (
+				<>
+					<span className={styles.placeholderText}>Removed “{name}”</span>
+					<span className={styles.placeholderNote}>· files kept</span>
+				</>
+			)}
 			<button
 				type="button"
 				className={styles.undo}

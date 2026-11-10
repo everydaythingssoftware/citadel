@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Button, TextInput } from "@/components/ui";
 import {
 	type LibraryStatsState,
@@ -37,6 +37,7 @@ export const CurrentLibraryCard = ({
 	statsOverride,
 }: CurrentLibraryCardProps) => {
 	const { fileManagerName } = usePlatform().fileOpener;
+	const removeHintId = useId();
 	const fetchedStats = useLibraryStats(
 		library.absolutePath,
 		statsOverride === undefined,
@@ -109,7 +110,14 @@ export const CurrentLibraryCard = ({
 			</div>
 			{onRemove !== null && (
 				<div className={styles.actions}>
-					<Button className={styles.removeButton} onClick={onRemove}>
+					<p id={removeHintId} className={styles.removeHint}>
+						Removes it from Citadel. Your books stay on disk.
+					</p>
+					<Button
+						className={styles.removeButton}
+						aria-describedby={removeHintId}
+						onClick={onRemove}
+					>
 						{removeNeedsConfirmation ? "Remove…" : "Remove"}
 					</Button>
 				</div>

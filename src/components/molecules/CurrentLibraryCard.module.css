@@ -47,12 +47,22 @@
 /* Under the card, right-aligned, like Add Library… under the list. */
 .actions {
 	display: flex;
+	align-items: center;
 	justify-content: flex-end;
+	gap: 1rem;
 	margin-top: 0.875rem;
 }
 
+/* Says what Remove does before anyone risks it: the files are safe. */
+.removeHint {
+	margin: 0;
+	font-size: 0.75rem;
+	line-height: 1.35;
+	color: var(--ctd-ink-soft);
+}
+
 /* A quiet destructive action: an outline with red text and no fill. The
- * confirmation that follows carries the weight. */
+ * hint beside it says what it does; Undo follows it. */
 .actions .removeButton {
 	background-color: transparent;
 	box-shadow: none;

@@ -33,7 +33,11 @@ Feedback has three tiers. Use the first that fits.
 The pattern, first used for removing a library (`LibraryListCard`,
 `useRemoveLibrary`):
 
-- The action happens at once; there is no "are you sure".
+- The action happens at once; there is no "are you sure". Dropping the
+  dialog must not drop what it said: when people might fear losing data, say
+  what the action does and doesn't touch before they act (a hint beside the
+  button: "Removes it from Citadel. Your books stay on disk.") and again
+  after ("Removed “…” · files kept").
 - The item's row turns into a short "Removed “…” · Undo" placeholder in the
   same spot. The border below rises over the row while its text stays fixed,
   then the placeholder fades in.
