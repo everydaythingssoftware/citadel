@@ -27,7 +27,7 @@ mod users;
 pub use auth::SESSION_TTL_SECONDS;
 pub use credentials::{CredentialSecret, ProviderCredential};
 pub use device_keys::{DeviceKey, DeviceKeyVerifier, NewDeviceKey};
-pub use libraries::{canonical_path, RegisteredLibrary};
+pub use libraries::{canonical_path, RegisteredLibrary, RemovedLibrary};
 pub use recovery::Backup;
 pub use users::{Role, User, UserSummary};
 

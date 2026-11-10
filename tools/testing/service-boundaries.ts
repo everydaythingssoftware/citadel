@@ -43,6 +43,7 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbCmdRegisterLibrary",
 		"clbCmdRenameLibrary",
 		"clbCmdRemoveLibrary",
+		"clbCmdRestoreLibrary",
 		"clbCmdImportLegacyLibraries",
 	],
 	"src/lib/services/metadata/tauri.ts": [

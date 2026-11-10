@@ -13,8 +13,10 @@ interface CurrentLibraryCardProps {
 	library: LibraryPath;
 	/** Reveal the library folder in the system file manager; null when the platform can't. */
 	onRevealInFileManager: (() => void) | null;
-	/** Starts "Remove…"; null where libraries can't be removed. */
+	/** Removes this library; null where libraries can't be removed. */
 	onRemove?: (() => void) | null;
+	/** Removing asks first (the last library), so the button says "Remove…". */
+	removeNeedsConfirmation?: boolean;
 	/** Story seam: overrides the card's own useLibraryStats fetch when set. */
 	statsOverride?: LibraryStatsState;
 }
@@ -31,6 +33,7 @@ export const CurrentLibraryCard = ({
 	library,
 	onRevealInFileManager,
 	onRemove = null,
+	removeNeedsConfirmation = false,
 	statsOverride,
 }: CurrentLibraryCardProps) => {
 	const { fileManagerName } = usePlatform().fileOpener;
@@ -107,7 +110,7 @@ export const CurrentLibraryCard = ({
 			{onRemove !== null && (
 				<div className={styles.actions}>
 					<Button className={styles.removeButton} onClick={onRemove}>
-						Remove…
+						{removeNeedsConfirmation ? "Remove…" : "Remove"}
 					</Button>
 				</div>
 			)}
