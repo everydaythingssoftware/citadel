@@ -29,7 +29,7 @@ export const WithCounts: Story = {
 			onRevealInFileManager={() =>
 				console.log("Reveal in Finder", FICTION.absolutePath)
 			}
-			onRemove={() => console.log("Remove", FICTION.id)}
+			onRemove={() => console.log("Forget", FICTION.id)}
 		/>
 	),
 };

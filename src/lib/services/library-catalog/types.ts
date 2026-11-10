@@ -58,8 +58,6 @@ export interface LibraryCatalog {
 	rename(id: string, displayName: string): Promise<LibraryEntry>;
 	/** Forgets a library and its grants; its folder is untouched. */
 	remove(id: string): Promise<void>;
-	/** Undoes `remove` for a library removed this session, exactly as it was. */
-	restore(id: string): Promise<LibraryEntry>;
 	/** Moves a pre-registry settings.json library list into the registry. */
 	importLegacy(entries: LibraryEntry[]): Promise<LegacyLibraryImport>;
 	/** Called with the full list whenever any window changes it. */

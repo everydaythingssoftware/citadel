@@ -6,13 +6,15 @@ interface RemoveLibraryDialogProps {
 	remove: RemoveLibrary;
 }
 
-/** Confirms removing the last library, the one removal Undo can't follow. */
+/** "Forget…": says what forgetting does, and that the books stay put. */
 export const RemoveLibraryDialog = ({ remove }: RemoveLibraryDialogProps) => {
 	const { step } = remove;
-	// Kept through the closing animation, so the title never empties.
-	const shownName = useRef("");
-	if (step.id !== "idle") shownName.current = step.library.displayName;
-	const name = shownName.current;
+	// Kept through the closing animation, so the text never empties.
+	const shown = useRef({ name: "", isLast: false });
+	if (step.id === "confirm") {
+		shown.current = { name: step.library.displayName, isLast: step.isLast };
+	}
+	const { name, isLast } = shown.current;
 
 	return (
 		<AlertDialog
@@ -22,15 +24,15 @@ export const RemoveLibraryDialog = ({ remove }: RemoveLibraryDialogProps) => {
 			}}
 			title={
 				<>
-					Remove <NoBreak>“{name}”</NoBreak> from Citadel?
+					Forget <NoBreak>“{name}”</NoBreak>?
 				</>
 			}
 			description={
-				step.id === "confirm" && step.error !== null
-					? step.error
-					: "It’s your only library. Your books will not be removed: you can re-add your library anytime."
+				isLast
+					? "Citadel will stop showing this library and return to the welcome screen. Your books stay where they are."
+					: "Citadel will stop showing this library. Your books stay where they are."
 			}
-			confirmLabel={step.id === "confirm" && step.busy ? "Removing…" : "Remove"}
+			confirmLabel="Forget"
 			onConfirm={remove.confirm}
 		/>
 	);

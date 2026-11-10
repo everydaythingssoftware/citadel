@@ -43,7 +43,7 @@
 - Strict mode: `strictNullChecks` and `noUncheckedIndexedAccess` enabled; always handle undefined/null cases
 - Use functional programming concepts
 - Prefer Rust-style safety, utility types like Result and Option
-- **Feedback**: confirm actions in place (a row changes, an Undo appears where the item was); top-right banners only for out-of-view or background events; dialogs only before what can't be undone. See `docs/adr/0014-in-place-feedback.md`.
+- **Feedback**: confirm actions in place (a row changes or leaves); top-right banners only for out-of-view or background events. Frequent actions act at once with Undo; rare, deliberate ones get one dialog. Say what is and isn't affected, ideally in the action's name. See `docs/adr/0014-in-place-feedback.md`.
 - **Functional core, imperative shell**: Components should be pure renderers. Extract all behavior (API calls, async operations, state machines) into custom hooks or service modules. Components receive state and callbacks, nothing more.
 
 ## Driving the app for e2e verification (agents)

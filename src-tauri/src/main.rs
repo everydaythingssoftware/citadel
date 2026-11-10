@@ -50,7 +50,6 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::registry::clb_cmd_register_library,
             library::registry::clb_cmd_rename_library,
             library::registry::clb_cmd_remove_library,
-            library::registry::clb_cmd_restore_library,
             library::registry::clb_cmd_import_legacy_libraries,
             // Book query commands
             library::query::clb_query_search_books,
@@ -139,7 +138,6 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .manage(metadata::client())
-        .manage(library::registry::RecentlyRemoved::default())
         .register_asynchronous_uri_scheme_protocol(
             metadata::COVER_SCHEME,
             metadata::serve_cover_preview,

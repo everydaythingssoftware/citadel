@@ -44,33 +44,28 @@
 	padding: 0.4375rem 0.875rem;
 }
 
-/* Under the card, right-aligned, like Add Library… under the list. */
-.actions {
+/* The card's last row, as in the system's "Forget This Network…": plain red
+   text, no button chrome. The dialog it opens says the books stay put. */
+.forgetRow {
 	display: flex;
 	align-items: center;
-	justify-content: flex-end;
-	gap: 1rem;
-	margin-top: 0.875rem;
-}
-
-/* Says what Remove does before anyone risks it: the files are safe. */
-.removeHint {
-	margin: 0;
-	font-size: 0.75rem;
+	width: 100%;
+	min-height: 42px;
+	padding: 0.4375rem 0.875rem;
+	border: none;
+	border-radius: 0 0 0.5rem 0.5rem;
+	background: none;
+	font-family: inherit;
+	font-size: 0.8125rem;
 	line-height: 1.35;
-	color: var(--ctd-ink-soft);
-}
-
-/* A quiet destructive action: an outline with red text and no fill. The
- * hint beside it says what it does; Undo follows it. */
-.actions .removeButton {
-	background-color: transparent;
-	box-shadow: none;
+	text-align: left;
 	color: var(--ctd-danger-ink);
 }
 
-.actions .removeButton:hover:not(:disabled) {
-	background-color: oklch(from var(--ctd-danger-ink) l c h / 0.08);
+.forgetRow:hover,
+.forgetRow:focus-visible {
+	background-color: var(--ctd-nav-hover-bg);
+	outline: none;
 }
 
 .rowLabel {

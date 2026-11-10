@@ -135,18 +135,6 @@ async clbCmdRemoveLibrary(id: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Undoes `clb_cmd_remove_library` for a library removed this session: same
- * place in the list, same grants.
- */
-async clbCmdRestoreLibrary(id: string) : Promise<Result<LibraryEntry, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_restore_library", { id }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async clbCmdImportLegacyLibraries(entries: LibraryEntry[]) : Promise<Result<LegacyLibraryImport, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_import_legacy_libraries", { entries }) };

@@ -13,7 +13,6 @@ import {
 // Paths under /missing are treated as folders that no longer hold a library.
 const registry = vi.hoisted(() => ({
 	libraries: [] as LibraryEntry[],
-	removed: new Map<string, { entry: LibraryEntry; index: number }>(),
 }));
 const idFor = (path: string) => `calibre-${path}`;
 vi.mock("@/lib/services/library-catalog", () => ({
@@ -31,16 +30,9 @@ vi.mock("@/lib/services/library-catalog", () => ({
 			return library;
 		},
 		remove: async (id: string) => {
-			const index = registry.libraries.findIndex((entry) => entry.id === id);
-			const [removed] = registry.libraries.splice(index, 1);
-			if (removed) registry.removed.set(id, { entry: removed, index });
-		},
-		restore: async (id: string) => {
-			const removed = registry.removed.get(id);
-			if (!removed) throw new Error("This library can no longer be restored.");
-			registry.removed.delete(id);
-			registry.libraries.splice(removed.index, 0, removed.entry);
-			return removed.entry;
+			registry.libraries = registry.libraries.filter(
+				(entry) => entry.id !== id,
+			);
 		},
 		rename: async (id: string, displayName: string) => {
 			const library = registry.libraries.find((entry) => entry.id === id);
@@ -71,7 +63,6 @@ vi.mock("@/lib/services/library-catalog", () => ({
 
 beforeEach(() => {
 	registry.libraries = [];
-	registry.removed.clear();
 });
 
 const setSetting = <K extends SettingsKey>(
@@ -348,22 +339,6 @@ describe("useSettings library registry", () => {
 		expect(registry.libraries).toEqual([]);
 		expect(useSettings.getState().activeLibraryId).toBe("");
 		expect(await manager.get("activeLibraryId")).toBe("");
-	});
-
-	it("restoreLibrary puts a removed library back in its place", async () => {
-		const useSettings = await importStore(createFakeSettingsManager());
-		const first = await useSettings.getState().createLibrary(CALIBRE_PATH);
-		const second = await useSettings.getState().createLibrary("/Books/Second");
-		const third = await useSettings.getState().createLibrary("/Books/Third");
-
-		await useSettings.getState().removeLibrary(second);
-		await useSettings.getState().restoreLibrary(second);
-
-		expect(useSettings.getState().libraryPaths.map(({ id }) => id)).toEqual([
-			first,
-			second,
-			third,
-		]);
 	});
 
 	it("renameLibrary trims the name and stores it in the registry", async () => {

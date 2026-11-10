@@ -40,7 +40,6 @@ export const tauriLibraryCatalog: LibraryCatalog = {
 	remove: async (id) => {
 		unwrap(await commands.clbCmdRemoveLibrary(id));
 	},
-	restore: async (id) => unwrap(await commands.clbCmdRestoreLibrary(id)),
 	importLegacy: async (entries) =>
 		unwrap(await commands.clbCmdImportLegacyLibraries(entries)),
 	onChange: (listener) =>

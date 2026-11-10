@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, TextInput } from "@/components/ui";
 import {
 	type LibraryStatsState,
@@ -13,10 +13,8 @@ interface CurrentLibraryCardProps {
 	library: LibraryPath;
 	/** Reveal the library folder in the system file manager; null when the platform can't. */
 	onRevealInFileManager: (() => void) | null;
-	/** Removes this library; null where libraries can't be removed. */
+	/** Starts "Forget…" for this library; null where that isn't offered. */
 	onRemove?: (() => void) | null;
-	/** Removing asks first (the last library), so the button says "Remove…". */
-	removeNeedsConfirmation?: boolean;
 	/** Story seam: overrides the card's own useLibraryStats fetch when set. */
 	statsOverride?: LibraryStatsState;
 }
@@ -26,18 +24,16 @@ const plural = (count: number, word: string) =>
 
 /**
  * "Current Library" card: editable name, a "Show in Finder" (or the platform's file manager) affordance for the
- * location (never the path as text), headline contents counts, and the way
- * to remove it from Citadel.
+ * location (never the path as text), headline contents counts, and, last,
+ * "Forget…" to stop showing it in Citadel.
  */
 export const CurrentLibraryCard = ({
 	library,
 	onRevealInFileManager,
 	onRemove = null,
-	removeNeedsConfirmation = false,
 	statsOverride,
 }: CurrentLibraryCardProps) => {
 	const { fileManagerName } = usePlatform().fileOpener;
-	const removeHintId = useId();
 	const fetchedStats = useLibraryStats(
 		library.absolutePath,
 		statsOverride === undefined,
@@ -107,21 +103,12 @@ export const CurrentLibraryCard = ({
 						<span className={styles.rowValue}>{contents}</span>
 					</div>
 				)}
+				{onRemove !== null && (
+					<button type="button" className={styles.forgetRow} onClick={onRemove}>
+						Forget…
+					</button>
+				)}
 			</div>
-			{onRemove !== null && (
-				<div className={styles.actions}>
-					<p id={removeHintId} className={styles.removeHint}>
-						Removes it from Citadel. Your books stay on disk.
-					</p>
-					<Button
-						className={styles.removeButton}
-						aria-describedby={removeHintId}
-						onClick={onRemove}
-					>
-						{removeNeedsConfirmation ? "Remove…" : "Remove"}
-					</Button>
-				</div>
-			)}
 		</div>
 	);
 };

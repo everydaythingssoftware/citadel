@@ -24,10 +24,6 @@ export const removeLibrary = (id: string): Promise<void> => {
 	return useSettings.getState().removeLibrary(id);
 };
 
-export const restoreLibrary = (id: string): Promise<void> => {
-	return useSettings.getState().restoreLibrary(id);
-};
-
 export const getActiveLibrary = () => {
 	return useSettings.getState().getActiveLibrary();
 };

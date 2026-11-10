@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { LibraryStatsState } from "@/lib/hooks/use-library-stats";
-import type { PendingRemoval } from "@/lib/library-list/pending-removals";
 import { PlatformProvider } from "@/lib/platform/context";
 import { createWebPlatform } from "@/lib/platform/create";
 import type { LibraryPath } from "@/lib/platform/settings/types";
@@ -59,7 +58,6 @@ const render = (props: {
 	currentLibraryId: string;
 	libraries: LibraryPath[];
 	stats: ReadonlyMap<string, LibraryStatsState>;
-	pendingRemovals?: PendingRemoval[];
 }) => (
 	<PlatformProvider value={MOCK_PLATFORM}>
 		<LibraryListCard
@@ -70,9 +68,7 @@ const render = (props: {
 				console.log("Switch to library", id);
 				return Promise.resolve();
 			}}
-			onRemoveLibrary={(library) => console.log("Remove", library.id)}
-			pendingRemovals={props.pendingRemovals}
-			onUndoRemove={(id) => console.log("Undo removing", id)}
+			onRemoveLibrary={(library) => console.log("Forget", library.id)}
 		/>
 	</PlatformProvider>
 );
@@ -153,50 +149,5 @@ export const ActiveRowCheckmark: Story = {
 				[HISTORY, loadedStats(64, 33)],
 				[COOKING, loadedStats(28, 12)],
 			]),
-		}),
-};
-
-const removed = (
-	library: LibraryPath,
-	before: LibraryPath[],
-	error: string | null = null,
-): PendingRemoval => ({
-	library,
-	before: before.map(({ id }) => id),
-	wasActive: false,
-	phase: "placeholder",
-	error,
-});
-
-/** Two libraries just removed, each showing Undo in its old place. */
-export const JustRemoved: Story = {
-	render: () =>
-		render({
-			currentLibraryId: HISTORY.id,
-			libraries: [NON_FICTION, HISTORY],
-			stats: statsByPath([
-				[NON_FICTION, loadedStats(140, 61)],
-				[HISTORY, loadedStats(64, 33)],
-			]),
-			pendingRemovals: [
-				removed(FICTION, [FICTION, NON_FICTION, HISTORY, COOKING]),
-				removed(COOKING, [FICTION, NON_FICTION, HISTORY, COOKING]),
-			],
-		}),
-};
-
-export const UndoFailed: Story = {
-	render: () =>
-		render({
-			currentLibraryId: HISTORY.id,
-			libraries: [HISTORY],
-			stats: statsByPath([[HISTORY, loadedStats(64, 33)]]),
-			pendingRemovals: [
-				removed(
-					FICTION,
-					[FICTION, HISTORY],
-					"This library can no longer be restored.",
-				),
-			],
 		}),
 };

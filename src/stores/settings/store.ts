@@ -37,8 +37,6 @@ interface SettingsStore extends SettingsSchema {
 	renameLibrary: (id: string, displayName: string) => Promise<void>;
 	/** Forgets a library; clears the active library if it was this one. */
 	removeLibrary: (id: string) => Promise<void>;
-	/** Undoes removeLibrary: the library returns to its place in the list. */
-	restoreLibrary: (id: string) => Promise<void>;
 	getActiveLibrary: () => Option<LibraryPath>;
 	setProviderConfig: (
 		id: MetadataProvider,
@@ -238,13 +236,6 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 		if (get().activeLibraryId === id) {
 			await persistSetting(set, get, "activeLibraryId", "");
 		}
-	},
-
-	restoreLibrary: async (id) => {
-		await libraryCatalog.restore(id);
-		// The registry's order, not an append: the library goes back exactly
-		// where it was.
-		set({ libraryPaths: await libraryCatalog.list() });
 	},
 
 	getActiveLibrary: () => {
