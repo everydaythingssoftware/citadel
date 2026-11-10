@@ -7,7 +7,7 @@ interface RemoveLibraryDialogProps {
 	remove: RemoveLibrary;
 }
 
-/** Confirms "Remove from Citadel…", then offers the folder it left behind. */
+/** Confirms "Remove…", then offers the folder it left behind. */
 export const RemoveLibraryDialog = ({ remove }: RemoveLibraryDialogProps) => {
 	const { fileManagerName } = usePlatform().fileOpener;
 	const { step } = remove;
