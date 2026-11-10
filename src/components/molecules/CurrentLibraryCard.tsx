@@ -105,7 +105,7 @@ export const CurrentLibraryCard = ({
 				)}
 				{onRemove !== null && (
 					<div className={`${styles.row} ${styles.actionRow}`}>
-						<Button variant="danger" onClick={onRemove}>
+						<Button className={styles.removeButton} onClick={onRemove}>
 							Remove…
 						</Button>
 					</div>
