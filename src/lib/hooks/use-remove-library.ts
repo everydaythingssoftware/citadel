@@ -67,7 +67,7 @@ const switchAwayFrom = async (id: string) => {
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * "Forget…": one confirmation that says the books stay where they are, then
+ * "Forget…": one confirmation that says the files will not be removed, then
  * Citadel forgets the library (switching away first if it is open) and its
  * row wipes away. Forgetting the last library sends the library window back
  * to first run, and Settings, a separate window, hides.

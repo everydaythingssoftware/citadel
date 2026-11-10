@@ -45,7 +45,7 @@
 }
 
 /* The card's last row, as in the system's "Forget This Network…": plain red
-   text, no button chrome. The dialog it opens says the books stay put. */
+   text, no button chrome. The dialog it opens says the files stay. */
 .forgetRow {
 	display: flex;
 	align-items: center;

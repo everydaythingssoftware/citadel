@@ -6,7 +6,7 @@ interface RemoveLibraryDialogProps {
 	remove: RemoveLibrary;
 }
 
-/** "Forget…": says what forgetting does, and that the books stay put. */
+/** "Forget…": says that forgetting leaves the library's files alone. */
 export const RemoveLibraryDialog = ({ remove }: RemoveLibraryDialogProps) => {
 	const { step } = remove;
 	// Kept through the closing animation, so the text never empties.
@@ -29,8 +29,8 @@ export const RemoveLibraryDialog = ({ remove }: RemoveLibraryDialogProps) => {
 			}
 			description={
 				isLast
-					? "Citadel will stop showing this library and return to the welcome screen. Your books stay where they are."
-					: "Citadel will stop showing this library. Your books stay where they are."
+					? "Citadel will return to the welcome screen. Your files will not be removed."
+					: "Your files will not be removed."
 			}
 			confirmLabel="Forget"
 			onConfirm={remove.confirm}
