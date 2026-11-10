@@ -12,13 +12,6 @@ export type RemoveLibraryStep =
 			library: LibraryPath;
 			busy: boolean;
 			error: string | null;
-	  }
-	/** Shown only while the folder is still there to show. */
-	| {
-			id: "removed";
-			library: LibraryPath;
-			/** No library is left; the library window is back at first run. */
-			wasLast: boolean;
 	  };
 
 export interface RemoveLibrary {
@@ -26,8 +19,6 @@ export interface RemoveLibrary {
 	request: (library: LibraryPath) => void;
 	confirm: () => void;
 	cancel: () => void;
-	showFolder: () => void;
-	done: () => void;
 }
 
 /**
@@ -50,10 +41,10 @@ const isValidLibrary = (path: string) =>
 	libraryCatalog.isValid(path).catch(() => false);
 
 /**
- * "Remove…": confirm, switch away if the library is open (to
- * the nearest one that still opens), forget it, then offer its folder. When
- * it was the last library the library window returns to first run, and
- * Settings, a separate window, hides once the person is done here.
+ * "Remove…": confirm, switch away if the library is open (to the nearest
+ * one that still opens), then forget it. When it was the last library the
+ * library window returns to first run, and Settings, a separate window,
+ * hides.
  */
 export const useRemoveLibrary = (): RemoveLibrary => {
 	const platform = usePlatform();
@@ -68,14 +59,6 @@ export const useRemoveLibrary = (): RemoveLibrary => {
 			current.id === "confirm" && current.busy ? current : { id: "idle" },
 		);
 	}, []);
-
-	const finish = useCallback(
-		(wasLast: boolean) => {
-			if (wasLast && !platform.window.isMain) void platform.window.hide();
-			setStep({ id: "idle" });
-		},
-		[platform],
-	);
 
 	const confirm = useCallback(() => {
 		if (step.id !== "confirm" || step.busy) return;
@@ -94,14 +77,8 @@ export const useRemoveLibrary = (): RemoveLibrary => {
 				}
 				await removeLibrary(library.id);
 				const wasLast = useSettings.getState().activeLibraryId === "";
-				const folderRemains =
-					platform.capabilities.canRevealInFileManager &&
-					(await isValidLibrary(library.absolutePath));
-				if (folderRemains) {
-					setStep({ id: "removed", library, wasLast });
-				} else {
-					finish(wasLast);
-				}
+				if (wasLast && !platform.window.isMain) void platform.window.hide();
+				setStep({ id: "idle" });
 			} catch (error) {
 				setStep({
 					id: "confirm",
@@ -111,17 +88,7 @@ export const useRemoveLibrary = (): RemoveLibrary => {
 				});
 			}
 		})();
-	}, [step, platform, finish]);
+	}, [step, platform]);
 
-	const done = useCallback(() => {
-		finish(step.id === "removed" && step.wasLast);
-	}, [step, finish]);
-
-	const showFolder = useCallback(() => {
-		if (step.id !== "removed") return;
-		void platform.fileOpener.revealInFileManager(step.library.absolutePath);
-		done();
-	}, [step, platform, done]);
-
-	return { step, request, confirm, cancel, showFolder, done };
+	return { step, request, confirm, cancel };
 };
