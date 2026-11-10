@@ -15,7 +15,7 @@
 	top: 50%;
 	left: 50%;
 	transform: translate(-50%, -50%);
-	width: 300px;
+	width: 340px;
 	max-width: calc(100vw - 32px);
 	padding: 20px 16px 16px;
 	background-color: var(--ctd-surface);
@@ -59,7 +59,7 @@
 
 .title {
 	margin: 0;
-	overflow-wrap: anywhere;
+	text-wrap: balance;
 	font-size: 13px;
 	font-weight: 600;
 	color: var(--ctd-ink);
@@ -91,6 +91,12 @@
 	font-family: ui-monospace, "SF Mono", Menlo, monospace;
 	font-size: 11px;
 	color: var(--ctd-ink-soft);
+	text-wrap: balance;
+}
+
+.unbroken {
+	display: inline-block;
+	max-width: 100%;
 	overflow-wrap: anywhere;
 }
 
