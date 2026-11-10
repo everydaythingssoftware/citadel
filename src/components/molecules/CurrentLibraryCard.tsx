@@ -103,14 +103,14 @@ export const CurrentLibraryCard = ({
 						<span className={styles.rowValue}>{contents}</span>
 					</div>
 				)}
-				{onRemove !== null && (
-					<div className={`${styles.row} ${styles.actionRow}`}>
-						<Button className={styles.removeButton} onClick={onRemove}>
-							Remove…
-						</Button>
-					</div>
-				)}
 			</div>
+			{onRemove !== null && (
+				<div className={styles.actions}>
+					<Button className={styles.removeButton} onClick={onRemove}>
+						Remove…
+					</Button>
+				</div>
+			)}
 		</div>
 	);
 };
