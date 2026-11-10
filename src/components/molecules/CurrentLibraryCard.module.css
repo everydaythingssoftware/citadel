@@ -44,14 +44,23 @@
 	padding: 0.4375rem 0.875rem;
 }
 
-.actionRow {
+/* Under the card, right-aligned, like Add Library… under the list. */
+.actions {
+	display: flex;
 	justify-content: flex-end;
+	margin-top: 0.875rem;
 }
 
-/* A quiet destructive action: an ordinary button with red text. The
+/* A quiet destructive action: an outline with red text and no fill. The
  * confirmation that follows carries the weight. */
-.actionRow .removeButton {
+.actions .removeButton {
+	background-color: transparent;
+	box-shadow: none;
 	color: var(--ctd-danger-ink);
+}
+
+.actions .removeButton:hover:not(:disabled) {
+	background-color: oklch(from var(--ctd-danger-ink) l c h / 0.08);
 }
 
 .rowLabel {
