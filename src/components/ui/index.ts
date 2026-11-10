@@ -17,6 +17,7 @@ export { HoldButton, type HoldButtonProps } from "./HoldButton";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { InlineLink, type InlineLinkProps } from "./InlineLink";
 export { LoadingOverlay, type LoadingOverlayProps } from "./LoadingOverlay";
+export { NoBreak } from "./NoBreak";
 export { ProgressBar, type ProgressBarProps } from "./ProgressBar";
 export { SearchField, type SearchFieldProps } from "./SearchField";
 export {

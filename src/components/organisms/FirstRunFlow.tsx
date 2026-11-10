@@ -880,7 +880,7 @@ export const FirstRunGate = ({ children }: { children: ReactNode }) => {
 			return <>{children}</>;
 		case "first-run":
 			return (
-				<FirstRunExperience mode={{ kind: "first-run" }}>
+				<FirstRunExperience key={decision.run} mode={{ kind: "first-run" }}>
 					{children}
 				</FirstRunExperience>
 			);

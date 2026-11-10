@@ -49,6 +49,7 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::registry::clb_query_libraries,
             library::registry::clb_cmd_register_library,
             library::registry::clb_cmd_rename_library,
+            library::registry::clb_cmd_remove_library,
             library::registry::clb_cmd_import_legacy_libraries,
             // Book query commands
             library::query::clb_query_search_books,

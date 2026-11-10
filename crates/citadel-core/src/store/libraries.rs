@@ -114,6 +114,23 @@ impl CitadelStore {
         library(&mut connection, id)
     }
 
+    /// Forgets a library: its registry entry, every grant to it, and the host's
+    /// choice of it as the active library. The library's folder is untouched,
+    /// so registering it again brings it back, without its old grants.
+    pub fn remove_library(&self, id: &str) -> Result<()> {
+        self.connection().immediate_transaction(|connection| {
+            known_library(connection, id)?;
+            diesel::delete(
+                properties::table
+                    .filter(properties::key.eq(ACTIVE_LIBRARY_PROPERTY))
+                    .filter(properties::value.eq(id)),
+            )
+            .execute(connection)?;
+            diesel::delete(libraries::table.filter(libraries::id.eq(id))).execute(connection)?;
+            Ok(())
+        })
+    }
+
     /// The library the host serves, if one was chosen and is still registered.
     pub fn active_library(&self) -> Result<Option<RegisteredLibrary>> {
         Ok(properties::table
@@ -271,5 +288,33 @@ mod tests {
                 .unwrap()
                 .read_only
         );
+    }
+
+    #[test]
+    fn removing_a_library_forgets_its_grants_and_active_choice_but_not_others() {
+        let (_directory, store, library) = store();
+        let other_folder = tempfile::tempdir().unwrap();
+        let other = store
+            .register_library("other-uuid", other_folder.path(), None)
+            .unwrap();
+        let alice = store.create_user("alice", "alice password").unwrap();
+        store.grant("alice", &library.id).unwrap();
+        store.grant("alice", &other.id).unwrap();
+        store.set_active_library(&library.id).unwrap();
+
+        store.remove_library(&library.id).unwrap();
+
+        assert_eq!(store.libraries().unwrap(), vec![other.clone()]);
+        assert_eq!(store.active_library().unwrap(), None);
+        assert!(store.can_access(&alice.id, &other.id).unwrap());
+        assert!(matches!(
+            store.remove_library(&library.id),
+            Err(StoreError::NotFound(_))
+        ));
+
+        store
+            .register_library(&library.id, Path::new(&library.path), None)
+            .unwrap();
+        assert!(!store.can_access(&alice.id, &library.id).unwrap());
     }
 }

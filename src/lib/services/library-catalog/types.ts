@@ -56,6 +56,8 @@ export interface LibraryCatalog {
 	/** Adds the library at `path`, or returns its existing entry. */
 	register(path: string): Promise<LibraryEntry>;
 	rename(id: string, displayName: string): Promise<LibraryEntry>;
+	/** Forgets a library and its grants; its folder is untouched. */
+	remove(id: string): Promise<void>;
 	/** Moves a pre-registry settings.json library list into the registry. */
 	importLegacy(entries: LibraryEntry[]): Promise<LegacyLibraryImport>;
 	/** Called with the full list whenever any window changes it. */

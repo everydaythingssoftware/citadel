@@ -64,11 +64,15 @@ export interface ClipboardAdapter {
 }
 
 export interface FileOpenerAdapter {
+	/** "Finder", "File Explorer" or "File Manager", for "Show in …" labels. */
+	readonly fileManagerName: string;
 	openPath(path: string): Promise<void>;
 	revealInFileManager(path: string): Promise<void>;
 }
 
 export interface WindowAdapter {
+	/** The library window, as opposed to the separate Settings window. */
+	readonly isMain: boolean;
 	show(): Promise<void>;
 	hide(): Promise<void>;
 	openSettings(): Promise<void>;

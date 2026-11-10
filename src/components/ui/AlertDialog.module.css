@@ -46,9 +46,11 @@
 	text-align: left;
 }
 
+/* Balanced lines keep a name or a last word from dangling alone. */
 .title {
 	margin: 0;
 	overflow-wrap: anywhere;
+	text-wrap: balance;
 	font-size: 13px;
 	font-weight: 600;
 	color: var(--ctd-ink);
@@ -59,6 +61,7 @@
 	font-size: 11px;
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
+	text-wrap: balance;
 }
 
 .buttons {

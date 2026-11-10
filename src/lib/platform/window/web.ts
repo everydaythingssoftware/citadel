@@ -1,5 +1,6 @@
 import type { WindowAdapter } from "../types";
 export const createWebWindow = (): WindowAdapter => ({
+	isMain: true,
 	show: async () => {},
 	hide: async () => {},
 	openSettings: async () => {},

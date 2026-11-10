@@ -97,6 +97,7 @@ export const webLibraryCatalog: LibraryCatalog = {
 	list: async () => [],
 	register: unavailable,
 	rename: unavailable,
+	remove: unavailable,
 	importLegacy: unavailable,
 	onChange: async () => () => {},
 	setup: createWebLibrarySetup(

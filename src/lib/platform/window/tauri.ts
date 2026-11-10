@@ -5,6 +5,7 @@ import { localFile } from "../local-file";
 import type { WindowAdapter } from "../types";
 
 export const createTauriWindow = (): WindowAdapter => ({
+	isMain: getCurrentWindow().label === "main",
 	show: async () => {
 		const window = getCurrentWindow();
 		await window.show();

@@ -19,6 +19,8 @@ interface LibraryListCardProps {
 	currentLibraryId: string;
 	libraries: LibraryPath[];
 	onSwitchLibrary: (id: string) => Promise<void>;
+	/** Adds "Remove from Citadel…" to each row's menu when set. */
+	onRemoveLibrary?: (library: LibraryPath) => void;
 	/**
 	 * Story seam: pre-resolved stats per library path. When omitted (the
 	 * production path) each row fetches its own stats via useLibraryStats.
@@ -64,6 +66,7 @@ export const LibraryListCard = ({
 	libraries,
 	onSwitchLibrary,
 	statsByPath,
+	onRemoveLibrary,
 }: LibraryListCardProps) => {
 	const platform = usePlatform();
 	const [rename, setRename] = useState<RenameState | null>(null);
@@ -117,10 +120,17 @@ export const LibraryListCard = ({
 		if (platform.capabilities.canRevealInFileManager) {
 			items.push({
 				id: "reveal",
-				label: "Reveal in Finder",
+				label: `Show in ${platform.fileOpener.fileManagerName}`,
 				onSelect: () => {
 					void platform.fileOpener.revealInFileManager(library.absolutePath);
 				},
+			});
+		}
+		if (onRemoveLibrary) {
+			items.push({
+				id: "remove",
+				label: "Remove from Citadel…",
+				onSelect: () => onRemoveLibrary(library),
 			});
 		}
 		setMenuTargetId(library.id);

@@ -286,14 +286,16 @@ const runEffect = async (
 export type BootDecision =
 	| { kind: "checking" }
 	| { kind: "normal" }
-	| { kind: "first-run" }
+	/** `run` counts restarts, so each one mounts a fresh flow. */
+	| { kind: "first-run"; run: number }
 	| { kind: "broken-path"; path: string };
 
 /**
- * One-shot boot decision (BUILD-SPEC step 1), latched at mount so mid-session
- * settings changes never re-trigger it: no active library → first-run flow;
- * an active library that fails validation → broken-path flow; otherwise the
- * normal app. Callers must not mount this before settings hydration.
+ * Boot decision (BUILD-SPEC step 1), latched at mount: no active library →
+ * first-run flow; an active library that fails validation → broken-path
+ * flow; otherwise the normal app. The one mid-session change that re-decides
+ * is the active library being cleared (the last one was removed), which
+ * restarts first run. Callers must not mount this before settings hydration.
  */
 export const useBootDecision = (): BootDecision => {
 	const [decision, setDecision] = useState<BootDecision>({ kind: "checking" });
@@ -302,7 +304,7 @@ export const useBootDecision = (): BootDecision => {
 		let alive = true;
 		const active = useSettings.getState().getActiveLibrary();
 		if (!active.isSome) {
-			setDecision({ kind: "first-run" });
+			setDecision({ kind: "first-run", run: 0 });
 			return;
 		}
 		const path = active.value.absolutePath;
@@ -320,6 +322,24 @@ export const useBootDecision = (): BootDecision => {
 			alive = false;
 		};
 	}, []);
+
+	// Removing the last library clears the active one mid-session: first run
+	// comes back in the library window, so a library can be found or created
+	// again. The Settings window hides itself instead.
+	const isMainWindow = usePlatform().window.isMain;
+	useEffect(
+		() =>
+			useSettings.subscribe((state, previous) => {
+				if (!isMainWindow) return;
+				if (previous.activeLibraryId && !state.activeLibraryId) {
+					setDecision((current) => ({
+						kind: "first-run",
+						run: current.kind === "first-run" ? current.run + 1 : 1,
+					}));
+				}
+			}),
+		[isMainWindow],
+	);
 
 	return decision;
 };

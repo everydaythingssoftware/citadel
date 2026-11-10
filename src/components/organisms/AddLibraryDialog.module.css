@@ -94,12 +94,6 @@
 	text-wrap: balance;
 }
 
-.unbroken {
-	display: inline-block;
-	max-width: 100%;
-	overflow-wrap: anywhere;
-}
-
 .error {
 	margin: 4px 0 0;
 	font-size: 11px;
