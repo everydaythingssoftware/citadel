@@ -11,8 +11,6 @@
 /* Same card treatment as the settings groups (SettingsPanes.module.css):
    raised surface with a hairline border and full-width hairlines between rows. */
 .card {
-	/* Every row is this tall, so a forgotten one can animate its height. */
-	--library-row-height: 3.125rem;
 	border: 1px solid var(--ctd-border);
 	border-radius: 0.5rem;
 	background-color: var(--ctd-surface);
@@ -44,16 +42,23 @@
 }
 
 /* Forgetting a library: the border below rises over the row while its
-   text stays in place, closing the gap. */
+   text stays in place, closing the gap. The grid row animates from the
+   row's own height to none (height: auto can't transition), and the clip
+   keeps the row at its full height inside, so nothing in it moves. Rows
+   stay free to grow, as a rename's error message needs. */
 .slot {
-	position: relative;
-	height: var(--library-row-height);
-	overflow: hidden;
-	transition: height 260ms cubic-bezier(0.4, 0, 0.2, 1);
+	display: grid;
+	grid-template-rows: 1fr;
+	transition: grid-template-rows 260ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .slot[data-state="leaving"] {
-	height: 0;
+	grid-template-rows: 0fr;
+}
+
+.clip {
+	min-height: 0;
+	overflow: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -68,7 +73,7 @@
 	align-items: center;
 	gap: 0.625rem;
 	width: 100%;
-	height: var(--library-row-height);
+	min-height: 2.375rem;
 	padding: 0.4375rem 0.875rem;
 	border: none;
 	background: none;
@@ -93,7 +98,7 @@
 	display: flex;
 	align-items: center;
 	gap: 0.625rem;
-	height: var(--library-row-height);
+	min-height: 2.375rem;
 	padding: 0.4375rem 0.875rem;
 }
 
