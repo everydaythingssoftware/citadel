@@ -1,5 +1,5 @@
 import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
-import type { FormEvent } from "react";
+import { type FormEvent, Fragment, type ReactNode } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import { Button, TextInput } from "@/components/ui";
 import {
@@ -84,6 +84,27 @@ export const AddLibraryDialog = ({ step, send }: AddLibraryDialogProps) => {
 	);
 };
 
+/** Kept on one line where it fits; a name wider than the dialog still wraps. */
+const Unbroken = ({ children }: { children: ReactNode }) => (
+	<span className={styles.unbroken}>{children}</span>
+);
+
+/** A path that wraps only after a separator, never inside a folder's name. */
+const FolderPath = ({ path }: { path: string }) => {
+	const segments = path.split(/(?<=[\\/])/);
+	return (
+		<span className={styles.path}>
+			{segments.map((segment, index) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: segments are positional and can repeat.
+				<Fragment key={index}>
+					<Unbroken>{segment}</Unbroken>
+					<wbr />
+				</Fragment>
+			))}
+		</span>
+	);
+};
+
 interface DialogBodyProps {
 	step: DialogStep;
 	send: (event: AddLibraryEvent) => void;
@@ -107,11 +128,18 @@ const DialogBody = ({ step, send, abbreviate }: DialogBodyProps) => {
 				<NewFolderIcon />
 			)}
 			<RadixAlertDialog.Title className={styles.title}>
-				{step.id === "open-inside"
-					? `Open “${folderName(step.libraryPath)}”?`
-					: step.id === "create-here"
-						? "Create a new library?"
-						: `Create a new library inside “${folderName(step.folder)}”?`}
+				{step.id === "open-inside" ? (
+					<>
+						Open <Unbroken>“{folderName(step.libraryPath)}”?</Unbroken>
+					</>
+				) : step.id === "create-here" ? (
+					"Create a new library?"
+				) : (
+					<>
+						Create a new library inside{" "}
+						<Unbroken>“{folderName(step.folder)}”?</Unbroken>
+					</>
+				)}
 			</RadixAlertDialog.Title>
 			{step.id === "open-inside" && step.bookCount !== null && (
 				<RadixAlertDialog.Description className={styles.description}>
@@ -140,15 +168,15 @@ const DialogBody = ({ step, send, abbreviate }: DialogBodyProps) => {
 					/>
 				</div>
 			)}
-			<span className={styles.path}>
-				{abbreviate(
+			<FolderPath
+				path={abbreviate(
 					step.id === "open-inside"
 						? step.libraryPath
 						: step.id === "create-here"
 							? step.folder
 							: joinFolder(step.folder, step.name.trim()),
 				)}
-			</span>
+			/>
 			{footerError && (
 				<p className={styles.error} role="alert">
 					{footerError}
