@@ -1,3 +1,5 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LibraryEntry } from "@/bindings";
 import {
 	defaultSettings,
 	type SettingsKey,
@@ -6,8 +8,6 @@ import {
 	type SettingsValue,
 	type SmartShelfFilter,
 } from "@/lib/platform/settings/types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LibraryEntry } from "@/bindings";
 
 // An in-memory stand-in for the citadel.db registry behind LibraryCatalog.
 // Paths under /missing are treated as folders that no longer hold a library.
@@ -28,6 +28,11 @@ vi.mock("@/lib/services/library-catalog", () => ({
 			};
 			registry.libraries.push(library);
 			return library;
+		},
+		remove: async (id: string) => {
+			registry.libraries = registry.libraries.filter(
+				(entry) => entry.id !== id,
+			);
 		},
 		rename: async (id: string, displayName: string) => {
 			const library = registry.libraries.find((entry) => entry.id === id);
@@ -317,6 +322,23 @@ describe("useSettings library registry", () => {
 		expect(useSettings.getState().libraryPaths).toEqual([
 			{ id, displayName: "Calibre Library", absolutePath: CALIBRE_PATH },
 		]);
+	});
+
+	it("removeLibrary forgets the library and clears it if it was active", async () => {
+		const manager = createFakeSettingsManager();
+		const useSettings = await importStore(manager);
+		const id = await useSettings.getState().createLibrary(CALIBRE_PATH);
+		const other = await useSettings.getState().createLibrary("/Books/Other");
+		await useSettings.getState().setActiveLibrary(id);
+
+		await useSettings.getState().removeLibrary(other);
+		expect(useSettings.getState().activeLibraryId).toBe(id);
+
+		await useSettings.getState().removeLibrary(id);
+		expect(useSettings.getState().libraryPaths).toEqual([]);
+		expect(registry.libraries).toEqual([]);
+		expect(useSettings.getState().activeLibraryId).toBe("");
+		expect(await manager.get("activeLibraryId")).toBe("");
 	});
 
 	it("renameLibrary trims the name and stores it in the registry", async () => {

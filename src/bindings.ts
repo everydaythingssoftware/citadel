@@ -124,6 +124,17 @@ async clbCmdRenameLibrary(id: string, displayName: string) : Promise<Result<Libr
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Forgets a library, and its grants, without touching its folder.
+ */
+async clbCmdRemoveLibrary(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_remove_library", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbCmdImportLegacyLibraries(entries: LibraryEntry[]) : Promise<Result<LegacyLibraryImport, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_import_legacy_libraries", { entries }) };

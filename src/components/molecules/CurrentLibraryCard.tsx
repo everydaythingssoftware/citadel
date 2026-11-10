@@ -4,6 +4,7 @@ import {
 	type LibraryStatsState,
 	useLibraryStats,
 } from "@/lib/hooks/use-library-stats";
+import { usePlatform } from "@/lib/platform/context";
 import type { LibraryPath } from "@/lib/platform/settings/types";
 import { renameLibrary } from "@/stores/settings/actions";
 import styles from "./CurrentLibraryCard.module.css";
@@ -20,7 +21,7 @@ const plural = (count: number, word: string) =>
 	count === 1 ? word : `${word}s`;
 
 /**
- * "Current Library" card: editable name, a Show-in-Finder affordance for the
+ * "Current Library" card: editable name, a "Show in Finder" (or the platform's file manager) affordance for the
  * location (never the path as text), and headline contents counts.
  */
 export const CurrentLibraryCard = ({
@@ -28,6 +29,7 @@ export const CurrentLibraryCard = ({
 	onRevealInFileManager,
 	statsOverride,
 }: CurrentLibraryCardProps) => {
+	const { fileManagerName } = usePlatform().fileOpener;
 	const fetchedStats = useLibraryStats(
 		library.absolutePath,
 		statsOverride === undefined,
@@ -87,7 +89,7 @@ export const CurrentLibraryCard = ({
 					<div className={styles.row}>
 						<span className={styles.rowLabel}>Location</span>
 						<Button variant="default" onClick={onRevealInFileManager}>
-							Show in Finder
+							Show in {fileManagerName}
 						</Button>
 					</div>
 				)}

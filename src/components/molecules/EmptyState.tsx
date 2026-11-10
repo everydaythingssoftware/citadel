@@ -126,7 +126,7 @@ export const EmptyLibrary = () => {
 						await platform.fileOpener.revealInFileManager(path);
 					})}
 				>
-					Show in Finder
+					Show in {platform.fileOpener.fileManagerName}
 				</Button>
 			)}
 			<Button variant="subtle" onClick={openSettings}>

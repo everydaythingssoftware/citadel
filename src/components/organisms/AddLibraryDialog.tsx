@@ -1,7 +1,7 @@
 import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
-import { type FormEvent, Fragment, type ReactNode } from "react";
+import { type FormEvent, Fragment } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
-import { Button, TextInput } from "@/components/ui";
+import { Button, NoBreak, TextInput } from "@/components/ui";
 import {
 	type AddLibraryEvent,
 	type AddLibraryStep,
@@ -84,11 +84,6 @@ export const AddLibraryDialog = ({ step, send }: AddLibraryDialogProps) => {
 	);
 };
 
-/** Kept on one line where it fits; a name wider than the dialog still wraps. */
-const Unbroken = ({ children }: { children: ReactNode }) => (
-	<span className={styles.unbroken}>{children}</span>
-);
-
 /** A path that wraps only after a separator, never inside a folder's name. */
 const FolderPath = ({ path }: { path: string }) => {
 	const segments = path.split(/(?<=[\\/])/);
@@ -97,7 +92,7 @@ const FolderPath = ({ path }: { path: string }) => {
 			{segments.map((segment, index) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: segments are positional and can repeat.
 				<Fragment key={index}>
-					<Unbroken>{segment}</Unbroken>
+					<NoBreak>{segment}</NoBreak>
 					<wbr />
 				</Fragment>
 			))}
@@ -130,14 +125,14 @@ const DialogBody = ({ step, send, abbreviate }: DialogBodyProps) => {
 			<RadixAlertDialog.Title className={styles.title}>
 				{step.id === "open-inside" ? (
 					<>
-						Open <Unbroken>“{folderName(step.libraryPath)}”?</Unbroken>
+						Open <NoBreak>“{folderName(step.libraryPath)}”?</NoBreak>
 					</>
 				) : step.id === "create-here" ? (
 					"Create a new library?"
 				) : (
 					<>
 						Create a new library inside{" "}
-						<Unbroken>“{folderName(step.folder)}”?</Unbroken>
+						<NoBreak>“{folderName(step.folder)}”?</NoBreak>
 					</>
 				)}
 			</RadixAlertDialog.Title>

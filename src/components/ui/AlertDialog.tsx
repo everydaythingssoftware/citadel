@@ -1,4 +1,5 @@
 import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
+import type { ReactNode } from "react";
 import styles from "./AlertDialog.module.css";
 import { Button } from "./Button";
 
@@ -6,7 +7,7 @@ export interface AlertDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	/** Bold one-line question, e.g. "Delete author?" */
-	title: string;
+	title: ReactNode;
 	/** Smaller informative text below the title. */
 	description?: string;
 	textAlign?: "left" | "center";

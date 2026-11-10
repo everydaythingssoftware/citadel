@@ -3,7 +3,6 @@ import type { MetadataProvider } from "@/bindings";
 import type { Option } from "@/lib/option";
 import { none, some } from "@/lib/option";
 import { migrateSettings } from "@/lib/platform/settings/migrate";
-import { libraryCatalog } from "@/lib/services/library-catalog";
 import {
 	defaultSettings,
 	type LibraryPath,
@@ -16,6 +15,7 @@ import {
 	type SmartShelf,
 	type SmartShelfFilter,
 } from "@/lib/platform/settings/types";
+import { libraryCatalog } from "@/lib/services/library-catalog";
 
 interface SettingsStore extends SettingsSchema {
 	hydrated: boolean;
@@ -35,6 +35,8 @@ interface SettingsStore extends SettingsSchema {
 	setSharing: (sharing: SharingSettings) => Promise<void>;
 	createLibrary: (absolutePath: string) => Promise<string>;
 	renameLibrary: (id: string, displayName: string) => Promise<void>;
+	/** Forgets a library; clears the active library if it was this one. */
+	removeLibrary: (id: string) => Promise<void>;
 	getActiveLibrary: () => Option<LibraryPath>;
 	setProviderConfig: (
 		id: MetadataProvider,
@@ -224,6 +226,16 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 
 		const library = await libraryCatalog.rename(id, trimmed);
 		set({ libraryPaths: upsertLibrary(get().libraryPaths, library) });
+	},
+
+	removeLibrary: async (id) => {
+		await libraryCatalog.remove(id);
+		set({
+			libraryPaths: get().libraryPaths.filter((library) => library.id !== id),
+		});
+		if (get().activeLibraryId === id) {
+			await persistSetting(set, get, "activeLibraryId", "");
+		}
 	},
 
 	getActiveLibrary: () => {

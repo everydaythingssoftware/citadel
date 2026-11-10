@@ -8,6 +8,7 @@ import { CurrentLibraryCard } from "@/components/molecules/CurrentLibraryCard";
 import { LibraryListCard } from "@/components/molecules/LibraryListCard";
 import { SoftwareUpdateRow } from "@/components/molecules/SoftwareUpdateRow";
 import { AddLibraryDialog } from "@/components/organisms/AddLibraryDialog";
+import { RemoveLibraryDialog } from "@/components/organisms/RemoveLibraryDialog";
 import {
 	ServerProviderKey,
 	serverKeyStatus,
@@ -27,6 +28,7 @@ import { useAddLibraryFlow } from "@/lib/hooks/use-add-library-flow";
 import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
+import { useRemoveLibrary } from "@/lib/hooks/use-remove-library";
 import { useServerAddresses } from "@/lib/hooks/use-server-addresses";
 import { useServerHealth } from "@/lib/hooks/use-server-health";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
@@ -480,6 +482,7 @@ const PublicUrlLine = ({
 const LibraryTab = () => {
 	const { libraries, activeLibrary, switchTo } = useLibrarySelection();
 	const addLibrary = useAddLibraryFlow();
+	const removeLibrary = useRemoveLibrary();
 	const platform = usePlatform();
 
 	const revealActiveLibrary = useCallback(() => {
@@ -489,9 +492,14 @@ const LibraryTab = () => {
 
 	if (!activeLibrary) {
 		return (
-			<p className={classes.paneNote}>
-				Something went wrong loading your libraries.
-			</p>
+			<>
+				<p className={classes.paneNote}>
+					{libraries.length === 0
+						? "Choose or create a library in the Citadel window."
+						: "Something went wrong loading your libraries."}
+				</p>
+				<RemoveLibraryDialog remove={removeLibrary} />
+			</>
 		);
 	}
 
@@ -502,6 +510,11 @@ const LibraryTab = () => {
 					currentLibraryId={activeLibrary.id}
 					libraries={libraries}
 					onSwitchLibrary={switchTo}
+					onRemoveLibrary={
+						platform.capabilities.supportsNativeWindows
+							? removeLibrary.request
+							: undefined
+					}
 				/>
 				<div className={classes.libraryActions}>
 					<Button
@@ -521,6 +534,7 @@ const LibraryTab = () => {
 				}
 			/>
 			<AddLibraryDialog step={addLibrary.step} send={addLibrary.send} />
+			<RemoveLibraryDialog remove={removeLibrary} />
 		</div>
 	);
 };

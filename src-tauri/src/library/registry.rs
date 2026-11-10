@@ -126,6 +126,21 @@ pub fn clb_cmd_rename_library(
     Ok(library.into())
 }
 
+/// Forgets a library, and its grants, without touching its folder.
+#[tauri::command]
+#[specta::specta]
+pub fn clb_cmd_remove_library(
+    handle: tauri::AppHandle,
+    account: tauri::State<'_, LocalAccount>,
+    id: String,
+) -> Result<(), String> {
+    account
+        .store()
+        .remove_library(&id)
+        .map_err(|error| error.to_string())?;
+    broadcast(&handle, &account)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn clb_cmd_import_legacy_libraries(
