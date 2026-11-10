@@ -6,7 +6,7 @@ interface RemoveLibraryDialogProps {
 	remove: RemoveLibrary;
 }
 
-/** Confirms "Remove…". */
+/** Confirms removing the last library, the one removal Undo can't follow. */
 export const RemoveLibraryDialog = ({ remove }: RemoveLibraryDialogProps) => {
 	const { step } = remove;
 	// Kept through the closing animation, so the title never empties.
@@ -28,7 +28,7 @@ export const RemoveLibraryDialog = ({ remove }: RemoveLibraryDialogProps) => {
 			description={
 				step.id === "confirm" && step.error !== null
 					? step.error
-					: "Your books will not be removed: you can re-add your library anytime."
+					: "It’s your only library. Your books will not be removed: you can re-add your library anytime."
 			}
 			confirmLabel={step.id === "confirm" && step.busy ? "Removing…" : "Remove"}
 			onConfirm={remove.confirm}

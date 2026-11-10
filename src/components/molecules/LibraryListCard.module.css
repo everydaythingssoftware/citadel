@@ -11,6 +11,9 @@
 /* Same card treatment as the settings groups (SettingsPanes.module.css):
    raised surface with a hairline border and full-width hairlines between rows. */
 .card {
+	/* Every row is this tall, so removing one can animate its height. */
+	--library-row-height: 3.125rem;
+	--library-placeholder-height: 2rem;
 	border: 1px solid var(--ctd-border);
 	border-radius: 0.5rem;
 	background-color: var(--ctd-surface);
@@ -32,6 +35,112 @@
 	right: 0;
 	height: 1px;
 	background-color: var(--ctd-border);
+	transition: opacity 260ms ease;
+}
+
+/* The top row never shows its divider, including a row that becomes the top
+   one while rows above it close. */
+.card > [data-first]::before {
+	opacity: 0;
+}
+
+/* Removing a library: the border below rises over the row, its text fixed
+   in place, to a short "Removed … · Undo" placeholder, which later closes
+   the same way. */
+.slot {
+	position: relative;
+	height: var(--library-row-height);
+	overflow: hidden;
+	transition: height 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slot[data-state="placeholder"] {
+	height: var(--library-placeholder-height);
+}
+
+.slot[data-state="closing"] {
+	height: 0;
+}
+
+.slot > :first-child {
+	transition: opacity 180ms ease;
+}
+
+.slot:not([data-state="live"]) > :first-child {
+	opacity: 0;
+}
+
+.placeholder {
+	position: absolute;
+	inset: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 0.375rem;
+	height: var(--library-placeholder-height);
+	/* Lines up with the row names: padding, icon and gap. */
+	padding: 0 0.5rem 0 2.5rem;
+	animation: placeholder-in 180ms ease 90ms both;
+}
+
+.placeholderText,
+.placeholderError {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	font-size: 0.75rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--ctd-ink-soft);
+}
+
+.placeholderError {
+	color: var(--ctd-danger-ink);
+}
+
+.undo {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	flex-shrink: 0;
+	padding: 0.125rem 0.5rem;
+	border: none;
+	border-radius: 0.3125rem;
+	background: none;
+	font-family: inherit;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--ctd-text-link);
+}
+
+.undo:hover:not(:disabled),
+.undo:focus-visible {
+	background-color: var(--ctd-nav-hover-bg);
+	outline: none;
+}
+
+.undo:disabled {
+	opacity: 0.5;
+}
+
+@keyframes placeholder-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.slot,
+	.slot > :first-child,
+	.card > * + *::before {
+		transition: none;
+	}
+
+	.placeholder {
+		animation: none;
+	}
 }
 
 .libraryRow {
@@ -39,7 +148,7 @@
 	align-items: center;
 	gap: 0.625rem;
 	width: 100%;
-	min-height: 2.375rem;
+	height: var(--library-row-height);
 	padding: 0.4375rem 0.875rem;
 	border: none;
 	background: none;
@@ -64,7 +173,7 @@
 	display: flex;
 	align-items: center;
 	gap: 0.625rem;
-	min-height: 2.375rem;
+	height: var(--library-row-height);
 	padding: 0.4375rem 0.875rem;
 }
 
