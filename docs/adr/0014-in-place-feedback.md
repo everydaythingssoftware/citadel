@@ -46,9 +46,8 @@ Feedback has three tiers. Use the first that fits.
   the Current Library card. "Forget" is the system's word for "stop
   remembering this; nothing is deleted", so the label reassures before the
   click.
-- One dialog: "Forget “…”? Citadel will stop showing this library. Your books
-  stay where they are." Forgetting the only library adds that Citadel returns
-  to the welcome screen.
+- One dialog: "Forget “…”? Your files will not be removed." Forgetting the
+  only library adds that Citadel returns to the welcome screen.
 - Then the row wipes away in place: the border below rises over it while its
   text stays fixed. No banner, no Undo.
 
