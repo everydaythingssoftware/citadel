@@ -167,35 +167,37 @@ export const LibraryListCard = ({
 							data-state={isLeaving ? "leaving" : "live"}
 							data-first={index === firstShown || undefined}
 						>
-							<LibraryRow
-								library={library}
-								isRemoved={isLeaving}
-								isActive={!isLeaving && library.id === currentLibraryId}
-								isMenuTarget={library.id === menuTargetId}
-								isRenaming={!isLeaving && rename?.id === library.id}
-								renameDraft={rename?.draft ?? ""}
-								renameError={rename?.error ?? null}
-								statsOverride={statsByPath?.get(library.absolutePath)}
-								rowRef={(node) => {
-									if (node) rowRefs.current.set(library.id, node);
-									else rowRefs.current.delete(library.id);
-								}}
-								onSwitchLibrary={onSwitchLibrary}
-								onStartRename={startRename}
-								onRenameDraftChange={(draft) =>
-									setRename((current) =>
-										current === null
-											? current
-											: { ...current, draft, error: null },
-									)
-								}
-								onCommitRename={commitRename}
-								onCancelRename={cancelRename}
-								onOpenMenu={(x, y, anchor) => {
-									menuRowRef.current = anchor;
-									openMenu(library, x, y);
-								}}
-							/>
+							<div className={styles.clip}>
+								<LibraryRow
+									library={library}
+									isRemoved={isLeaving}
+									isActive={!isLeaving && library.id === currentLibraryId}
+									isMenuTarget={library.id === menuTargetId}
+									isRenaming={!isLeaving && rename?.id === library.id}
+									renameDraft={rename?.draft ?? ""}
+									renameError={rename?.error ?? null}
+									statsOverride={statsByPath?.get(library.absolutePath)}
+									rowRef={(node) => {
+										if (node) rowRefs.current.set(library.id, node);
+										else rowRefs.current.delete(library.id);
+									}}
+									onSwitchLibrary={onSwitchLibrary}
+									onStartRename={startRename}
+									onRenameDraftChange={(draft) =>
+										setRename((current) =>
+											current === null
+												? current
+												: { ...current, draft, error: null },
+										)
+									}
+									onCommitRename={commitRename}
+									onCancelRename={cancelRename}
+									onOpenMenu={(x, y, anchor) => {
+										menuRowRef.current = anchor;
+										openMenu(library, x, y);
+									}}
+								/>
+							</div>
 						</div>
 					);
 				})}
