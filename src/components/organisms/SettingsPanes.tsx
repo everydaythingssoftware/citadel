@@ -527,6 +527,11 @@ const LibraryTab = () => {
 			</div>
 			<CurrentLibraryCard
 				library={activeLibrary}
+				onRemove={
+					platform.capabilities.supportsNativeWindows
+						? () => removeLibrary.request(activeLibrary)
+						: null
+				}
 				onRevealInFileManager={
 					platform.capabilities.canRevealInFileManager
 						? revealActiveLibrary

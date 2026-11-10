@@ -13,6 +13,8 @@ interface CurrentLibraryCardProps {
 	library: LibraryPath;
 	/** Reveal the library folder in the system file manager; null when the platform can't. */
 	onRevealInFileManager: (() => void) | null;
+	/** Starts "Remove…"; null where libraries can't be removed. */
+	onRemove?: (() => void) | null;
 	/** Story seam: overrides the card's own useLibraryStats fetch when set. */
 	statsOverride?: LibraryStatsState;
 }
@@ -22,11 +24,13 @@ const plural = (count: number, word: string) =>
 
 /**
  * "Current Library" card: editable name, a "Show in Finder" (or the platform's file manager) affordance for the
- * location (never the path as text), and headline contents counts.
+ * location (never the path as text), headline contents counts, and the way
+ * to remove it from Citadel.
  */
 export const CurrentLibraryCard = ({
 	library,
 	onRevealInFileManager,
+	onRemove = null,
 	statsOverride,
 }: CurrentLibraryCardProps) => {
 	const { fileManagerName } = usePlatform().fileOpener;
@@ -97,6 +101,13 @@ export const CurrentLibraryCard = ({
 					<div className={styles.row}>
 						<span className={styles.rowLabel}>Contents</span>
 						<span className={styles.rowValue}>{contents}</span>
+					</div>
+				)}
+				{onRemove !== null && (
+					<div className={`${styles.row} ${styles.actionRow}`}>
+						<Button variant="danger" onClick={onRemove}>
+							Remove…
+						</Button>
 					</div>
 				)}
 			</div>

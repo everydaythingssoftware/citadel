@@ -50,7 +50,7 @@ const isValidLibrary = (path: string) =>
 	libraryCatalog.isValid(path).catch(() => false);
 
 /**
- * "Remove from Citadel…": confirm, switch away if the library is open (to
+ * "Remove…": confirm, switch away if the library is open (to
  * the nearest one that still opens), forget it, then offer its folder. When
  * it was the last library the library window returns to first run, and
  * Settings, a separate window, hides once the person is done here.

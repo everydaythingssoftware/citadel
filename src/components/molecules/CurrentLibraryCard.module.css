@@ -44,6 +44,10 @@
 	padding: 0.4375rem 0.875rem;
 }
 
+.actionRow {
+	justify-content: flex-end;
+}
+
 .rowLabel {
 	font-size: 0.8125rem;
 	line-height: 1.35;

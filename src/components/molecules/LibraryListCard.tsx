@@ -19,7 +19,7 @@ interface LibraryListCardProps {
 	currentLibraryId: string;
 	libraries: LibraryPath[];
 	onSwitchLibrary: (id: string) => Promise<void>;
-	/** Adds "Remove from Citadel…" to each row's menu when set. */
+	/** Adds "Remove…" to each row's menu when set. */
 	onRemoveLibrary?: (library: LibraryPath) => void;
 	/**
 	 * Story seam: pre-resolved stats per library path. When omitted (the
@@ -129,7 +129,7 @@ export const LibraryListCard = ({
 		if (onRemoveLibrary) {
 			items.push({
 				id: "remove",
-				label: "Remove from Citadel…",
+				label: "Remove…",
 				onSelect: () => onRemoveLibrary(library),
 			});
 		}
