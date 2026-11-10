@@ -48,6 +48,12 @@
 	justify-content: flex-end;
 }
 
+/* A quiet destructive action: an ordinary button with red text. The
+ * confirmation that follows carries the weight. */
+.actionRow .removeButton {
+	color: var(--ctd-danger-ink);
+}
+
 .rowLabel {
 	font-size: 0.8125rem;
 	line-height: 1.35;
