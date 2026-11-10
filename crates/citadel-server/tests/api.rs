@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
-use citadel_core::store::{CitadelStore, DeviceKeyVerifier};
+use citadel_core::store::{CitadelStore, DeviceKeyVerifier, LibraryPermission};
 use citadel_core::{contracts::LibraryBookQuery, library::LibraryService, HttpUrlBuilder};
 use citadel_opds::{OpdsBindTarget, OpdsService, OpdsStartConfig};
 use citadel_server::{api, CalibreCatalogSource};
@@ -34,7 +34,9 @@ fn access(
     let library = served.register_open().unwrap();
     if accounts.user("reader").is_err() {
         accounts.create_user("reader", "secret-password").unwrap();
-        accounts.grant("reader", &library.id).unwrap();
+        accounts
+            .grant("reader", &library.id, LibraryPermission::Edit)
+            .unwrap();
     }
     let access = api::ApiAccess {
         accounts: accounts.clone(),
@@ -660,6 +662,7 @@ async fn read_only_library_refuses_deletes_and_keeps_every_byte() {
         request(&router, "GET", "/api/library", String::new(), Some(&cookie)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(library["readOnly"], true);
+    assert_eq!(library["canEdit"], false);
     let (status, _, error) = request(
         &router,
         "POST",
@@ -728,6 +731,145 @@ async fn read_only_library_refuses_deletes_and_keeps_every_byte() {
     }
     assert_eq!(std::fs::read(database_path).unwrap(), before);
     assert!(directory.path().join("Test Author").is_dir());
+    service.stop().await;
+}
+
+/// Every route that changes the library, with a body it would accept.
+fn library_writes(id: &str) -> Vec<(&'static str, String, Value)> {
+    vec![
+        (
+            "POST",
+            "/api/books/delete".into(),
+            json!({"book_ids": [id]}),
+        ),
+        ("DELETE", "/api/authors/1".into(), Value::Null),
+        (
+            "PATCH",
+            format!("/api/books/{id}"),
+            json!({"title": "Changed"}),
+        ),
+        (
+            "POST",
+            format!("/api/books/{id}/identifiers"),
+            json!({"label": "isbn", "value": "9780000000002"}),
+        ),
+        (
+            "DELETE",
+            format!("/api/books/{id}/identifiers/1"),
+            Value::Null,
+        ),
+        (
+            "PUT",
+            format!("/api/books/{id}/custom-values/1"),
+            json!({"value": null}),
+        ),
+        (
+            "POST",
+            format!("/api/books/{id}/genres"),
+            json!({"genres": ["Fiction"]}),
+        ),
+        (
+            "POST",
+            "/api/authors".into(),
+            json!({"authors": [{"name": "New", "sortable_name": null}]}),
+        ),
+        (
+            "PATCH",
+            "/api/authors/1".into(),
+            json!({"full_name": "Changed"}),
+        ),
+        (
+            "POST",
+            format!("/api/books/{id}/cover"),
+            json!({"coverId": "expired"}),
+        ),
+        (
+            "PUT",
+            format!("/api/books/{id}/cover"),
+            json!("not an image"),
+        ),
+        (
+            "POST",
+            "/api/uploads".into(),
+            json!({"fileName": "book.epub", "size": 10}),
+        ),
+    ]
+}
+
+#[tokio::test]
+async fn view_only_grants_read_a_writable_library_but_change_nothing() {
+    let (directory, service, router, id, editor) =
+        fixture_opened(CalibreCatalogSource::open_writable, small_uploads()).await;
+    let accounts = accounts(directory.path());
+    let library_id = accounts.libraries().unwrap()[0].id.clone();
+    accounts.create_user("viewer", "viewer-password").unwrap();
+    accounts
+        .grant("viewer", &library_id, LibraryPermission::View)
+        .unwrap();
+    let (_, viewer, _) = sign_in(&router, "viewer", "viewer-password").await;
+    let viewer = viewer.unwrap();
+
+    let (_, _, library) =
+        request(&router, "GET", "/api/library", String::new(), Some(&editor)).await;
+    assert_eq!(
+        (library["readOnly"].clone(), library["canEdit"].clone()),
+        (json!(false), json!(true))
+    );
+    let (status, _, library) =
+        request(&router, "GET", "/api/library", String::new(), Some(&viewer)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (library["readOnly"].clone(), library["canEdit"].clone()),
+        (json!(false), json!(false))
+    );
+    assert_eq!(
+        book(&router, &viewer, &id).await["title"],
+        "Shared Contract"
+    );
+    let (status, _, page) = request(
+        &router,
+        "POST",
+        "/api/books/query",
+        query(json!(10)).to_string(),
+        Some(&viewer),
+    )
+    .await;
+    assert_eq!((status, page["total"].clone()), (StatusCode::OK, json!(1)));
+
+    let database_path = directory.path().join("metadata.db");
+    let before = std::fs::read(&database_path).unwrap();
+    for (method, path, body) in library_writes(&id) {
+        let (status, error) = send(&router, &viewer, method, &path, body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {path}: {error}");
+        assert_eq!(error["code"], "readOnly", "{method} {path}");
+        assert_eq!(
+            error["message"], "You can view this library but not change it",
+            "{method} {path}"
+        );
+    }
+    assert_eq!(std::fs::read(&database_path).unwrap(), before);
+    assert_eq!(book_count(directory.path()), 1);
+
+    // Grants are read per request: an upload staged while the user could
+    // edit can't be added once they can't, and can be once they can again.
+    let staged = upload_whole(&router, &editor, "whole.epub", &epub_bytes()).await;
+    let upload = staged["id"].as_str().unwrap().to_string();
+    accounts
+        .grant("reader", &library_id, LibraryPermission::View)
+        .unwrap();
+    let commit = format!("/api/uploads/{upload}/commit");
+    let (status, error) = send(&router, &editor, "POST", &commit, json!({"title": "Book"})).await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::FORBIDDEN, Some("readOnly"))
+    );
+    assert_eq!(book_count(directory.path()), 1);
+    accounts
+        .grant("reader", &library_id, LibraryPermission::Edit)
+        .unwrap();
+    let (status, added) = send(&router, &editor, "POST", &commit, json!({"title": "Book"})).await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(book_count(directory.path()), 2);
     service.stop().await;
 }
 
@@ -1778,7 +1920,9 @@ async fn uploads_belong_to_their_user_and_require_a_same_origin_session() {
     let accounts = accounts(directory.path());
     let library_id = accounts.libraries().unwrap()[0].id.clone();
     accounts.create_user("other", "other-password").unwrap();
-    accounts.grant("other", &library_id).unwrap();
+    accounts
+        .grant("other", &library_id, LibraryPermission::Edit)
+        .unwrap();
     let (_, other, _) = sign_in(&router, "other", "other-password").await;
     let other = other.unwrap();
     for (method, path) in [
@@ -2037,7 +2181,9 @@ async fn commits_need_a_finished_upload_a_title_its_owner_and_a_writable_library
     let accounts = accounts(directory.path());
     let library_id = accounts.libraries().unwrap()[0].id.clone();
     accounts.create_user("other", "other-password").unwrap();
-    accounts.grant("other", &library_id).unwrap();
+    accounts
+        .grant("other", &library_id, LibraryPermission::Edit)
+        .unwrap();
     let (_, other, _) = sign_in(&router, "other", "other-password").await;
     let (status, _, _) = request(
         &router,

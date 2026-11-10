@@ -30,7 +30,12 @@ use libcalibre::{book_file, mime_type::MIMETYPE};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-use super::{session::SignedIn, thumbnails::resized_jpeg, ApiFailure, ApiState};
+use super::{
+    ensure_can_edit,
+    session::{Granted, SignedIn},
+    thumbnails::resized_jpeg,
+    ApiFailure, ApiState,
+};
 
 const MIB: u64 = 1024 * 1024;
 /// An unfinished upload that receives nothing for this long is discarded.
@@ -492,15 +497,20 @@ pub(super) async fn list(
 #[utoipa::path(post, path = "/api/uploads", operation_id = "createUpload",
     request_body = CreateUpload,
     responses((status = 201, body = StagedUpload), (status = 400, body = LibraryError),
-        (status = 401, body = LibraryError), (status = 413, body = LibraryError),
+        (status = 401, body = LibraryError), (status = 403, body = LibraryError), (status = 413, body = LibraryError),
         (status = 507, body = LibraryError)),
     security(("session" = [])))]
 pub(super) async fn create(
     State(state): State<ApiState>,
     Extension(user): Extension<SignedIn>,
+    Extension(granted): Extension<Granted>,
     input: Result<Json<CreateUpload>, JsonRejection>,
 ) -> Result<(StatusCode, Json<StagedUpload>), ApiFailure> {
     let Json(input) = input.map_err(|_| LibraryError::invalid("Invalid upload JSON"))?;
+    // Staging space is only for books that can be added (ADR 0014).
+    if !granted.0.can_edit() {
+        return Err(LibraryError::view_only().into());
+    }
     let (file_name, extension, format) = file_name(&input.file_name)?;
     let staging = &state.uploads;
     if input.size == 0 {
@@ -667,6 +677,7 @@ impl Drop for Committing {
 pub(super) async fn commit(
     State(state): State<ApiState>,
     Extension(user): Extension<SignedIn>,
+    Extension(granted): Extension<Granted>,
     Path(id): Path<String>,
     input: Result<Json<CommitUpload>, JsonRejection>,
 ) -> Result<(StatusCode, Json<citadel_core::LibraryBook>), ApiFailure> {
@@ -686,9 +697,7 @@ pub(super) async fn commit(
                 "The upload hasn't finished",
             ));
         }
-        if state.source.read_only() {
-            return Err(LibraryError::read_only().into());
-        }
+        ensure_can_edit(&state, granted)?;
         upload.busy = true;
         Ok((
             staging.book_path(&id, &upload.extension),
@@ -702,7 +711,7 @@ pub(super) async fn commit(
 
     let actor = user.0.actor();
     let book = input.into_book_add(path)?;
-    let book = super::write(state.clone(), move |service| {
+    let book = super::write(state.clone(), granted, move |service| {
         let id = service.create_book(&actor, book)?;
         service.get_book(&id)
     })

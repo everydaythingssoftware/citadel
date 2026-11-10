@@ -343,7 +343,9 @@ mod tests {
             .library_device_key_verifiers(&library.id)
             .unwrap()
             .is_empty());
-        store.grant("alice", &library.id).unwrap();
+        store
+            .grant("alice", &library.id, super::super::LibraryPermission::Edit)
+            .unwrap();
         let verifiers = store.library_device_key_verifiers(&library.id).unwrap();
         assert_eq!(verifiers.len(), 1);
         assert!(verifiers[0].matches("alice", kobo.secret.as_bytes()));

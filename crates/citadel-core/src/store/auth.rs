@@ -109,16 +109,27 @@ impl CitadelStore {
         Ok(())
     }
 
-    pub fn grant(&self, username: &str, library_id: &str) -> Result<()> {
+    /// Gives the user access to the library, or changes the access they have.
+    pub fn grant(
+        &self,
+        username: &str,
+        library_id: &str,
+        permission: LibraryPermission,
+    ) -> Result<()> {
         let user = self.user(username)?;
         let mut connection = self.connection();
         known_library(&mut connection, library_id)?;
-        diesel::insert_or_ignore_into(library_grants::table)
+        let can_edit = permission == LibraryPermission::Edit;
+        diesel::insert_into(library_grants::table)
             .values((
                 library_grants::user_id.eq(&user.id),
                 library_grants::library_id.eq(library_id),
                 library_grants::created_at.eq(unix_now()),
+                library_grants::can_edit.eq(can_edit),
             ))
+            .on_conflict((library_grants::user_id, library_grants::library_id))
+            .do_update()
+            .set(library_grants::can_edit.eq(can_edit))
             .execute(&mut *connection)?;
         Ok(())
     }
@@ -136,14 +147,53 @@ impl CitadelStore {
         Ok(())
     }
 
-    pub fn can_access(&self, user_id: &str, library_id: &str) -> Result<bool> {
-        Ok(diesel::select(diesel::dsl::exists(
-            library_grants::table
-                .filter(library_grants::user_id.eq(user_id))
-                .filter(library_grants::library_id.eq(library_id)),
-        ))
-        .get_result(&mut *self.connection())?)
+    /// What the user may do with the library, or `None` without a grant.
+    pub fn library_permission(
+        &self,
+        user_id: &str,
+        library_id: &str,
+    ) -> Result<Option<LibraryPermission>> {
+        Ok(library_grants::table
+            .filter(library_grants::user_id.eq(user_id))
+            .filter(library_grants::library_id.eq(library_id))
+            .select(library_grants::can_edit)
+            .first::<bool>(&mut *self.connection())
+            .optional()?
+            .map(LibraryPermission::from_can_edit))
     }
+
+    pub fn can_access(&self, user_id: &str, library_id: &str) -> Result<bool> {
+        Ok(self.library_permission(user_id, library_id)?.is_some())
+    }
+}
+
+/// What a grant lets its user do with a library (ADR 0014).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LibraryPermission {
+    /// Browse, read and download, but change nothing.
+    View,
+    Edit,
+}
+
+impl LibraryPermission {
+    pub(super) fn from_can_edit(can_edit: bool) -> Self {
+        if can_edit {
+            Self::Edit
+        } else {
+            Self::View
+        }
+    }
+
+    pub fn can_edit(self) -> bool {
+        self == Self::Edit
+    }
+}
+
+/// One library a user is granted, and what they may do with it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LibraryGrant {
+    pub library_id: String,
+    pub permission: LibraryPermission,
 }
 
 fn dummy_hash() -> &'static str {
@@ -162,6 +212,7 @@ fn token_hash(token: &str) -> String {
 mod tests {
     use super::super::test_support::store;
     use super::*;
+    use LibraryPermission::{Edit, View};
 
     #[test]
     fn sessions_are_opaque_slide_and_are_revoked_by_password_changes() {
@@ -203,21 +254,59 @@ mod tests {
         let alice = store.create_user("alice", "correct horse").unwrap();
         store.create_user("kid", "another password").unwrap();
         assert!(!store.can_access(&alice.id, &library.id).unwrap());
-        store.grant("alice", &library.id).unwrap();
-        store.grant("alice", &library.id).unwrap();
+        store.grant("alice", &library.id, Edit).unwrap();
+        store.grant("alice", &library.id, Edit).unwrap();
         assert!(store.can_access(&alice.id, &library.id).unwrap());
         assert!(matches!(
-            store.grant("alice", "missing"),
+            store.grant("alice", "missing", Edit),
             Err(StoreError::NotFound(_))
         ));
         let summaries = store.users().unwrap();
-        assert_eq!(summaries[0].library_ids, vec![library.id.clone()]);
-        assert!(summaries[1].library_ids.is_empty());
+        assert_eq!(
+            summaries[0].grants,
+            vec![LibraryGrant {
+                library_id: library.id.clone(),
+                permission: Edit
+            }]
+        );
+        assert!(summaries[1].grants.is_empty());
         store.revoke("alice", &library.id).unwrap();
         assert!(!store.can_access(&alice.id, &library.id).unwrap());
-        store.grant("alice", &library.id).unwrap();
+        store.grant("alice", &library.id, Edit).unwrap();
         store.remove_user("alice").unwrap();
         assert!(!store.can_access(&alice.id, &library.id).unwrap());
         assert!(matches!(store.user("alice"), Err(StoreError::NotFound(_))));
+    }
+
+    #[test]
+    fn grants_can_be_view_only_and_changed_in_place() {
+        let (_directory, store, library) = store();
+        let kid = store.create_user("kid", "another password").unwrap();
+        assert_eq!(
+            store.library_permission(&kid.id, &library.id).unwrap(),
+            None
+        );
+        store.grant("kid", &library.id, View).unwrap();
+        assert_eq!(
+            store.library_permission(&kid.id, &library.id).unwrap(),
+            Some(View)
+        );
+        assert!(store.can_access(&kid.id, &library.id).unwrap());
+        assert_eq!(store.users().unwrap()[0].grants[0].permission, View);
+        store.grant("kid", &library.id, Edit).unwrap();
+        assert_eq!(
+            store.library_permission(&kid.id, &library.id).unwrap(),
+            Some(Edit)
+        );
+        store.grant("kid", &library.id, View).unwrap();
+        assert_eq!(
+            store.library_permission(&kid.id, &library.id).unwrap(),
+            Some(View)
+        );
+        let rows: i64 = library_grants::table
+            .count()
+            .get_result(&mut *store.connection())
+            .unwrap();
+        assert_eq!(rows, 1, "changing a grant keeps one row");
     }
 }

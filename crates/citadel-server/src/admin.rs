@@ -7,7 +7,7 @@ use std::io::BufRead;
 
 use citadel_core::{
     password::generate_sign_in_password,
-    store::{CitadelStore, DeviceKey, NewDeviceKey, RegisteredLibrary, Role},
+    store::{CitadelStore, DeviceKey, LibraryPermission, NewDeviceKey, RegisteredLibrary, Role},
 };
 use libcalibre::Library;
 
@@ -15,7 +15,7 @@ use crate::ServerConfig;
 
 pub const USAGE: &str = "commands:
   users list
-  users add <name> [--password-stdin] [--no-grant] [--admin]
+  users add <name> [--password-stdin] [--no-grant] [--view-only] [--admin]
   users remove <name>
   users reset-password <name> [--password-stdin]
   users keys <name>
@@ -24,7 +24,7 @@ pub const USAGE: &str = "commands:
   users keys <name> revoke <device>
   users promote <name>
   users demote <name>
-  grant <name> [<library-id>]
+  grant <name> [<library-id>] [--view-only]
   revoke <name> [<library-id>]
   libraries list
   libraries add <absolute path> [--read-only]
@@ -33,7 +33,8 @@ pub const USAGE: &str = "commands:
 Without a command, the server starts. Generated passwords and OPDS device
 keys are printed once; --password-stdin reads the sign-in password from the
 first line of stdin. Readers sign in to OPDS with their username and a device
-key, one per e-reader or app.
+key, one per e-reader or app. Granted users can edit the library unless
+granted --view-only; granting again without it lets them edit.
 Administrators set the server up in the browser; `users promote` is the way
 back in when none can sign in.";
 
@@ -61,7 +62,8 @@ fn execute(
         .filter(|arg| !arg.starts_with("--"))
         .collect();
     let known_flags: &[&str] = match positional.as_slice() {
-        ["users", "add", _] => &["--password-stdin", "--no-grant", "--admin"],
+        ["users", "add", _] => &["--password-stdin", "--no-grant", "--view-only", "--admin"],
+        ["grant", ..] => &["--view-only"],
         ["users", "reset-password", _] => &["--password-stdin"],
         ["libraries", "add", _] => &["--read-only"],
         _ => &[],
@@ -78,6 +80,11 @@ fn execute(
         } else {
             Ok((generate_sign_in_password(), true))
         }
+    };
+    let permission = if flag("--view-only") {
+        LibraryPermission::View
+    } else {
+        LibraryPermission::Edit
     };
     let served = || {
         library.map(|library| library.id.as_str()).ok_or_else(|| {
@@ -96,8 +103,11 @@ fn execute(
                 .iter()
                 .map(|summary| {
                     let access = match library {
-                        Some(library) if summary.library_ids.contains(&library.id) => "has access",
-                        Some(_) => "no access",
+                        Some(library) => summary
+                            .grants
+                            .iter()
+                            .find(|grant| grant.library_id == library.id)
+                            .map_or("no access", |grant| describe(grant.permission)),
                         None => "no library yet",
                     };
                     format!(
@@ -123,8 +133,14 @@ fn execute(
             let access = match (flag("--no-grant"), library) {
                 (true, _) => "No library access yet; run `grant` to add it.".to_string(),
                 (false, Some(library)) => {
-                    accounts.grant(&user.username, &library.id).map_err(error)?;
-                    format!("Granted access to library {}.", library.id)
+                    accounts
+                        .grant(&user.username, &library.id, permission)
+                        .map_err(error)?;
+                    format!(
+                        "Granted access to library {} ({}).",
+                        library.id,
+                        describe(permission)
+                    )
                 }
                 (false, None) => {
                     "No library is set up yet; access is granted when one is.".to_string()
@@ -222,8 +238,17 @@ fn execute(
                 Some(id) => id,
                 None => served()?,
             };
-            accounts.grant(name, library_id).map_err(error)?;
-            Ok(format!("{name} can now access library {library_id}."))
+            accounts
+                .grant(name, library_id, permission)
+                .map_err(error)?;
+            Ok(match permission {
+                LibraryPermission::Edit => {
+                    format!("{name} can now view and edit library {library_id}.")
+                }
+                LibraryPermission::View => {
+                    format!("{name} can now view library {library_id} but not change it.")
+                }
+            })
         }
         ["revoke", name, rest @ ..] if rest.len() <= 1 => {
             let library_id = match rest.first() {
@@ -323,6 +348,13 @@ fn execute(
     }
 }
 
+fn describe(permission: LibraryPermission) -> &'static str {
+    match permission {
+        LibraryPermission::Edit => "can edit",
+        LibraryPermission::View => "view only",
+    }
+}
+
 fn find_key(accounts: &CitadelStore, username: &str, device: &str) -> Result<DeviceKey, String> {
     accounts
         .device_keys(username)
@@ -402,9 +434,40 @@ mod tests {
         assert!(output.contains("users keys alice add"), "{output}");
         assert!(accounts.device_keys("alice").unwrap().is_empty());
         let listed = command(&accounts, Some(&library), "users list", "").unwrap();
-        assert!(listed.contains("alice") && listed.contains("has access"));
+        assert!(listed.contains("alice") && listed.contains("can edit"));
         assert!(listed.contains("reader"));
         assert!(!listed.contains(password));
+    }
+
+    #[test]
+    fn grants_can_be_view_only_and_changed_back() {
+        let (_directory, accounts, library) = fixture();
+        let output = command(&accounts, Some(&library), "users add kid --view-only", "").unwrap();
+        assert!(output.contains("view only"), "{output}");
+        let kid = accounts.user("kid").unwrap();
+        let permission =
+            |accounts: &CitadelStore| accounts.library_permission(&kid.id, &library.id).unwrap();
+        assert_eq!(permission(&accounts), Some(LibraryPermission::View));
+        let listed = command(&accounts, Some(&library), "users list", "").unwrap();
+        assert!(listed.contains("view only"), "{listed}");
+
+        let output = command(&accounts, Some(&library), "grant kid", "").unwrap();
+        assert!(output.contains("view and edit"), "{output}");
+        assert_eq!(permission(&accounts), Some(LibraryPermission::Edit));
+        let output = command(
+            &accounts,
+            Some(&library),
+            &format!("grant kid {} --view-only", library.id),
+            "",
+        )
+        .unwrap();
+        assert!(output.contains("but not change it"), "{output}");
+        assert_eq!(permission(&accounts), Some(LibraryPermission::View));
+        assert!(command(&accounts, Some(&library), "grant kid --edit", "")
+            .unwrap_err()
+            .contains("unknown option --edit"));
+        let listed = command(&accounts, Some(&library), "users list", "").unwrap();
+        assert!(listed.contains("view only"), "{listed}");
     }
 
     #[test]

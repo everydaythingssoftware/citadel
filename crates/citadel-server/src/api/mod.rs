@@ -107,15 +107,25 @@ async fn run<T: Send + 'static>(
     .await
 }
 
-// Writes are refused up front on a read-only library rather than left for
-// SQLite to reject as an internal error.
+/// Writes are refused up front on a read-only library rather than left for
+/// SQLite to reject as an internal error, and for users whose grant is
+/// view-only (ADR 0014).
+fn ensure_can_edit(state: &ApiState, granted: session::Granted) -> Result<(), LibraryError> {
+    if state.source.read_only() {
+        return Err(LibraryError::read_only());
+    }
+    if !granted.0.can_edit() {
+        return Err(LibraryError::view_only());
+    }
+    Ok(())
+}
+
 async fn write<T: Send + 'static>(
     state: ApiState,
+    granted: session::Granted,
     operation: impl FnOnce(&mut LibraryService<'_>) -> Result<T, LibraryError> + Send + 'static,
 ) -> Result<T, ApiFailure> {
-    if state.source.read_only() {
-        return Err(LibraryError::read_only().into());
-    }
+    ensure_can_edit(&state, granted)?;
     run(state, operation).await
 }
 
@@ -212,7 +222,11 @@ async fn get_book(
 struct LibraryDescriptor {
     id: String,
     name: String,
+    /// The whole library is served read-only, for everyone.
     read_only: bool,
+    /// This user may change the library: it isn't read-only and their grant
+    /// isn't view-only.
+    can_edit: bool,
 }
 
 #[utoipa::path(get, path = "/api/library", operation_id = "getLibrary",
@@ -220,6 +234,7 @@ struct LibraryDescriptor {
         (status = 503, body = LibraryError), (status = 500, body = LibraryError)), security(("session" = [])))]
 async fn library_descriptor(
     State(state): State<ApiState>,
+    Extension(granted): Extension<session::Granted>,
 ) -> Result<Json<LibraryDescriptor>, ApiFailure> {
     let registered = state
         .access
@@ -227,11 +242,13 @@ async fn library_descriptor(
         .registered()
         .ok_or_else(crate::served::no_library_yet)?;
     let read_only = state.source.read_only();
+    let can_edit = ensure_can_edit(&state, granted).is_ok();
     run_library(state, |library| Ok(library.library_uuid()?)).await?;
     Ok(Json(LibraryDescriptor {
         id: registered.id,
         name: registered.display_name,
         read_only,
+        can_edit,
     }))
 }
 
@@ -317,10 +334,11 @@ struct DeleteBooksRequest {
 async fn delete_books(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(granted): Extension<session::Granted>,
     request: Result<Json<DeleteBooksRequest>, JsonRejection>,
 ) -> Result<Json<DeleteBooksOutcome>, ApiFailure> {
     let Json(request) = request.map_err(|_| LibraryError::invalid("Invalid delete books JSON"))?;
-    let deleted = write(state, move |service| {
+    let deleted = write(state, granted, move |service| {
         service.delete_books(&user.actor(), &request.book_ids)
     })
     .await?;
@@ -343,9 +361,10 @@ async fn delete_books(
 async fn delete_author(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(granted): Extension<session::Granted>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiFailure> {
-    write(state, move |service| {
+    write(state, granted, move |service| {
         service.delete_author(&user.actor(), &id)
     })
     .await?;
@@ -370,15 +389,14 @@ struct ApplyCover {
 async fn set_cover_from_metadata(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(granted): Extension<session::Granted>,
     Path(id): Path<String>,
     request: Result<Json<ApplyCover>, JsonRejection>,
 ) -> Result<StatusCode, metadata::MetadataFailure> {
     let Json(request) = request.map_err(|_| LibraryError::invalid("Invalid cover JSON"))?;
-    if state.source.read_only() {
-        return Err(LibraryError::read_only().into());
-    }
+    ensure_can_edit(&state, granted)?;
     let bytes = state.metadata.cover_image(&request.cover_id).await?;
-    write(state, move |service| {
+    write(state, granted, move |service| {
         service.set_cover(&user.actor(), &id, bytes)
     })
     .await?;
@@ -396,12 +414,11 @@ async fn set_cover_from_metadata(
 async fn set_cover_from_file(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(granted): Extension<session::Granted>,
     Path(id): Path<String>,
     body: Body,
 ) -> Result<StatusCode, metadata::MetadataFailure> {
-    if state.source.read_only() {
-        return Err(LibraryError::read_only().into());
-    }
+    ensure_can_edit(&state, granted)?;
     let limit = usize::try_from(state.metadata.max_image_bytes()).unwrap_or(usize::MAX);
     let bytes = match tokio::time::timeout(REQUEST_DEADLINE, to_bytes(body, limit)).await {
         Ok(Ok(bytes)) => bytes,
@@ -415,7 +432,7 @@ async fn set_cover_from_file(
         Err(_) => return Err(LibraryError::unavailable().into()),
     };
     let jpeg = state.metadata.reencode_upload(bytes.to_vec()).await?;
-    write(state, move |service| {
+    write(state, granted, move |service| {
         service.set_cover(&user.actor(), &id, jpeg)
     })
     .await?;

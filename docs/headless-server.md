@@ -175,8 +175,11 @@ always requires sign-in. Each user has:
   it's created or rotated ([ADR 0013](adr/0013-opds-device-keys.md));
 - **library access** (a grant). Users without access to the served library
   cannot see it in the browser or OPDS, administrators included: the role
-  gates the server, grants gate books. A separate user, such as a child's
-  account, is how to give someone narrower access.
+  gates the server, grants gate books. A grant either lets its user edit the
+  library or is **view-only**: they can browse, read and download, but not
+  edit books, add or delete them ([ADR 0014](adr/0014-view-only-library-grants.md)).
+  A separate user, such as a child's account, is how to give someone narrower
+  access.
 
 Users can also be managed from the command line, which is how to get back in
 when no administrator can sign in. Commands edit `citadel.db` directly and do
@@ -185,7 +188,7 @@ and browser sessions are checked on every request.
 
 ```text
 citadel-server --config <path> users list
-citadel-server --config <path> users add <name> [--password-stdin] [--no-grant] [--admin]
+citadel-server --config <path> users add <name> [--password-stdin] [--no-grant] [--view-only] [--admin]
 citadel-server --config <path> users remove <name>
 citadel-server --config <path> users reset-password <name> [--password-stdin]
 citadel-server --config <path> users keys <name>
@@ -194,7 +197,7 @@ citadel-server --config <path> users keys <name> rotate <device>
 citadel-server --config <path> users keys <name> revoke <device>
 citadel-server --config <path> users promote <name>
 citadel-server --config <path> users demote <name>
-citadel-server --config <path> grant <name> [<library-id>]
+citadel-server --config <path> grant <name> [<library-id>] [--view-only]
 citadel-server --config <path> revoke <name> [<library-id>]
 citadel-server --config <path> libraries list
 citadel-server --config <path> libraries add <absolute path> [--read-only]
@@ -202,7 +205,8 @@ citadel-server --config <path> libraries read-only <on|off> [<library-id>]
 ```
 
 `users add` grants access to the served library unless `--no-grant` is given
-(or no library is served yet), and prints a generated sign-in password.
+(or no library is served yet), view-only with `--view-only`, and prints a
+generated sign-in password.
 Generated sign-in passwords are shown only once;
 `--password-stdin` reads one from the first line of standard input instead (at
 least 8 characters). `reset-password` also signs the user out of every
@@ -212,7 +216,9 @@ a lost key is replaced with `rotate`, which stops the old key working. `revoke`
 removes a device's key, and `users keys <name>` lists each key with when it was
 created and last used. Because readers sign in by username, renaming a user
 means updating every one of their devices. `promote` and `demote` change the role. `grant` and `revoke`
-default to the served library. `libraries add` registers an existing Calibre
+default to the served library; `grant --view-only` makes a grant view-only,
+and granting again without it lets the user edit. `users list` shows each
+user's access as `can edit`, `view only` or `no access`. `libraries add` registers an existing Calibre
 library and serves it; one library at a time for now. Usernames are
 case-insensitive and can't contain a colon.
 

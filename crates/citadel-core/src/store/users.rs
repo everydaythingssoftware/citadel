@@ -6,6 +6,7 @@ use argon2::{
 use diesel::{prelude::*, sqlite::SqliteConnection};
 
 use super::{
+    auth::{LibraryGrant, LibraryPermission},
     schema::{library_grants, properties, sessions, users},
     unix_now, CitadelStore, Result, StoreError,
 };
@@ -75,7 +76,7 @@ pub(super) fn user_from_row((id, username, role): UserRow) -> Result<User> {
 pub struct UserSummary {
     pub user: User,
     pub has_password: bool,
-    pub library_ids: Vec<String>,
+    pub grants: Vec<LibraryGrant>,
 }
 
 impl CitadelStore {
@@ -148,15 +149,22 @@ impl CitadelStore {
             .load::<(String, String, String, bool)>(&mut *connection)?;
         let grants = library_grants::table
             .order(library_grants::created_at)
-            .select((library_grants::user_id, library_grants::library_id))
-            .load::<(String, String)>(&mut *connection)?;
+            .select((
+                library_grants::user_id,
+                library_grants::library_id,
+                library_grants::can_edit,
+            ))
+            .load::<(String, String, bool)>(&mut *connection)?;
         rows.into_iter()
             .map(|(id, username, role, has_password)| {
                 Ok(UserSummary {
-                    library_ids: grants
+                    grants: grants
                         .iter()
-                        .filter(|(user_id, _)| *user_id == id)
-                        .map(|(_, library_id)| library_id.clone())
+                        .filter(|(user_id, _, _)| *user_id == id)
+                        .map(|(_, library_id, can_edit)| LibraryGrant {
+                            library_id: library_id.clone(),
+                            permission: LibraryPermission::from_can_edit(*can_edit),
+                        })
                         .collect(),
                     user: user_from_row((id, username, role))?,
                     has_password,
@@ -364,7 +372,9 @@ mod tests {
             store.rename_user("reader", "PHIL"),
             Err(StoreError::Conflict(_))
         ));
-        store.grant("reader", &library.id).unwrap();
+        store
+            .grant("reader", &library.id, LibraryPermission::Edit)
+            .unwrap();
         assert!(store.can_access(&local.id, &library.id).unwrap());
         assert_eq!(store.local_user("").unwrap().id, local.id);
     }

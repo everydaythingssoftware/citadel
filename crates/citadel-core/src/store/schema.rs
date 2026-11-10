@@ -43,6 +43,7 @@ diesel::table! {
         user_id -> Text,
         library_id -> Text,
         created_at -> BigInt,
+        can_edit -> Bool,
     }
 }
 diesel::table! {

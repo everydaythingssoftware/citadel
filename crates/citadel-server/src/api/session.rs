@@ -21,7 +21,7 @@ use super::{
     ApiFailure, ApiState,
 };
 use crate::served::{no_library_yet, ServedLibrary};
-use citadel_core::store::{CitadelStore, User, SESSION_TTL_SECONDS};
+use citadel_core::store::{CitadelStore, LibraryPermission, User, SESSION_TTL_SECONDS};
 
 pub const SESSION_COOKIE: &str = "citadel_session";
 
@@ -150,7 +150,7 @@ impl Access {
 /// What the session's user may do with the served library.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum LibraryAccess {
-    Granted,
+    Granted(LibraryPermission),
     Denied,
     /// No library is set up yet, so there is nothing to grant.
     NoLibrary,
@@ -185,6 +185,11 @@ impl Backoff {
 /// handlers derive their `Actor` from it.
 #[derive(Clone, Debug)]
 pub(super) struct SignedIn(pub User);
+
+/// What the signed-in user's grant allows with the served library, available
+/// to handlers behind [`require_session`]. Writes check it (ADR 0014).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct Granted(pub LibraryPermission);
 
 #[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct SessionUser {
@@ -336,8 +341,10 @@ fn library_access(
 ) -> Result<LibraryAccess, citadel_core::store::StoreError> {
     Ok(match library_id {
         None => LibraryAccess::NoLibrary,
-        Some(library_id) if accounts.can_access(&user.id, library_id)? => LibraryAccess::Granted,
-        Some(_) => LibraryAccess::Denied,
+        Some(library_id) => match accounts.library_permission(&user.id, library_id)? {
+            Some(permission) => LibraryAccess::Granted(permission),
+            None => LibraryAccess::Denied,
+        },
     })
 }
 
@@ -360,8 +367,9 @@ pub(super) async fn require_session(
     }
     let had_cookie = session_token(request.headers()).is_some();
     match current_user(&state, request.headers()).await {
-        Ok(Some((user, LibraryAccess::Granted))) => {
+        Ok(Some((user, LibraryAccess::Granted(permission)))) => {
             request.extensions_mut().insert(SignedIn(user));
+            request.extensions_mut().insert(Granted(permission));
             next.run(request).await
         }
         Ok(Some((_, LibraryAccess::Denied))) => failure(
@@ -396,7 +404,7 @@ async fn get_session(
         .ok_or_else(signed_out)?;
     Ok(Json(SessionInfo::new(
         &user,
-        library_access == LibraryAccess::Granted,
+        matches!(library_access, LibraryAccess::Granted(_)),
     )))
 }
 
@@ -452,7 +460,7 @@ async fn sign_in(
     };
     let mut response = Json(SessionInfo::new(
         &user,
-        library_access == LibraryAccess::Granted,
+        matches!(library_access, LibraryAccess::Granted(_)),
     ))
     .into_response();
     response.headers_mut().insert(

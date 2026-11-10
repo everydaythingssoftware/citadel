@@ -28,11 +28,34 @@ describe("browser library catalog", () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () =>
-				json({ id: "configured-library", name: "Library", readOnly: false }),
+				json({
+					id: "configured-library",
+					name: "Library",
+					readOnly: false,
+					canEdit: true,
+				}),
 			),
 		);
 		const library = await webLibraryCatalog.open(remote());
+		expect(library.readOnly).toBe(false);
 		expect(library.uploads).toBeDefined();
+	});
+
+	it("opens a writable library read-only for a view-only user", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				json({
+					id: "configured-library",
+					name: "Library",
+					readOnly: false,
+					canEdit: false,
+				}),
+			),
+		);
+		const library = await webLibraryCatalog.open(remote());
+		expect(library.readOnly).toBe(true);
+		expect(library.uploads).toBeUndefined();
 	});
 
 	it("checks the configured library before returning a read-only HTTP connection", async () => {
@@ -42,7 +65,12 @@ describe("browser library catalog", () => {
 			vi.fn(async (request: Request) => {
 				requests.push(request);
 				return new URL(request.url).pathname === "/api/library"
-					? json({ id: "configured-library", name: "Library", readOnly: true })
+					? json({
+							id: "configured-library",
+							name: "Library",
+							readOnly: true,
+							canEdit: false,
+						})
 					: json([
 							{
 								id: "1",

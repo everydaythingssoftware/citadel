@@ -227,7 +227,9 @@ mod tests {
             library
         );
         let alice = store.create_user("alice", "correct horse").unwrap();
-        store.grant("alice", LIBRARY_ID).unwrap();
+        store
+            .grant("alice", LIBRARY_ID, super::super::LibraryPermission::Edit)
+            .unwrap();
         std::fs::rename(
             directory.path().join("library"),
             directory.path().join("moved"),
