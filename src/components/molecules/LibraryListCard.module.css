@@ -93,6 +93,18 @@
 	color: var(--ctd-ink-soft);
 }
 
+.placeholderText {
+	flex: 0 1 auto;
+}
+
+/* Never truncated: the reassurance matters more than the name. */
+.placeholderNote {
+	flex: 1 0 auto;
+	font-size: 0.75rem;
+	color: var(--ctd-ink-soft);
+	white-space: nowrap;
+}
+
 .placeholderError {
 	color: var(--ctd-danger-ink);
 }
