@@ -10,6 +10,7 @@ import { Button, Spinner } from "@/components/ui";
 import { deleteBookCopy } from "@/lib/delete-book-title";
 import { tagListChanged } from "@/lib/domain/tag";
 import { useEditBookData } from "@/lib/hooks/use-edit-book-data";
+import { useGoBack } from "@/lib/hooks/use-go-back";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { BookDeletion } from "@/lib/services/library";
 import {
@@ -36,6 +37,7 @@ const EditBookRoute = () => {
 	);
 	const actions = useLibraryActions();
 	const navigate = useNavigate();
+	const goBack = useGoBack();
 	const [deleteFailures, setDeleteFailures] = useState<string[]>([]);
 
 	// A library flip invalidates the bookId this route was opened with: the
@@ -127,17 +129,15 @@ const EditBookRoute = () => {
 			setDeleteFailures(outcome.folder_failures);
 			return;
 		}
-		await navigate({ to: "/", replace: true });
-	}, [actions, bookId, navigate]);
+		goBack();
+	}, [actions, bookId, goBack]);
 
 	if (readOnly) {
 		return (
 			<div style={centeredFill}>
 				<div>
 					<p>This library is read-only.</p>
-					<Button onClick={() => void navigate({ to: "/", replace: true })}>
-						Back to library
-					</Button>
+					<Button onClick={goBack}>Back</Button>
 				</div>
 			</div>
 		);
@@ -156,9 +156,7 @@ const EditBookRoute = () => {
 						))}
 					</ul>
 				</div>
-				<Button onClick={() => void navigate({ to: "/", replace: true })}>
-					Back to library
-				</Button>
+				<Button onClick={goBack}>Back</Button>
 			</div>
 		);
 	}
@@ -187,6 +185,7 @@ const EditBookRoute = () => {
 			allAuthorList={allAuthorList}
 			allTagList={allTagList}
 			book={book}
+			onBack={goBack}
 			onCreateAuthor={onCreateAuthor}
 			onSave={onSave}
 			onDelete={onDelete}

@@ -58,6 +58,8 @@ export type VisibleRangeChange = (startIndex: number, endIndex: number) => void;
 interface BookGridProps extends BookView {
 	/** The page-owned scroll region the virtualizer windows against. */
 	scrollElementRef: RefObject<HTMLElement | null>;
+	/** Where the scroll region starts when the grid mounts. */
+	initialScrollOffset?: number;
 	/**
 	 * Receives the grid's scroll-to-index function so keyboard selection can
 	 * reach rows that are not currently mounted (use-library-keymap).
@@ -76,6 +78,7 @@ export const BookGrid = ({
 	onBookOpen,
 	selectedBookId,
 	scrollElementRef,
+	initialScrollOffset,
 	scrollToBookIndexRef,
 	onVisibleRangeChange,
 }: BookGridProps) => {
@@ -92,6 +95,7 @@ export const BookGrid = ({
 				bookList={bookList}
 				selectedBookId={selectedBookId}
 				scrollElementRef={scrollElementRef}
+				initialScrollOffset={initialScrollOffset}
 				scrollToBookIndexRef={scrollToBookIndexRef}
 				onVisibleRangeChange={onVisibleRangeChange}
 			/>
@@ -104,6 +108,7 @@ const BookGridPure = ({
 	bookList: books,
 	selectedBookId,
 	scrollElementRef,
+	initialScrollOffset,
 	scrollToBookIndexRef,
 	onVisibleRangeChange,
 }: {
@@ -111,6 +116,7 @@ const BookGridPure = ({
 	bookList: (LibraryBook | undefined)[];
 	selectedBookId?: LibraryBook["id"] | null;
 	scrollElementRef: RefObject<HTMLElement | null>;
+	initialScrollOffset?: number;
 	scrollToBookIndexRef?: RefObject<ScrollToBookIndex | null>;
 	onVisibleRangeChange?: VisibleRangeChange;
 }) => {
@@ -186,6 +192,7 @@ const BookGridPure = ({
 		overscan: OVERSCAN_ROWS,
 		// Rows start below the wrapper's top padding inside the scroll region.
 		scrollMargin: PADDING.top,
+		initialOffset: initialScrollOffset,
 	});
 
 	// Hand the keymap a way to reach unmounted rows; once the row scrolls in,

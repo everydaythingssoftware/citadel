@@ -10,6 +10,7 @@ import { IS_DEV } from "@/lib/env";
 import { useInitializeLibraryStore } from "@/lib/hooks/use-initialize-library-store";
 import { useLibrarySwitch } from "@/lib/hooks/use-library-switch";
 import { useRestoredDatabaseNotice } from "@/lib/hooks/use-restored-database-notice";
+import { scrollRestorationOptions } from "@/lib/navigation";
 import { usePlatform } from "@/lib/platform/context";
 import { useApplyColorScheme } from "@/lib/theme-manager";
 import { safeAsyncEventHandler } from "$lib/async";
@@ -46,6 +47,7 @@ const router = createRouter({
 	// at ~620-690ms when data was ready at ~145ms).
 	defaultPendingMinMs: 0,
 	defaultPendingComponent: RoutePending,
+	...scrollRestorationOptions,
 });
 
 declare module "@tanstack/react-router" {

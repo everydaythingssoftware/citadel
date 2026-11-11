@@ -16,12 +16,15 @@ import {
 import {
 	BOOK_PAGE_SIZE,
 	type BookGridFilter,
+	serializeBookFilter,
 	sparseBookItems,
 } from "@/lib/book-page-cache";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { useEntryScroll } from "@/lib/hooks/use-entry-scroll";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
+import { SCROLL_REGION, scrollRegionAttributes } from "@/lib/navigation";
 import {
 	type BookRouteFilters,
 	deepLinkClearsQuery,
@@ -247,15 +250,16 @@ export const Books = ({
 	// rows into view even when their cards are not mounted.
 	const scrollToBookIndexRef = useRef<ScrollToBookIndex | null>(null);
 
-	// Reset scroll to top whenever the filter key changes (new search).
-	// Generation bumps from same-key invalidations share the key, so they
-	// correctly do NOT reset scroll.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: cache.key is the only trigger; gridContainerRef is a stable ref whose .current we imperatively update.
-	useEffect(() => {
-		if (gridContainerRef.current) {
-			gridContainerRef.current.scrollTop = 0;
-		}
-	}, [cache.key]);
+	// Back returns the grid to where it was left; a new search, filter or
+	// sort starts at the top. Generation bumps from same-key invalidations
+	// (a mutation) share the key, so they keep the scroll.
+	const { startOffset: gridStartOffset } = useEntryScroll({
+		region: SCROLL_REGION.libraryGrid,
+		elementRef: gridContainerRef,
+		viewKey: cache.key,
+		viewReady: queryResolved && cache.key === serializeBookFilter(filter),
+		content: books,
+	});
 
 	// Reset scroll to top on a library flip: the flip swaps in a new
 	// generation under the SAME filter key, so the reset above never fires
@@ -380,6 +384,7 @@ export const Books = ({
 			</div>
 			<div
 				ref={gridContainerRef}
+				{...scrollRegionAttributes(SCROLL_REGION.libraryGrid)}
 				tabIndex={-1}
 				style={{ outline: "none" }}
 				className={clsx(
@@ -423,6 +428,7 @@ export const Books = ({
 						onBookOpen={onBookOpen}
 						selectedBookId={selectedBookId}
 						scrollElementRef={gridContainerRef}
+						initialScrollOffset={gridStartOffset}
 						scrollToBookIndexRef={scrollToBookIndexRef}
 						onVisibleRangeChange={onVisibleRangeChange}
 					/>
