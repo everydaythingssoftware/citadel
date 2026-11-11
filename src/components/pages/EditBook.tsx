@@ -1,6 +1,5 @@
 import clsx from "clsx";
 import { useLibraryActions, useLibraryStore } from "@/stores/library/store";
-import { Link as RouterLink } from "@tanstack/react-router";
 import DOMPurify from "dompurify";
 import {
 	type AnimationEvent,
@@ -125,6 +124,8 @@ interface BookPageProps {
 	allAuthorList: LibraryAuthor[];
 	allTagList: string[];
 	book: LibraryBook;
+	/** Leaves the page for wherever it was opened from. */
+	onBack: () => void;
 	/** Resolves with the new author, or nothing if it couldn't be added. */
 	onCreateAuthor: (authorName: string) => Promise<LibraryAuthor | undefined>;
 	onSave: (bookUpdate: BookUpdate) => Promise<void>;
@@ -144,6 +145,7 @@ export const BookPage = ({
 	allAuthorList,
 	allTagList,
 	book,
+	onBack,
 	onCreateAuthor,
 	onSave,
 	onUpsertIdentifier,
@@ -159,6 +161,7 @@ export const BookPage = ({
 				allTagList={allTagList}
 				onCreateAuthor={onCreateAuthor}
 				book={book}
+				onBack={onBack}
 				onSave={onSave}
 				onDeleteIdentifier={onDeleteIdentifier}
 				onReloadBooks={onReloadBooks}
@@ -406,6 +409,7 @@ const EditBookForm = ({
 	allAuthorList,
 	allTagList,
 	book,
+	onBack,
 	onCreateAuthor: createAuthor,
 	onSave,
 	onUpsertIdentifier,
@@ -415,6 +419,7 @@ const EditBookForm = ({
 	allAuthorList: LibraryAuthor[];
 	allTagList: string[];
 	book: LibraryBook;
+	onBack: () => void;
 	onCreateAuthor: (name: string) => Promise<LibraryAuthor | undefined>;
 	onSave: (update: BookUpdate) => Promise<void>;
 	onDeleteIdentifier: (bookId: string, identifierId: number) => Promise<void>;
@@ -887,9 +892,10 @@ const EditBookForm = ({
 			<div className={styles.pinnedTop}>
 				<header className={styles.pageHeader}>
 					<div className={styles.headerLead}>
-						{/* Says where it goes, at the height of every other button. */}
-						<RouterLink
-							to="/"
+						{/* Returns to wherever the book was opened from, as it was left. */}
+						<button
+							type="button"
+							onClick={onBack}
 							className={clsx(
 								buttonStyles.button,
 								buttonStyles.subtle,
@@ -897,8 +903,8 @@ const EditBookForm = ({
 							)}
 						>
 							<BackChevron />
-							All Books
-						</RouterLink>
+							Back
+						</button>
 					</div>
 					<h3
 						ref={titleRef}
