@@ -22,7 +22,9 @@ export const BookCard = React.memo(function BookCard({
 	actions: { onViewBook },
 	selected,
 }: BookCardProps) {
-	const onCoverTouch = useCallback(() => {
+	// A click, not a press: touch browsers cancel the click when the finger
+	// pans, so a scroll that starts on a cover doesn't open its drawer.
+	const onCoverClick = useCallback(() => {
 		onViewBook(book.id);
 	}, [onViewBook, book]);
 	// Grid cells render the 300px thumbnail instead of decoding the
@@ -37,12 +39,7 @@ export const BookCard = React.memo(function BookCard({
 					selected && classes.coverWrapSelected,
 				)}
 			>
-				<BookCover
-					book={book}
-					fluid
-					thumb={thumb}
-					onPointerDown={onCoverTouch}
-				/>
+				<BookCover book={book} fluid thumb={thumb} onClick={onCoverClick} />
 			</span>
 		</div>
 	);
