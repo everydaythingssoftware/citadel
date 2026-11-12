@@ -1,6 +1,7 @@
 import {
 	createRootRoute,
 	Outlet,
+	type ParsedLocation,
 	useRouterState,
 } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -19,13 +20,16 @@ import { usePlatform } from "@/lib/platform/context";
 import classes from "./root.module.css";
 
 const Root = () => {
-	// The phone sidebar belongs to the page it was opened on: going anywhere
-	// closes it.
-	const [mobileOpenedOn, setMobileOpenedOn] = useState<string | null>(null);
+	// The phone sidebar belongs to the visit it was opened on: going anywhere
+	// closes it, including Back to the same page. Each navigation parses a new
+	// location, so comparing the object (not the URL) tells visits apart.
+	const [mobileOpenedOn, setMobileOpenedOn] = useState<ParsedLocation | null>(
+		null,
+	);
 	const [desktopOpened, setDesktopOpened] = useState(true);
 	const { location } = useRouterState();
 	const platform = usePlatform();
-	const mobileOpened = mobileOpenedOn === location.href;
+	const mobileOpened = mobileOpenedOn === location;
 	useNativeThemeSync();
 	// Self-disables in the settings window (/settings pathname check inside).
 	useAppKeymap();
@@ -53,9 +57,7 @@ const Root = () => {
 						<IconButton
 							aria-label="Toggle sidebar"
 							className={clsx(classes.sidebarToggle, classes.mobileOnly)}
-							onClick={() =>
-								setMobileOpenedOn(mobileOpened ? null : location.href)
-							}
+							onClick={() => setMobileOpenedOn(mobileOpened ? null : location)}
 						>
 							<F7SidebarLeft title="Toggle sidebar" />
 						</IconButton>
