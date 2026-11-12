@@ -59,6 +59,13 @@ bun run dev
 # or just bun dev
 ```
 
+### Building on Windows
+
+Windows builds are unofficial and not covered by CI. They need the MSVC build
+tools and, on ARM64, `clang` on the `PATH` (the `ring` crate requires it; the
+LLVM installer puts it in `C:\Program Files\LLVM\bin`). SQLite is compiled in
+on Windows, so no system SQLite is needed.
+
 ### Updating Rust
 
 Rust upgrades are intentional repository changes. Update the channel in

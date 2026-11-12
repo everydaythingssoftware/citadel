@@ -48,6 +48,10 @@ image = { version = "0.25.6", default-features = false, features = ["jpeg", "png
 tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 trash = "5.2.3"
 
+[target.'cfg(windows)'.dependencies]
+# Windows has no system SQLite to link against.
+libsqlite3-sys = { version = "0.30.1", features = ["bundled"] }
+
 [dev-dependencies]
 axum = "0.8.9"
 tempfile = "3.8"
