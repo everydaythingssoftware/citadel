@@ -61,6 +61,11 @@ interface BookGridProps extends BookView {
 	/** Where the scroll region starts when the grid mounts. */
 	initialScrollOffset?: number;
 	/**
+	 * Changes when a different result set is shown. Row heights measured for
+	 * the previous set no longer apply, so they are dropped and re-estimated.
+	 */
+	resultKey?: string;
+	/**
 	 * Receives the grid's scroll-to-index function so keyboard selection can
 	 * reach rows that are not currently mounted (use-library-keymap).
 	 */
@@ -79,6 +84,7 @@ export const BookGrid = ({
 	selectedBookId,
 	scrollElementRef,
 	initialScrollOffset,
+	resultKey,
 	scrollToBookIndexRef,
 	onVisibleRangeChange,
 }: BookGridProps) => {
@@ -96,6 +102,7 @@ export const BookGrid = ({
 				selectedBookId={selectedBookId}
 				scrollElementRef={scrollElementRef}
 				initialScrollOffset={initialScrollOffset}
+				resultKey={resultKey}
 				scrollToBookIndexRef={scrollToBookIndexRef}
 				onVisibleRangeChange={onVisibleRangeChange}
 			/>
@@ -109,6 +116,7 @@ const BookGridPure = ({
 	selectedBookId,
 	scrollElementRef,
 	initialScrollOffset,
+	resultKey,
 	scrollToBookIndexRef,
 	onVisibleRangeChange,
 }: {
@@ -117,6 +125,7 @@ const BookGridPure = ({
 	selectedBookId?: LibraryBook["id"] | null;
 	scrollElementRef: RefObject<HTMLElement | null>;
 	initialScrollOffset?: number;
+	resultKey?: string;
 	scrollToBookIndexRef?: RefObject<ScrollToBookIndex | null>;
 	onVisibleRangeChange?: VisibleRangeChange;
 }) => {
@@ -194,6 +203,13 @@ const BookGridPure = ({
 		scrollMargin: PADDING.top,
 		initialOffset: initialScrollOffset,
 	});
+
+	const measuredForRef = useRef(resultKey);
+	useLayoutEffect(() => {
+		if (measuredForRef.current === resultKey) return;
+		measuredForRef.current = resultKey;
+		virtualizer.measure();
+	}, [resultKey, virtualizer]);
 
 	// Hand the keymap a way to reach unmounted rows; once the row scrolls in,
 	// the selected card mounts and renders its selection ring from props.

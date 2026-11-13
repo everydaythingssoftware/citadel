@@ -429,6 +429,7 @@ export const Books = ({
 						selectedBookId={selectedBookId}
 						scrollElementRef={gridContainerRef}
 						initialScrollOffset={gridStartOffset}
+						resultKey={`${cache.key}:${queryResolved}`}
 						scrollToBookIndexRef={scrollToBookIndexRef}
 						onVisibleRangeChange={onVisibleRangeChange}
 					/>
