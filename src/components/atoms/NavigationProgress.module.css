@@ -1,0 +1,37 @@
+.track {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 2px;
+	z-index: 2;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+/* Creeps toward the end without reaching it: the bar only says the page is
+ * coming, and the page itself replaces it when it arrives. */
+.fill {
+	height: 100%;
+	width: 85%;
+	background-color: var(--ctd-accent);
+	transform-origin: left;
+	animation: navigation-progress 4s cubic-bezier(0.1, 0.6, 0.2, 1) both;
+}
+
+@keyframes navigation-progress {
+	from {
+		transform: scaleX(0);
+	}
+	to {
+		transform: scaleX(1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fill {
+		animation: none;
+		width: 100%;
+		opacity: 0.5;
+	}
+}

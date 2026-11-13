@@ -9,7 +9,10 @@ import { BookPage } from "@/components/pages/EditBook";
 import { Button, Spinner } from "@/components/ui";
 import { deleteBookCopy } from "@/lib/delete-book-title";
 import { tagListChanged } from "@/lib/domain/tag";
-import { useEditBookData } from "@/lib/hooks/use-edit-book-data";
+import {
+	preloadEditBook,
+	useEditBookData,
+} from "@/lib/hooks/use-edit-book-data";
 import { useGoBack } from "@/lib/hooks/use-go-back";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { BookDeletion } from "@/lib/services/library";
@@ -56,7 +59,7 @@ const EditBookRoute = () => {
 	// Scoped fetches: this route loads exactly its own book and the tag
 	// vocabulary (for the tag autocomplete) — never the whole library.
 	const { book, allTagList, loading, error, refreshBook, refreshTags } =
-		useEditBookData(bookId);
+		useEditBookData(bookId, Route.useLoaderData());
 	const allAuthorList = useAuthors();
 
 	const onSave = useCallback(
@@ -199,4 +202,11 @@ const EditBookRoute = () => {
 
 export const Route = createFileRoute("/books/$bookId")({
 	component: EditBookRoute,
+	// The previous page stays up until the book is in, so opening one never
+	// flashes an empty page; the navigation bar covers a slow fetch.
+	loader: ({ params }) => preloadEditBook(params.bookId),
+	// Never show a cached book from an earlier visit while refetching.
+	gcTime: 0,
+	// A full-page spinner only if the fetch is far slower than expected.
+	pendingMs: 5000,
 });

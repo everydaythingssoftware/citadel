@@ -55,6 +55,7 @@
 }
 
 .main {
+	position: relative;
 	display: grid;
 	grid-template-rows: 1fr;
 	flex: 1;
