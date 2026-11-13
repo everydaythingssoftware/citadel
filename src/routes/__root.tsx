@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useState } from "react";
+import { NavigationProgress } from "@/components/atoms/NavigationProgress";
 import { F7SidebarLeft } from "@/components/icons/F7SidebarLeft";
 import { AddBookButton, AddBookProvider } from "@/components/organisms/AddBook";
 import {
@@ -16,6 +17,7 @@ import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton } from "@/components/ui";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
+import { useNavigationPending } from "@/lib/hooks/use-navigation-pending";
 import { usePlatform } from "@/lib/platform/context";
 import classes from "./root.module.css";
 
@@ -30,6 +32,8 @@ const Root = () => {
 	const { location } = useRouterState();
 	const platform = usePlatform();
 	const mobileOpened = mobileOpenedOn === location;
+	// A page whose data comes back within a frame or two shows no bar.
+	const navigationPending = useNavigationPending(50);
 	useNativeThemeSync();
 	// Self-disables in the settings window (/settings pathname check inside).
 	useAppKeymap();
@@ -88,6 +92,7 @@ const Root = () => {
 					)}
 
 					<main className={classes.main}>
+						<NavigationProgress visible={navigationPending} />
 						<div className={classes.content}>
 							<Outlet />
 						</div>
