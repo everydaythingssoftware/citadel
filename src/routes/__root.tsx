@@ -5,7 +5,7 @@ import {
 	useRouterState,
 } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { NavigationProgress } from "@/components/atoms/NavigationProgress";
 import { F7SidebarLeft } from "@/components/icons/F7SidebarLeft";
 import { AddBookButton, AddBookProvider } from "@/components/organisms/AddBook";
@@ -35,11 +35,8 @@ const Root = () => {
 	const platform = usePlatform();
 	const mobileOpened = mobileOpenedOn === location;
 	const closeMobile = useCallback(() => setMobileOpenedOn(null), []);
-	const navRef = useRef<HTMLElement>(null);
-	const scrimRef = useRef<HTMLButtonElement>(null);
-	useSwipeToClose({
-		panelRef: navRef,
-		scrimRef,
+	const sidebarSwipe = useSwipeToClose({
+		edge: "left",
 		enabled: mobileOpened,
 		onClose: closeMobile,
 		reducedMotion: usePrefersReducedMotion(),
@@ -90,7 +87,7 @@ const Root = () => {
 				</header>
 
 				<div className={classes.body}>
-					<nav ref={navRef} className={classes.nav}>
+					<nav ref={sidebarSwipe.panelRef} className={classes.nav}>
 						<Sidebar />
 					</nav>
 					{mobileOpened && (
@@ -98,7 +95,7 @@ const Root = () => {
 							type="button"
 							tabIndex={-1}
 							aria-label="Close sidebar"
-							ref={scrimRef}
+							ref={sidebarSwipe.scrimRef}
 							className={classes.scrim}
 							onClick={closeMobile}
 						/>
