@@ -5,7 +5,7 @@ import {
 	useRouterState,
 } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { NavigationProgress } from "@/components/atoms/NavigationProgress";
 import { F7SidebarLeft } from "@/components/icons/F7SidebarLeft";
 import { AddBookButton, AddBookProvider } from "@/components/organisms/AddBook";
@@ -18,6 +18,8 @@ import { IconButton } from "@/components/ui";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
 import { useNavigationPending } from "@/lib/hooks/use-navigation-pending";
+import { usePrefersReducedMotion } from "@/lib/hooks/use-reduced-motion";
+import { useSwipeToClose } from "@/lib/hooks/use-swipe-to-close";
 import { usePlatform } from "@/lib/platform/context";
 import classes from "./root.module.css";
 
@@ -32,6 +34,16 @@ const Root = () => {
 	const { location } = useRouterState();
 	const platform = usePlatform();
 	const mobileOpened = mobileOpenedOn === location;
+	const closeMobile = useCallback(() => setMobileOpenedOn(null), []);
+	const navRef = useRef<HTMLElement>(null);
+	const scrimRef = useRef<HTMLButtonElement>(null);
+	useSwipeToClose({
+		panelRef: navRef,
+		scrimRef,
+		enabled: mobileOpened,
+		onClose: closeMobile,
+		reducedMotion: usePrefersReducedMotion(),
+	});
 	// A page whose data comes back within a frame or two shows no bar.
 	const navigationPending = useNavigationPending(50);
 	useNativeThemeSync();
@@ -78,7 +90,7 @@ const Root = () => {
 				</header>
 
 				<div className={classes.body}>
-					<nav className={classes.nav}>
+					<nav ref={navRef} className={classes.nav}>
 						<Sidebar />
 					</nav>
 					{mobileOpened && (
@@ -86,8 +98,9 @@ const Root = () => {
 							type="button"
 							tabIndex={-1}
 							aria-label="Close sidebar"
+							ref={scrimRef}
 							className={classes.scrim}
-							onClick={() => setMobileOpenedOn(null)}
+							onClick={closeMobile}
 						/>
 					)}
 
