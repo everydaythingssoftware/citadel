@@ -23,6 +23,21 @@ const spineBackground = `
  * Cap on a fluid cover's height (the grid's "shelf" height). Real covers keep
  * their aspect ratio inside a box of `100% of the cell × FLUID_MAX_HEIGHT`.
  */
+interface CoverSizeHint {
+	width: number;
+	height: number;
+}
+
+/**
+ * The box a fluid cover of this size settles into, set on its wrapper up
+ * front: an image's width/height attributes don't reserve space while CSS
+ * sizes it `auto`.
+ */
+const fluidBoxFor = ({ width, height }: CoverSizeHint) => ({
+	width: `min(100%, ${(FLUID_MAX_HEIGHT_PX * width) / height}px, ${width}px)`,
+	aspectRatio: `${width} / ${height}`,
+});
+
 const FLUID_MAX_HEIGHT_PX = 230;
 // Placeholder art keeps the classic 133:200 book proportions.
 const PLACEHOLDER_RATIO = 133 / 200;
@@ -53,6 +68,7 @@ const BookCoverUsingImage = ({
 	fluid,
 	interactive,
 	thumb,
+	sizeHint,
 	...props
 }: {
 	book: LibraryBookWithCoverImage;
@@ -60,6 +76,7 @@ const BookCoverUsingImage = ({
 	fluid: boolean;
 	interactive: boolean;
 	thumb?: CoverThumbnail;
+	sizeHint?: CoverSizeHint;
 } & HTMLAttributes<HTMLDivElement>) => {
 	const [pointerInside, setPointerInside] = useState(false);
 	const isHovering = interactive && pointerInside;
@@ -88,7 +105,11 @@ const BookCoverUsingImage = ({
 				// In fluid mode the wrapper shrink-wraps the constrained image
 				// so the radius/shadow/spine hug the cover exactly.
 				...(fluid
-					? { display: "inline-block", maxWidth: "100%" }
+					? {
+							display: "inline-block",
+							maxWidth: "100%",
+							...(sizeHint && fluidBoxFor(sizeHint)),
+						}
 					: { width: "133px" }),
 				position: "relative",
 				borderRadius: "4px",
@@ -111,8 +132,8 @@ const BookCoverUsingImage = ({
 				// Reserve the exact box from the thumbnail's known dimensions so
 				// the row height is right before the image decodes (no shelf
 				// shift on mount).
-				width={thumb?.width}
-				height={thumb?.height}
+				width={thumb?.width ?? sizeHint?.width}
+				height={thumb?.height ?? sizeHint?.height}
 				// Skip incremental paint: whole frames only (no half-decoded
 				// scanline strips during fast scroll).
 				decoding="async"
@@ -134,6 +155,7 @@ const BookCoverUsingImage = ({
 								maxHeight: `${FLUID_MAX_HEIGHT_PX}px`,
 								width: "auto",
 								height: "auto",
+								...(sizeHint && { width: "100%" }),
 							}
 						: { width: "133px", height: "auto" }),
 					display: "block",
@@ -278,6 +300,7 @@ export const BookCover = ({
 	disableFade = false,
 	fluid = false,
 	thumb,
+	sizeHint,
 	...props
 }: {
 	book: LibraryBook;
@@ -293,6 +316,11 @@ export const BookCover = ({
 	 * reserve the exact row height.
 	 */
 	thumb?: CoverThumbnail;
+	/**
+	 * The full-size cover's dimensions, when known: reserves its box before
+	 * it decodes, so loading it doesn't push the content below it down.
+	 */
+	sizeHint?: CoverSizeHint;
 } & HTMLAttributes<HTMLDivElement>) => {
 	// Only covers that respond to a press lift on hover; display-only covers
 	// (details sidebar, edit page) stay still.
@@ -311,6 +339,7 @@ export const BookCover = ({
 				fluid={fluid}
 				interactive={interactive}
 				thumb={thumb}
+				sizeHint={sizeHint}
 				{...props}
 			/>
 		);

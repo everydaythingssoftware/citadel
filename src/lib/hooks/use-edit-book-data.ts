@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { LibraryBook } from "@/bindings";
+import type { BookCustomValue, CustomColumnDef, LibraryBook } from "@/bindings";
+import { editableCustomColumns } from "@/lib/custom-columns";
 import { sortedTagNames } from "@/lib/domain/tag";
 import type { Library } from "@/lib/services/library";
 import {
@@ -9,13 +10,64 @@ import {
 	useLibraryStore,
 } from "@/stores/library/store";
 
+export interface CoverSize {
+	width: number;
+	height: number;
+}
+
+/** The book's editable custom columns and their values. */
+export interface PreloadedCustomFields {
+	bookId: string;
+	columns: CustomColumnDef[];
+	values: BookCustomValue[];
+}
+
 /** What the route's loader fetched before the page was shown. */
 export interface PreloadedEditBook {
 	bookId: string;
 	library: Library;
 	book: LibraryBook;
 	allTagList: string[];
+	/** Null when they couldn't be read: the page loads them itself. */
+	customFields: PreloadedCustomFields | null;
+	/** The cover's real size, so its box is reserved before it paints. */
+	coverSize: CoverSize | null;
 }
+
+/**
+ * A cover on a slow connection shouldn't hold the page back for long; past
+ * this, the page shows with the cover's box reserved from its thumbnail.
+ */
+const COVER_WAIT_MS = 1500;
+
+const loadCoverSize = async (
+	url: string | undefined,
+): Promise<CoverSize | null> => {
+	if (url === undefined) return null;
+	const image = new Image();
+	image.src = url;
+	const timeout = new Promise<void>((resolve) =>
+		setTimeout(resolve, COVER_WAIT_MS),
+	);
+	await Promise.race([image.decode().catch(() => undefined), timeout]);
+	return image.naturalWidth > 0 && image.naturalHeight > 0
+		? { width: image.naturalWidth, height: image.naturalHeight }
+		: null;
+};
+
+const loadCustomFields = async (
+	library: Library,
+	bookId: string,
+): Promise<PreloadedCustomFields | null> => {
+	try {
+		const columns = editableCustomColumns(await library.listCustomColumns());
+		const values =
+			columns.length > 0 ? await library.getCustomValuesForBook(bookId) : [];
+		return { bookId, columns, values };
+	} catch {
+		return null;
+	}
+};
 
 /**
  * Fetches the page's data before the route commits, so the previous page
@@ -33,7 +85,18 @@ export const preloadEditBook = async (
 			library.getBook(bookId),
 			library.listTags(),
 		]);
-		return { bookId, library, book, allTagList: sortedTagNames(tags) };
+		const [customFields, coverSize] = await Promise.all([
+			loadCustomFields(library, bookId),
+			loadCoverSize(book.cover_image?.url),
+		]);
+		return {
+			bookId,
+			library,
+			book,
+			allTagList: sortedTagNames(tags),
+			customFields,
+			coverSize,
+		};
 	} catch {
 		return null;
 	}
@@ -44,6 +107,10 @@ export interface EditBookData {
 	book: LibraryBook | null;
 	/** Full tag vocabulary for the tag autocomplete, locale-sorted. */
 	allTagList: string[];
+	/** Custom fields the loader read with the book, if it did. */
+	customFields: PreloadedCustomFields | null;
+	/** The cover's real size, if the loader read it. */
+	coverSize: CoverSize | null;
 	/** True during the initial fetch for a bookId; refreshes stay quiet. */
 	loading: boolean;
 	error: string | null;
@@ -133,5 +200,14 @@ export const useEditBookData = (
 		};
 	}, [seed, ready, library, bookId]);
 
-	return { book, allTagList, loading, error, refreshBook, refreshTags };
+	return {
+		book,
+		allTagList,
+		customFields: seed?.customFields ?? null,
+		coverSize: seed?.coverSize ?? null,
+		loading,
+		error,
+		refreshBook,
+		refreshTags,
+	};
 };

@@ -1,10 +1,13 @@
 import clsx from "clsx";
-import { useLibraryActions, useLibraryStore } from "@/stores/library/store";
+import {
+	useCoverThumb,
+	useLibraryActions,
+	useLibraryStore,
+} from "@/stores/library/store";
 import DOMPurify from "dompurify";
 import {
 	type AnimationEvent,
 	type FormEvent,
-	type HTMLProps,
 	type ReactNode,
 	useCallback,
 	useEffect,
@@ -29,6 +32,10 @@ import {
 	Tooltip,
 } from "@/components/ui";
 import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
+import type {
+	CoverSize,
+	PreloadedCustomFields,
+} from "@/lib/hooks/use-edit-book-data";
 import { deleteBookCopy, deleteBookDialogTitle } from "@/lib/delete-book-title";
 import {
 	type CustomFieldValue,
@@ -126,6 +133,10 @@ interface BookPageProps {
 	book: LibraryBook;
 	/** Leaves the page for wherever it was opened from. */
 	onBack: () => void;
+	/** Custom fields read with the book, so they show with the rest. */
+	initialCustomFields?: PreloadedCustomFields | null;
+	/** The cover's real size, so its box is reserved before it paints. */
+	coverSize?: CoverSize | null;
 	/** Resolves with the new author, or nothing if it couldn't be added. */
 	onCreateAuthor: (authorName: string) => Promise<LibraryAuthor | undefined>;
 	onSave: (bookUpdate: BookUpdate) => Promise<void>;
@@ -146,6 +157,8 @@ export const BookPage = ({
 	allTagList,
 	book,
 	onBack,
+	initialCustomFields = null,
+	coverSize = null,
 	onCreateAuthor,
 	onSave,
 	onUpsertIdentifier,
@@ -162,6 +175,8 @@ export const BookPage = ({
 				onCreateAuthor={onCreateAuthor}
 				book={book}
 				onBack={onBack}
+				initialCustomFields={initialCustomFields}
+				coverSize={coverSize}
 				onSave={onSave}
 				onDeleteIdentifier={onDeleteIdentifier}
 				onReloadBooks={onReloadBooks}
@@ -250,8 +265,16 @@ const BackChevron = () => (
 	</svg>
 );
 
-const Cover = ({ book }: { book: LibraryBook } & HTMLProps<HTMLDivElement>) => {
-	return <BookCover book={book} disableFade fluid />;
+const Cover = ({
+	book,
+	size,
+}: {
+	book: LibraryBook;
+	size: CoverSize | null;
+}) => {
+	const thumb = useCoverThumb(book.id);
+	const sizeHint = size ?? thumb;
+	return <BookCover book={book} disableFade fluid sizeHint={sizeHint} />;
 };
 
 interface EditBookFormValues {
@@ -410,6 +433,8 @@ const EditBookForm = ({
 	allTagList,
 	book,
 	onBack,
+	initialCustomFields,
+	coverSize,
 	onCreateAuthor: createAuthor,
 	onSave,
 	onUpsertIdentifier,
@@ -420,6 +445,8 @@ const EditBookForm = ({
 	allTagList: string[];
 	book: LibraryBook;
 	onBack: () => void;
+	initialCustomFields: PreloadedCustomFields | null;
+	coverSize: CoverSize | null;
 	onCreateAuthor: (name: string) => Promise<LibraryAuthor | undefined>;
 	onSave: (update: BookUpdate) => Promise<void>;
 	onDeleteIdentifier: (bookId: string, identifierId: number) => Promise<void>;
@@ -514,13 +541,23 @@ const EditBookForm = ({
 		[allAuthorList],
 	);
 
-	const [customColumns, setCustomColumns] = useState<CustomColumnDef[]>([]);
-	const [customSnapshot, setCustomSnapshot] = useState<
-		Record<string, CustomFieldValue>
-	>({});
-	const [customValues, setCustomValues] = useState<
-		Record<string, CustomFieldValue>
-	>({});
+	// Fields the route read with the book start filled in, so the section
+	// shows with the rest of the page instead of popping in after it.
+	const preloadedFields =
+		initialCustomFields?.bookId === book.id ? initialCustomFields : null;
+	const [initialFieldValues] = useState(() =>
+		preloadedFields === null
+			? {}
+			: buildCustomFieldValues(preloadedFields.columns, preloadedFields.values),
+	);
+	const [customColumns, setCustomColumns] = useState<CustomColumnDef[]>(
+		preloadedFields?.columns ?? [],
+	);
+	const [customSnapshot, setCustomSnapshot] =
+		useState<Record<string, CustomFieldValue>>(initialFieldValues);
+	const [customValues, setCustomValues] =
+		useState<Record<string, CustomFieldValue>>(initialFieldValues);
+	const fieldsLoadedFor = useRef(preloadedFields?.bookId ?? null);
 	const [customColumnError, setCustomColumnError] = useState<string | null>(
 		null,
 	);
@@ -553,6 +590,8 @@ const EditBookForm = ({
 	);
 
 	useEffect(() => {
+		if (fieldsLoadedFor.current === book.id) return;
+		fieldsLoadedFor.current = null;
 		let cancelled = false;
 		loadCustomColumns(() => cancelled).catch((error: unknown) => {
 			if (cancelled) {
@@ -570,7 +609,7 @@ const EditBookForm = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [loadCustomColumns]);
+	}, [loadCustomColumns, book.id]);
 
 	const customChanges = useMemo(
 		() => diffCustomValues(customColumns, customSnapshot, customValues),
@@ -974,7 +1013,7 @@ const EditBookForm = ({
 			</div>
 			<div className={styles.layout}>
 				<div className={styles.sideColumn}>
-					<Cover book={book} />
+					<Cover book={book} size={coverSize} />
 					<BookActions
 						files={book.file_list}
 						isRead={values.isRead}
