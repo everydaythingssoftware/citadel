@@ -44,9 +44,16 @@ tauri-plugin-store = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-webdriver-automation = "0.1.3"
+tauri-plugin-window-state = "2"
+base64 = "0.22"
 image = { version = "0.25.6", default-features = false, features = ["jpeg", "png"] }
 tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 trash = "5.2.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSFileManager", "NSGeometry", "NSString", "NSURL"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSBitmapImageRep", "NSGraphics", "NSGraphicsContext", "NSImage", "NSImageRep", "NSWorkspace"] }
 
 [dev-dependencies]
 axum = "0.8.9"

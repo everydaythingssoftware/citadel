@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { dragOutGuard } from "@/lib/drag-out-guard";
 import { usePlatform } from "@/lib/platform/context";
 import type { BookSource } from "@/lib/uploads/queue";
 
@@ -29,6 +30,11 @@ export const useFileDrag = ({
 		let disposed = false;
 		const unlisten = platform.window.onFileDrag((event) => {
 			if (disposed) return;
+			// Books dragged out and dropped back would import as copies.
+			if (dragOutGuard.active()) {
+				setDragging(false);
+				return;
+			}
 			setDragging(event.type === "enter");
 			if (event.type === "drop" && event.files.length > 0)
 				onDropRef.current(event.files);
@@ -51,7 +57,7 @@ export const useFileDrag = ({
 			setDragging(false);
 		};
 		const onEnter = (event: DragEvent) => {
-			if (!carriesFiles(event)) return;
+			if (!carriesFiles(event) || dragOutGuard.active()) return;
 			event.preventDefault();
 			depth += 1;
 			setDragging(true);
@@ -70,6 +76,7 @@ export const useFileDrag = ({
 			if (!carriesFiles(event)) return;
 			event.preventDefault();
 			reset();
+			if (dragOutGuard.active()) return;
 			const files = Array.from(event.dataTransfer?.files ?? []);
 			if (files.length > 0) onDropRef.current(files);
 		};

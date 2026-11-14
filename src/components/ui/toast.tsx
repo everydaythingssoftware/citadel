@@ -179,7 +179,9 @@ export const Toaster = () => {
 					<div className={styles.text}>
 						<div className={styles.title}>{item.title}</div>
 						{item.message && (
-							<div className={styles.message}>{item.message}</div>
+							<div className={styles.message} data-selectable>
+								{item.message}
+							</div>
 						)}
 					</div>
 					{!item.loading && (

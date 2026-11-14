@@ -8,6 +8,7 @@ import {
 	queueReducer,
 } from "@/lib/uploads/queue";
 import { createUploadRunner, type UploadRunner } from "@/lib/uploads/runner";
+import { clearUndoHistory } from "@/stores/undo/store";
 
 interface UploadsState {
 	queue: QueueState;
@@ -60,7 +61,11 @@ export const useUploadsStore = create<UploadsState & UploadsActions>()(
 				uploads,
 				getState: () => get().queue,
 				dispatch: (action) => get().dispatch(action),
-				onBookAdded,
+				// Adding a book can't be undone (src/lib/undo-history.ts).
+				onBookAdded: () => {
+					clearUndoHistory();
+					onBookAdded();
+				},
 			});
 			set({ queue: emptyQueue, runner, reviewKey: null });
 			void runner.restore();

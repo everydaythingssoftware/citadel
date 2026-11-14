@@ -23,7 +23,7 @@
 
 /* Plain :focus-within matches the old input:focus treatment. */
 .wrapper:focus-within {
-	border-color: var(--ctd-accent);
+	border-color: var(--ctd-focus-border);
 	box-shadow: var(--ctd-focus-shadow);
 }
 
@@ -47,7 +47,7 @@
 	appearance: none;
 	flex: 1;
 	min-width: 4ch;
-	height: 22px;
+	height: calc(var(--ctd-control-height) - 2px);
 	padding: 0;
 	font-family: inherit;
 	font-size: 13px;

@@ -1,51 +1,55 @@
 /*
- * Sidebar chrome. Hover backgrounds for nav rows and the settings gear live
- * in styles.css (.ctd-nav-link / .ctd-settings-button); active rows are
- * marked with a data-active attribute, the same contract those global rules
- * already key on.
+ * Sidebar chrome, Finder-sized on desktop: 13px rows about 28px tall, small
+ * sentence-case section headers in soft ink. Active rows are marked with
+ * data-active; touch screens get taller rows.
  */
 .root {
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
 	height: 100%;
-	gap: 16px;
-	padding: 1rem;
+	gap: 12px;
+	padding: 6px 10px 10px;
+	box-sizing: border-box;
 }
 
 .sections {
 	display: flex;
 	flex-direction: column;
-	gap: 16px;
+	gap: 14px;
 	min-width: 0;
+	overflow-y: auto;
 }
 
 .section {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: 1px;
+	min-width: 0;
 }
 
 .sectionLabel {
-	/* Aligns with nav-row label text (0.65rem item inset); the extra bottom
-	   margin separates the header from its rows without making the row rhythm
-	   itself any looser. */
-	margin: 0 0 4px;
-	padding-inline: 0.65rem;
-	font-size: 12px;
+	margin: 0;
+	padding: 4px 8px 3px;
+	border-radius: var(--ctd-radius-control);
+	font-size: 11px;
 	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
+	line-height: 1.3;
 	color: var(--ctd-ink-soft);
+}
+
+.sectionLabel:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
 }
 
 .navLink {
 	display: flex;
 	align-items: center;
-	min-height: 34px;
-	padding: 0.4rem 0.65rem;
+	min-height: 28px;
+	padding: 0 8px;
 	border-radius: var(--ctd-radius-control);
-	font-size: 14px;
+	font-size: 13px;
 	line-height: 1.2;
 	color: var(--ctd-ink);
 	text-decoration: none;
@@ -57,42 +61,28 @@
 .navLink[data-active] {
 	background-color: var(--ctd-nav-active-bg);
 	color: var(--ctd-nav-active-text);
+	font-weight: 500;
 }
 
-.footer {
-	flex-direction: row;
-	align-items: center;
-	gap: 4px;
+/* Hover and focus for rows; active rows keep their own fill. */
+.navLink:not([data-active]):hover,
+.navLink:not([data-active]):focus-visible {
+	background-color: var(--ctd-nav-hover-bg);
 }
 
-/* size 28 keeps the gear's hit area comfortably clickable; hover background
-   comes from .ctd-settings-button in styles.css. */
-.settingsButton {
-	width: 28px;
-	height: 28px;
-	color: var(--ctd-ink);
+.navLink:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
 }
 
-/* The rename/delete controls are siblings of the shelf's nav button
-   (interactive content inside a <button> is invalid HTML), overlaid on its
-   right edge and revealed on hover or keyboard focus. */
-.shelfRow {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	min-width: 0;
-}
-
-/* Shelf rows are <button>s sharing the .navLink look; reserve room on the
-   right for the hover controls so long names ellipsize instead of running
-   under them. */
+/* Shelf rows are <button>s sharing the .navLink look. */
 .shelfNavLink {
 	width: 100%;
 	border: none;
 	background: transparent;
 	font: inherit;
+	font-size: 13px;
 	text-align: left;
-	padding-right: 3.4rem;
 }
 
 .shelfName {
@@ -103,33 +93,81 @@
 	text-overflow: ellipsis;
 }
 
-.shelfControls {
-	position: absolute;
-	top: 50%;
-	right: 0.3rem;
-	transform: translateY(-50%);
-	display: flex;
-	align-items: center;
-	gap: 2px;
-	opacity: 0;
-	transition: opacity 140ms ease;
-}
-
-.shelfRow:hover .shelfControls,
-.shelfRow:focus-within .shelfControls {
-	opacity: 1;
-}
-
-.shelfControlButton {
-	width: 22px;
-	height: 22px;
-	color: var(--ctd-ink-soft);
+.renameInput {
+	/* The row's footprint, so renaming doesn't shift the list. */
+	min-height: 28px;
 	font-size: 13px;
 }
 
-.renameInput {
-	/* Match the nav-row footprint so entering rename mode doesn't shift the
-	   list. */
-	min-height: 34px;
-	font-size: 14px;
+.footer {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.footerBar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 28px;
+}
+
+.signOut {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 28px;
+	padding: 0 8px;
+	border: none;
+	border-radius: var(--ctd-radius-control);
+	background: transparent;
+	font: inherit;
+	font-size: 13px;
+	color: var(--ctd-ink);
+	margin-right: auto;
+}
+
+.signOut:hover,
+.signOut:focus-visible {
+	background-color: var(--ctd-nav-hover-bg);
+}
+
+.signOut:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
+}
+
+.settingsButton {
+	width: 28px;
+	height: 28px;
+	margin-left: auto;
+	color: var(--ctd-ink);
+}
+
+.settingsButton:hover {
+	background-color: var(--ctd-nav-hover-bg);
+}
+
+@media (pointer: coarse) {
+	.navLink,
+	.shelfNavLink,
+	.signOut {
+		min-height: 40px;
+		font-size: 15px;
+	}
+
+	.renameInput {
+		min-height: 40px;
+	}
+
+	.sectionLabel {
+		font-size: 13px;
+		padding-top: 6px;
+	}
+
+	.settingsButton {
+		width: 40px;
+		height: 40px;
+	}
 }

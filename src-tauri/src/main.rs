@@ -19,9 +19,11 @@ pub mod libs {
 mod library;
 mod menu;
 mod metadata;
+mod native_files;
 mod opds;
 mod recovery;
 mod state;
+mod window;
 
 fn command_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
@@ -29,6 +31,7 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::registry::LibrariesChanged,
             app_updates::SoftwareUpdateChanged,
             app_updates::ShowSoftwareUpdate,
+            menu::MenuCommandChosen,
         ])
         .commands(collect_commands![
             // Library and initialization commands
@@ -109,6 +112,11 @@ fn command_builder() -> Builder<tauri::Wry> {
             // Window commands
             menu::clb_cmd_open_settings,
             menu::clb_cmd_open_software_update,
+            menu::clb_cmd_set_menu_state,
+            // The system's view of book files (CDL-90)
+            native_files::clb_query_default_app,
+            native_files::clb_query_file_icon,
+            native_files::clb_cmd_quick_look,
         ])
 }
 
@@ -136,7 +144,10 @@ fn run_tauri_backend() -> std::io::Result<()> {
     let app = tauri_builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(window::state_plugin())
         .manage(state)
+        .manage(menu::MenuController::default())
+        .on_window_event(window::handle_window_event)
         .manage(metadata::client())
         .register_asynchronous_uri_scheme_protocol(
             metadata::COVER_SCHEME,
@@ -193,42 +204,14 @@ fn run_tauri_backend() -> std::io::Result<()> {
             app.manage(account);
             app.manage(sharing);
 
-            // Native macOS menu bar: app menu with Settings…, File > Add
-            // Book…, and the standard Edit/View/Window items.
-            #[cfg(target_os = "macos")]
-            {
-                let app_menu = menu::build_menu(app.handle())?;
-                app.set_menu(app_menu)?;
-                app.on_menu_event(menu::handle_menu_event);
-            }
+            // The macOS menu bar (Citadel · Library · Edit · Book · View ·
+            // Go · Window · Help); Windows and Linux keep none.
+            menu::install(app.handle())?;
 
-            // Get the main window that was created from config and center it.
-            if let Some(main_window) = app.get_webview_window("main") {
-                main_window.center().unwrap();
-
-                // Glass behind the transparent webview. The `windowEffects`
-                // config on the window never attaches (bare window backing
-                // shows through instead); applying the same effects after the
-                // window exists does work.
+            if let Some(main_window) = app.get_webview_window(window::MAIN_WINDOW) {
+                window::place_main_window(&main_window);
                 #[cfg(target_os = "macos")]
-                {
-                    use tauri::{
-                        utils::config::WindowEffectsConfig,
-                        window::{Effect, EffectState},
-                    };
-                    // Popover is noticeably clearer than Sidebar (which
-                    // smears backdrop color into a uniform gray); the user
-                    // wants desktop color to actually read through.
-                    if let Err(err) = main_window.set_effects(WindowEffectsConfig {
-                        effects: vec![Effect::Popover],
-                        state: Some(EffectState::FollowsWindowActiveState),
-                        radius: None,
-                        color: None,
-                        interactive: false,
-                    }) {
-                        eprintln!("window effects unavailable: {err}");
-                    }
-                }
+                window::apply_glass(&main_window);
             }
 
             Ok(())
@@ -248,6 +231,11 @@ fn run_tauri_backend() -> std::io::Result<()> {
     const EXITING: u8 = 2;
     let exit_phase = Arc::new(AtomicU8::new(RUNNING));
     app.run(move |app_handle, event| {
+        // The Dock icon brings back the library window closed with ⌘W.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = event {
+            window::show_main_window(app_handle);
+        }
         if let tauri::RunEvent::Exit = event {
             // ⌘Q on macOS reaches Exit without ExitRequested, so sharing
             // hasn't stopped yet; give its downloads a moment to finish.

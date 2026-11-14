@@ -13,7 +13,8 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	height: 20px;
+	/* The root's 2px padding and 1px border make up the control height. */
+	height: calc(var(--ctd-control-height) - 6px);
 	min-width: 30px;
 	padding: 0 9px;
 	font-size: 12px;

@@ -9,6 +9,8 @@ export interface KeymapEventLike {
 export interface EditableTargetLike {
 	tagName?: string;
 	isContentEditable?: boolean;
+	/** An `<input>`'s type: checkboxes and buttons take no typing. */
+	type?: string;
 }
 
 export interface KeymapDispatchEventLike extends KeymapEventLike {
@@ -35,6 +37,13 @@ export const parseChord = (chord: string): ParsedChord => {
 	};
 };
 
+const KEY_NAMES: Record<string, string> = { " ": "space" };
+
+const keyName = (key: string): string => {
+	const lower = key.toLowerCase();
+	return KEY_NAMES[lower] ?? lower;
+};
+
 export const eventMatchesChord = (
 	event: KeymapEventLike,
 	chord: string,
@@ -42,7 +51,7 @@ export const eventMatchesChord = (
 	const parsed = parseChord(chord);
 	const modPressed = event.metaKey || event.ctrlKey;
 	return (
-		event.key.toLowerCase() === parsed.key &&
+		keyName(event.key) === parsed.key &&
 		modPressed === parsed.mod &&
 		event.shiftKey === parsed.shift &&
 		event.altKey === parsed.alt
@@ -51,12 +60,26 @@ export const eventMatchesChord = (
 
 const EDITABLE_TAG_NAMES = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 
+const UNTYPED_INPUT_TYPES = new Set([
+	"button",
+	"checkbox",
+	"color",
+	"file",
+	"image",
+	"radio",
+	"range",
+	"reset",
+	"submit",
+]);
+
 export const isEditableTarget = (
 	target: EditableTargetLike | null | undefined,
 ): boolean => {
 	if (!target) return false;
 	if (target.isContentEditable) return true;
 	const tagName = target.tagName?.toUpperCase();
+	if (tagName === "INPUT" && target.type !== undefined)
+		return !UNTYPED_INPUT_TYPES.has(target.type.toLowerCase());
 	return tagName !== undefined && EDITABLE_TAG_NAMES.has(tagName);
 };
 

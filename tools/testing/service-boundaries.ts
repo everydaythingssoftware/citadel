@@ -62,7 +62,15 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbCmdRevokeOpdsDeviceKey",
 		"clbCmdRenameOpdsUser",
 	],
-	"src/lib/platform/window/tauri.ts": ["clbCmdOpenSettings"],
+	"src/lib/platform/window/tauri.ts": [
+		"clbCmdOpenSettings",
+		"clbQueryFileIcon",
+	],
+	"src/lib/platform/menu/tauri.ts": ["clbCmdSetMenuState"],
+	"src/lib/platform/file-opener/tauri.ts": [
+		"clbQueryDefaultApp",
+		"clbCmdQuickLook",
+	],
 	"src/lib/platform/recovery/tauri.ts": [
 		"clbQueryDatabaseProblem",
 		"clbQueryDatabaseRestored",
@@ -80,6 +88,7 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 /** Generated tauri-specta events, owned like commands. */
 export const eventsByAdapter: Record<string, readonly string[]> = {
 	"src/lib/services/library-catalog/tauri.ts": ["librariesChanged"],
+	"src/lib/platform/menu/tauri.ts": ["menuCommandChosen"],
 	"src/lib/platform/updates/tauri.ts": [
 		"softwareUpdateChanged",
 		"showSoftwareUpdate",

@@ -54,7 +54,6 @@
 	font-size: 12px;
 	line-height: 1.4;
 	font-weight: 600;
-	text-transform: uppercase;
 	color: var(--ctd-ink-soft);
 	white-space: nowrap;
 }
@@ -97,11 +96,9 @@
 	padding: 0 8px;
 	/* Capsule clamps to half the 16px height, matching the old 8px. */
 	border-radius: var(--ctd-radius-capsule);
-	font-size: 9px;
+	font-size: 10.5px;
 	line-height: 16px;
-	font-weight: 700;
-	letter-spacing: 0.02em;
-	text-transform: uppercase;
+	font-weight: 600;
 	white-space: nowrap;
 	color: var(--ctd-danger-ink);
 	background-color: oklch(from var(--ctd-danger-bg) l c h / 0.15);
@@ -200,16 +197,19 @@
 	}
 }
 
-/* Row actions appear with the row's hover or focus; touch keeps them shown. */
+/* With a pointer, the row's actions live in its right-click menu; the
+ * icons show only for keyboard focus, which has no pointer to right-click
+ * with. Touch keeps them shown. */
 @media (hover: hover) {
 	.actions {
 		opacity: 0;
+		pointer-events: none;
 		transition: opacity 120ms ease-out;
 	}
 
-	:global(.ctd-author-row):hover .actions,
-	:global(.ctd-author-row):focus-within .actions {
+	:global(.ctd-author-row):has(:focus-visible) .actions {
 		opacity: 1;
+		pointer-events: auto;
 	}
 }
 

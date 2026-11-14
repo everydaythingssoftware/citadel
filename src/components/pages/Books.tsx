@@ -3,28 +3,45 @@ import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LibraryBook } from "@/bindings";
 import {
+	AlertDialog,
 	Button,
 	Checkbox,
-	Drawer,
-	IconButton,
+	ContextMenu,
 	SearchField,
 	Select,
 	Sheet,
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
+import { safeAsyncEventHandler } from "@/lib/async";
+import { bookCountStatus } from "@/lib/book-count";
+import { primaryLocalPath } from "@/lib/book-files";
 import {
 	BOOK_PAGE_SIZE,
 	type BookGridFilter,
 	serializeBookFilter,
 	sparseBookItems,
 } from "@/lib/book-page-cache";
+import {
+	deleteBooksCopy,
+	deleteBooksDialogTitle,
+} from "@/lib/delete-book-title";
+import { useBookGridInteraction } from "@/lib/hooks/use-book-grid-interaction";
+import {
+	closeBookDetails,
+	openBookDetails,
+	useBookSelection,
+	useBookSelectionStore,
+	useBookSelectionSync,
+	useDeleteBooksDialog,
+} from "@/lib/hooks/use-book-selection";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useEntryScroll } from "@/lib/hooks/use-entry-scroll";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { SCROLL_REGION, scrollRegionAttributes } from "@/lib/navigation";
+import { usePlatform } from "@/lib/platform/context";
 import {
 	type BookRouteFilters,
 	deepLinkClearsQuery,
@@ -47,12 +64,18 @@ import {
 	type LibraryBookSortOrderKey,
 	useLibraryView,
 } from "@/stores/library-view/store";
+import {
+	setShelfSheetOpen,
+	takeFindRequest,
+	useMenuRequests,
+} from "@/stores/menu-requests/store";
 import { createSmartShelf } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
 import { F7Bookmark } from "../icons/F7Bookmark";
+import { bookCardDomId } from "../atoms/BookCard";
 import { BookGrid, type ScrollToBookIndex } from "../molecules/BookGrid";
 import { EmptyLibrary, EmptyState } from "../molecules/EmptyState";
-import { BookDrawer } from "../organisms/BookDrawer";
+import { BookDetailsDrawer } from "../organisms/BookDrawer";
 import styles from "./Books.module.css";
 
 interface BookSearchOptions {
@@ -228,21 +251,23 @@ export const Books = ({
 		}
 	}, [libraryReady, tag_id, publisher_id, tags, publishers, actions]);
 
-	const [isBookSidebarOpen, setIsBookSidebarOpen] = useState(false);
+	const platform = usePlatform();
+	const isBookSidebarOpen = useBookSelectionStore((s) => s.detailsOpen);
+	const detailsBook = useBookSelectionStore((s) => s.detailsBook);
+	// The drawer follows the book's latest copy (marked finished from the
+	// grid, say) while it is in the loaded pages.
+	const selectedSidebarBook: LibraryBook | null =
+		detailsBook === null
+			? null
+			: (books.find((candidate) => candidate?.id === detailsBook.id) ??
+				detailsBook);
 
-	const [selectedSidebarBook, setSelectedSidebarBook] =
-		useState<LibraryBook | null>(null);
-	const onBookOpen = useCallback(
-		(bookId: LibraryBook["id"]) => {
-			const book = books.find(
-				(candidate) => candidate !== undefined && candidate.id === bookId,
-			);
-			if (!book) return;
-			setSelectedSidebarBook(book);
-			setIsBookSidebarOpen(true);
-		},
-		[books],
-	);
+	useBookSelectionSync({ books, resetKey: cache.key });
+	const { selection, selectedCount, isSelected } = useBookSelection();
+	const { cardActions, menu, onBackgroundClick, onGridContextMenu } =
+		useBookGridInteraction(books);
+	const cursorBook =
+		selection.cursor >= 0 ? books[selection.cursor] : undefined;
 
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -276,14 +301,29 @@ export const Books = ({
 		}, []),
 	);
 
-	const { selectedBookId } = useLibraryKeymap({
+	// Edit > Find (⌘F): focus the search, once the page shows.
+	const findPending = useMenuRequests((s) => s.findPending);
+	useEffect(() => {
+		if (!findPending || !takeFindRequest()) return;
+		closeBookDetails();
+		searchInputRef.current?.focus();
+		searchInputRef.current?.select();
+	}, [findPending]);
+
+	useLibraryKeymap({
 		books,
-		resetToken: cache.key,
 		drawerOpened: isBookSidebarOpen,
 		searchInputRef,
 		gridContainerRef,
 		scrollToBookIndexRef,
-		onBookOpen,
+		onBookOpen: openBookDetails,
+		onQuickLook: platform.capabilities.canQuickLook
+			? (book) => {
+					const path = primaryLocalPath(book);
+					if (path !== null)
+						safeAsyncEventHandler(() => platform.fileOpener.quickLook(path))();
+				}
+			: undefined,
 		onClearSearch: () => setQuery(""),
 	});
 
@@ -295,6 +335,7 @@ export const Books = ({
 	// results — never transiently while a new search is still in flight.
 	const noMatches =
 		!loading && queryResolved && total === 0 && (libraryTotal ?? 0) > 0;
+	const showGrid = !emptyLibrary && !noMatches;
 	const trimmedQuery = query.trim();
 
 	const searchTokens = [
@@ -370,7 +411,7 @@ export const Books = ({
 				/>
 				<span className={styles.unreadToggle}>
 					<Checkbox
-						label="Unread only"
+						label="Unread Only"
 						checked={hideRead}
 						onCheckedChange={setHideRead}
 					/>
@@ -382,15 +423,39 @@ export const Books = ({
 					routeFilters={{ author_id, series_id, tag_id, publisher_id }}
 				/>
 			</div>
+			{/*
+			 * The scroll region is the listbox VoiceOver reads: it keeps focus
+			 * while arrows move the cursor (aria-activedescendant), since the
+			 * virtualized cards come and go. Its keys live in use-library-keymap;
+			 * the role is spread in only while the grid shows, which the
+			 * linter can't see.
+			 */}
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: a listbox while the grid shows (see above). */}
+			{/* biome-ignore lint/a11y/useKeyWithClickEvents: the click only clears the selection; Escape does that from the keyboard. */}
 			<div
 				ref={gridContainerRef}
 				{...scrollRegionAttributes(SCROLL_REGION.libraryGrid)}
-				tabIndex={-1}
+				// biome-ignore lint/a11y/noNoninteractiveTabindex: a listbox while the grid shows (see above).
+				tabIndex={0}
 				style={{ outline: "none" }}
 				className={clsx(
 					styles.gridArea,
+					"ctd-scroller",
 					isSearching && styles.gridAreaSearching,
 				)}
+				onClick={onBackgroundClick}
+				onContextMenu={onGridContextMenu}
+				{...(showGrid
+					? {
+							role: "listbox",
+							"aria-label": "Books",
+							"aria-multiselectable": true,
+							"aria-activedescendant":
+								cursorBook !== undefined
+									? bookCardDomId(cursorBook.id)
+									: undefined,
+						}
+					: {})}
 			>
 				{emptyLibrary ? (
 					<EmptyLibrary />
@@ -417,7 +482,7 @@ export const Books = ({
 									onClearDeepLinkFilter();
 								}}
 							>
-								Show all books
+								Show All Books
 							</Button>
 						</EmptyState>
 					)
@@ -425,8 +490,8 @@ export const Books = ({
 					<BookGrid
 						bookList={books}
 						loading={loading}
-						onBookOpen={onBookOpen}
-						selectedBookId={selectedBookId}
+						cardActions={cardActions}
+						isSelected={isSelected}
 						scrollElementRef={gridContainerRef}
 						initialScrollOffset={gridStartOffset}
 						resultKey={`${cache.key}:${queryResolved}`}
@@ -436,44 +501,67 @@ export const Books = ({
 				)}
 			</div>
 			<div className={styles.footer}>
-				<span className={styles.footerText}>
-					{loading
-						? "Loading books…"
-						: libraryTotal === null || total === libraryTotal
-							? `${total} books`
-							: `${total} of ${libraryTotal} books`}
+				<span className={styles.footerText} aria-live="polite">
+					{bookCountStatus({
+						loading,
+						total,
+						libraryTotal,
+						selectedCount,
+					})}
 				</span>
 			</div>
-			<Drawer
+			<BookDetailsDrawer
+				book={selectedSidebarBook}
 				open={isBookSidebarOpen}
-				onOpenChange={(open) => {
-					if (!open) setIsBookSidebarOpen(false);
-				}}
-				width={500}
-				bleed
-				onCloseAutoFocus={(event) => {
-					// No Dialog.Trigger to return focus to; hand it to the grid so
-					// arrow keys keep working after the drawer closes.
-					event.preventDefault();
-					gridContainerRef.current?.focus();
-				}}
-				onOpenAutoFocus={(event) => {
-					// Land on the primary action instead of the header close button.
-					const target = document.querySelector("[data-drawer-initial-focus]");
-					if (target instanceof HTMLElement) {
-						event.preventDefault();
-						target.focus();
-					}
-				}}
-			>
-				{selectedSidebarBook && (
-					<BookDrawer
-						book={selectedSidebarBook}
-						onClose={() => setIsBookSidebarOpen(false)}
-					/>
-				)}
-			</Drawer>
+				onClose={closeBookDetails}
+				returnFocusRef={gridContainerRef}
+				className={styles.drawer}
+			/>
+			<ContextMenu
+				menu={menu.menu}
+				returnFocusRef={gridContainerRef}
+				onClose={menu.close}
+			/>
+			<DeleteBooksDialogs />
 		</div>
+	);
+};
+
+/** "Delete 2 Books?" and, when files stayed behind, what to do about them. */
+const DeleteBooksDialogs = () => {
+	const dialog = useDeleteBooksDialog();
+	const copy = deleteBooksCopy(dialog.deletion, dialog.books.length);
+	return (
+		<>
+			<AlertDialog
+				open={dialog.open}
+				onOpenChange={(open) => {
+					if (!open) dialog.cancel();
+				}}
+				title={deleteBooksDialogTitle(dialog.books.map((book) => book.title))}
+				textAlign="left"
+				description={copy.description}
+				confirmLabel={copy.confirmLabel}
+				destructive
+				onConfirm={dialog.confirm}
+			/>
+			<AlertDialog
+				open={dialog.failures !== null || dialog.error !== null}
+				onOpenChange={(open) => {
+					if (!open) dialog.dismissFailures();
+				}}
+				title={
+					dialog.error !== null ? "Couldn’t Delete Books" : copy.failureTitle
+				}
+				textAlign="left"
+				description={
+					dialog.error ??
+					`${copy.failureDescription} ${(dialog.failures ?? []).join(", ")}`
+				}
+				confirmLabel="OK"
+				onConfirm={dialog.dismissFailures}
+			/>
+		</>
 	);
 };
 
@@ -494,12 +582,16 @@ const SaveAsShelfControl = ({
 	const libraryId = useLibrarySelection().activeLibrary?.id;
 	const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
 
-	const [isOpen, setIsOpen] = useState(false);
+	// Library > New Shelf… opens the same sheet from the menu bar.
+	const isOpen = useMenuRequests((s) => s.shelfSheetOpen);
 	const [name, setName] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
+	// The sheet is the page's: leaving the page closes it.
+	useEffect(() => () => setShelfSheetOpen(false), []);
+
 	const close = () => {
-		setIsOpen(false);
+		setShelfSheetOpen(false);
 		setName("");
 		setError(null);
 	};
@@ -533,22 +625,23 @@ const SaveAsShelfControl = ({
 
 	return (
 		<>
-			<Tooltip label="Save as shelf…">
-				<IconButton
+			<Tooltip label="Keep these filters as a shelf in the sidebar">
+				<Button
 					ref={bookmarkButtonRef}
+					variant="subtle"
 					className={styles.shelfButton}
-					aria-label="Save as shelf"
-					onClick={() => setIsOpen(true)}
+					onClick={() => setShelfSheetOpen(true)}
 				>
-					<F7Bookmark style={{ fontSize: 15 }} />
-				</IconButton>
+					<F7Bookmark aria-hidden="true" style={{ fontSize: 14 }} />
+					Save as Shelf…
+				</Button>
 			</Tooltip>
 			<Sheet
 				open={isOpen}
 				onOpenChange={(open) => {
 					if (!open) close();
 				}}
-				title="Save as shelf"
+				title="Save as Shelf"
 				width={420}
 				onCloseAutoFocus={(event) => {
 					// The sheet has no Dialog.Trigger; return focus to the bookmark
@@ -561,7 +654,6 @@ const SaveAsShelfControl = ({
 					<TextInput
 						placeholder="Shelf name"
 						aria-label="Shelf name"
-						// biome-ignore lint/a11y/noAutofocus: the sheet exists to name the shelf; focus must land in the field.
 						autoFocus
 						value={name}
 						error={error}

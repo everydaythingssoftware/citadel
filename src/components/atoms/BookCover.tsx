@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { type HTMLAttributes, useState } from "react";
 import type { CoverThumbnail, LibraryBook } from "@/bindings";
 import { formatAuthorList } from "@/lib/authors";
@@ -10,6 +11,7 @@ import img2Url from "../../assets/2.jpg";
 import img3Url from "../../assets/3.jpg";
 import img4Url from "../../assets/4.jpg";
 import img5Url from "../../assets/5.jpg";
+import styles from "./BookCover.module.css";
 
 type LibraryBookWithCoverImage = LibraryBook & {
 	cover_image: NonNullable<LibraryBook["cover_image"]>;
@@ -19,10 +21,6 @@ const spineBackground = `
   var(--ctd-cover-spine-bg)
 `;
 
-/**
- * Cap on a fluid cover's height (the grid's "shelf" height). Real covers keep
- * their aspect ratio inside a box of `100% of the cell × FLUID_MAX_HEIGHT`.
- */
 interface CoverSizeHint {
 	width: number;
 	height: number;
@@ -38,27 +36,20 @@ const fluidBoxFor = ({ width, height }: CoverSizeHint) => ({
 	aspectRatio: `${width} / ${height}`,
 });
 
+/**
+ * Cap on a fluid cover's height (the grid's "shelf" height). Real covers keep
+ * their aspect ratio inside a box of `100% of the cell × FLUID_MAX_HEIGHT`.
+ */
 const FLUID_MAX_HEIGHT_PX = 230;
 // Placeholder art keeps the classic 133:200 book proportions.
 const PLACEHOLDER_RATIO = 133 / 200;
 
-/**
- * Dimming scrim for finished books; fades in/out over 100ms like the old
- * Mantine Transition + Overlay pair (80% alpha of the overlay token).
- */
+/** Dims a finished book; hovering a cover you can open lifts the dim. */
 const ReadOverlay = ({ visible }: { visible: boolean }) => (
 	<div
 		aria-hidden="true"
-		style={{
-			position: "absolute",
-			inset: 0,
-			zIndex: 2,
-			pointerEvents: "none",
-			backgroundColor:
-				"color-mix(in srgb, var(--ctd-cover-overlay) 80%, transparent)",
-			opacity: visible ? 1 : 0,
-			transition: "opacity 100ms ease",
-		}}
+		className={styles.readOverlay}
+		data-visible={visible || undefined}
 	/>
 );
 
@@ -78,8 +69,6 @@ const BookCoverUsingImage = ({
 	thumb?: CoverThumbnail;
 	sizeHint?: CoverSizeHint;
 } & HTMLAttributes<HTMLDivElement>) => {
-	const [pointerInside, setPointerInside] = useState(false);
-	const isHovering = interactive && pointerInside;
 	// A cover can fail without an `error` event: an asset:// URL outside the
 	// asset scope "loads" at 0×0, which would render a zero-height cell and
 	// collapse the virtualized grid's row measurement. Either failure mode
@@ -101,76 +90,76 @@ const BookCoverUsingImage = ({
 
 	return (
 		<div
-			style={{
+			{...props}
+			className={clsx(styles.hit, props.className)}
+			data-interactive={interactive || undefined}
+			style={
 				// In fluid mode the wrapper shrink-wraps the constrained image
 				// so the radius/shadow/spine hug the cover exactly.
-				...(fluid
+				fluid
 					? {
 							display: "inline-block",
 							maxWidth: "100%",
 							...(sizeHint && fluidBoxFor(sizeHint)),
 						}
-					: { width: "133px" }),
-				position: "relative",
-				borderRadius: "4px",
-				overflow: "hidden",
-				transition: "transform 180ms ease, box-shadow 180ms ease",
-				boxShadow: "var(--ctd-cover-shadow)",
-				transform: isHovering ? "translateY(-2px)" : "translateY(0px)",
-			}}
-			{...props}
-			onPointerOver={() => {
-				setPointerInside(true);
-			}}
-			onPointerLeave={() => {
-				setPointerInside(false);
-			}}
+					: { width: "133px" }
+			}
 		>
-			<img
-				src={thumb?.url ?? book.cover_image.url}
-				alt={book.title}
-				// Reserve the exact box from the thumbnail's known dimensions so
-				// the row height is right before the image decodes (no shelf
-				// shift on mount).
-				width={thumb?.width ?? sizeHint?.width}
-				height={thumb?.height ?? sizeHint?.height}
-				// Skip incremental paint: whole frames only (no half-decoded
-				// scanline strips during fast scroll).
-				decoding="async"
-				onError={() => {
-					setCoverFailed(true);
-				}}
-				onLoad={(event) => {
-					if (resolveCoverLoad(event.currentTarget) === "failed") {
-						setCoverFailed(true);
-					}
-				}}
-				style={{
-					...(fluid
-						? {
-								// Fit inside the cell width and the shelf-height cap,
-								// preserving the real cover's aspect ratio (no crop,
-								// no stretch).
-								maxWidth: "100%",
-								maxHeight: `${FLUID_MAX_HEIGHT_PX}px`,
-								width: "auto",
-								height: "auto",
-								...(sizeHint && { width: "100%" }),
-							}
-						: { width: "133px", height: "auto" }),
-					display: "block",
-				}}
-			/>
 			<div
+				className={styles.art}
 				style={{
-					position: "absolute",
-					inset: 0,
-					background: spineBackground,
-					pointerEvents: "none",
-					zIndex: 1,
+					position: "relative",
+					borderRadius: "4px",
+					overflow: "hidden",
+					boxShadow: "var(--ctd-cover-shadow)",
 				}}
-			/>
-			<ReadOverlay visible={book.is_read && !isHovering && !disableFade} />
+			>
+				<img
+					src={thumb?.url ?? book.cover_image.url}
+					alt={book.title}
+					// Reserve the exact box from the thumbnail's known dimensions so
+					// the row height is right before the image decodes (no shelf
+					// shift on mount).
+					width={thumb?.width ?? sizeHint?.width}
+					height={thumb?.height ?? sizeHint?.height}
+					// Skip incremental paint: whole frames only (no half-decoded
+					// scanline strips during fast scroll).
+					decoding="async"
+					onError={() => {
+						setCoverFailed(true);
+					}}
+					onLoad={(event) => {
+						if (resolveCoverLoad(event.currentTarget) === "failed") {
+							setCoverFailed(true);
+						}
+					}}
+					style={{
+						...(fluid
+							? {
+									// Fit inside the cell width and the shelf-height cap,
+									// preserving the real cover's aspect ratio (no crop,
+									// no stretch).
+									maxWidth: "100%",
+									maxHeight: `${FLUID_MAX_HEIGHT_PX}px`,
+									width: "auto",
+									height: "auto",
+									...(sizeHint && { width: "100%" }),
+								}
+							: { width: "133px", height: "auto" }),
+						display: "block",
+					}}
+				/>
+				<div
+					style={{
+						position: "absolute",
+						inset: 0,
+						background: spineBackground,
+						pointerEvents: "none",
+						zIndex: 1,
+					}}
+				/>
+				<ReadOverlay visible={book.is_read && !disableFade} />
+			</div>
 		</div>
 	);
 };
@@ -187,9 +176,6 @@ const BookCoverWithPlaceholder = ({
 	fluid: boolean;
 	interactive: boolean;
 } & HTMLAttributes<HTMLDivElement>) => {
-	const [pointerInside, setPointerInside] = useState(false);
-	const isHovering = interactive && pointerInside;
-
 	const imgUrl = selectByStringHash(
 		[img1Url, img2Url, img3Url, img4Url, img5Url],
 		book.title,
@@ -197,6 +183,9 @@ const BookCoverWithPlaceholder = ({
 
 	return (
 		<div
+			{...props}
+			className={clsx(styles.hit, props.className)}
+			data-interactive={interactive || undefined}
 			style={{
 				// Same box as real covers: the 133:200 ratio turns the height cap
 				// into a width cap. With explicit width and height (non-fluid)
@@ -207,17 +196,10 @@ const BookCoverWithPlaceholder = ({
 				maxWidth: fluid
 					? `${FLUID_MAX_HEIGHT_PX * PLACEHOLDER_RATIO}px`
 					: undefined,
-				position: "relative",
-			}}
-			onPointerOver={() => {
-				setPointerInside(true);
-			}}
-			onPointerLeave={() => {
-				setPointerInside(false);
 			}}
 		>
 			<div
-				{...props}
+				className={styles.art}
 				style={{
 					width: fluid ? "100%" : "133px",
 					height: fluid ? "100%" : "200px",
@@ -225,9 +207,7 @@ const BookCoverWithPlaceholder = ({
 					gridTemplateAreas: "overlap",
 					borderRadius: "4px",
 					overflow: "hidden",
-					transition: "transform 180ms ease, box-shadow 180ms ease",
 					boxShadow: "var(--ctd-cover-shadow)",
-					transform: isHovering ? "translateY(-2px)" : "translateY(0px)",
 					position: "relative",
 				}}
 			>
@@ -289,7 +269,7 @@ const BookCoverWithPlaceholder = ({
 						zIndex: 2,
 					}}
 				/>
-				<ReadOverlay visible={book.is_read && !isHovering && !disableFade} />
+				<ReadOverlay visible={book.is_read && !disableFade} />
 			</div>
 		</div>
 	);

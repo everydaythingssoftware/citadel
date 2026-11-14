@@ -87,12 +87,9 @@
 .panel {
 	flex: 1;
 	min-height: 0;
-	/* Always lay out the scrollbar track (not `auto`) so the centered content
-	   never shifts sideways when overflow appears, e.g. when a provider row
-	   expands. `scrollbar-gutter: stable` is recognised but not effective in
-	   this WebView, so we force the track instead. */
-	overflow-y: scroll;
-	scrollbar-gutter: stable;
+	/* Overlay scrollbars on macOS; .ctd-scroller keeps a stable gutter
+	   elsewhere, so content never shifts when a provider row expands. */
+	overflow-y: auto;
 	padding: 1.25rem;
 }
 
@@ -253,10 +250,8 @@
 	border-radius: var(--ctd-radius-capsule);
 	background-color: color-mix(in oklch, var(--ctd-brass) 16%, transparent);
 	color: color-mix(in oklch, var(--ctd-brass) 80%, var(--ctd-ink));
-	font-size: 0.78125rem;
+	font-size: 11px;
 	font-weight: 600;
-	font-variant: all-small-caps;
-	letter-spacing: 0.05em;
 	line-height: 1;
 }
 
@@ -413,4 +408,9 @@
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
 	overflow-wrap: anywhere;
+}
+
+/* Full screen hides the traffic lights, so the strip needs no room for them. */
+:root[data-fullscreen] .tabStrip {
+	padding-inline: 0.75rem;
 }

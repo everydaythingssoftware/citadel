@@ -1,0 +1,232 @@
+/* Values follow the FileActions board, option A and Mobile 1. */
+.group {
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	border-radius: 10px;
+	background-color: oklch(from var(--ctd-ink) l c h / 0.045);
+	list-style: none;
+}
+
+:global(:root[data-theme="dark"]) .group {
+	background-color: oklch(from var(--ctd-ink) l c h / 0.06);
+}
+
+.row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	box-sizing: border-box;
+	min-height: 46px;
+	padding: 7px 8px 7px 10px;
+	border-radius: 0;
+}
+
+/* Hairlines between rows start under the text, as in a macOS list. */
+.group > li + li > .row::before,
+.group > .row + .row::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: 46px;
+	height: 1px;
+	background-color: var(--ctd-border);
+	opacity: 0.7;
+}
+
+.row[data-layout="desktop"]:hover,
+.row[data-layout="web"]:hover {
+	background-color: oklch(from var(--ctd-ink) l c h / 0.035);
+}
+
+.row:focus-visible {
+	outline: none;
+	box-shadow: inset var(--ctd-focus-shadow);
+}
+
+.text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.format {
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.25;
+	color: var(--ctd-ink);
+}
+
+.name {
+	font-size: 11.5px;
+	line-height: 1.35;
+	color: var(--ctd-ink-soft);
+}
+
+.failure {
+	font-size: 11.5px;
+	line-height: 1.35;
+	color: var(--ctd-danger-ink);
+}
+
+.buttons {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 2px;
+}
+
+.iconButton {
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--ctd-ink-soft);
+}
+
+.iconButton > * {
+	grid-area: 1 / 1;
+}
+
+.iconButton:hover {
+	background-color: var(--ctd-nav-hover-bg);
+	color: var(--ctd-ink);
+}
+
+.iconButton:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+/* The default app's own icon keeps its colours; hover lifts the button. */
+.appIcon {
+	display: block;
+	width: 18px;
+	height: 18px;
+	object-fit: contain;
+	-webkit-user-drag: none;
+}
+
+/* Window in the background: the app's colours step back with the chrome. */
+:global(:root[data-runtime="desktop"][data-window-inactive]) .appIcon {
+	filter: saturate(0.25);
+	opacity: 0.75;
+}
+
+/* Downloading stays grey; the stop square shows only where the pointer is. */
+.iconButton[data-download="downloading"]:hover {
+	color: var(--ctd-ink-soft);
+}
+
+.stopRing {
+	opacity: 0;
+}
+
+.iconButton[data-download="downloading"]:is(:hover, :focus-visible)
+	> :first-child {
+	opacity: 0;
+}
+
+.iconButton[data-download="downloading"]:is(:hover, :focus-visible) .stopRing {
+	opacity: 1;
+}
+
+/* ---- Phones: the row is the button. ---- */
+.mobileItem {
+	display: block;
+}
+
+.mobileRow {
+	width: 100%;
+	gap: 12px;
+	min-height: 56px;
+	padding: 10px 14px 10px 12px;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.mobileRow:active {
+	background-color: oklch(from var(--ctd-ink) l c h / 0.06);
+}
+
+.group > .mobileItem + .mobileItem > .row::before {
+	left: 54px;
+}
+
+.mobileRow .format {
+	font-size: 15px;
+}
+
+.mobileRow .name,
+.mobileRow .failure {
+	font-size: 13px;
+}
+
+.size {
+	flex: none;
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
+	color: var(--ctd-ink-soft);
+}
+
+.mobileGlyph {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	color: var(--ctd-ink-soft);
+}
+
+.bar {
+	display: block;
+	height: 3px;
+	margin-top: 5px;
+	overflow: hidden;
+	border-radius: 2px;
+	background-color: oklch(from var(--ctd-ink) l c h / 0.1);
+}
+
+.bar > span {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background-color: var(--ctd-ink-soft);
+	transition: width 160ms linear;
+}
+
+.bar[data-indeterminate] > span {
+	animation: bar-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes bar-slide {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(340%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bar > span {
+		transition: none;
+	}
+
+	.bar[data-indeterminate] > span {
+		animation-duration: 3s;
+	}
+}

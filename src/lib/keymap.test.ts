@@ -120,6 +120,25 @@ describe("eventMatchesChord", () => {
 		).toBe(true);
 	});
 
+	it("names the space bar “space”", () => {
+		expect(eventMatchesChord(makeEvent({ key: " " }), "space")).toBe(true);
+		expect(
+			eventMatchesChord(makeEvent({ key: " ", shiftKey: true }), "space"),
+		).toBe(false);
+	});
+
+	it("matches shifted letters and arrows", () => {
+		expect(
+			eventMatchesChord(makeEvent({ key: "A", metaKey: true }), "mod+a"),
+		).toBe(true);
+		expect(
+			eventMatchesChord(
+				makeEvent({ key: "ArrowLeft", shiftKey: true }),
+				"shift+arrowleft",
+			),
+		).toBe(true);
+	});
+
 	it("does not match a different key", () => {
 		expect(
 			eventMatchesChord(makeEvent({ key: "g", metaKey: true }), "mod+f"),
@@ -147,6 +166,15 @@ describe("isEditableTarget", () => {
 		expect(isEditableTarget({ tagName: "DIV", isContentEditable: true })).toBe(
 			true,
 		);
+	});
+
+	it("is false for inputs that take no typing", () => {
+		expect(isEditableTarget({ tagName: "INPUT", type: "checkbox" })).toBe(
+			false,
+		);
+		expect(isEditableTarget({ tagName: "INPUT", type: "Radio" })).toBe(false);
+		expect(isEditableTarget({ tagName: "INPUT", type: "search" })).toBe(true);
+		expect(isEditableTarget({ tagName: "INPUT", type: "text" })).toBe(true);
 	});
 
 	it("is false for ordinary elements", () => {

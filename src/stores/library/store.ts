@@ -35,6 +35,7 @@ import {
 import { sortAuthors } from "@/lib/domain/author";
 import type { Library, Options } from "@/lib/services/library";
 import { libraryCatalog } from "@/lib/services/library-catalog";
+import { clearUndoHistory } from "@/stores/undo/store";
 
 export enum LibraryState {
 	uninitialized = "uninitialized",
@@ -87,8 +88,13 @@ interface LibraryActions {
 	setBookCoverFromMetadata: (bookId: string, coverId: string) => Promise<void>;
 	setBookCoverFromFile: (bookId: string, image: Blob) => Promise<void>;
 
-	// Book and author mutations
-	updateBook: (bookId: string, updates: BookUpdate) => Promise<void>;
+	// Book and author mutations. Each one clears the undo history (it can't
+	// be undone), except an update that registers its own undo entry.
+	updateBook: (
+		bookId: string,
+		updates: BookUpdate,
+		options?: { registersUndo?: boolean },
+	) => Promise<void>;
 	updateAuthor: (authorId: string, updates: AuthorUpdate) => Promise<void>;
 	/** Resolves with the authors as created, IDs included. */
 	createAuthors: (newAuthors: NewAuthor[]) => Promise<LibraryAuthor[]>;
@@ -280,6 +286,13 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			get().actions.invalidateBooks();
 		return result;
 	};
+
+	/** A change to the library that Undo can't take back. */
+	const writeLibrary = <T>(
+		operation: (library: Library, assertCurrent: () => void) => Promise<T>,
+		invalidate: boolean | ((result: T) => boolean) = true,
+	): Promise<T> =>
+		withActiveLibrary(operation, invalidate).finally(clearUndoHistory);
 
 	const canCommitActive = (generation: number): boolean =>
 		!isBackendDiverted() && generation === get().bookCache.generation;
@@ -804,50 +817,55 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 			getCustomValuesForBook: (id) =>
 				withActiveLibrary((library) => library.getCustomValuesForBook(id)),
 			setCustomValue: (id, columnId, value) =>
-				withActiveLibrary(
+				writeLibrary(
 					(library) => library.setCustomValue(id, columnId, value),
 					true,
 				),
 			addBookGenres: (id, genres) =>
-				withActiveLibrary((library) => library.addBookGenres(id, genres), true),
+				writeLibrary((library) => library.addBookGenres(id, genres), true),
 			setBookCoverFromMetadata: (id, coverId) =>
-				withActiveLibrary(
+				writeLibrary(
 					(library) => library.setBookCoverFromMetadata(id, coverId),
 					true,
 				),
 			setBookCoverFromFile: (id, image) =>
-				withActiveLibrary(
+				writeLibrary(
 					(library) => library.setBookCoverFromFile(id, image),
 					true,
 				),
 
-			updateBook: (id, updates) =>
-				withActiveLibrary((library) => library.updateBook(id, updates), true),
+			updateBook: (id, updates, options) =>
+				options?.registersUndo
+					? withActiveLibrary(
+							(library) => library.updateBook(id, updates),
+							true,
+						)
+					: writeLibrary((library) => library.updateBook(id, updates)),
 
 			updateAuthor: (id, updates) =>
-				withActiveLibrary(async (library, assertCurrent) => {
+				writeLibrary(async (library, assertCurrent) => {
 					await library.updateAuthor(id, updates);
 					assertCurrent();
 					await get().actions.loadAuthors();
 				}, true),
 
 			createAuthors: (authors) =>
-				withActiveLibrary(async (library, assertCurrent) => {
+				writeLibrary(async (library, assertCurrent) => {
 					const created = await library.createAuthors(authors);
 					assertCurrent();
 					await get().actions.loadAuthors();
 					return created;
-				}),
+				}, false),
 
 			deleteAuthor: (id) =>
-				withActiveLibrary(async (library, assertCurrent) => {
+				writeLibrary(async (library, assertCurrent) => {
 					await library.deleteAuthor(id);
 					assertCurrent();
 					await get().actions.loadAuthors();
-				}),
+				}, false),
 
 			deleteBooks: (bookIds) =>
-				withActiveLibrary(async (library, assertCurrent) => {
+				writeLibrary(async (library, assertCurrent) => {
 					const outcome = await library.deleteBooks(bookIds);
 					assertCurrent();
 					set((state) => {
@@ -859,13 +877,13 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				}, true),
 
 			deleteBookIdentifier: (id, identifierId) =>
-				withActiveLibrary(
+				writeLibrary(
 					(library) => library.deleteBookIdentifier(id, identifierId),
 					true,
 				),
 
 			upsertBookIdentifier: (id, identifierId, label, value) =>
-				withActiveLibrary(
+				writeLibrary(
 					(library) =>
 						library.upsertBookIdentifier(id, identifierId, label, value),
 					true,
@@ -922,3 +940,9 @@ export const usePublishersLoading = () =>
 // Selector for stable actions object
 export const useLibraryActions = () =>
 	useLibraryStore((state) => state.actions);
+
+// Another library (a switch, a forget, a reset) makes the undo history
+// meaningless: its entries name books of the library that was open.
+useLibraryStore.subscribe((state, previous) => {
+	if (state.library !== previous.library) clearUndoHistory();
+});

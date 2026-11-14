@@ -2,6 +2,7 @@ import type {
 	SmartShelf,
 	SmartShelfFilter,
 } from "@/lib/platform/settings/types";
+import { clearUndoHistory } from "@/stores/undo/store";
 import { useSettings } from "./store";
 
 // Export store actions for convenient imports
@@ -36,17 +37,22 @@ export const setStartFullscreen = (enabled: boolean): Promise<void> => {
 	return useSettings.getState().setStartFullscreen(enabled);
 };
 
+// Shelf changes can't be undone, so each clears the undo history
+// (src/lib/undo-history.ts).
 export const createSmartShelf = (
 	name: string,
 	filter: SmartShelfFilter,
 ): Promise<SmartShelf> => {
+	clearUndoHistory();
 	return useSettings.getState().createSmartShelf(name, filter);
 };
 
 export const renameSmartShelf = (id: string, name: string): Promise<void> => {
+	clearUndoHistory();
 	return useSettings.getState().renameSmartShelf(id, name);
 };
 
 export const deleteSmartShelf = (id: string): Promise<void> => {
+	clearUndoHistory();
 	return useSettings.getState().deleteSmartShelf(id);
 };

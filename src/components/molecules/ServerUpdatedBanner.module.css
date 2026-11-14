@@ -1,0 +1,96 @@
+/* The toast banner's look (ui/toast.module.css), with one action. Sits just
+   under the toast stack's layer so a toast that arrives later stays on top. */
+.banner {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	z-index: 129;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	width: min(300px, calc(100vw - 24px));
+	box-sizing: border-box;
+	padding: 10px 12px;
+	background-color: var(--ctd-surface-strong);
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-panel);
+	box-shadow: var(--ctd-popover-shadow);
+	animation: server-updated-in 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.banner {
+		animation: none;
+	}
+}
+
+.text {
+	flex: 1;
+	min-width: 0;
+}
+
+.title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
+.message {
+	margin-top: 1px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--ctd-ink-soft);
+}
+
+.reload {
+	margin: 6px 0 0;
+	padding: 0;
+	border: none;
+	background: none;
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ctd-text-link);
+}
+
+.reload:hover {
+	text-decoration: underline;
+}
+
+.reload:focus-visible,
+.dismiss:focus-visible {
+	outline: none;
+	border-radius: 3px;
+	box-shadow: 0 0 0 2px var(--ctd-focus-ring);
+}
+
+.dismiss {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 16px;
+	height: 16px;
+	margin-top: 1px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background-color: transparent;
+	color: var(--ctd-ink-soft);
+}
+
+.dismiss:hover {
+	background-color: var(--ctd-nav-hover-bg);
+	color: var(--ctd-ink);
+}
+
+@keyframes server-updated-in {
+	from {
+		transform: translateX(16px);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}

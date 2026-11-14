@@ -64,7 +64,7 @@ const stay = (step: AddLibraryStep): AddLibraryTransition => ({
 	effects: [],
 });
 
-/** The folder's own name, for titles like "Create a new library inside “Books”?" */
+/** The folder's own name, for titles like "Create a New Library Inside “Books”?" */
 export const folderName = (path: string): string => {
 	const trimmed = path.replace(/[\\/]+$/, "");
 	const name = trimmed.split(/[\\/]/).pop();

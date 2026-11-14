@@ -1,5 +1,6 @@
 export { PlatformProvider, usePlatform } from "./context";
 export { createTauriPlatform, createWebPlatform } from "./create";
+export { detectOperatingSystem, type OperatingSystem } from "./os";
 export type {
 	LibraryPath,
 	SettingsKey,

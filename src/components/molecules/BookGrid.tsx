@@ -1,17 +1,13 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-	createContext,
 	type RefObject,
 	useCallback,
-	useContext,
 	useEffect,
 	useLayoutEffect,
-	useMemo,
 	useRef,
 	useState,
 } from "react";
 import type { BookView } from "@/BookView";
-import type { LibraryBook } from "@/bindings";
 import { LoadingOverlay } from "@/components/ui";
 import {
 	computeColumnCount,
@@ -79,58 +75,15 @@ interface BookGridProps extends BookView {
 
 export const BookGrid = ({
 	loading,
-	bookList,
-	onBookOpen,
-	selectedBookId,
+	bookList: books,
+	cardActions,
+	isSelected,
 	scrollElementRef,
 	initialScrollOffset,
 	resultKey,
 	scrollToBookIndexRef,
 	onVisibleRangeChange,
 }: BookGridProps) => {
-	const actionsContext = useMemo(() => {
-		return {
-			onViewBook: onBookOpen,
-		};
-	}, [onBookOpen]);
-
-	return (
-		<bookActionsContext.Provider value={actionsContext}>
-			<BookGridPure
-				loading={loading}
-				bookList={bookList}
-				selectedBookId={selectedBookId}
-				scrollElementRef={scrollElementRef}
-				initialScrollOffset={initialScrollOffset}
-				resultKey={resultKey}
-				scrollToBookIndexRef={scrollToBookIndexRef}
-				onVisibleRangeChange={onVisibleRangeChange}
-			/>
-		</bookActionsContext.Provider>
-	);
-};
-
-const BookGridPure = ({
-	loading,
-	bookList: books,
-	selectedBookId,
-	scrollElementRef,
-	initialScrollOffset,
-	resultKey,
-	scrollToBookIndexRef,
-	onVisibleRangeChange,
-}: {
-	loading: boolean;
-	bookList: (LibraryBook | undefined)[];
-	selectedBookId?: LibraryBook["id"] | null;
-	scrollElementRef: RefObject<HTMLElement | null>;
-	initialScrollOffset?: number;
-	resultKey?: string;
-	scrollToBookIndexRef?: RefObject<ScrollToBookIndex | null>;
-	onVisibleRangeChange?: VisibleRangeChange;
-}) => {
-	const actions = useContext(bookActionsContext);
-
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const [columns, setColumns] = useState(1);
 	const [cellWidth, setCellWidth] = useState<number | null>(null);
@@ -242,6 +195,7 @@ const BookGridPure = ({
 	return (
 		<div
 			ref={wrapperRef}
+			role="presentation"
 			style={{
 				// LoadingOverlay covers the nearest position: relative ancestor.
 				position: "relative",
@@ -250,6 +204,7 @@ const BookGridPure = ({
 		>
 			<LoadingOverlay visible={loading} />
 			<div
+				role="presentation"
 				style={{
 					position: "relative",
 					height: virtualizer.getTotalSize(),
@@ -274,6 +229,7 @@ const BookGridPure = ({
 							ref={virtualizer.measureElement}
 							data-index={virtualRow.index}
 							data-books-grid
+							role="presentation"
 							style={{
 								position: "absolute",
 								top: 0,
@@ -290,8 +246,10 @@ const BookGridPure = ({
 									<BookCard
 										key={book.id}
 										book={book}
-										actions={actions}
-										selected={book.id === selectedBookId}
+										index={start + offset}
+										setSize={books.length}
+										actions={cardActions}
+										selected={isSelected(book.id, start + offset)}
 									/>
 								) : (
 									// biome-ignore lint/suspicious/noArrayIndexKey: an unfetched slot has no id; its flat grid index IS its identity until the book arrives (and then the keyed BookCard replaces it).
@@ -312,15 +270,7 @@ const BookGridPure = ({
  * keep their height and books pop in without the shelf reflowing.
  */
 const BookCardPlaceholder = () => (
-	<div className={cardClasses.cell} aria-hidden>
+	<div className={cardClasses.cell} aria-hidden="true">
 		<span className={cardClasses.coverPlaceholder} />
 	</div>
-);
-
-type BookAction = (bookId: LibraryBook["id"]) => void;
-interface BookActionsContext {
-	onViewBook: BookAction;
-}
-const bookActionsContext = createContext<BookActionsContext>(
-	null as unknown as BookActionsContext,
 );

@@ -22,8 +22,8 @@
 }
 
 /* 110px clears the macOS traffic lights at trafficLightPosition x14/y16; the
-   vibrancy flag marks exactly that native window. */
-:root[data-vibrancy] .header {
+   vibrancy flag marks exactly that native window. Full screen hides them. */
+:root[data-vibrancy]:not([data-fullscreen]) .header {
 	padding-left: 110px;
 }
 
@@ -41,17 +41,75 @@
 	min-height: 0;
 }
 
+/*
+ * The sidebar opens and closes by animating its width, so the content panel
+ * beside it slides rather than jumps; its contents keep their width and are
+ * clipped, never reflowed. Hidden once closed, so it leaves the tab order.
+ */
 .nav {
+	position: relative;
 	flex-shrink: 0;
-	width: 200px;
-	padding: 12px;
+	width: var(--sidebar-width, 220px);
 	background-color: var(--ctd-nav-bg);
 	overflow: hidden;
 	z-index: 100;
+	transition:
+		width 200ms ease-out,
+		visibility 0s linear 0s;
 }
 
-.shell:not([data-sidebar-open]) .nav {
-	display: none;
+.navInner {
+	width: var(--sidebar-width, 220px);
+	height: 100%;
+	transition: transform 200ms ease-out;
+}
+
+.nav[data-closed] {
+	width: 0;
+	visibility: hidden;
+	transition:
+		width 200ms ease-out,
+		visibility 0s linear 200ms;
+}
+
+.nav[data-closed] .navInner {
+	transform: translateX(-24px);
+}
+
+.shell[data-sidebar-resizing] .nav,
+.shell[data-sidebar-resizing] .navInner {
+	transition: none;
+}
+
+.shell[data-sidebar-resizing] {
+	cursor: col-resize;
+	user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.nav,
+	.nav[data-closed],
+	.navInner {
+		transition: none;
+	}
+}
+
+/* The sidebar's edge: a thin grab area over the hairline, drawn only while
+   it has keyboard focus. */
+.resizer {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 6px;
+	cursor: col-resize;
+	touch-action: none;
+	z-index: 1;
+}
+
+.resizer:focus-visible {
+	outline: none;
+	box-shadow: inset -2px 0 0 var(--ctd-focus-ring);
 }
 
 .main {
@@ -78,8 +136,15 @@
 /* With no sidebar beside it, the panel runs to the window edge: no left
    hairline or corner to meet. */
 .shell:not([data-sidebar-open]) .content {
-	border-left: 0;
+	border-left-color: transparent;
 	border-top-left-radius: 0;
+}
+
+/* Transparent rather than removed, so the panel doesn't shift a pixel. */
+.content {
+	transition:
+		border-top-left-radius 200ms ease-out,
+		border-left-color 200ms ease-out;
 }
 
 .scrim {
@@ -113,17 +178,24 @@
 		display: inline-flex;
 	}
 
-	.nav {
+	.nav,
+	.nav[data-closed] {
+		display: none;
+	}
+
+	.resizer {
 		display: none;
 	}
 
 	.shell[data-mobile-sidebar-open] .nav {
 		display: block;
+		visibility: visible;
 		position: fixed;
 		top: 46px;
 		left: 0;
 		bottom: 0;
-		width: 200px;
+		width: 260px;
+		transition: none;
 		/* The toolbar's material, opaque, so the drawer reads as the same
 		   surface sliding out from under it. */
 		background-color: var(--ctd-bg);
@@ -133,6 +205,11 @@
 		clip-path: inset(0 -40px 0 0);
 		z-index: 105;
 		overflow-y: auto;
+	}
+
+	.shell[data-mobile-sidebar-open] .navInner {
+		width: 100%;
+		transform: none;
 	}
 
 	/* Tapping the content beside the open sidebar closes it. */

@@ -1,10 +1,15 @@
 /* Values follow the round 7 "BH2" drawer mockup. */
+/* On desktop-sized screens the hero stays put and only the body scrolls;
+   phones scroll the whole sheet (see the end of the file). */
 .drawer {
 	--wash-1: var(--wash-1-light, transparent);
 	--wash-2: var(--wash-2-light, transparent);
+	container: book-drawer / size;
 	display: flex;
+	flex: 1;
 	flex-direction: column;
-	min-height: 100%;
+	min-height: 0;
+	overflow: hidden;
 }
 
 :global(:root[data-theme="dark"]) .drawer {
@@ -19,8 +24,26 @@
 	display: grid;
 	grid-template-columns: 120px minmax(0, 1fr);
 	align-items: end;
+	flex: none;
 	gap: 18px;
-	padding: 48px 24px 24px;
+	padding: 44px 24px 24px;
+}
+
+/* Once the body scrolls under the pinned hero, a hairline marks the edge. */
+.hero::after {
+	content: "";
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	height: 1px;
+	background-color: var(--ctd-border);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+.drawer[data-scrolled] .hero::after {
+	opacity: 1;
 }
 
 /* The colour spans the drawer's full width and eases out by the end of the
@@ -148,24 +171,85 @@
 	display: none;
 }
 
-.download:any-link {
-	color: var(--ctd-accent-text);
-	text-decoration: none;
-}
-
 /* ---- Body ---- */
 .body {
 	display: grid;
+	flex: 1;
+	align-content: start;
 	gap: 24px;
+	min-height: 0;
+	overflow-y: auto;
 	padding: 2px 24px 28px;
+}
+
+/* A short window: a smaller cover and title, so the pinned hero leaves
+   most of the height to what scrolls. */
+@container book-drawer (max-height: 640px) {
+	.hero {
+		grid-template-columns: 84px minmax(0, 1fr);
+		gap: 16px;
+		padding: 36px 24px 18px;
+	}
+
+	.title {
+		font-size: 22px;
+	}
+
+	.authors {
+		margin-top: 6px;
+	}
+
+	.actions {
+		margin-top: 10px;
+	}
+
+	.seal {
+		right: -7px;
+		bottom: -7px;
+		width: 24px;
+		height: 24px;
+	}
+
+	.seal svg {
+		width: 13px;
+		height: 13px;
+	}
+}
+
+/* A narrow drawer gives the title more of the row. */
+@container book-drawer (max-width: 440px) {
+	.hero {
+		grid-template-columns: 100px minmax(0, 1fr);
+		gap: 16px;
+		padding-inline: 20px;
+	}
+
+	.title {
+		font-size: 24px;
+	}
+
+	.body {
+		padding-inline: 20px;
+	}
+}
+
+@container book-drawer (max-width: 440px) and (max-height: 640px) {
+	.hero {
+		grid-template-columns: 76px minmax(0, 1fr);
+	}
+
+	.title {
+		font-size: 21px;
+	}
 }
 
 .section {
 	min-width: 0;
 }
 
+/* Sentence case over a rounded group, the way macOS lists group rows. */
 .sectionTitle {
-	margin: 0 0 10px;
+	margin: 0 2px 7px;
 	font-size: 12px;
 	font-weight: 600;
 	color: var(--ctd-ink-soft);
@@ -241,26 +325,55 @@
 	background-color: var(--ctd-nav-hover-bg);
 }
 
+/* Label on the left in ink, value on the right in soft ink. */
 .details {
-	display: grid;
-	grid-template-columns: 84px minmax(0, 1fr);
-	align-items: center;
-	gap: 7px 12px;
 	margin: 0;
-	font-size: 12.5px;
+	overflow: hidden;
+	border-radius: 10px;
+	background-color: oklch(from var(--ctd-ink) l c h / 0.045);
+	font-size: 13px;
 }
 
-.details dt {
-	color: var(--ctd-ink-soft);
+:global(:root[data-theme="dark"]) .details {
+	background-color: oklch(from var(--ctd-ink) l c h / 0.06);
 }
 
-.details dd {
+.detail {
+	position: relative;
 	display: flex;
 	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	min-height: 34px;
+	box-sizing: border-box;
+	padding: 6px 10px;
+}
+
+.detail + .detail::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: 10px;
+	height: 1px;
+	background-color: var(--ctd-border);
+	opacity: 0.7;
+}
+
+.detail dt {
+	flex: none;
+	color: var(--ctd-ink);
+}
+
+.detail dd {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
 	gap: 4px;
 	min-width: 0;
 	margin: 0;
-	color: var(--ctd-ink);
+	color: var(--ctd-ink-soft);
+	text-align: end;
 }
 
 .value {
@@ -268,16 +381,29 @@
 	overflow-wrap: anywhere;
 }
 
+/* What a person would copy: the title, the description, identifiers. */
+.title,
+.descriptionText,
+.value {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
 /* The whole value is the link; the arrow says it leaves Citadel. */
 .external:any-link {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: 5px;
+	min-width: 0;
 	margin: -2px -4px;
 	padding: 2px 4px;
 	border-radius: 4px;
-	color: var(--ctd-ink);
+	color: var(--ctd-ink-soft);
 	text-decoration: none;
+}
+
+.external:hover {
+	color: var(--ctd-ink);
 }
 
 .external:hover {
@@ -292,6 +418,7 @@
 }
 
 .copy {
+	flex: none;
 	display: inline-grid;
 	place-items: center;
 	width: 20px;
@@ -308,6 +435,10 @@
 	color: var(--ctd-ink);
 }
 
+.copy[data-copied] {
+	color: var(--ctd-ink);
+}
+
 .copy:focus-visible {
 	outline: none;
 	box-shadow: var(--ctd-focus-shadow);
@@ -320,6 +451,17 @@
 
 /* ---- Phones ---- */
 @media (max-width: 36em) {
+	.drawer {
+		container-type: normal;
+		flex: none;
+		min-height: 100%;
+		overflow: visible;
+	}
+
+	.hero::after {
+		display: none;
+	}
+
 	.hero {
 		gap: 16px;
 		padding: 52px 20px 20px;
@@ -349,16 +491,20 @@
 		padding: 0 20px;
 	}
 
-	.phoneActions > :first-child:not(:last-child) {
+	.phoneActions > :first-child:not(:last-child),
+	.phoneActions > :only-child {
 		grid-column: 1 / -1;
 	}
 
 	.body {
+		flex: none;
 		gap: 26px;
+		overflow: visible;
 		padding: 24px 20px 28px;
 	}
 
 	.sectionTitle {
+		margin-inline: 4px;
 		font-size: 13px;
 	}
 
@@ -391,8 +537,15 @@
 	}
 
 	.details {
-		grid-template-columns: 92px minmax(0, 1fr);
-		gap: 8px 12px;
-		font-size: 14px;
+		font-size: 15px;
+	}
+
+	.detail {
+		min-height: 44px;
+		padding: 8px 14px 8px 12px;
+	}
+
+	.detail + .detail::before {
+		left: 12px;
 	}
 }

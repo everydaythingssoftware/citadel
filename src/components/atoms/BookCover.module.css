@@ -1,40 +1,46 @@
-.container {
-	padding: 16px;
-}
-
-.controls {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
-}
-
-.cover {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: flex-start;
-	width: 100%;
+/*
+ * Covers you can open lift 2px on hover and drop the finished-book dim.
+ * The lift moves only the art inside the hit target, never the element the
+ * pointer is over: a hit target that moved out from under a pointer resting
+ * on its bottom edge would lose :hover, drop back under it, and flicker.
+ * Plain :hover, not pointer events, so a sheet's pointer lock coming and
+ * going can't leave a cover stuck lifted or undimmed.
+ */
+.hit {
 	position: relative;
 }
 
-.img {
-	max-width: 100%;
-	max-height: 240px;
-	transition: all 0.2s ease-in-out;
-	border: 2px solid transparent;
-	position: relative;
-	z-index: 1;
+.art {
+	transition:
+		transform 180ms ease,
+		box-shadow 180ms ease;
 }
 
-.img:hover {
-	transform: scale(1.02);
+/* Dims finished books, 80% of the overlay token, fading over 100ms. */
+.readOverlay {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	pointer-events: none;
+	background-color: color-mix(
+		in srgb,
+		var(--ctd-cover-overlay) 80%,
+		transparent
+	);
+	opacity: 0;
+	transition: opacity 100ms ease;
 }
 
-.title {
-	text-align: center;
-	margin: 8px 0;
+.readOverlay[data-visible] {
+	opacity: 1;
 }
 
-.authors {
-	text-align: center;
+@media (hover: hover) {
+	.hit[data-interactive]:hover .art {
+		transform: translateY(-2px);
+	}
+
+	.hit[data-interactive]:hover .readOverlay {
+		opacity: 0;
+	}
 }

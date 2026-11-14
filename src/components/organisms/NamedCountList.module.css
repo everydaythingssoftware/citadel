@@ -55,7 +55,6 @@
 	font-size: 12px;
 	line-height: 1.4;
 	font-weight: 600;
-	text-transform: uppercase;
 	color: var(--ctd-ink-soft);
 	white-space: nowrap;
 }

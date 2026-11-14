@@ -28,7 +28,47 @@ function ColorSchemeWrapper({ children }: PropsWithChildren<unknown>) {
 	return <>{children}</>;
 }
 
+/**
+ * Same attributes main.tsx sets on <html>, switchable from the toolbar so
+ * platform-adaptive components can be compared side by side.
+ */
+function PlatformAttributes({
+	platform,
+	focusRing,
+	children,
+}: PropsWithChildren<{ platform: string; focusRing: string }>) {
+	useEffect(() => {
+		const html = document.documentElement;
+		html.dataset.platform = platform;
+		html.dataset.runtime = "web";
+		if (focusRing === "accent") html.dataset.focusRing = "accent";
+		else delete html.dataset.focusRing;
+	}, [platform, focusRing]);
+	return <>{children}</>;
+}
+
 const preview: Preview = {
+	globalTypes: {
+		platform: {
+			description: "data-platform on <html>",
+			toolbar: {
+				title: "Platform",
+				icon: "browser",
+				items: ["macos", "windows", "linux", "ios"],
+				dynamicTitle: true,
+			},
+		},
+		focusRing: {
+			description: "data-focus-ring on <html>",
+			toolbar: {
+				title: "Focus ring",
+				icon: "eye",
+				items: ["monochrome", "accent"],
+				dynamicTitle: true,
+			},
+		},
+	},
+	initialGlobals: { platform: "macos", focusRing: "monochrome" },
 	parameters: {
 		controls: {
 			matchers: {
@@ -38,6 +78,14 @@ const preview: Preview = {
 		},
 	},
 	decorators: [
+		(Story, context) => (
+			<PlatformAttributes
+				platform={String(context.globals.platform ?? "macos")}
+				focusRing={String(context.globals.focusRing ?? "monochrome")}
+			>
+				<Story />
+			</PlatformAttributes>
+		),
 		(Story) => (
 			<ColorSchemeWrapper>
 				{/* Same provider the app mounts in App.tsx. */}

@@ -61,7 +61,7 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
 					</div>
 				)}
 				{hasError && (
-					<div id={errorId} className={styles.error}>
+					<div id={errorId} className={styles.error} data-selectable>
 						{error}
 					</div>
 				)}

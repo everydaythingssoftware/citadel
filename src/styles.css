@@ -73,7 +73,6 @@
 	--ctd-danger-border: oklch(from var(--pal-red) calc(l - 0.06) c h);
 	/* Red for words: dark enough to read on grey, light enough in dark mode. */
 	--ctd-danger-ink: oklch(47% 0.17 25);
-	--ctd-update-badge: oklch(62% 0.22 27);
 	/* The last layer is a tight contact shadow so covers sit on the shelf
 	   instead of floating above it. */
 	--ctd-cover-shadow:
@@ -107,7 +106,10 @@
 		0 2px 6px oklch(0% 0 0 / 0.08), 0 14px 28px oklch(0% 0 0 / 0.1);
 	--ctd-content-bg: var(--pal-base);
 	--ctd-radius-panel: 10px;
-	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.3);
+	--ctd-focus-ring-mono: oklch(from var(--pal-accent) l c h / 0.3);
+	--ctd-focus-ring: var(--ctd-focus-ring-mono);
+	/* A focused field's border; follows the ring (see data-focus-ring). */
+	--ctd-focus-border: var(--ctd-accent);
 	--ctd-scrollbar-thumb: oklch(from var(--pal-text) l c h / 0.4);
 	--ctd-control-shadow: 0 0.5px 1.5px oklch(0% 0 0 / 0.12);
 	--ctd-field-inner-shadow: inset 0 0.5px 1px oklch(0% 0 0 / 0.05);
@@ -134,8 +136,9 @@
 	--ctd-control-active-shadow: var(--ctd-control-shadow);
 	--ctd-focus-shadow: 0 0 0 2px var(--ctd-focus-ring);
 	/* One height for every regular control: fields, pop-ups and buttons line
-	   up on any row they share. */
-	--ctd-control-height: 28px;
+	   up on any row they share. 24px with 13px text, like a regular AppKit
+	   control; touch screens raise it below. */
+	--ctd-control-height: 24px;
 	/* Space between a field's label and its box, the same for every field. */
 	--ctd-field-label-gap: 6px;
 	/* Switches stay in the marble palette: ink for on, stone for off. */
@@ -229,7 +232,6 @@
 	--ctd-danger-text: var(--pal-red-text);
 	--ctd-danger-border: oklch(from var(--pal-red) calc(l - 0.07) c h);
 	--ctd-danger-ink: oklch(78% 0.13 22);
-	--ctd-update-badge: oklch(62% 0.22 27);
 	--ctd-cover-shadow:
 		0 0 0 1px oklch(100% 0 0 / 0.07), 0 8px 18px oklch(0% 0 0 / 0.5),
 		0 10px 8px -8px oklch(0% 0 0 / 0.6);
@@ -260,7 +262,9 @@
 	--ctd-shadow-lift:
 		0 2px 6px oklch(0% 0 0 / 0.45), 0 16px 32px oklch(0% 0 0 / 0.5);
 	--ctd-content-bg: var(--pal-base);
-	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.4);
+	--ctd-focus-ring-mono: oklch(from var(--pal-accent) l c h / 0.4);
+	--ctd-focus-ring: var(--ctd-focus-ring-mono);
+	--ctd-focus-border: var(--ctd-accent);
 	/* On is the near-white ink with a dark knob; off is a dim stone with a
 	   dimmed knob, so it doesn't glow. */
 	--ctd-success: oklch(74% 0.13 150);
@@ -290,6 +294,80 @@
 
 :root[data-vibrancy][data-theme="dark"] {
 	--ctd-shell-gradient: oklch(from var(--pal-base) l c h / 0.12);
+}
+
+/*
+ * Menus (ContextMenu, Select's pop-up list) share one material and one
+ * highlight, so every menu in the app reads alike. Generic: an opaque
+ * surface with a quiet grey highlight. macOS: NSMenu's glass, compact 22px
+ * rows inset in a 10px-round panel, and an ink highlight (the monochrome
+ * stand-in for the system's selection fill, never the accent colour).
+ */
+:root {
+	--ctd-menu-bg: var(--ctd-surface-strong);
+	--ctd-menu-bg-opaque: var(--ctd-surface-strong);
+	--ctd-menu-backdrop: none;
+	--ctd-menu-border: var(--ctd-border);
+	--ctd-menu-inner-highlight: transparent;
+	--ctd-menu-radius: 8px;
+	--ctd-menu-padding: 4px;
+	--ctd-menu-item-radius: 4px;
+	--ctd-menu-item-height: 26px;
+	--ctd-menu-item-pad-x: 10px;
+	--ctd-menu-font-size: 13px;
+	--ctd-menu-highlight-bg: var(--ctd-nav-hover-bg);
+	--ctd-menu-highlight-text: var(--ctd-ink);
+	--ctd-menu-danger-highlight-bg: oklch(from var(--ctd-danger-bg) l c h / 0.14);
+	--ctd-menu-danger-highlight-text: var(--ctd-danger-ink);
+}
+
+:root[data-platform="macos"] {
+	--ctd-menu-bg: oklch(from var(--pal-base) l c h / 0.72);
+	--ctd-menu-backdrop: blur(24px) saturate(1.8);
+	--ctd-menu-border: oklch(from var(--pal-text) l c h / 0.12);
+	--ctd-menu-radius: 10px;
+	--ctd-menu-padding: 5px;
+	--ctd-menu-item-radius: 5px;
+	--ctd-menu-item-height: 22px;
+	--ctd-menu-item-pad-x: 9px;
+	--ctd-menu-highlight-bg: var(--ctd-accent);
+	--ctd-menu-highlight-text: var(--ctd-accent-text);
+	--ctd-menu-danger-highlight-bg: var(--ctd-danger-bg);
+	--ctd-menu-danger-highlight-text: var(--ctd-danger-text);
+}
+
+:root[data-platform="macos"][data-theme="dark"] {
+	--ctd-menu-bg: oklch(from var(--pal-surface0) l c h / 0.62);
+	--ctd-menu-border: oklch(0% 0 0 / 0.5);
+	--ctd-menu-inner-highlight: oklch(100% 0 0 / 0.12);
+}
+
+@media (pointer: coarse) {
+	:root,
+	:root[data-platform] {
+		--ctd-menu-item-height: 36px;
+		--ctd-menu-font-size: 15px;
+	}
+}
+
+/*
+ * Focus ring: monochrome ink by default. Setting data-focus-ring="accent" on
+ * <html> (the one-line switch) swaps in the link blue; any element can carry
+ * it too, which is how Storybook shows both side by side. Never the system
+ * accent colour, which would pull a user's tint into Citadel's palette.
+ */
+:root[data-focus-ring="accent"],
+[data-focus-ring="accent"] {
+	--ctd-focus-ring: oklch(from var(--ctd-text-link) l c h / 0.45);
+	--ctd-focus-border: var(--ctd-text-link);
+	--ctd-focus-shadow: 0 0 0 2px var(--ctd-focus-ring);
+}
+
+:root[data-focus-ring="monochrome"],
+[data-focus-ring="monochrome"] {
+	--ctd-focus-ring: var(--ctd-focus-ring-mono);
+	--ctd-focus-border: var(--ctd-accent);
+	--ctd-focus-shadow: 0 0 0 2px var(--ctd-focus-ring);
 }
 
 body {
@@ -341,6 +419,39 @@ a:any-link {
 	color: inherit;
 }
 
+/*
+ * Chrome is not text: drag-selecting or Select All never highlights
+ * labels, buttons or toolbars. Fields, editable text and real content (a
+ * book's description, metadata values, anything a person would copy) opt
+ * back in with .ctd-selectable or data-selectable.
+ */
+:root {
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable]:not([contenteditable="false"]),
+.ctd-selectable,
+[data-selectable] {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+/* Selectable text gets the I-beam over its glyphs, as an NSTextField does. */
+:is(.ctd-selectable, [data-selectable]),
+:is(.ctd-selectable, [data-selectable]) :not(a, button, [role="button"]) {
+	cursor: auto;
+}
+
+/* Links and images don't drag out as web content; anything that should
+   drag says so with draggable="true". */
+:is(a, img):not([draggable="true"]) {
+	-webkit-user-drag: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
@@ -355,70 +466,61 @@ a:any-link {
 }
 
 /*
- * macOS overlay scrollbars: the thumb floats inset from the container edge
- * (transparent border + padding-box clip), instead of a web scrollbar
- * touching the panel's rounded corner.
+ * Scrollbars float over content and show only while it scrolls.
+ * - macOS and mobile: the system's own overlay scrollbars, untouched, so
+ *   macOS's "Show scroll bars" setting decides (no ::-webkit-scrollbar
+ *   styling here: it would force classic, always-visible bars).
+ * - Elsewhere: a thin bar whose thumb is transparent until the scroller is
+ *   hovered or scrolling (data-scrolling, set by overlay-scrollbars.ts), so
+ *   it never paints over a still page. Scrollers that can grow into overflow
+ *   mark themselves .ctd-scroller to reserve the thin gutter up front, so
+ *   content never shifts when the bar arrives.
  */
-::-webkit-scrollbar {
-	width: 14px;
-	height: 14px;
-	background: transparent;
+:root:is(
+		[data-platform="windows"],
+		[data-platform="linux"],
+		[data-platform="other"]
+	)
+	* {
+	scrollbar-width: thin;
+	scrollbar-color: transparent transparent;
 }
 
-::-webkit-scrollbar-track {
-	background: transparent;
+:root:is(
+		[data-platform="windows"],
+		[data-platform="linux"],
+		[data-platform="other"]
+	)
+	:is(:hover, [data-scrolling]) {
+	scrollbar-color: var(--ctd-scrollbar-thumb) transparent;
 }
 
-::-webkit-scrollbar-thumb {
-	background-color: var(--ctd-scrollbar-thumb);
-	background-clip: padding-box;
-	border: 4px solid transparent;
-	border-radius: 8px;
-	min-height: 40px;
-}
-
-::-webkit-scrollbar-corner {
-	background: transparent;
+:root:is(
+		[data-platform="windows"],
+		[data-platform="linux"],
+		[data-platform="other"]
+	)
+	.ctd-scroller {
+	scrollbar-gutter: stable;
 }
 
 /* ==========================================================================
  * Interactivity polish (additive block; keep at the end of this file).
  * Hover backgrounds and larger touch targets; cursors are governed by the
- * AppKit-style policy at the top of this file. Token blocks above are off
+ * AppKit-style policy just below. Token blocks above are off
  * limits.
  * ========================================================================== */
 
 /*
- * Cursor policy: a deliberate departure from strict AppKit (which keeps the
- * arrow cursor on controls; interactivity is signaled by hover states and
- * static design instead. Text fields keep the text beam.
- * These rules must stay AFTER the `* { cursor: default }` reset earlier in
- * this file so they win on source order / specificity.
+ * Cursor policy, as in AppKit: the arrow everywhere, buttons and links
+ * included (no pointing hand); hover states and the design itself show what
+ * is interactive. Text fields keep the I-beam. These rules must stay after
+ * the `* { cursor: default }` reset above so they win on source order.
  */
 input[type="text"],
 input[type="search"],
 textarea {
 	cursor: text;
-}
-
-/*
- * Sidebar nav rows (Sidebar.tsx). The :not([data-active]) guard keeps active
- * rows on --ctd-nav-active-bg (set in Sidebar.tsx).
- */
-.ctd-nav-link:not([data-active]):hover,
-.ctd-nav-link:not([data-active]):focus-visible {
-	background-color: var(--ctd-nav-hover-bg);
-}
-
-/* Replace the UA focus rectangle with the shared halo (cf. .ctd-author-row-link). */
-.ctd-nav-link:focus-visible {
-	outline: none;
-	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
-}
-
-/* Sidebar settings (gear) button: same hover token as the nav rows. */
-.ctd-settings-button:hover {
-	background-color: var(--ctd-nav-hover-bg);
 }
 
 /*
@@ -449,3 +551,33 @@ textarea {
 	outline: none;
 	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
 }
+
+/* ==========================================================================
+ * Window in the background (desktop app; use-window-chrome-state.ts sets
+ * data-window-inactive). As on the Mac, the chrome loses its emphasis while
+ * another window is in front: the accent the active sidebar row, primary
+ * buttons, switches and focus rings take goes grey. The glass goes flat by
+ * itself (NSVisualEffectView follows the window's active state).
+ * Token overrides only, so every component follows without its own rule.
+ * ========================================================================== */
+:root[data-runtime="desktop"][data-window-inactive] {
+	--pal-accent: oklch(60% 0.004 270);
+	--pal-accent-text: oklch(99% 0.002 90);
+	--ctd-nav-active-bg: oklch(from var(--pal-text) l c h / 0.08);
+	--ctd-nav-active-text: var(--ctd-ink);
+	--ctd-focus-ring: oklch(from var(--pal-text) l c h / 0.16);
+	--ctd-focus-border: oklch(from var(--pal-text) l c h / 0.35);
+}
+
+:root[data-runtime="desktop"][data-window-inactive][data-theme="dark"] {
+	--pal-accent: oklch(58% 0.004 270);
+	--pal-accent-text: oklch(98% 0.002 90);
+	--ctd-nav-active-bg: oklch(from var(--pal-text) l c h / 0.1);
+	--ctd-switch-on-bg: oklch(52% 0.004 270);
+	--ctd-switch-on-knob: oklch(88% 0.004 90);
+}
+
+/* The glass itself goes flat on its own (the window effect follows the
+   window's active state), so the shell's tint stays the faint one it has
+   while active: no opaque wash that could hide the desktop if this flag
+   were ever wrong. */

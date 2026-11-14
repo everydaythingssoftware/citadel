@@ -36,7 +36,7 @@
 /* Plain :focus matches TextInput and the Mantine field treatment. */
 .textarea:focus {
 	outline: none;
-	border-color: var(--ctd-accent);
+	border-color: var(--ctd-focus-border);
 	box-shadow: var(--ctd-focus-shadow);
 }
 

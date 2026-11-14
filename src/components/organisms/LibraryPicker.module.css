@@ -11,16 +11,15 @@
 	gap: 6px;
 	width: fit-content;
 	max-width: 100%;
-	margin: 0 0 4px;
-	padding: 2px 0.65rem;
+	margin: 0;
+	padding: 4px 8px 3px;
+	line-height: 1.3;
 	border: none;
 	border-radius: var(--ctd-radius-control);
 	background: transparent;
 	font-family: inherit;
-	font-size: 12px;
+	font-size: 11px;
 	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
 	color: var(--ctd-ink-soft);
 	text-align: left;
 	transition: color 140ms ease;
@@ -58,62 +57,69 @@
 
 /* --- Menu (body portal, fixed positioning) ------------------------------- */
 
+/* The same material, geometry and highlight as ContextMenu and Select:
+   the --ctd-menu-* tokens in styles.css, glass on macOS. */
 .menu {
 	position: fixed;
 	z-index: 300;
 	display: flex;
 	flex-direction: column;
 	overflow-y: auto;
-	background-color: var(--ctd-surface-strong);
-	border: var(--ctd-control-border-width) solid var(--ctd-border);
-	border-radius: var(--ctd-radius-control);
-	box-shadow: var(--ctd-popover-shadow);
-	padding: 4px 0;
-	animation: library-picker-menu-fade-in 120ms ease-out;
+	padding: var(--ctd-menu-padding);
+	background-color: var(--ctd-menu-bg);
+	-webkit-backdrop-filter: var(--ctd-menu-backdrop);
+	backdrop-filter: var(--ctd-menu-backdrop);
+	border: 0.5px solid var(--ctd-menu-border);
+	border-radius: var(--ctd-menu-radius);
+	box-shadow:
+		inset 0 0.5px 0 var(--ctd-menu-inner-highlight),
+		var(--ctd-popover-shadow);
+	font-family: var(--ctd-font-ui);
+	font-size: var(--ctd-menu-font-size);
 }
 
-@keyframes library-picker-menu-fade-in {
-	from {
-		opacity: 0;
-	}
-	to {
-		opacity: 1;
+@media (prefers-reduced-transparency: reduce) {
+	.menu {
+		background-color: var(--ctd-menu-bg-opaque);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
 	}
 }
 
 .menuRow {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	margin: 1px 5px;
-	padding: 4px 8px 4px 6px;
+	gap: 6px;
+	flex: none;
+	min-height: var(--ctd-menu-item-height);
+	padding: 0 var(--ctd-menu-item-pad-x) 0 4px;
 	border: none;
-	border-radius: min(4px, var(--ctd-radius-control));
+	border-radius: var(--ctd-menu-item-radius);
 	background: transparent;
-	font-family: inherit;
-	font-size: 13px;
+	font: inherit;
 	color: var(--ctd-ink);
 	text-align: left;
 }
 
 .menuRow:hover,
 .menuRow:focus-visible {
-	background-color: var(--ctd-nav-hover-bg);
+	background-color: var(--ctd-menu-highlight-bg);
+	color: var(--ctd-menu-highlight-text);
 	outline: none;
 }
 
 .menuCheck {
 	display: inline-flex;
 	justify-content: center;
-	width: 16px;
+	width: 14px;
 	flex-shrink: 0;
-	color: var(--ctd-ink);
+	color: inherit;
 }
 
 .menuName {
 	flex: 1;
 	min-width: 0;
-	line-height: 1.25;
+	line-height: 1.2;
 	text-align: left;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -123,6 +129,6 @@
 .menuDivider {
 	flex-shrink: 0;
 	height: 1px;
-	margin: 4px 10px;
+	margin: 4px var(--ctd-menu-item-pad-x);
 	background-color: var(--ctd-border);
 }

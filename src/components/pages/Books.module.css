@@ -4,10 +4,39 @@
  * their hairlines the way it did when the whole page scrolled.
  */
 .page {
+	--footer-height: 28px;
+	position: relative;
+	isolation: isolate;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
 	min-height: 0;
+	/* The drawer slides in from past the panel's edge; no scrollbar for it. */
+	overflow: clip;
+}
+
+/* The details drawer is a layer of the content panel: from the panel's top
+   to the status bar, over the grid's right side, which stays live. */
+.page > .drawer {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: var(--footer-height);
+	z-index: 2;
+}
+
+/* Phones: a full-screen sheet over the toolbar and status bar too. */
+@media (max-width: 36em) {
+	.page {
+		isolation: auto;
+	}
+
+	.page > .drawer {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		z-index: 111;
+	}
 }
 
 /* Finder-style scope bar above the scroll region. */
@@ -35,7 +64,7 @@
 	width: 100%;
 }
 
-/* Keeps "Unread only" on one line; the search field gives up the room. */
+/* Keeps "Unread Only" on one line; the search field gives up the room. */
 .unreadToggle {
 	display: flex;
 	align-items: center;
@@ -43,10 +72,12 @@
 	white-space: nowrap;
 }
 
-/* The glyph sits inside a 26px hit area; pull it in so the visible gap
-   matches the bar's 12px rhythm. */
+/* A quiet labelled button: the bookmark alone didn't say what it saved.
+ * Its own padding stands in for part of the bar's 12px gap. */
 .shelfButton {
-	margin-inline-start: -5px;
+	flex: none;
+	white-space: nowrap;
+	margin-inline-start: -6px;
 }
 
 .gridArea {
@@ -86,11 +117,14 @@
 }
 
 .footer {
+	position: relative;
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	padding: 6px 0;
+	box-sizing: border-box;
+	height: var(--footer-height);
+	padding: 0;
 	background-color: var(--ctd-content-bg);
 	border-top: 1px solid var(--ctd-border);
 }

@@ -2,6 +2,7 @@ import clsx from "clsx";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DetectionSource } from "@/bindings";
+import { WindowDragStrip } from "@/components/atoms/WindowDragStrip";
 import { Button, Spinner } from "@/components/ui";
 import type {
 	CreateError,
@@ -88,7 +89,9 @@ interface PathWellProps {
 const PathWell = ({ path, home, bad = false, change }: PathWellProps) => (
 	<div className={clsx(styles.well, bad && styles.wellBad)}>
 		<FolderGlyph />
-		<span className={styles.pathText}>{abbreviateHomePath(path, home)}</span>
+		<span className={styles.pathText} data-selectable>
+			{abbreviateHomePath(path, home)}
+		</span>
 		{change && (
 			<Button
 				variant="subtle"
@@ -870,7 +873,14 @@ const FirstRunExperience = ({ mode, children }: FirstRunExperienceProps) => {
  * active library that fails validation → broken-path flow; otherwise the app
  * renders untouched. Must only mount after settings hydration.
  */
-export const FirstRunGate = ({ children }: { children: ReactNode }) => {
+export const FirstRunGate = ({ children }: { children: ReactNode }) => (
+	<>
+		<WindowDragStrip />
+		<BootPath>{children}</BootPath>
+	</>
+);
+
+const BootPath = ({ children }: { children: ReactNode }) => {
 	const decision = useBootDecision();
 
 	switch (decision.kind) {

@@ -41,7 +41,7 @@
 /* Plain :focus matches the existing Mantine field treatment in styles.css. */
 .input:focus {
 	outline: none;
-	border-color: var(--ctd-accent);
+	border-color: var(--ctd-focus-border);
 	box-shadow: var(--ctd-focus-shadow);
 }
 

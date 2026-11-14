@@ -4,6 +4,10 @@ import DOMPurify from "dompurify";
 import {
 	type CSSProperties,
 	Fragment,
+	type KeyboardEvent,
+	type ReactNode,
+	type RefObject,
+	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -13,13 +17,25 @@ import type { Identifier, LibraryBook } from "@/bindings";
 import { BookCover } from "@/components/atoms/BookCover";
 import { EditGlyph } from "@/components/icons/EditGlyph";
 import { TablerCopy } from "@/components/icons/TablerCopy";
-import { FileTiles } from "@/components/molecules/BookActions";
-import { Button, Tooltip } from "@/components/ui";
-import buttonStyles from "@/components/ui/Button.module.css";
+import { BookFileList } from "@/components/molecules/BookFileList";
+import {
+	Button,
+	ContextMenu,
+	Drawer,
+	DrawerPlacement,
+	Tooltip,
+} from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
-import { bookFormatRows, remoteBookDownloads } from "@/lib/book-downloads";
+import {
+	identifierDisplayName,
+	identifierUrl,
+	sortIdentifiers,
+} from "@/lib/book-identifiers";
 import { backdropColors } from "@/lib/cover-palette";
+import { useBookDrawerResize } from "@/lib/hooks/use-book-drawer-resize";
+import { useBookFiles } from "@/lib/hooks/use-book-files";
 import { useCoverPalette } from "@/lib/hooks/use-cover-palette";
+import { useScrolled } from "@/lib/hooks/use-scrolled";
 import { languageNameForCode } from "@/lib/languages";
 import { usePlatform } from "@/lib/platform/context";
 import { formatSeriesIndex } from "@/lib/series";
@@ -36,15 +52,93 @@ interface BookDrawerProps {
 	onClose: () => void;
 }
 
+interface BookDetailsDrawerProps {
+	/** The book to show; kept while the drawer slides closed. */
+	book: LibraryBook | null;
+	open: boolean;
+	onClose: () => void;
+	/** The grid: focus goes back there on close. */
+	returnFocusRef: RefObject<HTMLElement | null>;
+	/** Places the drawer in its page. */
+	className?: string;
+}
+
+/**
+ * The details drawer as the Books page mounts it: an inspector inside the
+ * content panel, as wide as the user last left it.
+ */
+export const BookDetailsDrawer = ({
+	book,
+	open,
+	onClose,
+	returnFocusRef,
+	className,
+}: BookDetailsDrawerProps) => {
+	const contentRef = useRef<HTMLDivElement | null>(null);
+	const [content, setContent] = useState<HTMLDivElement | null>(null);
+	const attachContent = useCallback((element: HTMLDivElement | null) => {
+		contentRef.current = element;
+		setContent(element);
+	}, []);
+	const resize = useBookDrawerResize(content);
+	return (
+		<Drawer
+			placement={DrawerPlacement.panel}
+			open={open}
+			onOpenChange={(next) => {
+				if (!next) onClose();
+			}}
+			width={resize.width}
+			bleed
+			className={className}
+			contentRef={attachContent}
+			resizeHandleProps={resize.handleProps}
+			onOpenAutoFocus={(event) => {
+				// Opened from the grid, the grid keeps focus so arrows move on
+				// through the books; from a menu, land on the primary action.
+				event.preventDefault();
+				if (returnFocusRef.current?.contains(document.activeElement)) return;
+				contentRef.current
+					?.querySelector<HTMLElement>("[data-drawer-initial-focus]")
+					?.focus();
+			}}
+			onCloseAutoFocus={(event) => {
+				// No Dialog.Trigger to return focus to: hand it to the grid,
+				// unless the user has already moved on (into the search field).
+				event.preventDefault();
+				const focused = document.activeElement;
+				if (
+					focused === null ||
+					focused === document.body ||
+					contentRef.current?.contains(focused)
+				)
+					returnFocusRef.current?.focus();
+			}}
+		>
+			{book && <BookDrawer book={book} onClose={onClose} />}
+		</Drawer>
+	);
+};
+
 /**
  * The book at a glance: cover and title over a wash of the cover's own
  * colours with what you can do right under the title, then what it's
  * about, its tags, files and details.
  */
 export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
+	const files = useBookFiles(book.file_list);
 	const coverUrl = book.cover_image?.url ?? null;
 	const palette = useCoverPalette(coverUrl);
 	const colors = palette ? backdropColors(palette) : null;
+	const bodyRef = useRef<HTMLDivElement>(null);
+	const drawerRef = useRef<HTMLElement>(null);
+	const scrolled = useScrolled(bodyRef);
+	// Another book starts at its top.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: book.id is the trigger.
+	useLayoutEffect(() => {
+		bodyRef.current?.scrollTo({ top: 0 });
+		drawerRef.current?.scrollTo({ top: 0 });
+	}, [book.id]);
 	const washStyle = colors
 		? ({
 				"--wash-1-light": colors.light[0],
@@ -55,7 +149,13 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 		: undefined;
 
 	return (
-		<article className={styles.drawer} style={washStyle}>
+		<article
+			ref={drawerRef}
+			className={styles.drawer}
+			style={washStyle}
+			data-scrolled={scrolled || undefined}
+			onKeyDown={(event: KeyboardEvent) => files.onKeyDown(event)}
+		>
 			<header className={styles.hero}>
 				<div className={styles.backdrop} aria-hidden="true" />
 				<div className={styles.cover}>
@@ -69,16 +169,18 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 					)}
 				</div>
 				<div className={styles.heading}>
-					<h2 className={styles.title}>{book.title}</h2>
+					<h2 className={styles.title} data-selectable="">
+						{book.title}
+					</h2>
 					<Byline book={book} onClose={onClose} />
 					<Actions book={book} className={styles.actions} />
 				</div>
 			</header>
 			<Actions book={book} className={styles.phoneActions} />
-			<div className={styles.body}>
+			<div ref={bodyRef} className={clsx(styles.body, "ctd-scroller")}>
 				<Description html={book.description} />
 				<Tags book={book} onClose={onClose} />
-				<Files book={book} />
+				<Files files={files} />
 				<Details book={book} />
 			</div>
 		</article>
@@ -141,7 +243,10 @@ const Byline = ({ book, onClose }: BookDrawerProps) => {
 	);
 };
 
-/** Read (desktop) or Download (web), and Edit. Finished lives in the editor. */
+/**
+ * Open and Edit. Open opens the book in its default app on the desktop; a
+ * browser gets each file's own download button under Files instead.
+ */
 const Actions = ({
 	book,
 	className,
@@ -159,11 +264,11 @@ const Actions = ({
 		"Local" in localFile
 			? localFile.Local.path
 			: null;
-	const download = remoteBookDownloads(book.file_list)[0];
+	if (localPath === null && !canEdit) return null;
 
 	return (
 		<div className={className}>
-			{localPath !== null ? (
+			{localPath !== null && (
 				<Button
 					variant="primary"
 					data-drawer-initial-focus=""
@@ -172,26 +277,12 @@ const Actions = ({
 					)}
 				>
 					<BookGlyph />
-					Read
+					Open
 				</Button>
-			) : (
-				download && (
-					<a
-						className={clsx(
-							buttonStyles.button,
-							buttonStyles.primary,
-							styles.download,
-						)}
-						href={download.url}
-						download
-						data-drawer-initial-focus=""
-					>
-						Download
-					</a>
-				)
 			)}
 			{canEdit && (
 				<Button
+					data-drawer-initial-focus={localPath === null ? "" : undefined}
 					onClick={() =>
 						void navigate({
 							to: "/books/$bookId",
@@ -255,6 +346,7 @@ const Description = ({ html }: { html: string | null }) => {
 			<div
 				ref={textRef}
 				className={clsx("description-html", styles.descriptionText)}
+				data-selectable=""
 				data-clamped={(!expanded && overflows) || undefined}
 				data-expanded={expanded || undefined}
 				// biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized with DOMPurify
@@ -310,44 +402,27 @@ const Tags = ({ book, onClose }: BookDrawerProps) => {
 	);
 };
 
-const Files = ({ book }: { book: LibraryBook }) => {
-	const rows = bookFormatRows(book.file_list);
-	if (rows.length === 0) return null;
+const Files = ({ files }: { files: ReturnType<typeof useBookFiles> }) => {
+	const platform = usePlatform();
+	if (files.rows.length === 0) return null;
 	return (
 		<section className={styles.section}>
 			<h3 className={styles.sectionTitle}>Files</h3>
-			<FileTiles rows={rows} />
+			<BookFileList
+				rows={files.rows}
+				os={platform.os}
+				fileManagerName={platform.fileOpener.fileManagerName}
+				canReveal={platform.capabilities.canRevealInFileManager}
+				onCommand={files.onCommand}
+				onCancelDownload={files.onCancelDownload}
+				onContextMenu={files.onContextMenu}
+			/>
+			<ContextMenu
+				menu={files.contextMenu.menu}
+				onClose={files.contextMenu.close}
+			/>
 		</section>
 	);
-};
-
-const amazon = (value: string) => `https://www.amazon.com/dp/${value}`;
-
-const IDENTIFIERS: Record<
-	string,
-	{ name: string; url?: (value: string) => string }
-> = {
-	isbn: { name: "ISBN" },
-	goodreads: {
-		name: "Goodreads",
-		url: (value) => `https://www.goodreads.com/book/show/${value}`,
-	},
-	amazon: { name: "Amazon", url: amazon },
-	asin: { name: "Amazon", url: amazon },
-	"mobi-asin": { name: "Amazon", url: amazon },
-	google: {
-		name: "Google Books",
-		url: (value) => `https://books.google.com/books?id=${value}`,
-	},
-	uri: { name: "Link", url: (value) => value },
-	url: { name: "Link", url: (value) => value },
-};
-
-/** ISBN first, then the sites in the order above, then anything else. */
-const IDENTIFIER_ORDER = Object.keys(IDENTIFIERS);
-const identifierRank = (identifier: Identifier): number => {
-	const rank = IDENTIFIER_ORDER.indexOf(identifier.label.toLowerCase());
-	return rank === -1 ? IDENTIFIER_ORDER.length : rank;
 };
 
 const formatAdded = (iso: string): string | null => {
@@ -360,12 +435,21 @@ const formatAdded = (iso: string): string | null => {
 	});
 };
 
+const seriesText = (book: LibraryBook): string | null => {
+	if (book.series === null) return null;
+	return book.series_index !== null
+		? `${book.series}, book ${formatSeriesIndex(book.series_index)}`
+		: book.series;
+};
+
 const Details = ({ book }: { book: LibraryBook }) => {
 	const added = formatAdded(book.added_at);
 	const languages = book.language_list.map(languageNameForCode).join(", ");
+	const series = seriesText(book);
 	if (
 		added === null &&
 		languages.length === 0 &&
+		series === null &&
 		book.identifier_list.length === 0
 	)
 		return null;
@@ -373,28 +457,31 @@ const Details = ({ book }: { book: LibraryBook }) => {
 		<section className={styles.section}>
 			<h3 className={styles.sectionTitle}>Details</h3>
 			<dl className={styles.details}>
-				{added !== null && (
-					<>
-						<dt>Added</dt>
-						<dd>{added}</dd>
-					</>
-				)}
+				{added !== null && <DetailRow label="Added">{added}</DetailRow>}
 				{languages.length > 0 && (
-					<>
-						<dt>Language</dt>
-						<dd>{languages}</dd>
-					</>
+					<DetailRow label="Language">{languages}</DetailRow>
 				)}
-				{book.identifier_list
-					.slice()
-					.sort((a, b) => identifierRank(a) - identifierRank(b))
-					.map((identifier) => (
-						<IdentifierRow key={identifier.label} identifier={identifier} />
-					))}
+				{series !== null && <DetailRow label="Series">{series}</DetailRow>}
+				{sortIdentifiers(book.identifier_list).map((identifier) => (
+					<IdentifierRow key={identifier.label} identifier={identifier} />
+				))}
 			</dl>
 		</section>
 	);
 };
+
+const DetailRow = ({
+	label,
+	children,
+}: {
+	label: string;
+	children: ReactNode;
+}) => (
+	<div className={styles.detail}>
+		<dt>{label}</dt>
+		<dd>{children}</dd>
+	</div>
+);
 
 const IdentifierRow = ({ identifier }: { identifier: Identifier }) => {
 	const platform = usePlatform();
@@ -404,54 +491,69 @@ const IdentifierRow = ({ identifier }: { identifier: Identifier }) => {
 		const timer = setTimeout(() => setCopied(false), 1500);
 		return () => clearTimeout(timer);
 	}, [copied]);
-	const known = IDENTIFIERS[identifier.label.toLowerCase()];
-	const name = known?.name ?? identifier.label.toUpperCase();
-	const url = known?.url?.(identifier.value);
+	const name = identifierDisplayName(identifier.label);
+	const url = identifierUrl(identifier);
 	return (
-		<>
-			<dt>{name}</dt>
-			<dd>
-				{url ? (
-					<a
-						className={styles.external}
-						href={url}
-						target="_blank"
-						rel="noreferrer"
-						title={`Open on ${name}`}
+		<DetailRow label={name}>
+			{url ? (
+				<a
+					className={styles.external}
+					href={url}
+					target="_blank"
+					rel="noreferrer"
+					title={`Open on ${name}`}
+				>
+					<span className={styles.value} data-selectable="">
+						{identifier.value}
+					</span>
+					<svg
+						className={styles.arrow}
+						viewBox="0 0 12 12"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.3"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						aria-hidden="true"
 					>
-						<span className={styles.value}>{identifier.value}</span>
-						<svg
-							className={styles.arrow}
-							viewBox="0 0 12 12"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.3"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							aria-hidden="true"
-						>
-							<path d="M3.5 8.5 8.5 3.5M4.5 3.5h4v4" />
-						</svg>
-					</a>
-				) : (
-					<span className={styles.value}>{identifier.value}</span>
-				)}
-				{!url && platform.capabilities.canCopyToClipboard && (
-					<Tooltip label={copied ? "Copied" : `Copy ${name}`} openDelay={200}>
-						<button
-							type="button"
-							className={styles.copy}
-							aria-label={`Copy ${name}`}
-							onClick={safeAsyncEventHandler(async () => {
-								await platform.clipboard.writeText(identifier.value);
-								setCopied(true);
-							})}
-						>
-							<TablerCopy />
-						</button>
-					</Tooltip>
-				)}
-			</dd>
-		</>
+						<path d="M3.5 8.5 8.5 3.5M4.5 3.5h4v4" />
+					</svg>
+				</a>
+			) : (
+				<span className={styles.value} data-selectable="">
+					{identifier.value}
+				</span>
+			)}
+			{!url && platform.capabilities.canCopyToClipboard && (
+				<Tooltip label={copied ? "Copied" : `Copy ${name}`} openDelay={200}>
+					<button
+						type="button"
+						className={styles.copy}
+						aria-label={`Copy ${name}`}
+						data-copied={copied || undefined}
+						onClick={safeAsyncEventHandler(async () => {
+							await platform.clipboard.writeText(identifier.value);
+							setCopied(true);
+						})}
+					>
+						{copied ? <CopiedGlyph /> : <TablerCopy />}
+					</button>
+				</Tooltip>
+			)}
+		</DetailRow>
 	);
 };
+
+const CopiedGlyph = () => (
+	<svg
+		viewBox="0 0 12 12"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.5"
+		strokeLinecap="round"
+		strokeLinejoin="round"
+		aria-hidden="true"
+	>
+		<path d="M2.5 6.25 5 8.5l4.5-5" />
+	</svg>
+);

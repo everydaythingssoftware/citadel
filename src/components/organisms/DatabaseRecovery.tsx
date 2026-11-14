@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { DatabaseProblem, RecoveryStep } from "@/bindings";
+import { WindowDragStrip } from "@/components/atoms/WindowDragStrip";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { Button, Spinner } from "@/components/ui";
 import {
@@ -137,11 +138,14 @@ export const DatabaseRecoveryScreen = ({
 }) => {
 	const { running, error, recover } = useDatabaseRecovery(problem);
 	return (
-		<DatabaseRecoveryCard
-			problem={problem}
-			running={running}
-			error={error}
-			onRecover={recover}
-		/>
+		<>
+			<WindowDragStrip />
+			<DatabaseRecoveryCard
+				problem={problem}
+				running={running}
+				error={error}
+				onRecover={recover}
+			/>
+		</>
 	);
 };

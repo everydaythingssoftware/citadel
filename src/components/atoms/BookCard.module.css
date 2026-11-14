@@ -28,12 +28,17 @@
 	border-radius: 4px;
 }
 
+/* Citadel's selection ring: monochrome ink, never the accent, so it reads
+ * the same on every cover. It softens while the grid isn't focused, the way
+ * an inactive Finder selection goes grey. */
 .coverWrapSelected {
-	/* Crisp accent line (3:1 contrast floor) inside the same soft halo the
-	 * focused controls wear, so selection and focus share one language. */
-	outline: 2px solid var(--ctd-accent);
-	outline-offset: 2px;
-	box-shadow: 0 0 0 7px var(--ctd-focus-ring);
+	outline: 2.5px solid var(--ctd-ink-soft);
+	outline-offset: 3px;
+}
+
+:global([role="listbox"]:focus) .coverWrapSelected,
+:global([role="listbox"]:focus-within) .coverWrapSelected {
+	outline-color: var(--ctd-ink);
 }
 
 /* Cover-shaped stand-in for a book whose page has not been fetched yet

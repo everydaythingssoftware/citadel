@@ -88,7 +88,7 @@ export const AddLibraryDialog = ({ step, send }: AddLibraryDialogProps) => {
 const FolderPath = ({ path }: { path: string }) => {
 	const segments = path.split(/(?<=[\\/])/);
 	return (
-		<span className={styles.path}>
+		<span className={styles.path} data-selectable>
 			{segments.map((segment, index) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: segments are positional and can repeat.
 				<Fragment key={index}>
@@ -128,10 +128,10 @@ const DialogBody = ({ step, send, abbreviate }: DialogBodyProps) => {
 						Open <NoBreak>“{folderName(step.libraryPath)}”?</NoBreak>
 					</>
 				) : step.id === "create-here" ? (
-					"Create a new library?"
+					"Create a New Library?"
 				) : (
 					<>
-						Create a new library inside{" "}
+						Create a New Library Inside{" "}
 						<NoBreak>“{folderName(step.folder)}”?</NoBreak>
 					</>
 				)}

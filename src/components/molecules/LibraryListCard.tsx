@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import {
 	ContextMenu,
-	type ContextMenuItem,
+	type ContextMenuEntry,
 	type ContextMenuState,
 	TextInput,
 } from "@/components/ui";
@@ -117,7 +117,7 @@ export const LibraryListCard = ({
 	};
 
 	const openMenu = (library: LibraryPath, x: number, y: number) => {
-		const items: ContextMenuItem[] = [
+		const items: ContextMenuEntry[] = [
 			{
 				id: "rename",
 				label: "Rename",
@@ -134,6 +134,7 @@ export const LibraryListCard = ({
 			});
 		}
 		if (onRemoveLibrary) {
+			items.push({ type: "separator", id: "forget-group" });
 			items.push({
 				id: "forget",
 				label: "Forget…",
@@ -141,7 +142,7 @@ export const LibraryListCard = ({
 			});
 		}
 		setMenuTargetId(library.id);
-		setMenu({ x, y, items });
+		setMenu({ x, y, items, label: `${library.displayName} actions` });
 	};
 
 	const entries = withLeavingLibraries(libraries, leavingLibraries);

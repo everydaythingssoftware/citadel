@@ -31,7 +31,9 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
+import { useBookEditorCommands } from "@/lib/hooks/use-book-editor-commands";
 import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
+import { identifierDisplayName } from "@/lib/book-identifiers";
 import type {
 	CoverSize,
 	PreloadedCustomFields,
@@ -120,7 +122,7 @@ const SubjectSuggestions = ({
 			))}
 			{subjects.length > 1 && (
 				<Button variant="subtle" onClick={onAddAll}>
-					Add all {subjects.length}
+					Add All {subjects.length}
 				</Button>
 			)}
 		</div>
@@ -782,6 +784,12 @@ const EditBookForm = ({
 		requestSave();
 	};
 
+	useBookEditorCommands({
+		canUndo: hasChanges || history.length > 0,
+		undo,
+		save: requestSave,
+	});
+
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		requestSave();
@@ -1140,7 +1148,7 @@ const EditBookForm = ({
 							{values.identifierList.map(({ label, id, value }, index) => (
 								<FormRow
 									key={id}
-									label={label.toUpperCase()}
+									label={identifierDisplayName(label)}
 									htmlFor={`edit-book-identifier-${id}`}
 								>
 									<div className={styles.inlineControls}>

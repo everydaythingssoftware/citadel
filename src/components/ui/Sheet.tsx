@@ -1,7 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import type { ReactNode } from "react";
 import { DialogCloseButton } from "./DialogCloseButton";
-import { ignorePopoverInteractOutside } from "./popover-interop";
 import styles from "./Sheet.module.css";
 
 export interface SheetProps {
@@ -11,9 +10,8 @@ export interface SheetProps {
 	children: ReactNode;
 	width?: number;
 	/**
-	 * False when closing would lose something for good: Escape, clicks outside
-	 * and the close button all stop working, so the content must offer its own
-	 * way out.
+	 * False when closing would lose something for good: Escape and the close
+	 * button stop working, so the content must offer its own way out.
 	 */
 	dismissible?: boolean;
 	/** Lets the content choose where focus starts; preventDefault to take over. */
@@ -28,7 +26,11 @@ export interface SheetProps {
 
 const preventClosing = (event: Event) => event.preventDefault();
 
-/** A macOS document sheet: detached below the toolbar, dimming the window. */
+/**
+ * A macOS document sheet: detached below the toolbar, dimming the window.
+ * Like a native sheet it is modal: a click outside does nothing; Escape and
+ * the content's own Cancel or Done close it. Title in title case.
+ */
 export const Sheet = ({
 	open,
 	onOpenChange,
@@ -50,12 +52,8 @@ export const Sheet = ({
 				onOpenAutoFocus={onOpenAutoFocus}
 				onCloseAutoFocus={onCloseAutoFocus}
 				onEscapeKeyDown={dismissible ? undefined : preventClosing}
-				onPointerDownOutside={
-					dismissible ? ignorePopoverInteractOutside : preventClosing
-				}
-				onInteractOutside={
-					dismissible ? ignorePopoverInteractOutside : preventClosing
-				}
+				onPointerDownOutside={preventClosing}
+				onInteractOutside={preventClosing}
 			>
 				<div className={styles.header}>
 					<Dialog.Title className={styles.title}>{title}</Dialog.Title>

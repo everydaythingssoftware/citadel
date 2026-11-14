@@ -543,6 +543,43 @@ async clbCmdOpenSettings() : Promise<void> {
 },
 async clbCmdOpenSoftwareUpdate() : Promise<void> {
     await TAURI_INVOKE("clb_cmd_open_software_update");
+},
+/**
+ * Updates what the menu bar shows. Fields left out keep their value.
+ */
+async clbCmdSetMenuState(state: MenuStatePatch) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_menu_state", { state }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The app that opens this file when it is double-clicked in the file
+ * manager. None where the platform can't say (Windows, Linux) or when no
+ * app claims the file.
+ */
+async clbQueryDefaultApp(path: string) : Promise<DefaultApp | null> {
+    return await TAURI_INVOKE("clb_query_default_app", { path });
+},
+/**
+ * The file manager's icon for a file, as a PNG data URL: the image under
+ * the pointer while files are dragged out. None off macOS.
+ */
+async clbQueryFileIcon(path: string) : Promise<string | null> {
+    return await TAURI_INVOKE("clb_query_file_icon", { path });
+},
+/**
+ * Opens Quick Look on a file (macOS).
+ */
+async clbCmdQuickLook(path: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_quick_look", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -551,10 +588,12 @@ async clbCmdOpenSoftwareUpdate() : Promise<void> {
 
 export const events = __makeEvents__<{
 librariesChanged: LibrariesChanged,
+menuCommandChosen: MenuCommandChosen,
 showSoftwareUpdate: ShowSoftwareUpdate,
 softwareUpdateChanged: SoftwareUpdateChanged
 }>({
 librariesChanged: "libraries-changed",
+menuCommandChosen: "menu-command-chosen",
 showSoftwareUpdate: "show-software-update",
 softwareUpdateChanged: "software-update-changed"
 })
@@ -680,6 +719,10 @@ export type DatabaseProblem = { kind: DatabaseProblemKind; databasePath: string;
  */
 steps: RecoveryStep[] }
 export type DatabaseProblemKind = "damaged" | "newerVersion" | "migrationFailed" | "migrationInterrupted" | "unreadable"
+/**
+ * The app a file opens in by default, with its icon as a PNG data URL.
+ */
+export type DefaultApp = { name: string; iconDataUrl: string }
 /**
  * Result of deleting books. The books are gone from the library either way;
  * `folder_failures` lists folders, relative to the library, that could not
@@ -823,6 +866,20 @@ path: string;
 mime_type: string }
 export type LocalOrRemote = "Local" | "Remote"
 export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: string | null }
+/**
+ * A menu choice delivered to the library window.
+ */
+export type MenuCommand = "new-shelf" | "add-library" | "show-library-in-file-manager" | "find" | "undo" | "redo" | "select-all" | "book-show-details" | "book-open" | "book-edit" | "book-mark-finished" | "book-show-in-file-manager" | "book-copy-title" | "book-delete" | "toggle-sidebar" | "toggle-unread-only" | "sort-name-az" | "sort-name-za" | "sort-author-az" | "sort-author-za" | "go-all-books" | "go-authors" | "go-series" | "go-tags" | "go-publishers" | "go-back" | "go-forward" | "restart-to-update" | { switchLibrary: string }
+/**
+ * A menu choice, sent to the library window.
+ */
+export type MenuCommandChosen = MenuCommand
+export type MenuLibrary = { id: string; name: string; active: boolean }
+export type MenuSortOrder = "nameAz" | "nameZa" | "authorAz" | "authorZa"
+/**
+ * The fields of [`MenuState`] that changed; absent fields stay as they were.
+ */
+export type MenuStatePatch = { selectedBookCount?: number | null; selectionAllFinished?: boolean | null; sidebarVisible?: boolean | null; unreadOnly?: boolean | null; sortOrder?: MenuSortOrder | null; libraries?: MenuLibrary[] | null; updateReadyVersion?: string | null; appUndo?: boolean | null; undoLabel?: string | null; redoLabel?: string | null }
 /**
  * The metadata sources Citadel can look books up against. The serialized
  * short form is the single id used across the Rust enum, the TS string union,

@@ -83,19 +83,21 @@
 	box-shadow: var(--ctd-control-shadow), var(--ctd-focus-shadow);
 }
 
+/* Destructive, the macOS way: a bordered button with red words, never
+   filled and never the default button (see AlertDialog). */
 .danger {
-	background-color: var(--ctd-danger-bg);
-	border: var(--ctd-control-border-width) solid var(--ctd-danger-border);
+	background-color: var(--ctd-control-bg-strong);
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
 	box-shadow: var(--ctd-control-shadow);
-	color: var(--ctd-danger-text);
+	color: var(--ctd-danger-ink);
 }
 
 .danger:hover:not(:disabled) {
-	background-color: var(--ctd-danger-bg-hover);
+	background-color: var(--ctd-control-bg);
 }
 
 .danger:active:not(:disabled) {
-	background-color: oklch(from var(--ctd-danger-bg-hover) calc(l - 0.04) c h);
+	background-color: oklch(from var(--ctd-control-bg-strong) calc(l - 0.04) c h);
 }
 
 .danger:focus-visible {
