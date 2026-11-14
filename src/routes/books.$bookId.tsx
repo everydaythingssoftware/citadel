@@ -58,8 +58,16 @@ const EditBookRoute = () => {
 
 	// Scoped fetches: this route loads exactly its own book and the tag
 	// vocabulary (for the tag autocomplete) — never the whole library.
-	const { book, allTagList, loading, error, refreshBook, refreshTags } =
-		useEditBookData(bookId, Route.useLoaderData());
+	const {
+		book,
+		allTagList,
+		customFields,
+		coverSize,
+		loading,
+		error,
+		refreshBook,
+		refreshTags,
+	} = useEditBookData(bookId, Route.useLoaderData());
 	const allAuthorList = useAuthors();
 
 	const onSave = useCallback(
@@ -188,6 +196,8 @@ const EditBookRoute = () => {
 			allAuthorList={allAuthorList}
 			allTagList={allTagList}
 			book={book}
+			initialCustomFields={customFields}
+			coverSize={coverSize}
 			onBack={goBack}
 			onCreateAuthor={onCreateAuthor}
 			onSave={onSave}
