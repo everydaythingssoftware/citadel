@@ -695,7 +695,7 @@ fn run() -> Result<(), String> {
             publisher: None,
             publication_date: Some(build_pubdate(&mut rng)),
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: Some("eng".to_string()),
             file_paths: vec![stub_path.clone()],

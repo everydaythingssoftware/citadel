@@ -301,7 +301,7 @@ mod tests {
                 publisher: None,
                 publication_date: None,
                 rating: None,
-                comments: None,
+                description: None,
                 identifiers: HashMap::new(),
                 language: Some("eng".to_string()),
                 file_paths: vec![source],

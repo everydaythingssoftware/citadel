@@ -53,7 +53,7 @@ fn real_process_serves_authenticated_catalog_and_acquisition_then_stops() {
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: Some("eng".to_string()),
             file_paths: vec![source],

@@ -6,7 +6,8 @@ use diesel::{Connection, SqliteConnection};
 use crate::{
     library::{Book, BookFileInfo, BookIdentifier, BookUpdate},
     queries::{
-        authors, book_descriptions, book_files, book_identifiers, books, languages, series, tags,
+        authors, book_descriptions, book_details, book_files, book_identifiers, books, languages,
+        publishers, series, tags,
     },
     types::{AuthorId, BookId},
     BookRow, CalibreError, UpdateBookData,
@@ -56,6 +57,23 @@ pub fn update_book(
 
         if let Some(codes) = update.language_codes {
             languages::set_for_book(conn, book_id, &codes)?;
+        }
+
+        if let Some(publisher) = update.publisher {
+            let publisher = publisher.trim();
+            if publisher.is_empty() {
+                book_details::unlink_publisher(conn, book_id)?;
+            } else {
+                publishers::set_for_book(conn, book_id, publisher)?;
+            }
+        }
+
+        if let Some(rating) = update.rating {
+            book_details::set_rating(conn, book_id, rating)?;
+        }
+
+        if let Some(identifiers) = &update.identifiers {
+            book_details::replace_identifiers(conn, book_id, identifiers)?;
         }
 
         if let Some(description) = update.description {
@@ -182,6 +200,8 @@ pub fn get_book(conn: &mut SqliteConnection, book_id: BookId) -> Result<Book, Ca
     let language_codes = languages::find_codes_for_book(conn, book_id)?;
     let identifier_models = book_identifiers::get(conn, book_id)?;
     let file_models = book_files::find_by_book_id(conn, book_id)?;
+    let publisher = book_details::publishers_by_book_ids(conn, &[book_id])?.remove(&book_id);
+    let rating = book_details::ratings_by_book_ids(conn, &[book_id])?.remove(&book_id);
 
     let book_authors = to_library_authors(author_models);
 
@@ -218,6 +238,9 @@ pub fn get_book(conn: &mut SqliteConnection, book_id: BookId) -> Result<Book, Ca
         series: series_name,
         identifiers,
         description: book_desc,
+        publisher,
+        rating,
+        publication_date: book_details::defined_date(book.pubdate),
         language_codes,
         has_cover: book.has_cover.unwrap_or(false),
         is_read: false, // Populated by Library via read state queries
@@ -278,6 +301,8 @@ fn hydrate(
     let tags_map = tags::find_tag_names_by_book_ids(conn, book_ids.clone())?;
     let series_map = series::find_series_names_by_book_ids(conn, book_ids.clone())?;
     let languages_map = languages::find_codes_by_book_ids(conn, book_ids.clone())?;
+    let mut publishers_map = book_details::publishers_by_book_ids(conn, &book_ids)?;
+    let ratings_map = book_details::ratings_by_book_ids(conn, &book_ids)?;
     let files_map = book_files::find_many_by_book_ids(conn, book_ids)?;
 
     let unique_author_ids: Vec<AuthorId> = author_ids_by_book
@@ -343,6 +368,9 @@ fn hydrate(
             series: book_series,
             identifiers: book_identifiers,
             description: book_description,
+            publisher: publishers_map.remove(&book_id),
+            rating: ratings_map.get(&book_id).copied(),
+            publication_date: book_details::defined_date(book_row.pubdate),
             language_codes: book_languages,
             has_cover: book_row.has_cover.unwrap_or(false),
             is_read: false, // Populated by Library via read state queries

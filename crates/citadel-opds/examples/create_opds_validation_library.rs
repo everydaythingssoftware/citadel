@@ -72,7 +72,7 @@ fn create_validation_library(
             publisher: None,
             publication_date: Some(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap()),
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: Some(if index % 2 == 0 { "en" } else { "fr" }.to_string()),
             file_paths: if is_fileless {
@@ -109,7 +109,6 @@ fn create_validation_library(
                 publisher: (index % 5 != 0).then(|| "Fixture Press".to_string()),
                 publication_date: None,
                 rating: None,
-                comments: None,
                 identifiers: None,
             },
         )?;

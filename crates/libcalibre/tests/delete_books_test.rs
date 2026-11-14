@@ -22,7 +22,7 @@ fn book(title: &str) -> BookAdd {
         publisher: None,
         publication_date: None,
         rating: None,
-        comments: None,
+        description: None,
         identifiers: HashMap::new(),
         language: None,
         file_paths: vec![],

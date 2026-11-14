@@ -29,7 +29,7 @@ fn fixture() -> (tempfile::TempDir, Library, String) {
                 publisher: Some("Contract Press".into()),
                 publication_date: None,
                 rating: None,
-                comments: None,
+                description: None,
                 identifiers: Default::default(),
                 language: Some("en".into()),
                 file_paths: vec![source],

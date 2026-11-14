@@ -41,7 +41,6 @@ impl BookUpdate {
             language_codes: self.language_list.clone(),
             publisher: None,
             rating: None,
-            comments: None,
             identifiers: None,
         }
     }

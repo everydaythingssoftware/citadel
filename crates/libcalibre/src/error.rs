@@ -68,6 +68,10 @@ pub enum CalibreError {
     #[error("Invalid custom column value: {0}")]
     InvalidCustomValue(String),
 
+    /// Ratings run from 0 (unrated) to 10 (five stars).
+    #[error("Invalid rating {0}: ratings run from 0 to 10")]
+    InvalidRating(i32),
+
     #[error("Library not initialized")]
     LibraryNotInitialized,
 
