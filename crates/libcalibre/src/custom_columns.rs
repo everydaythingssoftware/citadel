@@ -32,15 +32,29 @@ use crate::{types::BookId, CalibreError};
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CustomColumnKind {
+    /// Yes/no (`bool`). Values are [`CustomValue::Bool`].
     Bool,
+    /// Integer (`int`). Values are [`CustomValue::Int`].
     Int,
+    /// Floating-point number (`float`). Values are [`CustomValue::Float`].
     Float,
+    /// Short text (`text`), optionally several per book like tags. Values
+    /// are [`CustomValue::Text`], or [`CustomValue::TextMultiple`] when
+    /// [`CustomColumn::is_multiple`].
     Text,
+    /// Long text, often HTML (`comments`). Values are [`CustomValue::Text`].
     Comments,
+    /// Date and time (`datetime`). Values are [`CustomValue::Datetime`].
     Datetime,
+    /// One of a fixed list of values (`enumeration`). Values are
+    /// [`CustomValue::Enumeration`].
     Enumeration,
+    /// A series name and index (`series`). Values can't be read or written.
     Series,
+    /// A star rating (`rating`). Values can't be read or written.
     Rating,
+    /// Computed by Calibre from a template (`composite`). Values can't be
+    /// read or written.
     Composite,
     /// A datatype this crate does not know about.
     Other(String),
@@ -123,14 +137,21 @@ impl CustomColumnKind {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct CustomColumn {
+    /// The column's id; its value tables are named after it
+    /// (`custom_column_{id}`).
     pub id: i32,
     /// Lookup name, e.g. `read` (Calibre exposes it as `#read`).
     pub label: String,
     /// Human-readable heading, e.g. `Read`.
     pub name: String,
+    /// The column's datatype.
     pub kind: CustomColumnKind,
+    /// Whether a book can hold several values (text columns only).
     pub is_multiple: bool,
+    /// Calibre's `editable` flag.
     pub editable: bool,
+    /// Whether values live in a value table plus a link table; see
+    /// [`CustomColumnKind::is_normalized`].
     pub normalized: bool,
     /// Allowed values for enumeration columns (parsed from `display` JSON).
     /// Empty for other kinds.
@@ -143,12 +164,23 @@ pub struct CustomColumn {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CustomValue {
+    /// A bool column's value.
     Bool(bool),
+    /// An int column's value.
     Int(i64),
+    /// A float column's value.
     Float(f64),
+    /// A single-value text column's or a comments column's value. Writing an
+    /// empty string clears the value.
     Text(String),
+    /// A multiple-value text column's values, in link order. Empty strings
+    /// are dropped on write; writing none clears the value.
     TextMultiple(Vec<String>),
+    /// A datetime column's value.
     Datetime(DateTime<Utc>),
+    /// An enumeration column's value; it must be one of
+    /// [`CustomColumn::enum_values`]. Writing an empty string clears the
+    /// value.
     Enumeration(String),
 }
 
@@ -173,6 +205,7 @@ pub struct CustomColumnSpec {
     pub label: String,
     /// Human-readable heading.
     pub name: String,
+    /// The column's datatype. [`CustomColumnKind::Other`] can't be created.
     pub kind: CustomColumnKind,
     /// Only allowed for `CustomColumnKind::Text`.
     pub is_multiple: bool,

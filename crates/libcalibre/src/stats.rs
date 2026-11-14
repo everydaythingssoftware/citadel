@@ -12,7 +12,9 @@ use crate::util::ValidDbPath;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct LibraryStats {
+    /// Number of books.
     pub book_count: i64,
+    /// Number of authors, including any with no books.
     pub author_count: i64,
 }
 

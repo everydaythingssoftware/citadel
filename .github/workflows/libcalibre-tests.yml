@@ -120,3 +120,8 @@ jobs:
 
       - name: Run tests
         run: cargo test --package libcalibre --all-features
+
+      - name: Check docs (every public item documented, links resolve)
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --package libcalibre --all-features --no-deps

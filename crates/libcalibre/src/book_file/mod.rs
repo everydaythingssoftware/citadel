@@ -24,14 +24,27 @@ pub(crate) const MAX_COVER_BYTES: u64 = 16 * 1024 * 1024;
 /// (PDF, TXT) report only a title taken from the file name.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BookFileMetadata {
+    /// The file's format, from its extension.
     pub format: MimeType,
+    /// The embedded title, or for PDF and TXT the file name without
+    /// extension.
     pub title: Option<String>,
+    /// Author names, in file order; blank names are dropped.
     pub author_names: Vec<String>,
+    /// The book's identifier as the file gives it: an EPUB's first
+    /// `dc:identifier` (often `urn:isbn:...` or `urn:uuid:...`), or a MOBI's
+    /// ISBN as `ISBN:...`. [`isbn`] extracts an ISBN from it.
     pub identifier: Option<String>,
+    /// The publisher.
     pub publisher: Option<String>,
+    /// An EPUB's `dc:language` as written (usually a code such as `en`), or
+    /// a MOBI's language as an English name such as `English`.
     pub language: Option<String>,
+    /// Subjects (EPUB `dc:subject`, MOBI subject records).
     pub tags: Vec<String>,
+    /// The publication date, when the file gives one that parses.
     pub publication_date: Option<NaiveDate>,
+    /// Whether the file embeds a cover that [`cover_image_data`] can read.
     pub has_cover: bool,
 }
 
@@ -74,7 +87,7 @@ pub fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
 }
 
 /// The cover image embedded in the book file at `path`, if it has one no
-/// larger than [`MAX_COVER_BYTES`].
+/// larger than 16 MiB.
 pub fn cover_image_data(path: &Path) -> Option<Vec<u8>> {
     match format_of(path)? {
         #[cfg(feature = "epub")]

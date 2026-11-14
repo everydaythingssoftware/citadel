@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
 mod assets;
@@ -7,13 +8,16 @@ mod custom_columns;
 mod entities;
 mod error;
 mod library;
+/// Book file formats and their MIME types and extensions.
 pub mod mime_type;
 mod models;
 mod operations;
+#[allow(missing_docs)]
 mod persistence;
 mod queries;
 mod schema;
 mod schema_versions;
+/// Calibre-compatible sort keys for book titles and author names.
 pub mod sorting;
 mod stats;
 mod types;

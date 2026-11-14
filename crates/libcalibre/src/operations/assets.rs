@@ -71,6 +71,12 @@ pub(crate) fn validated_book_delete_dir(
     Ok(target)
 }
 
+/// A book file or cover found on disk and confirmed to be inside the
+/// library folder. Returned by [`Library::resolve_book_file`] and
+/// [`Library::resolve_book_cover`].
+///
+/// [`Library::resolve_book_file`]: crate::Library::resolve_book_file
+/// [`Library::resolve_book_cover`]: crate::Library::resolve_book_cover
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct ResolvedBookAsset {
@@ -80,14 +86,18 @@ pub struct ResolvedBookAsset {
 }
 
 impl ResolvedBookAsset {
+    /// The file's absolute path with symlinks resolved.
     pub fn canonical_path(&self) -> &Path {
         &self.canonical_path
     }
 
+    /// The file's name in the book's folder, e.g. `Title - Author.epub` or
+    /// `cover.jpg`.
     pub fn download_name(&self) -> &str {
         &self.download_name
     }
 
+    /// The format in uppercase, e.g. `EPUB`; `JPG` for a cover.
     pub fn format(&self) -> &str {
         &self.format
     }

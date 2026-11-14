@@ -20,6 +20,9 @@ use crate::{
     CalibreError, NewBook, UpdateBookData,
 };
 
+/// An open Calibre library: a connection to its `metadata.db` plus the
+/// folder holding its books. Get one from [`Library::open`],
+/// [`Library::open_read_only`] or [`Library::create_library_at`].
 pub struct Library {
     db_path: ValidDbPath,
     conn: SqliteConnection,
@@ -32,21 +35,30 @@ pub struct Library {
 /// otherwise. `#read` is the common Calibre convention.
 pub const DEFAULT_READ_COLUMN: &str = "read";
 
+/// A book with its metadata, authors, files and read state, as returned by
+/// [`Library::get_book`], [`Library::query_books`] and the other book reads.
 #[derive(Clone, Debug)]
 pub struct Book {
     /// Identifier unique only within this library
     pub id: BookId,
     /// Cross-library identifier
     pub uuid: Option<String>,
+    /// The book's title.
     pub title: String,
+    /// Calibre's title sort (`books.sort`), e.g. `Hobbit, The`.
     pub sortable_title: Option<String>,
+    /// The book's authors.
     pub authors: Vec<Author>,
+    /// Names of the book's tags.
     pub tags: Vec<String>,
     /// Series name; `Some` iff the book is linked to a series.
     pub series: Option<String>,
     /// Position within the series; `Some` iff the book is linked to a series.
     pub series_index: Option<f32>,
+    /// Calibre's "comments": the book's description, usually HTML. `None`
+    /// when there is none.
     pub description: Option<String>,
+    /// The book's publisher, if any.
     pub publisher: Option<String>,
     /// 1 to 10, in half stars (10 is five stars); `None` when unrated.
     pub rating: Option<i32>,
@@ -56,9 +68,15 @@ pub struct Book {
     /// ordered by `books_languages_link.item_order`. Empty when the book has
     /// no language metadata.
     pub language_codes: Vec<String>,
+    /// External identifiers such as ISBNs.
     pub identifiers: Vec<BookIdentifier>,
+    /// Whether the library records a `cover.jpg` for the book
+    /// (`books.has_cover`).
     pub has_cover: bool,
+    /// Whether the read column marks the book read. `false` when unset or
+    /// when the library tracks no read state.
     pub is_read: bool,
+    /// The book's files, one per format.
     pub files: Vec<BookFileInfo>,
     /// Calibre calls this `timestamp`. Set when book is first added.
     pub created_at: NaiveDateTime,
@@ -68,45 +86,78 @@ pub struct Book {
     pub book_dir_path: String,
 }
 
+/// One of a book's files, as recorded in Calibre's `data` table.
 #[derive(Clone, Debug)]
 pub struct BookFileInfo {
+    /// The `data` row's id.
     pub id: i32,
+    /// The format as Calibre stores it, normally the uppercase extension
+    /// (`EPUB`).
     pub format: String,
+    /// File name without extension, inside [`Book::book_dir_path`]; the file
+    /// on disk is `{name}.{format, lowercased}`.
     pub name: String,
+    /// Size in bytes, as recorded when the file was added.
     pub uncompressed_size: i32,
 }
 
 pub use crate::operations::assets::ResolvedBookAsset;
 
+/// An external identifier of a book, such as an ISBN.
 #[derive(Clone, Debug)]
 pub struct BookIdentifier {
+    /// The `identifiers` row's id, as taken by
+    /// [`Library::upsert_book_identifier`] and
+    /// [`Library::delete_book_identifier`].
     pub id: i32,
+    /// The identifier's type, e.g. `isbn` (Calibre's `identifiers.type`).
     pub label: String,
+    /// The identifier itself.
     pub value: String,
 }
 
+/// A book to add with [`Library::add_book`].
 #[derive(Clone, Debug)]
 pub struct BookAdd {
+    /// The book's title.
     pub title: String,
+    /// Author names, trimmed; blank names are dropped. Authors not yet in the
+    /// library are created. With no names left the book is filed under
+    /// `Unknown`.
     pub author_names: Vec<String>,
+    /// Tag names, deduplicated case-insensitively. Tags not yet in the
+    /// library are created.
     pub tags: Option<Vec<String>>,
+    /// Series to link the book to, created if it does not exist.
     pub series: Option<String>,
+    /// Position within the series; `None` stores 1.
     pub series_index: Option<f32>,
+    /// The book's publisher, created if it does not exist. Blank or `None`
+    /// adds no publisher.
     pub publisher: Option<String>,
+    /// `None` stores Calibre's "undefined" date.
     pub publication_date: Option<NaiveDate>,
     /// 0 to 10, in half stars; 0 or `None` leaves the book unrated.
     pub rating: Option<i32>,
     /// Calibre's "comments": the book's description, usually HTML.
     pub description: Option<String>,
+    /// Identifiers keyed by type (`isbn`, ...); types are stored lowercase.
     pub identifiers: HashMap<String, String>,
     /// Language code for the book (any ISO 639-1/2/3 form; canonicalized on
     /// write). `None` adds the book with no language metadata.
     pub language: Option<String>,
+    /// Book files to copy into the book's folder, named
+    /// `{title} - {first author}.{extension}`. The first file's embedded cover,
+    /// if any, becomes `cover.jpg`. A path that does not exist is still
+    /// recorded as a format, with size 0, but nothing is copied.
     pub file_paths: Vec<PathBuf>,
 }
 
+/// Changes to make with [`Library::update_book`]. Fields left `None` are
+/// unchanged.
 #[derive(Clone, Debug, Default)]
 pub struct BookUpdate {
+    /// Replaces the title.
     pub title: Option<String>,
 
     /// If provided, replaces all authors with the provided list. Authors
@@ -120,14 +171,22 @@ pub struct BookUpdate {
     /// **Do not use both `author_names` and `author_ids` at the same time.**
     pub author_ids: Option<Vec<AuthorId>>,
 
+    /// Replaces the description (Calibre's "comments"), creating one if the
+    /// book has none.
     pub description: Option<String>,
+    /// Sets read state in the read column; see
+    /// [`Library::set_book_read_state`].
     pub is_read: Option<bool>,
 
+    /// Replaces the book's tags with these names (deduplicated
+    /// case-insensitively). Tags not yet in the library are created; an
+    /// empty list removes all tags.
     pub tags: Option<Vec<String>>,
     /// If provided, links the book to the named series (created if it does
     /// not exist), replacing any existing series. An empty (or whitespace)
     /// name unlinks the book from its series. `None` leaves it unchanged.
     pub series: Option<String>,
+    /// Sets the book's position within its series.
     pub series_index: Option<f32>,
     /// If provided, replaces the book's language links with the given codes
     /// (canonicalized to Calibre's ISO 639-2/3 form, deduped, order preserved).
@@ -136,6 +195,8 @@ pub struct BookUpdate {
     /// Links the book to the named publisher, replacing any other. An empty
     /// (or whitespace) name unlinks it.
     pub publisher: Option<String>,
+    /// Replaces the publication date. It cannot be cleared back to
+    /// Calibre's "undefined" date.
     pub publication_date: Option<NaiveDate>,
     /// 0 to 10, in half stars; `Some(0)` clears the rating.
     pub rating: Option<i32>,
@@ -144,25 +205,42 @@ pub struct BookUpdate {
     pub identifiers: Option<HashMap<String, String>>,
 }
 
+/// An author in the library.
 #[derive(Clone, Debug)]
 pub struct Author {
+    /// The author's id.
     pub id: AuthorId,
+    /// The author's name, e.g. `Ursula K. Le Guin`.
     pub name: String,
+    /// The name as sorted, e.g. `Le Guin, Ursula K.`; empty when none is
+    /// stored.
     pub sort: String,
+    /// A URL for the author; `None` when empty.
     pub link: Option<String>,
 }
 
+/// An author to add with [`Library::add_author`].
 #[derive(Clone, Debug)]
 pub struct AuthorAdd {
+    /// The author's name. Calibre's schema keeps names unique,
+    /// case-insensitively, so an existing name fails.
     pub name: String,
+    /// The name as sorted; `None` stores none, and [`Author::sort`] then
+    /// reads empty.
     pub sort: Option<String>,
+    /// A URL for the author; `None` stores none.
     pub link: Option<String>,
 }
 
+/// Changes to make with [`Library::update_author`]. Fields left `None` are
+/// unchanged.
 #[derive(Clone, Debug, Default)]
 pub struct AuthorUpdate {
+    /// Replaces the name.
     pub name: Option<String>,
+    /// Replaces the sort name.
     pub sort: Option<String>,
+    /// Replaces the link.
     pub link: Option<String>,
 }
 
@@ -172,12 +250,18 @@ pub struct AuthorUpdate {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BookSortOrder {
+    /// By title sort, A to Z. The default.
     #[default]
     TitleAsc,
+    /// By title sort, Z to A.
     TitleDesc,
+    /// By the primary author's sort name, A to Z.
     AuthorAsc,
+    /// By the primary author's sort name, Z to A.
     AuthorDesc,
+    /// Most recently modified (`last_modified`) first.
     UpdatedDesc,
+    /// By series index, lowest first, then by title sort.
     SeriesIndexAsc,
 }
 
@@ -205,6 +289,7 @@ pub struct BookQuery {
     /// SQL, so paging and totals stay correct). Ignored when there is no read
     /// column.
     pub hide_read: bool,
+    /// The order of the results.
     pub sort: BookSortOrder,
     /// Maximum number of books to return. `None` returns all matches.
     pub limit: Option<i64>,
@@ -228,8 +313,11 @@ pub struct BookPage {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct SeriesSummary {
+    /// The series' id.
     pub id: i32,
+    /// The series' name.
     pub name: String,
+    /// Number of books linked to the series.
     pub book_count: i64,
 }
 
@@ -238,8 +326,11 @@ pub struct SeriesSummary {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct TagSummary {
+    /// The tag's id, as taken by [`BookQuery::tag_id`].
     pub id: i32,
+    /// The tag's name.
     pub name: String,
+    /// Number of books linked to the tag; 0 for unused tags.
     pub book_count: i64,
 }
 
@@ -249,8 +340,11 @@ pub struct TagSummary {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct PublisherSummary {
+    /// The publisher's id.
     pub id: i32,
+    /// The publisher's name.
     pub name: String,
+    /// Number of books linked to the publisher.
     pub book_count: i64,
 }
 
@@ -258,7 +352,9 @@ pub struct PublisherSummary {
 /// `column_label` (without the `#`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CustomValueFilter {
+    /// The custom column's label, without the `#`.
     pub column_label: String,
+    /// The value's id, from [`Library::list_custom_column_values`].
     pub value_id: i32,
 }
 
@@ -267,8 +363,11 @@ pub struct CustomValueFilter {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct CustomValueSummary {
+    /// The value's id, as taken by [`CustomValueFilter::value_id`].
     pub id: i32,
+    /// The value itself.
     pub name: String,
+    /// Number of books linked to the value.
     pub book_count: i64,
 }
 
@@ -333,9 +432,8 @@ impl Library {
         Ok(self.schema_version()? < schema_versions::SCHEMA_VERSION)
     }
 
-    /// Moves the library to [`schema_versions::SCHEMA_VERSION`] with Calibre's
-    /// own upgrade steps, in one transaction, after writing a backup beside
-    /// `metadata.db`. `None` when it is already current. Refused on a
+    /// Brings the library up to [`schema_versions::SCHEMA_VERSION`] in one
+    /// transaction, after writing a backup beside `metadata.db`. `None` when it is already current. Refused on a
     /// read-only handle before anything is written.
     pub fn upgrade(&mut self) -> Result<Option<SchemaUpgrade>, CalibreError> {
         if self.read_only {
@@ -354,6 +452,8 @@ impl Library {
         Path::new(&self.db_path.database_path)
     }
 
+    /// The library's UUID, from its `library_id` table. Fails with
+    /// [`CalibreError::DatabaseIntegrity`] when that table has no row.
     pub fn library_uuid(&mut self) -> Result<String, CalibreError> {
         use crate::schema::library_id::dsl::{library_id, uuid};
 
@@ -366,6 +466,10 @@ impl Library {
             })
     }
 
+    /// When the catalogue last changed: the latest of every book's
+    /// `last_modified` and the modification times of `metadata.db` and its
+    /// `-wal` file, in UTC. `None` only when there are no books and neither
+    /// file time can be read.
     pub fn catalog_updated_at(&mut self) -> Result<Option<NaiveDateTime>, CalibreError> {
         use crate::schema::books::dsl::{books, last_modified};
         use diesel::dsl::max;
@@ -393,6 +497,16 @@ impl Library {
     // Books
     // =========================================================================
 
+    /// Adds a book: its records, a `{author}/{title} ({id})` folder holding
+    /// copies of its files, and a `cover.jpg` taken from the first file when
+    /// it embeds one. Returns the new book. The book is queued in
+    /// `metadata_dirtied`, so Calibre writes its `metadata.opf` backup.
+    ///
+    /// A rating above 10 is refused with [`CalibreError::InvalidRating`]
+    /// before anything is written. The other steps are not one transaction:
+    /// if a later step fails (a failed copy gives
+    /// [`CalibreError::FileSystem`]), the records written so far remain.
+    /// Cover extraction is best-effort and never fails the add.
     pub fn add_book(&mut self, book: BookAdd) -> Result<Book, CalibreError> {
         if let Some(rating) = book.rating.filter(|rating| !(0..=10).contains(rating)) {
             return Err(CalibreError::InvalidRating(rating));
@@ -584,6 +698,8 @@ impl Library {
         self.get_book(BookId(book_row.id))
     }
 
+    /// Every book in the library, fully hydrated, in no particular order.
+    /// [`Library::query_books`] pages and sorts instead.
     pub fn books(&mut self) -> Result<Vec<Book>, CalibreError> {
         let mut books = operations::books::all(&mut self.conn)?;
 
@@ -597,12 +713,24 @@ impl Library {
         Ok(books)
     }
 
+    /// One book. Fails with [`CalibreError::BookNotFound`] when there is no
+    /// book with that id.
     pub fn get_book(&mut self, book_id: BookId) -> Result<Book, CalibreError> {
         let mut book = operations::books::get_book(&mut self.conn, book_id)?;
         book.is_read = self.get_book_read_state(book_id)?;
         Ok(book)
     }
 
+    /// Applies `update` in one transaction, sets the book's `last_modified`
+    /// (even when nothing else changed), queues it in `metadata_dirtied` and
+    /// returns the updated book.
+    ///
+    /// Setting both [`BookUpdate::author_names`] and
+    /// [`BookUpdate::author_ids`] fails with
+    /// [`CalibreError::BannedFunctionInvocation`] before anything is written.
+    /// [`BookUpdate::is_read`] is written after that transaction commits, so
+    /// a read-state failure (such as [`CalibreError::NoReadColumn`]) leaves
+    /// the other changes in place.
     pub fn update_book(
         &mut self,
         book_id: BookId,
@@ -673,10 +801,19 @@ impl Library {
     // Assets (covers, book files)
     // =========================================================================
 
+    /// The bytes of the book's `cover.jpg`. Fails with
+    /// [`CalibreError::BookNotFound`], [`CalibreError::BookCoverNotFound`]
+    /// when the book records no cover, or, as for
+    /// [`Library::resolve_book_cover`], when the file is missing or outside
+    /// the library.
     pub fn get_book_cover(&mut self, book_id: BookId) -> Result<Vec<u8>, CalibreError> {
         operations::assets::get_book_cover(&self.db_path.library_path, &mut self.conn, book_id)
     }
 
+    /// Writes `cover_data` as the book's `cover.jpg`, unconverted, marks the
+    /// book as having a cover and sets its `last_modified`. Fails with
+    /// [`CalibreError::BookNotFound`], or [`CalibreError::FileSystem`] when
+    /// the file can't be written.
     pub fn set_book_cover(
         &mut self,
         book_id: BookId,
@@ -690,6 +827,8 @@ impl Library {
         )
     }
 
+    /// The bytes of the book's file in `file_format`, resolved as by
+    /// [`Library::resolve_book_file`] and failing the same ways.
     pub fn get_book_file(
         &mut self,
         book_id: BookId,
@@ -703,6 +842,13 @@ impl Library {
         )
     }
 
+    /// Locates the book's file in `format` (case-insensitive, a leading `.`
+    /// allowed) without reading it. Fails with
+    /// [`CalibreError::BookNotFound`], [`CalibreError::InvalidBookFormat`],
+    /// [`CalibreError::BookFileNotFound`] when the book has no such format,
+    /// [`CalibreError::AssetFileMissing`] when the file is absent from disk,
+    /// or [`CalibreError::AssetOutsideLibrary`] when its path leads outside
+    /// the library folder.
     pub fn resolve_book_file(
         &mut self,
         id: BookId,
@@ -716,6 +862,10 @@ impl Library {
         )
     }
 
+    /// Locates the book's `cover.jpg` without reading it. Fails with
+    /// [`CalibreError::BookNotFound`], [`CalibreError::BookCoverNotFound`]
+    /// when the book records no cover, [`CalibreError::AssetFileMissing`] or
+    /// [`CalibreError::AssetOutsideLibrary`].
     pub fn resolve_book_cover(&mut self, id: BookId) -> Result<ResolvedBookAsset, CalibreError> {
         operations::assets::resolve_book_cover(&self.db_path.library_path, &mut self.conn, id)
     }
@@ -724,11 +874,14 @@ impl Library {
     // Authors
     // =========================================================================
 
+    /// Adds an author and returns its id. Fails with
+    /// [`CalibreError::Database`] when the name is already taken.
     pub fn add_author(&mut self, author: AuthorAdd) -> Result<AuthorId, CalibreError> {
         let new_author = operations::authors::add(&mut self.conn, author)?;
         Ok(new_author.id)
     }
 
+    /// Every author in the library, in no particular order.
     pub fn authors(&mut self) -> Result<Vec<Author>, CalibreError> {
         operations::authors::all(&mut self.conn)
     }
@@ -740,10 +893,15 @@ impl Library {
         author_queries::book_counts(&mut self.conn)
     }
 
+    /// One author. Fails with [`CalibreError::AuthorNotFound`] when there is
+    /// no author with that id.
     pub fn get_author(&mut self, author_id: AuthorId) -> Result<Author, CalibreError> {
         operations::authors::get(&mut self.conn, author_id)
     }
 
+    /// Applies `update` to the author, sets `last_modified` on each of their
+    /// books and returns the updated author. The books' own author sort
+    /// (`books.author_sort`) is not recomputed.
     pub fn update_author(
         &mut self,
         author_id: AuthorId,
@@ -755,6 +913,9 @@ impl Library {
         Ok(author)
     }
 
+    /// Deletes an author who has no books and returns their id. Fails with
+    /// [`CalibreError::AuthorHasAssociatedBooks`] while any book is linked to
+    /// them. An id with no author deletes nothing and succeeds.
     pub fn remove_author(&mut self, author_id: AuthorId) -> Result<AuthorId, CalibreError> {
         operations::authors::remove(&mut self.conn, author_id)?;
         Ok(author_id)
@@ -764,6 +925,15 @@ impl Library {
     // Identifiers
     // =========================================================================
 
+    /// Adds or changes one of the book's identifiers and returns its id, in
+    /// one transaction that also sets the book's `last_modified`.
+    ///
+    /// With `existing_id`, that identifier's label and value are replaced
+    /// (the label as given); it fails with [`CalibreError::Database`] when the
+    /// book has no identifier with that id. Without, a new identifier is
+    /// added with its label lowercased; it fails with
+    /// [`CalibreError::Database`] when the book already has one with that
+    /// label.
     pub fn upsert_book_identifier(
         &mut self,
         book_id: BookId,
@@ -802,6 +972,8 @@ impl Library {
         })
     }
 
+    /// Removes the book's identifier with id `identifier_id`, if it has one,
+    /// and sets the book's `last_modified` either way.
     pub fn delete_book_identifier(
         &mut self,
         book_id: BookId,
@@ -934,6 +1106,9 @@ impl Library {
         )
     }
 
+    /// Whether the read column marks the book read. `false` when the value is
+    /// unset, when the column doesn't exist yet, or when the library tracks
+    /// no read state.
     pub fn get_book_read_state(&mut self, book_id: BookId) -> Result<bool, CalibreError> {
         let Some(column) = self.find_read_column()? else {
             return Ok(false);
@@ -942,6 +1117,10 @@ impl Library {
         Ok(matches!(value, Some(CustomValue::Bool(true))))
     }
 
+    /// Marks the book read or unread in the read column, creating the column
+    /// (a bool column named after its label) on first use. Sets the book's
+    /// `last_modified` only when the stored value changes. Fails with
+    /// [`CalibreError::NoReadColumn`] after [`Library::without_read_column`].
     pub fn set_book_read_state(
         &mut self,
         book_id: BookId,
@@ -953,6 +1132,9 @@ impl Library {
         })
     }
 
+    /// Read state for many books at once. Only books with a stored value
+    /// appear; treat a missing entry as unread. Empty when the library tracks
+    /// no read state or the read column doesn't exist yet.
     pub fn batch_get_read_states(
         &mut self,
         book_ids: &[BookId],
@@ -976,6 +1158,9 @@ impl Library {
     // Library management
     // =========================================================================
 
+    /// Replaces the library's UUID with a new random one. Also sets
+    /// `last_modified` on the book with the lowest id, so
+    /// [`Library::catalog_updated_at`] moves.
     pub fn randomize_library_uuid(&mut self) -> Result<(), CalibreError> {
         sql_query("UPDATE library_id SET uuid = uuid4()")
             .execute(&mut self.conn)
@@ -1106,7 +1291,9 @@ impl Library {
         crate::queries::publishers::list_with_book_counts(&mut self.conn)
     }
 
-    /// The live custom column labelled `label` (without the `#`), if any.
+    /// The custom column labelled `label` (without the `#`), if any. Unlike
+    /// [`Library::custom_columns`], this also finds a column marked for
+    /// deletion.
     pub fn custom_column(&mut self, label: &str) -> Result<Option<CustomColumn>, CalibreError> {
         custom_columns::find_by_label(&mut self.conn, label)
     }
@@ -1178,6 +1365,9 @@ impl Library {
         }))
     }
 
+    /// Every book whose title, author names or series name contains `query`
+    /// (trimmed), case-insensitively, sorted by title. An empty or blank
+    /// query returns no books; see [`BookQuery::text`].
     pub fn search_books(&mut self, query: &str) -> Result<Vec<Book>, CalibreError> {
         let query = query.trim();
         if query.is_empty() {
@@ -1191,6 +1381,8 @@ impl Library {
         .map(|page| page.items)
     }
 
+    /// Every book linked to the author, sorted by title. Empty when the
+    /// author has no books or doesn't exist.
     pub fn find_by_author(&mut self, author_id: AuthorId) -> Result<Vec<Book>, CalibreError> {
         self.query_books(BookQuery {
             author_id: Some(author_id),
@@ -1247,22 +1439,32 @@ fn unique_tag_names<'a>(tag_names: &'a [String]) -> Vec<&'a str> {
     unique
 }
 
+/// Which facet [`Library::catalog_facets`] counts.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CatalogFacetKind {
+    /// Authors.
     Authors,
+    /// Series.
     Series,
+    /// Tags.
     Tags,
     /// Values of the text, series or enumeration custom column with this
     /// label (without the `#`). Empty when the column doesn't exist.
     CustomColumn(String),
 }
 
+/// One facet value and how many acquirable books are linked to it.
+/// Returned by [`Library::catalog_facets`].
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct CatalogFacetSummary {
+    /// The author, series, tag or custom-column value's id.
     pub id: i32,
+    /// Its name.
     pub name: String,
+    /// Number of linked books with at least one file that resolves inside
+    /// the library.
     pub book_count: i64,
 }
 
