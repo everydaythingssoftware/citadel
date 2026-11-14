@@ -74,6 +74,20 @@ settings store and library database.
 Endpoint response shapes differ: `/screenshot` returns `{"data": "<base64>"}`
 while `/script/execute` returns `{"value": ...}`.
 
+## Testing the web app against a running server
+
+Frontend changes don't need a new server image. Point Vite's dev server at a
+running `citadel-server` (a Docker container, or `target/debug/citadel-server`)
+and edits hot-reload:
+
+    CITADEL_API_URL=http://localhost:8081 bun run dev:web -- --host
+
+`--host` serves on the LAN, so a phone can open `http://<computer>.local:1420`.
+The proxy keeps the browser's `Host` header (no `changeOrigin`): the server
+refuses state-changing requests whose `Origin` differs from the address they
+arrived at. A server with `publicUrls` set refuses other addresses, Vite's
+included.
+
 ## Testing first-run / onboarding states (dev build)
 
 The dev build's settings live at `~/Library/Application Support/
