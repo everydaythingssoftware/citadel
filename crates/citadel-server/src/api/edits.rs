@@ -8,6 +8,7 @@ use axum::{
 use citadel_core::{
     contracts::{custom_columns::CustomValueDto, AuthorUpdate, BookUpdate, NewAuthor},
     error::LibraryError,
+    store::LibraryPermission,
     LibraryAuthor,
 };
 use serde::Deserialize;
@@ -31,11 +32,12 @@ fn body<T>(request: Result<Json<T>, JsonRejection>, what: &str) -> Result<T, Api
 pub(super) async fn update_book(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(permission): Extension<LibraryPermission>,
     Path(id): Path<String>,
     request: Result<Json<BookUpdate>, JsonRejection>,
 ) -> Result<StatusCode, ApiFailure> {
     let updates = body(request, "book update")?;
-    write(state, move |service| {
+    write(state, permission, move |service| {
         service.update_book(&user.actor(), &id, updates)
     })
     .await?;
@@ -63,11 +65,12 @@ pub(super) struct UpsertIdentifier {
 pub(super) async fn upsert_identifier(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(permission): Extension<LibraryPermission>,
     Path(id): Path<String>,
     request: Result<Json<UpsertIdentifier>, JsonRejection>,
 ) -> Result<StatusCode, ApiFailure> {
     let request = body(request, "identifier")?;
-    write(state, move |service| {
+    write(state, permission, move |service| {
         service.upsert_identifier(
             &user.actor(),
             &id,
@@ -90,9 +93,10 @@ pub(super) async fn upsert_identifier(
 pub(super) async fn delete_identifier(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(permission): Extension<LibraryPermission>,
     Path((id, identifier_id)): Path<(String, i32)>,
 ) -> Result<StatusCode, ApiFailure> {
-    write(state, move |service| {
+    write(state, permission, move |service| {
         service.delete_identifier(&user.actor(), &id, identifier_id)
     })
     .await?;
@@ -126,11 +130,12 @@ fn present<'de, D: serde::Deserializer<'de>>(
 pub(super) async fn set_custom_value(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(permission): Extension<LibraryPermission>,
     Path((id, column_id)): Path<(String, i32)>,
     request: Result<Json<SetCustomValue>, JsonRejection>,
 ) -> Result<StatusCode, ApiFailure> {
     let request = body(request, "custom value")?;
-    write(state, move |service| {
+    write(state, permission, move |service| {
         service.set_custom_value(&user.actor(), &id, column_id, request.value)
     })
     .await?;
@@ -154,11 +159,12 @@ pub(super) struct AddGenres {
 pub(super) async fn add_genres(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(permission): Extension<LibraryPermission>,
     Path(id): Path<String>,
     request: Result<Json<AddGenres>, JsonRejection>,
 ) -> Result<StatusCode, ApiFailure> {
     let request = body(request, "genres")?;
-    write(state, move |service| {
+    write(state, permission, move |service| {
         service.add_genres(&user.actor(), &id, request.genres)
     })
     .await?;
@@ -181,11 +187,12 @@ pub(super) struct CreateAuthors {
 pub(super) async fn create_authors(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(permission): Extension<LibraryPermission>,
     request: Result<Json<CreateAuthors>, JsonRejection>,
 ) -> Result<Json<Vec<LibraryAuthor>>, ApiFailure> {
     let request = body(request, "new authors")?;
     Ok(Json(
-        write(state, move |service| {
+        write(state, permission, move |service| {
             service.create_authors(&user.actor(), request.authors)
         })
         .await?,
@@ -203,11 +210,12 @@ pub(super) async fn create_authors(
 pub(super) async fn update_author(
     State(state): State<ApiState>,
     Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(permission): Extension<LibraryPermission>,
     Path(id): Path<String>,
     request: Result<Json<AuthorUpdate>, JsonRejection>,
 ) -> Result<StatusCode, ApiFailure> {
     let updates = body(request, "author update")?;
-    write(state, move |service| {
+    write(state, permission, move |service| {
         service.update_author(&user.actor(), &id, updates)
     })
     .await?;

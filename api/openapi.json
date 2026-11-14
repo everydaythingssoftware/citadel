@@ -3436,6 +3436,15 @@
               }
             }
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
           "413": {
             "content": {
               "application/json": {
@@ -4954,9 +4963,14 @@
         "required": [
           "id",
           "name",
-          "readOnly"
+          "readOnly",
+          "canEdit"
         ],
         "properties": {
+          "canEdit": {
+            "type": "boolean",
+            "description": "This user may change the library: it isn't read-only and their grant\nisn't view-only."
+          },
           "id": {
             "type": "string"
           },
@@ -4964,7 +4978,8 @@
             "type": "string"
           },
           "readOnly": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "The whole library is served read-only, for everyone."
           }
         }
       },

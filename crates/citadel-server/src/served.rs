@@ -8,7 +8,7 @@ use std::{
 
 use citadel_core::{
     error::{LibraryError, LibraryErrorCode},
-    store::{CitadelStore, RegisteredLibrary, StoreError, User},
+    store::{CitadelStore, LibraryPermission, RegisteredLibrary, StoreError, User},
 };
 use libcalibre::{
     create_target_blocker, CalibreError, CreateTargetBlocker, Library, SchemaUpgrade,
@@ -627,7 +627,11 @@ impl ServedLibrary {
             .and_then(|library| self.accounts.set_active_library(&library.id))
             .and_then(|library| {
                 self.accounts
-                    .grant(&administrator.username, &library.id)
+                    .grant(
+                        &administrator.username,
+                        &library.id,
+                        LibraryPermission::Edit,
+                    )
                     .map(|()| library)
             })
             .map_err(store_error)?;

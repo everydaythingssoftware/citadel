@@ -49,6 +49,13 @@ impl LibraryError {
         }
     }
 
+    pub fn view_only() -> Self {
+        Self {
+            code: LibraryErrorCode::ReadOnly,
+            message: "You can view this library but not change it".into(),
+        }
+    }
+
     pub fn unavailable() -> Self {
         Self {
             code: LibraryErrorCode::Unavailable,

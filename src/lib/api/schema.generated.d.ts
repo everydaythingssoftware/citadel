@@ -1100,8 +1100,14 @@ export interface components {
             text?: string | null;
         };
         LibraryDescriptor: {
+            /**
+             * @description This user may change the library: it isn't read-only and their grant
+             *     isn't view-only.
+             */
+            canEdit: boolean;
             id: string;
             name: string;
+            /** @description The whole library is served read-only, for everyone. */
             readOnly: boolean;
         };
         LibraryError: {
@@ -4288,6 +4294,14 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

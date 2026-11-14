@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri_specta::Event;
 
 use crate::account::LocalAccount;
-use citadel_core::store::RegisteredLibrary;
+use citadel_core::store::{LibraryPermission, RegisteredLibrary};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -67,7 +67,7 @@ fn register(
     let user = account.user()?;
     account
         .store()
-        .grant(&user.username, &library.id)
+        .grant(&user.username, &library.id, LibraryPermission::Edit)
         .map_err(|error| error.to_string())?;
     Ok(library.into())
 }

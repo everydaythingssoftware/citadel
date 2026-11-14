@@ -147,7 +147,7 @@ const EditBookRoute = () => {
 		return (
 			<div style={centeredFill}>
 				<div>
-					<p>This library is read-only.</p>
+					<p>You can view this library but not edit its books.</p>
 					<Button onClick={goBack}>Back</Button>
 				</div>
 			</div>

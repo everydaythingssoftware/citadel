@@ -24,7 +24,7 @@ mod recovery;
 mod schema;
 mod users;
 
-pub use auth::SESSION_TTL_SECONDS;
+pub use auth::{LibraryGrant, LibraryPermission, SESSION_TTL_SECONDS};
 pub use credentials::{CredentialSecret, ProviderCredential};
 pub use device_keys::{DeviceKey, DeviceKeyVerifier, NewDeviceKey};
 pub use libraries::{canonical_path, RegisteredLibrary};
