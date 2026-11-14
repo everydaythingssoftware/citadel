@@ -301,8 +301,12 @@ mod tests {
             .register_library("other-uuid", other_folder.path(), None)
             .unwrap();
         let alice = store.create_user("alice", "alice password").unwrap();
-        store.grant("alice", &library.id).unwrap();
-        store.grant("alice", &other.id).unwrap();
+        store
+            .grant("alice", &library.id, LibraryPermission::Edit)
+            .unwrap();
+        store
+            .grant("alice", &other.id, LibraryPermission::Edit)
+            .unwrap();
         store.set_active_library(&library.id).unwrap();
 
         store.remove_library(&library.id).unwrap();

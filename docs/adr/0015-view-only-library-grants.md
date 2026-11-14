@@ -1,4 +1,4 @@
-# 14. View-only library grants
+# 15. View-only library grants
 
 Status: Accepted - 2026-11-10
 

@@ -177,7 +177,7 @@ always requires sign-in. Each user has:
   cannot see it in the browser or OPDS, administrators included: the role
   gates the server, grants gate books. A grant either lets its user edit the
   library or is **view-only**: they can browse, read and download, but not
-  edit books, add or delete them ([ADR 0014](adr/0014-view-only-library-grants.md)).
+  edit books, add or delete them ([ADR 0015](adr/0015-view-only-library-grants.md)).
   A separate user, such as a child's account, is how to give someone narrower
   access.
 
