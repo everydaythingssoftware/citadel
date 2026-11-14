@@ -70,7 +70,9 @@ fn migrate(conn: &mut SqliteConnection, from: i32) -> Result<(), diesel::result:
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct SchemaUpgrade {
+    /// The schema version before the upgrade.
     pub from: i32,
+    /// The schema version after it, [`SCHEMA_VERSION`].
     pub to: i32,
     /// The copy of `metadata.db` taken before the first step ran.
     pub backup: PathBuf,

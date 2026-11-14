@@ -199,8 +199,8 @@ fn name_contains_verbatim_name_indicator(name: &str) -> bool {
 
 /// Generate a sortable name for an author in APA style.
 ///
-/// Based on APA style (see https://blog.apastyle.org/apastyle/2012/03/jr-sr-and-other-suffixes-in-apa-style.html,
-/// and https://blog.apastyle.org/apastyle/2017/05/whats-in-a-name-names-with-titles-in-them.html)
+/// Based on APA style (see <https://blog.apastyle.org/apastyle/2012/03/jr-sr-and-other-suffixes-in-apa-style.html>,
+/// and <https://blog.apastyle.org/apastyle/2017/05/whats-in-a-name-names-with-titles-in-them.html>)
 ///
 /// Also matches Calibre's `author_to_author_sort` behavior for SQL compatibility.
 ///

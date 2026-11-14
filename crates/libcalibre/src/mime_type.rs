@@ -1,16 +1,26 @@
+/// A book file format that can be imported.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum MimeType {
+    /// EPUB (`.epub`).
     EPUB,
+    /// Mobipocket (`.mobi`).
     MOBI,
+    /// PDF (`.pdf`).
     PDF,
-    KF7, // Kindle Format 7 — AZW files
-    KF8, // Kindle Format 8 — AZW3 files
+    /// Kindle Format 7 (`.azw`).
+    KF7,
+    /// Kindle Format 8 (`.azw3`).
+    KF8,
+    /// Plain text (`.txt`).
     TXT,
+    /// Any other format; `application/octet-stream` with no extension.
     UNKNOWN,
 }
 
 impl MimeType {
+    /// The format's MIME type. KF8's `application/vnd.amazon.ebook-kf8` is
+    /// unregistered.
     pub fn as_str(&self) -> &'static str {
         match *self {
             MimeType::EPUB => "application/epub+zip",
@@ -23,6 +33,8 @@ impl MimeType {
         }
     }
 
+    /// The format with MIME type `mimetype`, matched exactly. `None` for
+    /// anything else, including KF8's unregistered type.
     pub fn from_mime_type(mimetype: &str) -> Option<Self> {
         match mimetype {
             "application/epub+zip" => Some(MimeType::EPUB),
@@ -35,6 +47,8 @@ impl MimeType {
         }
     }
 
+    /// The format's file extension, without the dot; empty for
+    /// [`MimeType::UNKNOWN`].
     pub fn to_file_extension(&self) -> &'static str {
         match *self {
             MimeType::EPUB => "epub",
@@ -47,6 +61,8 @@ impl MimeType {
         }
     }
 
+    /// The format with file extension `extension` (without the dot,
+    /// case-insensitive). `None` when it isn't one of the known formats.
     pub fn from_file_extension(extension: &str) -> Option<Self> {
         match extension.to_lowercase().as_str() {
             "epub" => Some(MimeType::EPUB),

@@ -2,15 +2,26 @@ use std::{fmt, path::PathBuf};
 
 use crate::types::{AuthorId, BookId};
 
+/// Everything that can go wrong in libcalibre.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CalibreError {
+    /// SQLite failed: the database couldn't be opened, a query failed, or a
+    /// constraint was violated. Writes through a handle from
+    /// [`Library::open_read_only`](crate::Library::open_read_only) fail this
+    /// way too.
     #[error("Database error: {0}")]
     Database(String),
 
+    /// The library isn't shaped as a Calibre library must be: `metadata.db`
+    /// has no schema version or no `library_id` row, or a book's folder path
+    /// is unsafe to delete in
+    /// [`Library::delete_books`](crate::Library::delete_books).
     #[error("Database integrity error: {0}")]
     DatabaseIntegrity(String),
 
+    /// A filesystem call failed while resolving or validating paths in the
+    /// library, creating a library folder, or writing an upgrade backup.
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
@@ -22,7 +33,7 @@ pub enum CalibreError {
     #[error("Author not found: {0}")]
     AuthorNotFound(AuthorId),
 
-    /// Book file with given ID was not found.
+    /// The book has no file in the requested format.
     #[error("Book file not found for book {0} with format {1}")]
     BookFileNotFound(BookId, String),
 
@@ -38,10 +49,13 @@ pub enum CalibreError {
     #[error("Asset path is outside the library root")]
     AssetOutsideLibrary,
 
-    /// A format identifier is empty or contains path syntax.
+    /// A format identifier is empty, or contains something other than ASCII
+    /// letters and digits once a leading `.` is removed.
     #[error("Invalid book format: {0}")]
     InvalidBookFormat(String),
 
+    /// [`Library::remove_author`](crate::Library::remove_author) was asked to
+    /// delete an author still linked to these books.
     #[error("Author cannot be deleted; they have associated books")]
     AuthorHasAssociatedBooks(Vec<BookId>),
 
@@ -72,12 +86,19 @@ pub enum CalibreError {
     #[error("Invalid rating {0}: ratings run from 0 to 10")]
     InvalidRating(i32),
 
+    /// Not currently returned by libcalibre.
     #[error("Library not initialized")]
     LibraryNotInitialized,
 
     /// The database's Calibre schema is older than this build opens.
     #[error("This library's database is schema version {version}, older than Citadel supports ({minimum}); open it in Calibre once to upgrade it")]
-    UnsupportedSchema { version: i32, minimum: i32 },
+    UnsupportedSchema {
+        /// The database's schema version.
+        version: i32,
+        /// The oldest version this build opens,
+        /// [`MINIMUM_SCHEMA_VERSION`](crate::MINIMUM_SCHEMA_VERSION).
+        minimum: i32,
+    },
 
     /// The folder already holds a `metadata.db`.
     #[error("A Calibre library already exists at {0}")]
@@ -91,13 +112,21 @@ pub enum CalibreError {
     #[error("Path is not valid UTF-8: {0}")]
     NonUtf8Path(PathBuf),
 
-    /// The handle was opened read-only, so the operation can't write.
+    /// [`Library::upgrade`](crate::Library::upgrade) was called on a handle
+    /// opened read-only. Other writes through such a handle fail with
+    /// [`CalibreError::Database`].
     #[error("The library is open read-only")]
     ReadOnlyLibrary,
 
+    /// Not currently returned by libcalibre.
     #[error("Not implemented")]
     NotImplemented,
 
+    /// A file couldn't be read, written or copied, or a book's folder
+    /// couldn't be made: adding a book, reading a book file or cover,
+    /// writing a cover. Also returned by
+    /// [`Library::create_library_at`](crate::Library::create_library_at) for
+    /// a path that isn't valid UTF-8.
     #[error("Filesystem error: {0}")]
     FileSystem(String),
 
@@ -106,10 +135,12 @@ pub enum CalibreError {
     ///
     /// Functions or function parameter values may be banned for security,
     /// stability, performance, or other reasons. Any time a ban error is
-    /// returned, a reason is provideed.
+    /// returned, a reason is provided.
     #[error("Banned function invocation")]
     BannedFunctionInvocation(String),
 
+    /// Another error's message, made by [`CalibreError::unknown`] or converted
+    /// from a `Box<dyn Error>`. libcalibre's own operations don't return it.
     #[error("Unknown error: {0}")]
     Unknown(String),
 }
