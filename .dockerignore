@@ -12,8 +12,15 @@ helm-charts
 .env
 .editorconfig
 .idea
-coverage*target
+coverage*
+target
 src-tauri/target
 dist
 .pulse-out
 storybook-static
+.jj
+.claude
+.storybook
+src-tauri/gen
+docs
+ai-docs
