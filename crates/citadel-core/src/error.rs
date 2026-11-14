@@ -49,7 +49,6 @@ impl LibraryError {
         }
     }
 
-    /// The library is writable, but this user's grant is view-only (ADR 0014).
     pub fn view_only() -> Self {
         Self {
             code: LibraryErrorCode::ReadOnly,

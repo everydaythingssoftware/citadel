@@ -81,6 +81,11 @@ fn execute(
             Ok((generate_sign_in_password(), true))
         }
     };
+    if flag("--no-grant") && flag("--view-only") {
+        return Err(format!(
+            "--view-only grants view-only access, so it can't be combined with --no-grant\n\n{USAGE}"
+        ));
+    }
     let permission = if flag("--view-only") {
         LibraryPermission::View
     } else {
@@ -136,11 +141,7 @@ fn execute(
                     accounts
                         .grant(&user.username, &library.id, permission)
                         .map_err(error)?;
-                    format!(
-                        "Granted access to library {} ({}).",
-                        library.id,
-                        describe(permission)
-                    )
+                    granted(&user.username, &library.id, permission)
                 }
                 (false, None) => {
                     "No library is set up yet; access is granted when one is.".to_string()
@@ -241,14 +242,7 @@ fn execute(
             accounts
                 .grant(name, library_id, permission)
                 .map_err(error)?;
-            Ok(match permission {
-                LibraryPermission::Edit => {
-                    format!("{name} can now view and edit library {library_id}.")
-                }
-                LibraryPermission::View => {
-                    format!("{name} can now view library {library_id} but not change it.")
-                }
-            })
+            Ok(granted(name, library_id, permission))
         }
         ["revoke", name, rest @ ..] if rest.len() <= 1 => {
             let library_id = match rest.first() {
@@ -346,6 +340,13 @@ fn execute(
         }
         _ => Err(format!("unknown command\n\n{USAGE}")),
     }
+}
+
+fn granted(name: &str, library_id: &str, permission: LibraryPermission) -> String {
+    format!(
+        "{name} has access to library {library_id} ({}).",
+        describe(permission)
+    )
 }
 
 fn describe(permission: LibraryPermission) -> &'static str {
@@ -452,7 +453,8 @@ mod tests {
         assert!(listed.contains("view only"), "{listed}");
 
         let output = command(&accounts, Some(&library), "grant kid", "").unwrap();
-        assert!(output.contains("view and edit"), "{output}");
+        assert!(output.contains("kid has access to library"), "{output}");
+        assert!(output.contains("(can edit)"), "{output}");
         assert_eq!(permission(&accounts), Some(LibraryPermission::Edit));
         let output = command(
             &accounts,
@@ -461,11 +463,20 @@ mod tests {
             "",
         )
         .unwrap();
-        assert!(output.contains("but not change it"), "{output}");
+        assert!(output.contains("(view only)"), "{output}");
         assert_eq!(permission(&accounts), Some(LibraryPermission::View));
         assert!(command(&accounts, Some(&library), "grant kid --edit", "")
             .unwrap_err()
             .contains("unknown option --edit"));
+        assert!(command(
+            &accounts,
+            Some(&library),
+            "users add other --no-grant --view-only",
+            ""
+        )
+        .unwrap_err()
+        .contains("can't be combined with --no-grant"));
+        assert!(accounts.user("other").is_err());
         let listed = command(&accounts, Some(&library), "users list", "").unwrap();
         assert!(listed.contains("view only"), "{listed}");
     }

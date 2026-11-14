@@ -109,7 +109,6 @@ impl CitadelStore {
         Ok(())
     }
 
-    /// Gives the user access to the library, or changes the access they have.
     pub fn grant(
         &self,
         username: &str,
@@ -147,7 +146,6 @@ impl CitadelStore {
         Ok(())
     }
 
-    /// What the user may do with the library, or `None` without a grant.
     pub fn library_permission(
         &self,
         user_id: &str,
@@ -167,10 +165,8 @@ impl CitadelStore {
     }
 }
 
-/// What a grant lets its user do with a library (ADR 0014).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LibraryPermission {
-    /// Browse, read and download, but change nothing.
     View,
     Edit,
 }
@@ -189,7 +185,6 @@ impl LibraryPermission {
     }
 }
 
-/// One library a user is granted, and what they may do with it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LibraryGrant {
     pub library_id: String,

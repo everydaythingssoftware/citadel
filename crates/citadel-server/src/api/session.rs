@@ -186,11 +186,6 @@ impl Backoff {
 #[derive(Clone, Debug)]
 pub(super) struct SignedIn(pub User);
 
-/// What the signed-in user's grant allows with the served library, available
-/// to handlers behind [`require_session`]. Writes check it (ADR 0014).
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct Granted(pub LibraryPermission);
-
 #[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct SessionUser {
     id: String,
@@ -369,7 +364,7 @@ pub(super) async fn require_session(
     match current_user(&state, request.headers()).await {
         Ok(Some((user, LibraryAccess::Granted(permission)))) => {
             request.extensions_mut().insert(SignedIn(user));
-            request.extensions_mut().insert(Granted(permission));
+            request.extensions_mut().insert(permission);
             next.run(request).await
         }
         Ok(Some((_, LibraryAccess::Denied))) => failure(

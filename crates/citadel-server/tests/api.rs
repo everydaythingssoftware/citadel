@@ -88,13 +88,13 @@ async fn sign_in(
 }
 
 async fn fixture() -> (tempfile::TempDir, OpdsService, Router, String, String) {
-    fixture_with(api::UploadConfig::default()).await
+    fixture_opened(CalibreCatalogSource::open, api::UploadConfig::default()).await
 }
 
-async fn fixture_with(
+async fn uploads_fixture(
     uploads: api::UploadConfig,
 ) -> (tempfile::TempDir, OpdsService, Router, String, String) {
-    fixture_opened(CalibreCatalogSource::open, uploads).await
+    fixture_opened(CalibreCatalogSource::open_writable, uploads).await
 }
 
 /// No provider is reachable unless a test stands one up locally.
@@ -1636,7 +1636,7 @@ async fn start_upload(
 
 #[tokio::test]
 async fn uploads_stream_in_chunks_and_offer_metadata_and_cover_for_review() {
-    let (directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let (directory, service, router, _, cookie) = uploads_fixture(small_uploads()).await;
     let epub = epub_bytes();
     assert!(epub.len() > 3 * 4096, "fixture spans several chunks");
 
@@ -1723,7 +1723,7 @@ async fn uploads_stream_in_chunks_and_offer_metadata_and_cover_for_review() {
 
 #[tokio::test]
 async fn chunks_must_continue_at_the_offset_and_fit_the_chunk_size() {
-    let (directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let (directory, service, router, _, cookie) = uploads_fixture(small_uploads()).await;
     let epub = epub_bytes();
     let (_, upload) = start_upload(&router, &cookie, "book.epub", epub.len()).await;
     let id = upload["id"].as_str().unwrap().to_string();
@@ -1782,7 +1782,7 @@ async fn chunks_must_continue_at_the_offset_and_fit_the_chunk_size() {
 async fn a_cancelled_chunk_request_still_rolls_back_and_frees_the_upload() {
     use futures_util::StreamExt;
 
-    let (directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let (directory, service, router, _, cookie) = uploads_fixture(small_uploads()).await;
     let epub = epub_bytes();
     let (_, upload) = start_upload(&router, &cookie, "book.epub", epub.len()).await;
     let id = upload["id"].as_str().unwrap().to_string();
@@ -1844,7 +1844,7 @@ async fn a_cancelled_chunk_request_still_rolls_back_and_frees_the_upload() {
 
 #[tokio::test]
 async fn uploads_reject_unsupported_mislabelled_and_oversized_files() {
-    let (_directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let (_directory, service, router, _, cookie) = uploads_fixture(small_uploads()).await;
     let (status, error) = start_upload(&router, &cookie, "archive.zip", 10).await;
     assert_eq!(
         (status, error["code"].as_str()),
@@ -1898,7 +1898,7 @@ async fn uploads_reject_unsupported_mislabelled_and_oversized_files() {
 async fn staged_space_is_reserved_when_an_upload_starts() {
     let mut uploads = small_uploads();
     uploads.max_uploads_per_user = 10;
-    let (_directory, service, router, _, cookie) = fixture_with(uploads).await;
+    let (_directory, service, router, _, cookie) = uploads_fixture(uploads).await;
     let (status, _) = start_upload(&router, &cookie, "one.pdf", 1024 * 1024).await;
     assert_eq!(status, StatusCode::CREATED);
     let (status, _) = start_upload(&router, &cookie, "two.pdf", 1024 * 1024).await;
@@ -1913,7 +1913,7 @@ async fn staged_space_is_reserved_when_an_upload_starts() {
 
 #[tokio::test]
 async fn uploads_belong_to_their_user_and_require_a_same_origin_session() {
-    let (directory, service, router, _, cookie) = fixture_with(small_uploads()).await;
+    let (directory, service, router, _, cookie) = uploads_fixture(small_uploads()).await;
     let (_, upload) = start_upload(&router, &cookie, "mine.txt", 5).await;
     let id = upload["id"].as_str().unwrap().to_string();
 
@@ -2212,16 +2212,7 @@ async fn commits_need_a_finished_upload_a_title_its_owner_and_a_writable_library
     let (_, _, library) =
         request(&router, "GET", "/api/library", String::new(), Some(&cookie)).await;
     assert_eq!(library["readOnly"], true);
-    let staged = upload_whole(&router, &cookie, "whole.epub", &epub).await;
-    let id = staged["id"].as_str().unwrap().to_string();
-    let (status, _, error) = request(
-        &router,
-        "POST",
-        &format!("/api/uploads/{id}/commit"),
-        commit("Book"),
-        Some(&cookie),
-    )
-    .await;
+    let (status, error) = start_upload(&router, &cookie, "whole.epub", epub.len()).await;
     assert_eq!(
         (status, error["code"].as_str()),
         (StatusCode::FORBIDDEN, Some("readOnly"))

@@ -211,6 +211,7 @@ fn validate_library_name(name: &str) -> Result<String> {
 mod tests {
     use super::super::test_support::{store, LIBRARY_ID};
     use super::*;
+    use crate::store::LibraryPermission;
 
     #[test]
     fn libraries_are_keyed_by_calibre_uuid_and_keep_grants_when_moved() {
@@ -228,7 +229,7 @@ mod tests {
         );
         let alice = store.create_user("alice", "correct horse").unwrap();
         store
-            .grant("alice", LIBRARY_ID, super::super::LibraryPermission::Edit)
+            .grant("alice", LIBRARY_ID, LibraryPermission::Edit)
             .unwrap();
         std::fs::rename(
             directory.path().join("library"),

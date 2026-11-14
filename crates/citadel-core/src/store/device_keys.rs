@@ -316,6 +316,7 @@ fn hex(bytes: &[u8]) -> String {
 mod tests {
     use super::super::test_support::store;
     use super::*;
+    use crate::store::LibraryPermission;
 
     #[test]
     fn keys_are_hashed_named_rotated_and_revoked() {
@@ -344,7 +345,7 @@ mod tests {
             .unwrap()
             .is_empty());
         store
-            .grant("alice", &library.id, super::super::LibraryPermission::Edit)
+            .grant("alice", &library.id, LibraryPermission::Edit)
             .unwrap();
         let verifiers = store.library_device_key_verifiers(&library.id).unwrap();
         assert_eq!(verifiers.len(), 1);
