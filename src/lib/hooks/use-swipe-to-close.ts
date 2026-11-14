@@ -1,40 +1,71 @@
-import { type RefObject, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface SwipeToCloseOptions {
-	/** The panel that slides out to the left. */
-	panelRef: RefObject<HTMLElement | null>;
-	/** The dimming layer beside the panel; a swipe can start on it too. */
-	scrimRef: RefObject<HTMLElement | null>;
+	/** The screen edge the panel is attached to, and slides out through. */
+	edge: "left" | "right";
 	enabled: boolean;
 	onClose: () => void;
 	reducedMotion: boolean;
+}
+
+interface SwipeToClose {
+	/** Attach to the panel that slides out toward its edge. */
+	panelRef: (element: HTMLElement | null) => void;
+	/** Attach to the dimming layer beside it; a swipe can start there too. */
+	scrimRef: (element: HTMLElement | null) => void;
 }
 
 /** Movement before a touch counts as a horizontal drag rather than a scroll. */
 const AXIS_LOCK_PX = 8;
 /** Past this share of its width, letting go closes the panel. */
 const CLOSE_FRACTION = 1 / 3;
-/** A leftward flick this fast (px/ms) closes it from any distance. */
+/** A flick toward the edge this fast (px/ms) closes it from any distance. */
 const FLICK_VELOCITY = 0.4;
 /** So does a short swipe: at least this far, this quickly. */
 const QUICK_SWIPE = { px: 24, ms: 250 } as const;
 const SETTLE_MS = 160;
 
+/** A touch inside something that scrolls sideways belongs to that scroller. */
+const startsInHorizontalScroller = (
+	target: EventTarget | null,
+	panel: HTMLElement,
+) => {
+	for (
+		let node = target instanceof Element ? target : null;
+		node && node !== panel;
+		node = node.parentElement
+	) {
+		const { overflowX } = getComputedStyle(node);
+		if (
+			(overflowX === "auto" || overflowX === "scroll") &&
+			node.scrollWidth > node.clientWidth
+		)
+			return true;
+	}
+	return false;
+};
+
 /**
- * Lets a left-edge panel be swiped closed: it follows the finger leftward,
- * then either finishes sliding out and closes, or springs back.
+ * Lets an edge panel be swiped closed: it follows the finger toward its
+ * edge, then either finishes sliding out and closes, or springs back.
  */
 export const useSwipeToClose = ({
-	panelRef,
-	scrimRef,
+	edge,
 	enabled,
 	onClose,
 	reducedMotion,
-}: SwipeToCloseOptions) => {
+}: SwipeToCloseOptions): SwipeToClose => {
+	// Elements, not ref objects: a panel that mounts after `enabled` turns on
+	// (a portal, a dialog) still gets the gesture.
+	const [panel, panelRef] = useState<HTMLElement | null>(null);
+	const [scrim, scrimRef] = useState<HTMLElement | null>(null);
+	const onCloseRef = useRef(onClose);
+	onCloseRef.current = onClose;
+
 	useEffect(() => {
-		const panel = panelRef.current;
-		const scrim = scrimRef.current;
 		if (!enabled || !panel) return;
+		// Distances are measured toward the edge: positive closes.
+		const towardEdge = edge === "left" ? -1 : 1;
 
 		let startX = 0;
 		let startY = 0;
@@ -46,22 +77,24 @@ export const useSwipeToClose = ({
 		let velocity = 0;
 		let settleTimer: ReturnType<typeof setTimeout> | undefined;
 
-		const place = (x: number, animate: boolean) => {
+		const place = (distance: number, animate: boolean) => {
 			const transition =
 				animate && !reducedMotion ? `${SETTLE_MS}ms ease-out` : "none";
 			panel.style.transition = `transform ${transition}`;
-			panel.style.transform = x === 0 ? "" : `translateX(${x}px)`;
+			panel.style.transform =
+				distance === 0 ? "" : `translateX(${distance * towardEdge}px)`;
 			if (scrim) {
 				scrim.style.transition = `opacity ${transition}`;
-				scrim.style.opacity = String(1 + x / panel.offsetWidth);
+				scrim.style.opacity = String(1 - distance / panel.offsetWidth);
 			}
 		};
 		const reset = () => {
-			panel.style.transition = "";
-			panel.style.transform = "";
-			if (scrim) {
-				scrim.style.transition = "";
-				scrim.style.opacity = "";
+			for (const element of [panel, scrim]) {
+				if (!element) continue;
+				element.style.transition = "";
+				element.style.transform = "";
+				element.style.opacity = "";
+				element.style.animation = "";
 			}
 		};
 
@@ -72,7 +105,9 @@ export const useSwipeToClose = ({
 			startX = lastX = touch.clientX;
 			startY = touch.clientY;
 			lastTime = startTime = event.timeStamp;
-			axis = null;
+			axis = startsInHorizontalScroller(event.target, panel)
+				? "vertical"
+				: null;
 			offset = 0;
 			velocity = 0;
 		};
@@ -90,10 +125,11 @@ export const useSwipeToClose = ({
 			// A horizontal drag moves the panel, not the page under it.
 			event.preventDefault();
 			const elapsed = event.timeStamp - lastTime;
-			if (elapsed > 0) velocity = (touch.clientX - lastX) / elapsed;
+			if (elapsed > 0)
+				velocity = ((touch.clientX - lastX) * towardEdge) / elapsed;
 			lastX = touch.clientX;
 			lastTime = event.timeStamp;
-			offset = Math.min(0, dx);
+			offset = Math.max(0, dx * towardEdge);
 			place(offset, false);
 		};
 
@@ -102,18 +138,21 @@ export const useSwipeToClose = ({
 			axis = null;
 			const width = panel.offsetWidth;
 			const quickSwipe =
-				offset <= -QUICK_SWIPE.px &&
+				offset >= QUICK_SWIPE.px &&
 				event.timeStamp - startTime < QUICK_SWIPE.ms;
 			if (
-				offset < -width * CLOSE_FRACTION ||
-				velocity < -FLICK_VELOCITY ||
+				offset > width * CLOSE_FRACTION ||
+				velocity > FLICK_VELOCITY ||
 				quickSwipe
 			) {
-				place(-width, true);
+				place(width, true);
 				settleTimer = setTimeout(
 					() => {
-						reset();
-						onClose();
+						// The panel is already out: its own closing animation would
+						// start it back at rest first.
+						panel.style.animation = "none";
+						if (scrim) scrim.style.animation = "none";
+						onCloseRef.current();
 					},
 					reducedMotion ? 0 : SETTLE_MS,
 				);
@@ -139,5 +178,7 @@ export const useSwipeToClose = ({
 			}
 			reset();
 		};
-	}, [enabled, panelRef, scrimRef, onClose, reducedMotion]);
+	}, [enabled, panel, scrim, edge, reducedMotion]);
+
+	return { panelRef, scrimRef };
 };
