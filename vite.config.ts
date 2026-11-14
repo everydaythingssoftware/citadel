@@ -16,7 +16,7 @@ export default defineConfig({
 	clearScreen: false,
 	server: {
 		port: 1420,
-        proxy: process.env.CITADEL_API_URL ? {"/api": {target: process.env.CITADEL_API_URL, changeOrigin: true}} : undefined,
+        proxy: process.env.CITADEL_API_URL ? {"/api": {target: process.env.CITADEL_API_URL, changeOrigin: false}} : undefined,
 		// 2. tauri expects a fixed port, fail if that port is not available
 		strictPort: true,
 		watch: {
