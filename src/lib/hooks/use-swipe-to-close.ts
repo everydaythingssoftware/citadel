@@ -15,6 +15,12 @@ interface SwipeToClose {
 	scrimRef: (element: HTMLElement | null) => void;
 }
 
+/**
+ * How far into the panel, from its inner edge (the side facing the page),
+ * a swipe can start; the rest of the panel is left to its own content. The
+ * dimmed layer beside it counts in full.
+ */
+const GRAB_ZONE_PX = 44;
 /** Movement before a touch counts as a horizontal drag rather than a scroll. */
 const AXIS_LOCK_PX = 8;
 /** Past this share of its width, letting go closes the panel. */
@@ -46,8 +52,9 @@ const startsInHorizontalScroller = (
 };
 
 /**
- * Lets an edge panel be swiped closed: it follows the finger toward its
- * edge, then either finishes sliding out and closes, or springs back.
+ * Lets an edge panel be swiped closed: a drag that starts on its inner edge
+ * or the dimmed layer beside it follows the finger toward the panel's edge,
+ * then either finishes sliding out and closes, or springs back.
  */
 export const useSwipeToClose = ({
 	edge,
@@ -66,6 +73,12 @@ export const useSwipeToClose = ({
 		if (!enabled || !panel) return;
 		// Distances are measured toward the edge: positive closes.
 		const towardEdge = edge === "left" ? -1 : 1;
+		const outsideGrabZone = (target: EventTarget | null, x: number) => {
+			if (!(target instanceof Node) || !panel.contains(target)) return false;
+			const { left, right } = panel.getBoundingClientRect();
+			const intoPanel = edge === "left" ? right - x : x - left;
+			return intoPanel > GRAB_ZONE_PX;
+		};
 
 		let startX = 0;
 		let startY = 0;
@@ -105,9 +118,11 @@ export const useSwipeToClose = ({
 			startX = lastX = touch.clientX;
 			startY = touch.clientY;
 			lastTime = startTime = event.timeStamp;
-			axis = startsInHorizontalScroller(event.target, panel)
-				? "vertical"
-				: null;
+			axis =
+				outsideGrabZone(event.target, touch.clientX) ||
+				startsInHorizontalScroller(event.target, panel)
+					? "vertical"
+					: null;
 			offset = 0;
 			velocity = 0;
 		};
