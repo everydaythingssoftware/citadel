@@ -18,7 +18,7 @@ fn empty_book(title: &str) -> BookAdd {
         publisher: None,
         publication_date: None,
         rating: None,
-        comments: None,
+        description: None,
         identifiers: HashMap::new(),
         language: None,
         file_paths: vec![],
@@ -39,7 +39,6 @@ fn empty_update() -> BookUpdate {
         publisher: None,
         publication_date: None,
         rating: None,
-        comments: None,
         identifiers: None,
     }
 }
@@ -61,7 +60,7 @@ fn test_add_book_saves_publisher_comments_and_identifiers() {
     let (_temp, mut lib) = setup_with_library();
     let mut first = empty_book("First");
     first.publisher = Some("  Small Press ".into());
-    first.comments = Some("<p>A description.</p>".into());
+    first.description = Some("<p>A description.</p>".into());
     first.identifiers = HashMap::from([
         ("isbn".to_string(), "9780000000002".to_string()),
         ("goodreads".to_string(), "42".to_string()),
@@ -85,7 +84,7 @@ fn test_add_book_saves_publisher_comments_and_identifiers() {
     lib.add_book(second).unwrap();
     let mut blank = empty_book("Blank");
     blank.publisher = Some(" ".into());
-    blank.comments = Some(" ".into());
+    blank.description = Some(" ".into());
     let blank = lib.add_book(blank).unwrap();
     assert_eq!(blank.description, None);
 
@@ -502,7 +501,7 @@ fn test_add_book_with_authors() {
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: None,
             file_paths: vec![],
@@ -527,7 +526,7 @@ fn test_add_book_with_tags() {
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: None,
             file_paths: vec![],
@@ -551,7 +550,7 @@ fn test_update_book_tags_replaces_existing_tags() {
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: None,
             file_paths: vec![],
@@ -588,7 +587,7 @@ fn test_update_book_tags_can_clear_all_tags() {
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: None,
             file_paths: vec![],
@@ -622,7 +621,7 @@ fn test_tag_creation_reuses_case_insensitive_matches() {
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: None,
             file_paths: vec![],
@@ -639,7 +638,7 @@ fn test_tag_creation_reuses_case_insensitive_matches() {
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: None,
             file_paths: vec![],
@@ -903,4 +902,183 @@ fn author_folder_name_is_sanitised() {
         .collect();
     assert_eq!(components.len(), 2, "{}", book.book_dir_path);
     assert!(temp.path().join(&book.book_dir_path).is_dir());
+}
+
+fn stored_pubdate(lib: &libcalibre::Library, id: BookId) -> String {
+    let conn = rusqlite::Connection::open(lib.database_path()).unwrap();
+    conn.query_row(
+        "SELECT pubdate FROM books WHERE id = ?1",
+        [id.as_i32()],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn test_book_reads_back_publisher_rating_and_publication_date() {
+    let (_temp, mut lib) = setup_with_library();
+    let added = lib
+        .add_book(BookAdd {
+            publisher: Some("Tor".to_string()),
+            rating: Some(8),
+            publication_date: chrono::NaiveDate::from_ymd_opt(1993, 6, 1),
+            description: Some("<p>A thief.</p>".to_string()),
+            ..empty_book("Book")
+        })
+        .unwrap();
+
+    for book in [
+        lib.get_book(added.id).unwrap(),
+        lib.books().unwrap().remove(0),
+    ] {
+        assert_eq!(book.publisher.as_deref(), Some("Tor"));
+        assert_eq!(book.rating, Some(8));
+        assert_eq!(
+            book.publication_date,
+            chrono::NaiveDate::from_ymd_opt(1993, 6, 1)
+        );
+        assert_eq!(book.description.as_deref(), Some("<p>A thief.</p>"));
+    }
+}
+
+#[test]
+fn test_book_without_a_publication_date_stores_calibres_undefined_date() {
+    let (_temp, mut lib) = setup_with_library();
+    let book = lib.add_book(empty_book("Undated")).unwrap();
+
+    assert_eq!(book.publication_date, None);
+    assert_eq!(book.rating, None);
+    assert_eq!(book.publisher, None);
+    assert!(stored_pubdate(&lib, book.id).starts_with("0101-01-01"));
+}
+
+#[test]
+fn test_update_book_sets_and_clears_publisher_and_rating() {
+    let (_temp, mut lib) = setup_with_library();
+    let id = lib.add_book(empty_book("Book")).unwrap().id;
+
+    let book = lib
+        .update_book(
+            id,
+            BookUpdate {
+                publisher: Some("Orbit".to_string()),
+                rating: Some(10),
+                ..BookUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(book.publisher.as_deref(), Some("Orbit"));
+    assert_eq!(book.rating, Some(10));
+
+    let book = lib
+        .update_book(
+            id,
+            BookUpdate {
+                publisher: Some("Tor".to_string()),
+                rating: Some(4),
+                ..BookUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(book.publisher.as_deref(), Some("Tor"));
+    assert_eq!(book.rating, Some(4));
+
+    let book = lib
+        .update_book(
+            id,
+            BookUpdate {
+                publisher: Some("  ".to_string()),
+                rating: Some(0),
+                ..BookUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(book.publisher, None);
+    assert_eq!(book.rating, None);
+    let publishers = lib.list_publishers().unwrap();
+    assert!(publishers
+        .iter()
+        .any(|p| p.name == "Tor" && p.book_count == 0));
+}
+
+#[test]
+fn test_update_book_refuses_a_rating_out_of_range() {
+    let (_temp, mut lib) = setup_with_library();
+    let id = lib.add_book(empty_book("Book")).unwrap().id;
+
+    let error = lib
+        .update_book(
+            id,
+            BookUpdate {
+                rating: Some(11),
+                title: Some("Renamed".to_string()),
+                ..BookUpdate::default()
+            },
+        )
+        .unwrap_err();
+    assert!(matches!(error, libcalibre::CalibreError::InvalidRating(11)));
+    assert_eq!(
+        lib.get_book(id).unwrap().title,
+        "Book",
+        "nothing else changed"
+    );
+}
+
+#[test]
+fn test_update_book_replaces_identifiers() {
+    let (_temp, mut lib) = setup_with_library();
+    let id = lib
+        .add_book(BookAdd {
+            identifiers: HashMap::from([
+                ("isbn".to_string(), "9780765326355".to_string()),
+                ("goodreads".to_string(), "7235533".to_string()),
+            ]),
+            ..empty_book("Book")
+        })
+        .unwrap()
+        .id;
+
+    let book = lib
+        .update_book(
+            id,
+            BookUpdate {
+                identifiers: Some(HashMap::from([
+                    ("ISBN".to_string(), "9780765365279".to_string()),
+                    ("amazon".to_string(), " ".to_string()),
+                ])),
+                ..BookUpdate::default()
+            },
+        )
+        .unwrap();
+    let identifiers: Vec<_> = book
+        .identifiers
+        .iter()
+        .map(|i| (i.label.as_str(), i.value.as_str()))
+        .collect();
+    assert_eq!(identifiers, [("isbn", "9780765365279")]);
+
+    let book = lib
+        .update_book(
+            id,
+            BookUpdate {
+                identifiers: Some(HashMap::new()),
+                ..BookUpdate::default()
+            },
+        )
+        .unwrap();
+    assert!(book.identifiers.is_empty());
+}
+
+#[test]
+fn test_add_book_refuses_a_rating_out_of_range_before_writing() {
+    let (_temp, mut lib) = setup_with_library();
+
+    let error = lib
+        .add_book(BookAdd {
+            rating: Some(11),
+            ..empty_book("Book")
+        })
+        .unwrap_err();
+    assert!(matches!(error, libcalibre::CalibreError::InvalidRating(11)));
+    assert!(lib.books().unwrap().is_empty());
 }

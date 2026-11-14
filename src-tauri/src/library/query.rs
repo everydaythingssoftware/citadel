@@ -321,7 +321,7 @@ mod tests {
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: std::collections::HashMap::new(),
             language: None,
             file_paths: Vec::new(),

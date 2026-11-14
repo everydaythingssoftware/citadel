@@ -11,7 +11,7 @@ fn book(title: &str) -> BookAdd {
         publisher: None,
         publication_date: None,
         rating: None,
-        comments: None,
+        description: None,
         identifiers: Default::default(),
         language: None,
         file_paths: Vec::new(),

@@ -47,6 +47,11 @@ pub struct Book {
     /// Position within the series; `Some` iff the book is linked to a series.
     pub series_index: Option<f32>,
     pub description: Option<String>,
+    pub publisher: Option<String>,
+    /// 1 to 10, in half stars (10 is five stars); `None` when unrated.
+    pub rating: Option<i32>,
+    /// `None` when the library holds Calibre's "undefined" date.
+    pub publication_date: Option<NaiveDate>,
     /// Canonical Calibre language codes (ISO 639-2/3, e.g. `eng`, `fra`),
     /// ordered by `books_languages_link.item_order`. Empty when the book has
     /// no language metadata.
@@ -80,6 +85,7 @@ pub struct BookIdentifier {
     pub value: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct BookAdd {
     pub title: String,
     pub author_names: Vec<String>,
@@ -88,8 +94,10 @@ pub struct BookAdd {
     pub series_index: Option<f32>,
     pub publisher: Option<String>,
     pub publication_date: Option<NaiveDate>,
+    /// 0 to 10, in half stars; 0 or `None` leaves the book unrated.
     pub rating: Option<i32>,
-    pub comments: Option<String>,
+    /// Calibre's "comments": the book's description, usually HTML.
+    pub description: Option<String>,
     pub identifiers: HashMap<String, String>,
     /// Language code for the book (any ISO 639-1/2/3 form; canonicalized on
     /// write). `None` adds the book with no language metadata.
@@ -97,6 +105,7 @@ pub struct BookAdd {
     pub file_paths: Vec<PathBuf>,
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct BookUpdate {
     pub title: Option<String>,
 
@@ -124,10 +133,14 @@ pub struct BookUpdate {
     /// (canonicalized to Calibre's ISO 639-2/3 form, deduped, order preserved).
     /// An empty list clears all language links; `None` leaves them unchanged.
     pub language_codes: Option<Vec<String>>,
+    /// Links the book to the named publisher, replacing any other. An empty
+    /// (or whitespace) name unlinks it.
     pub publisher: Option<String>,
     pub publication_date: Option<NaiveDate>,
+    /// 0 to 10, in half stars; `Some(0)` clears the rating.
     pub rating: Option<i32>,
-    pub comments: Option<String>,
+    /// Replaces all of the book's identifiers (labels are stored
+    /// lowercase). An empty map removes them.
     pub identifiers: Option<HashMap<String, String>>,
 }
 
@@ -139,12 +152,14 @@ pub struct Author {
     pub link: Option<String>,
 }
 
+#[derive(Clone, Debug)]
 pub struct AuthorAdd {
     pub name: String,
     pub sort: Option<String>,
     pub link: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct AuthorUpdate {
     pub name: Option<String>,
     pub sort: Option<String>,
@@ -379,6 +394,9 @@ impl Library {
     // =========================================================================
 
     pub fn add_book(&mut self, book: BookAdd) -> Result<Book, CalibreError> {
+        if let Some(rating) = book.rating.filter(|rating| !(0..=10).contains(rating)) {
+            return Err(CalibreError::InvalidRating(rating));
+        }
         // 1. Create/find authors. Like Calibre, a book with no author is filed
         // under "Unknown", so its folder is never at the library root.
         let mut author_names: Vec<&str> = book
@@ -399,9 +417,11 @@ impl Library {
         let new_book = NewBook {
             title: book.title.clone(),
             timestamp: None,
-            pubdate: book
-                .publication_date
-                .map(|d| NaiveDateTime::new(d, chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap())),
+            pubdate: Some(
+                book.publication_date
+                    .and_then(|date| date.and_hms_opt(0, 0, 0))
+                    .unwrap_or_else(crate::queries::book_details::undefined_date),
+            ),
             series_index: book.series_index.unwrap_or(1.0),
             has_cover: None,
         };
@@ -460,12 +480,16 @@ impl Library {
             }
         }
 
-        if let Some(comments) = book.comments.as_ref().filter(|c| !c.trim().is_empty()) {
+        if let Some(description) = book.description.as_ref().filter(|c| !c.trim().is_empty()) {
             crate::queries::book_descriptions::create(
                 &mut self.conn,
                 BookId(book_row.id),
-                comments.clone(),
+                description.clone(),
             )?;
+        }
+
+        if let Some(rating) = book.rating {
+            crate::queries::book_details::set_rating(&mut self.conn, BookId(book_row.id), rating)?;
         }
 
         let mut identifiers: Vec<_> = book.identifiers.iter().collect();

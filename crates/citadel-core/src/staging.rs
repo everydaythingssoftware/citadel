@@ -82,7 +82,7 @@ impl CommitUpload {
             publisher: trimmed(self.publisher),
             publication_date: self.publication_date,
             rating: None,
-            comments: None,
+            description: None,
             language: trimmed(self.language),
             identifiers,
             file_paths: vec![file],
