@@ -46,6 +46,7 @@ pub struct Endpoints {
     pub loc: String,
     pub dnb: String,
     pub k10plus: String,
+    pub bnf: String,
     /// Which hosts each provider's cover images may come from.
     pub covers: CoverPolicy,
 }
@@ -64,6 +65,7 @@ impl Default for Endpoints {
             loc: sru(MetadataProvider::Loc),
             dnb: sru(MetadataProvider::Dnb),
             k10plus: sru(MetadataProvider::K10plus),
+            bnf: sru(MetadataProvider::Bnf),
             covers: CoverPolicy::default(),
         }
     }
@@ -74,6 +76,7 @@ impl Endpoints {
         match provider {
             MetadataProvider::Loc => &self.loc,
             MetadataProvider::Dnb => &self.dnb,
+            MetadataProvider::Bnf => &self.bnf,
             _ => &self.k10plus,
         }
     }
@@ -150,7 +153,10 @@ impl MetadataClient {
                         )
                         .await
                     }
-                    MetadataProvider::Loc | MetadataProvider::Dnb | MetadataProvider::K10plus => {
+                    MetadataProvider::Loc
+                    | MetadataProvider::Dnb
+                    | MetadataProvider::K10plus
+                    | MetadataProvider::Bnf => {
                         sru::search(
                             &self.http,
                             self.endpoints.sru(provider),
@@ -202,7 +208,10 @@ impl MetadataClient {
                         )
                         .await
                     }
-                    MetadataProvider::Loc | MetadataProvider::Dnb | MetadataProvider::K10plus => {
+                    MetadataProvider::Loc
+                    | MetadataProvider::Dnb
+                    | MetadataProvider::K10plus
+                    | MetadataProvider::Bnf => {
                         sru::search(
                             &self.http,
                             self.endpoints.sru(provider),
@@ -245,17 +254,18 @@ impl MetadataClient {
                         )
                         .await
                     }
-                    MetadataProvider::Loc | MetadataProvider::Dnb | MetadataProvider::K10plus => {
-                        sru::search(
-                            &self.http,
-                            self.endpoints.sru(provider),
-                            sru_endpoint(provider),
-                            "test",
-                            None,
-                        )
-                        .await
-                        .map(|_| None)
-                    }
+                    MetadataProvider::Loc
+                    | MetadataProvider::Dnb
+                    | MetadataProvider::K10plus
+                    | MetadataProvider::Bnf => sru::search(
+                        &self.http,
+                        self.endpoints.sru(provider),
+                        sru_endpoint(provider),
+                        "test",
+                        None,
+                    )
+                    .await
+                    .map(|_| None),
                     MetadataProvider::OpenLibrary => {
                         openlibrary::test(&self.http, &self.endpoints.openlibrary)
                             .await
@@ -373,6 +383,37 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn bnf_lookups_use_the_shared_client_and_configured_endpoint() {
+        let base = serve(Router::new().route(
+            "/",
+            get(|| async { include_str!("../fixtures/bnf_9782070584628.xml") }),
+        ))
+        .await;
+        let client = MetadataClient::with_endpoints(
+            ClientOptions::default(),
+            Endpoints {
+                bnf: base,
+                ..Endpoints::default()
+            },
+        )
+        .unwrap();
+        let provider: MetadataProvider = "bnf".parse().unwrap();
+        assert!(MetadataProvider::ALL.contains(&provider));
+        assert_eq!(provider.id(), "bnf");
+        let books = client
+            .by_isbn(provider, "9782070584628", None)
+            .await
+            .unwrap();
+        assert_eq!(books[0].series.as_deref(), Some("Harry Potter"));
+        assert!(!client
+            .search(provider, "Harry Potter", None)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(client.test(provider, None).await.is_ok());
     }
 
     #[test]

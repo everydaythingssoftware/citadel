@@ -109,11 +109,19 @@ export const defaultSettings: SettingsSchema = {
 	// on every existing install; new installs migrate harmlessly from defaults.
 	settingsSchemaVersion: 0,
 	metadataProviders: {
-		preferenceOrder: ["loc", "dnb", "k10plus", "openlibrary", "hardcover"],
+		preferenceOrder: [
+			"loc",
+			"dnb",
+			"k10plus",
+			"bnf",
+			"openlibrary",
+			"hardcover",
+		],
 		configs: {
 			loc: { enabled: true, apiKey: "" },
 			dnb: { enabled: true, apiKey: "" },
 			k10plus: { enabled: true, apiKey: "" },
+			bnf: { enabled: true, apiKey: "" },
 			openlibrary: { enabled: true, apiKey: "" },
 			hardcover: { enabled: false, apiKey: "" },
 		},

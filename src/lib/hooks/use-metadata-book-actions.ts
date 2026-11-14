@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BookMetadata, LibraryBook } from "@/bindings";
 import { useLibraryActions, useLibraryStore } from "@/stores/library/store";
-import { normalizeIsbn } from "@/lib/isbn";
+import { lookupIsbn, normalizeIsbn } from "@/lib/isbn";
 import { applyMetadataCover, refreshCoverId } from "@/lib/metadata-import";
 import type {
 	AggregatedResult,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
 import { usePlatform } from "@/lib/platform/context";
+import { formatSeriesIndex } from "@/lib/series";
 import {
 	useEnabledProviders,
 	useResolvedProviderConfig,
@@ -32,6 +33,9 @@ interface UseMetadataBookActionsParams {
 	book: LibraryBook;
 	allAuthorNames: string[];
 	form: FormSetter;
+	/** Receives a publisher's collection; the caller stores it only if the
+	 * library has a matching `collection` custom column. */
+	onCollection?: (collection: string) => void;
 	onReloadBooks: () => Promise<void>;
 	onUpsertIdentifier: (
 		bookId: string,
@@ -54,6 +58,7 @@ export const useMetadataBookActions = ({
 	book,
 	allAuthorNames,
 	form,
+	onCollection,
 	onReloadBooks,
 	onUpsertIdentifier,
 	onCreateAuthor,
@@ -100,9 +105,7 @@ export const useMetadataBookActions = ({
 		[book.identifier_list],
 	);
 
-	const fileIsbn = isbnIdentifier
-		? (normalizeIsbn(isbnIdentifier.value) ?? null)
-		: null;
+	const fileIsbn = lookupIsbn(book.identifier_list);
 
 	/** Apply a chosen record to the library, preserving the reload→form-reset dance. */
 	const applyBookToLibrary = async (chosen: BookMetadata) => {
@@ -167,6 +170,16 @@ export const useMetadataBookActions = ({
 		if (chosen.authors.length > 0) {
 			form.setFieldValue("authorList", chosen.authors);
 		}
+		if (chosen.series) {
+			form.setFieldValue("series", chosen.series);
+			if (chosen.series_index !== null) {
+				form.setFieldValue(
+					"seriesIndex",
+					formatSeriesIndex(chosen.series_index),
+				);
+			}
+		}
+		if (chosen.collection) onCollection?.(chosen.collection);
 		setLastResolvedSubjects(chosen.subjects);
 		setLastResolvedGenres(
 			chosen.genre_candidates.map((candidate) => candidate.name),
