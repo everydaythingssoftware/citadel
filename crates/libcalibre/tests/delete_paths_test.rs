@@ -88,24 +88,3 @@ fn rejects_symlink_ancestors_and_book_folders() {
         assert!(outside.path().join("untouched").exists());
     }
 }
-
-#[cfg(unix)]
-#[test]
-fn inaccessible_folder_preserves_records() {
-    use std::os::unix::fs::PermissionsExt;
-    let (temp, mut lib) = common::setup_with_library();
-    let book = lib.add_book(common::standard_test_book()).unwrap();
-    let author = temp.path().join("Blocked");
-    std::fs::create_dir_all(author.join("Book")).unwrap();
-    set_path(&lib, book.id, "Blocked/Book");
-    std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0)).unwrap();
-    if std::fs::read_dir(&author).is_ok() {
-        // Root (or CAP_DAC_OVERRIDE) ignores file modes: nothing to observe.
-        std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
-        return;
-    }
-    let result = lib.delete_books(&[book.id]);
-    std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
-    assert!(result.is_err());
-    assert!(lib.get_book(book.id).is_ok());
-}

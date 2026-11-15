@@ -51,25 +51,75 @@ pub(crate) fn validated_book_delete_dir(
     let mut current = root.clone();
     for component in components {
         current.push(component.as_os_str());
-        match std::fs::symlink_metadata(&current) {
-            Ok(metadata) => {
-                if metadata.file_type().is_symlink() || !metadata.is_dir() {
-                    return Err(CalibreError::DatabaseIntegrity(format!(
-                        "Book folder must contain only real directories: {}",
-                        current.display()
-                    )));
-                }
+        match step(entry(&current), &current)? {
+            Step::Descend => {
                 let canonical = current.canonicalize()?;
                 if canonical == root || !canonical.starts_with(&root) {
                     return Err(CalibreError::AssetOutsideLibrary);
                 }
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
-            Err(error) => return Err(error.into()),
+            Step::Gone => break,
         }
     }
     Ok(target)
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Entry {
+    Directory,
+    /// A file, or a symbolic link to anything.
+    Other,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Step {
+    Descend,
+    Gone,
+}
+
+fn entry(path: &Path) -> std::io::Result<Entry> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    Ok(if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        Entry::Directory
+    } else {
+        Entry::Other
+    })
+}
+
+/// Only a missing folder is safe to treat as already deleted. Any other
+/// failure to look (permissions, I/O) means its contents are unknown.
+fn step(found: std::io::Result<Entry>, path: &Path) -> Result<Step, CalibreError> {
+    match found {
+        Ok(Entry::Directory) => Ok(Step::Descend),
+        Ok(Entry::Other) => Err(CalibreError::DatabaseIntegrity(format!(
+            "Book folder must contain only real directories: {}",
+            path.display()
+        ))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Step::Gone),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Error, ErrorKind};
+
+    use super::*;
+
+    #[test]
+    fn only_a_missing_folder_counts_as_already_deleted() {
+        let path = Path::new("Author/Book (1)");
+        assert_eq!(step(Ok(Entry::Directory), path).unwrap(), Step::Descend);
+        assert_eq!(
+            step(Err(Error::from(ErrorKind::NotFound)), path).unwrap(),
+            Step::Gone
+        );
+        assert!(step(Ok(Entry::Other), path).is_err());
+        assert!(step(Err(Error::from(ErrorKind::PermissionDenied)), path).is_err());
+        assert!(step(Err(Error::other("I/O error")), path).is_err());
+    }
+}
+
 
 /// A book file or cover found on disk and confirmed to be inside the
 /// library folder. Returned by [`Library::resolve_book_file`] and
