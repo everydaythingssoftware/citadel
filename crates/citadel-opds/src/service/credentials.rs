@@ -23,8 +23,25 @@ impl OpdsService {
 
     /// Called with a key's id after it signs in, at most hourly per key, on a
     /// blocking thread, so the host can record when each device was last seen.
+    /// The request is served once it returns.
     pub fn on_device_key_used(&self, hook: impl Fn(&str) + Send + Sync + 'static) {
         self.inner.auth.set_key_used_hook(Arc::new(hook));
+    }
+
+    /// Asked on a blocking thread before each sign-in is checked: return the
+    /// keys when they changed since the last answer, `None` when they didn't.
+    /// Lets a host whose keys change elsewhere (another process) have the
+    /// change apply to the next request.
+    pub fn refresh_credentials_with(
+        &self,
+        refresh: impl Fn() -> Option<Vec<DeviceKeyVerifier>> + Send + Sync + 'static,
+    ) {
+        let store = self.inner.credentials.clone();
+        self.inner.auth.set_credentials_refresh(Arc::new(move || {
+            let credentials = refresh()?;
+            store.replace(credentials.clone());
+            Some(credentials)
+        }));
     }
 
     #[cfg(test)]

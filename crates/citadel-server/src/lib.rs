@@ -20,7 +20,7 @@ use chrono::NaiveDateTime;
 use citadel_core::{
     error::LibraryError,
     password::generate_setup_code,
-    store::{CitadelStore, DeviceKeyVerifier},
+    store::{CitadelStore, DeviceKeyVerifier, StoreVersion},
 };
 use citadel_opds::{
     CatalogBookQuery, CatalogFacet, CatalogSource, OpdsBindTarget, OpdsLifecycleState, OpdsService,
@@ -682,8 +682,14 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         Some(code)
     };
 
-    let users = opds_users(&accounts, served.library_id().as_deref())?;
+    let (readers, users) = OpdsReaders::open(accounts.clone(), served.clone())?;
+    let readers = Arc::new(readers);
     let service = OpdsService::with_ephemeral_credentials(source.clone(), users.clone());
+    let mut status_changes = service.subscribe();
+    service.refresh_credentials_with({
+        let readers = readers.clone();
+        move || readers.changed()
+    });
     let touched = accounts.clone();
     service.on_device_key_used(move |key_id| {
         if let Err(error) = touched.touch_device_key(key_id) {
@@ -691,17 +697,13 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         }
     });
     let mut opds_started = false;
-    let mut last_status = service.status().await;
-    if ensure_opds_started(
+    ensure_opds_started(
         &service,
         &config,
         source.is_open() && !users.is_empty(),
         &mut opds_started,
     )
-    .await?
-    {
-        last_status = service.status().await;
-    }
+    .await?;
 
     let secrets = match open_secrets(&state_directory, &accounts) {
         Ok(secrets) => secrets,
@@ -775,6 +777,8 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         }
     };
 
+    // Sign-in follows citadel.db on every request; this only starts OPDS once
+    // another process (the admin CLI) has added the first reader.
     let mut interval = tokio::time::interval(Duration::from_secs(2));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     interval.tick().await;
@@ -789,21 +793,17 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
                 service.stop().await;
                 return Err(error);
             }
+            Some(status) = status_changes.next() => log_status(&status),
             _ = interval.tick() => {
-                let readers = refresh_opds_users(&service, &accounts, served.library_id()).await;
-                match ensure_opds_started(&service, &config, source.is_open() && readers > 0, &mut opds_started).await {
-                    Ok(true) => last_status = service.status().await,
-                    Ok(false) => {}
-                    Err(error) => {
-                        api.stop().await;
-                        service.stop().await;
-                        return Err(error);
-                    }
+                let changed = readers.clone();
+                if let Ok(Some(users)) = tokio::task::spawn_blocking(move || changed.changed()).await {
+                    service.replace_credentials(users);
                 }
-                let status = service.status().await;
-                if status != last_status {
-                    log_status(&status);
-                    last_status = status;
+                let ready = source.is_open() && service.credential_status().configured;
+                if let Err(error) = ensure_opds_started(&service, &config, ready, &mut opds_started).await {
+                    api.stop().await;
+                    service.stop().await;
+                    return Err(error);
                 }
             }
         }
@@ -900,58 +900,84 @@ fn setup_code_announcement(code: &str, open_at: &OpenAt) -> String {
 }
 
 /// Starts OPDS once there is a library to serve and a reader to serve it to.
-/// Returns whether it started on this call; a start that fails is fatal, as
-/// a port the operator chose being taken was before.
+/// A start that fails is fatal, as a port the operator chose being taken was
+/// before.
 async fn ensure_opds_started(
     service: &OpdsService,
     config: &ServerConfig,
     ready: bool,
     started: &mut bool,
-) -> Result<bool, String> {
+) -> Result<(), String> {
     if *started || !ready {
-        return Ok(false);
+        return Ok(());
     }
     let status = service
         .start(config.sharing.start_config())
         .await
         .map_err(|error| error.message)?;
-    log_status(&status);
     if is_fatal_startup(&status) {
+        log_status(&status);
         return Err(status
             .error
             .map(|error| error.message)
             .unwrap_or_else(|| "OPDS failed to start".to_string()));
     }
     *started = true;
-    Ok(true)
+    Ok(())
 }
 
-/// The admin CLI and the setup routes change `citadel.db`; pick up added,
-/// removed and re-granted users and new, rotated and revoked device keys
-/// without a restart.
-/// Returns how many device keys the served library's readers have.
-async fn refresh_opds_users(
-    service: &OpdsService,
-    accounts: &Arc<CitadelStore>,
-    library_id: Option<String>,
-) -> usize {
-    let accounts = accounts.clone();
-    let users =
-        tokio::task::spawn_blocking(move || opds_users(&accounts, library_id.as_deref())).await;
-    let result = match users {
-        Ok(Ok(users)) => {
-            let count = users.len();
-            service.replace_credentials(users);
-            Ok(count)
-        }
-        Ok(Err(error)) => Err(error),
-        Err(error) => Err(error.to_string()),
-    };
-    match result {
-        Ok(count) => count,
-        Err(error) => {
-            eprintln!("citadel_server warning=\"could not refresh OPDS users: {error}\"");
-            0
+/// The admin CLI and the setup routes change `citadel.db`: added, removed
+/// and re-granted users, and new, rotated and revoked device keys. OPDS asks
+/// before every sign-in, so a change applies to the next request.
+struct OpdsReaders {
+    accounts: Arc<CitadelStore>,
+    served: Arc<ServedLibrary>,
+    seen: Mutex<(StoreVersion, Option<String>)>,
+}
+
+impl OpdsReaders {
+    /// With the served library's reader keys as they are now.
+    fn open(
+        accounts: Arc<CitadelStore>,
+        served: Arc<ServedLibrary>,
+    ) -> Result<(Self, Vec<DeviceKeyVerifier>), String> {
+        let version = accounts.version().map_err(|error| error.to_string())?;
+        let library_id = served.library_id();
+        let users = opds_users(&accounts, library_id.as_deref())?;
+        let readers = Self {
+            accounts,
+            served,
+            seen: Mutex::new((version, library_id)),
+        };
+        Ok((readers, users))
+    }
+
+    /// The served library's reader keys, if `citadel.db` or the served
+    /// library changed since the last answer.
+    fn changed(&self) -> Option<Vec<DeviceKeyVerifier>> {
+        let mut seen = self
+            .seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Read before loading: a write that lands in between is picked up next time.
+        let now = self
+            .accounts
+            .version()
+            .map(|version| (version, self.served.library_id()));
+        let result = match now {
+            Ok(now) if now == *seen => return None,
+            Ok(now) => opds_users(&self.accounts, now.1.as_deref()).map(|users| (now, users)),
+            Err(error) => Err(error.to_string()),
+        };
+        match result {
+            Ok((now, users)) => {
+                *seen = now;
+                Some(users)
+            }
+            Err(error) => {
+                eprintln!("citadel_server warning=\"could not refresh OPDS users: {error}\"");
+                None
+            }
         }
     }
 }

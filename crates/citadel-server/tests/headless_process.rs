@@ -77,24 +77,6 @@ impl Output {
     }
 }
 
-/// Polls `attempt` until it succeeds; on timeout, panics with its last error.
-fn eventually<TValue>(
-    within: Duration,
-    what: &str,
-    mut attempt: impl FnMut() -> Result<TValue, String>,
-) -> TValue {
-    let deadline = Instant::now() + within;
-    loop {
-        match attempt() {
-            Ok(value) => return value,
-            Err(last) if Instant::now() >= deadline => {
-                panic!("{what} not within {within:?}; last saw: {last}")
-            }
-            Err(_) => std::thread::sleep(Duration::from_millis(50)),
-        }
-    }
-}
-
 fn client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
         .no_proxy()
@@ -103,14 +85,26 @@ fn client() -> reqwest::blocking::Client {
         .unwrap()
 }
 
+/// Sends SIGTERM and waits for the exit. A server that hangs is killed after
+/// `SETTLE`, so the test fails instead of hanging too.
 fn stop(child: &mut ServerProcess) -> std::process::ExitStatus {
-    kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
-    eventually(SETTLE, "exit after SIGTERM", || {
-        child
-            .try_wait()
-            .unwrap()
-            .ok_or_else(|| "still running".to_string())
-    })
+    let pid = Pid::from_raw(child.id() as i32);
+    kill(pid, Signal::SIGTERM).unwrap();
+    let (exited, exit_seen) = mpsc::channel::<()>();
+    let watchdog = std::thread::spawn(move || {
+        let hung = exit_seen.recv_timeout(SETTLE) == Err(RecvTimeoutError::Timeout);
+        if hung {
+            let _ = kill(pid, Signal::SIGKILL);
+        }
+        hung
+    });
+    let status = child.wait().unwrap();
+    drop(exited);
+    assert!(
+        !watchdog.join().unwrap(),
+        "no exit within {SETTLE:?} of SIGTERM"
+    );
+    status
 }
 
 struct ServerProcess(std::process::Child);
@@ -375,29 +369,15 @@ addresses = ["127.0.0.1"]
             .unwrap()
             .status()
     };
-    // The server rereads users periodically. Until it does, the rotated key is
-    // refused; asking with the old key in between resets OPDS's backoff, which
-    // starts after three refusals in a row.
-    eventually(SETTLE, "rotated key accepted", || {
-        match opds_status("reader", &rotated).as_u16() {
-            200 => Ok(()),
-            refused => Err(format!(
-                "rotated {refused}, old {}",
-                opds_status("reader", &reader_app)
-            )),
-        }
-    });
+    assert_eq!(opds_status("reader", &rotated), 200);
     assert_eq!(opds_status("reader", &reader_app), 401);
     assert_eq!(opds_status("reviewer", &reviewer_app), 401);
     // Signing in records when the key was last used.
-    eventually(SETTLE, "key use recorded", || {
-        let keys = admin(&["users", "keys", "reader"], "");
-        if keys.contains("Kobo") && keys.contains("last used") {
-            Ok(())
-        } else {
-            Err(keys)
-        }
-    });
+    let keys = admin(&["users", "keys", "reader"], "");
+    assert!(
+        keys.contains("Kobo") && keys.contains("last used"),
+        "{keys}"
+    );
 
     assert!(stop(&mut child).success());
     let released =
