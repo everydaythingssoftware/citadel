@@ -99,6 +99,11 @@ fn inaccessible_folder_preserves_records() {
     std::fs::create_dir_all(author.join("Book")).unwrap();
     set_path(&lib, book.id, "Blocked/Book");
     std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0)).unwrap();
+    if std::fs::read_dir(&author).is_ok() {
+        // Root (or CAP_DAC_OVERRIDE) ignores file modes: nothing to observe.
+        std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
+        return;
+    }
     let result = lib.delete_books(&[book.id]);
     std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
     assert!(result.is_err());

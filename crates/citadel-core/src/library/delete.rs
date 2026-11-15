@@ -259,6 +259,11 @@ mod tests {
         let lib = TestLibrary::new();
         let author = lib.root().join("Author");
         std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0)).unwrap();
+        if std::fs::read_dir(&author).is_ok() {
+            // Root (or CAP_DAC_OVERRIDE) ignores file modes: nothing to observe.
+            std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
+            return;
+        }
         let result = remove_book_dir(lib.root(), &lib.book(), |_| {
             panic!("inaccessible path must not be removed")
         });

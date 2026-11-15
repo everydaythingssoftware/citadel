@@ -921,6 +921,7 @@ mod tests {
         fail_task: AtomicBool,
         hold_shutdown: Arc<AtomicBool>,
         fail_every: Mutex<Option<io::ErrorKind>>,
+        no_ipv6: AtomicBool,
     }
 
     impl ListenerFactory for FakeListeners {
@@ -932,6 +933,9 @@ mod tests {
         ) -> io::Result<ServerTask> {
             if let Some(kind) = *self.fail_every.lock().unwrap() {
                 return Err(io::Error::from(kind));
+            }
+            if address.is_ipv6() && self.no_ipv6.load(Ordering::Acquire) {
+                return Err(io::Error::from_raw_os_error(libc_eafnosupport()));
             }
             if self.fail_bind.swap(false, Ordering::AcqRel) {
                 return Err(io::Error::from(io::ErrorKind::AddrInUse));
@@ -1383,8 +1387,46 @@ mod tests {
         service.stop().await;
     }
 
+    /// EAFNOSUPPORT, which a host without IPv6 answers an IPv6 bind with.
+    fn libc_eafnosupport() -> i32 {
+        if cfg!(target_os = "linux") {
+            97
+        } else {
+            47
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn all_interfaces_serves_ipv4_on_a_host_without_ipv6() {
+        let listeners = Arc::new(FakeListeners::default());
+        listeners.no_ipv6.store(true, Ordering::Release);
+        let service = service_with(
+            test_source(),
+            Arc::new(FakeInterfaces::new(Vec::new())),
+            listeners.clone(),
+            Duration::from_millis(10),
+        );
+        let started = service
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::AllInterfaces,
+                port: 8080,
+                authentication_enabled: true,
+            })
+            .await
+            .unwrap();
+        assert_eq!(started.state, OpdsLifecycleState::Running, "{started:?}");
+        let active: Vec<_> = listeners.active.lock().unwrap().iter().copied().collect();
+        assert_eq!(active, ["0.0.0.0:8080".parse::<SocketAddr>().unwrap()]);
+        service.stop().await;
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn real_factory_binds_dual_wildcards_on_one_port() {
+        if StdTcpListener::bind((std::net::Ipv6Addr::UNSPECIFIED, 0)).is_err() {
+            // No IPv6 on this host; the fallback to IPv4 alone is
+            // all_interfaces_serves_ipv4_on_a_host_without_ipv6.
+            return;
+        }
         let probe = StdTcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = probe.local_addr().unwrap().port();
         drop(probe);
