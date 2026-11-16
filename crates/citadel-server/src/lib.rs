@@ -420,6 +420,16 @@ pub fn load(source: &ConfigSource) -> Result<ServerConfig, String> {
 /// Asks the server listening where `config` says whether it can serve, and
 /// prints the checks that aren't fine.
 pub async fn health(config: &ServerConfig) -> Result<(), String> {
+    health_with(config, &citadel_host::ReqwestHttp::new())
+        .await
+        .map(|summary| println!("{summary}"))
+}
+
+/// [`health`] through `http`; returns the line to print when it is healthy.
+pub async fn health_with(
+    config: &ServerConfig,
+    http: &dyn citadel_core::http::HttpClient,
+) -> Result<String, String> {
     let mut address = config.api.listen;
     if address.ip().is_unspecified() {
         address.set_ip(match address {
@@ -428,16 +438,18 @@ pub async fn health(config: &ServerConfig) -> Result<(), String> {
         });
     }
     let url = format!("http://{address}/api/health");
-    let response = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|error| error.to_string())?
-        .get(&url)
-        .send()
+    let response = http
+        .send(citadel_core::http::HttpRequest::get(&url).timeout(Duration::from_secs(5)))
         .await
         .map_err(|error| format!("no answer from {url}: {error}"))?;
-    let status = response.status();
-    let body: serde_json::Value = response.json().await.unwrap_or_default();
+    let status = response.status;
+    let healthy = response.is_success();
+    let body: serde_json::Value = response
+        .bytes()
+        .await
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
     let unwell: Vec<String> = body["checks"]
         .as_array()
         .into_iter()
@@ -456,9 +468,8 @@ pub async fn health(config: &ServerConfig) -> Result<(), String> {
         body["status"].as_str().unwrap_or("unknown"),
         unwell.join(" ")
     );
-    if status.is_success() {
-        println!("citadel_server {}", summary.trim_end());
-        Ok(())
+    if healthy {
+        Ok(format!("citadel_server {}", summary.trim_end()))
     } else {
         Err(format!("{url} answered {status}: {}", summary.trim_end()))
     }
