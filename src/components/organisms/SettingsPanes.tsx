@@ -52,7 +52,7 @@ import { useSettings } from "@/stores/settings/store";
 /** The desktop Settings window's tabs; the browser uses SettingsPage. */
 const SETTINGS_TABS = [
 	"general",
-	"library",
+	"libraries",
 	"sharing",
 	"integrations",
 ] as const;
@@ -66,8 +66,8 @@ const TAB_META: Record<
 		label: "General",
 		icon: (className) => <F7Gear className={className} />,
 	},
-	library: {
-		label: "Library",
+	libraries: {
+		label: "Libraries",
 		icon: (className) => <FluentLibraryFilled className={className} />,
 	},
 	sharing: {
@@ -92,7 +92,7 @@ export const SettingsPanes = () => {
 	const platform = usePlatform();
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
-	// The badged gear and Citadel → Check for Updates… land here; the window
+	// Citadel → Check for Updates… lands here; the window
 	// outlives its last close, so it may still be on another tab.
 	useEffect(() => {
 		let cancelled = false;
@@ -191,7 +191,7 @@ export const SettingsPanes = () => {
 			>
 				<div className={classes.panelInner}>
 					{activeTab === "general" && <GeneralTab />}
-					{activeTab === "library" && <LibraryTab />}
+					{activeTab === "libraries" && <LibrariesTab />}
 					{activeTab === "sharing" && <SharingSettings />}
 					{activeTab === "integrations" && <IntegrationsTab />}
 				</div>
@@ -482,7 +482,7 @@ const PublicUrlLine = ({
 	</li>
 );
 
-const LibraryTab = () => {
+const LibrariesTab = () => {
 	const { libraries, activeLibrary, switchTo } = useLibrarySelection();
 	const addLibrary = useAddLibraryFlow();
 	const removeLibrary = useRemoveLibrary();

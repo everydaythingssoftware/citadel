@@ -66,11 +66,21 @@ const PlusIcon = () => (
 /**
  * Sidebar-top library picker (replaces the "Library" section label when two
  * or more libraries exist). Apple-style menu: library names with a checkmark
- * on the active one, then "Add Library…". Switches validate before
+ * on the active one, then "Add Library…". Right-click gives the open
+ * library's own actions instead. Switches validate before
  * committing; the resulting curtain is driven by the store-watching machine,
  * not by this component.
  */
-export const LibraryPicker = () => {
+export interface LibraryPickerProps {
+	/** The open library's own menu (Show in Finder, Forget…). */
+	onContextMenu?: (event: React.MouseEvent<HTMLElement>) => void;
+	onKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void;
+}
+
+export const LibraryPicker = ({
+	onContextMenu,
+	onKeyDown,
+}: LibraryPickerProps) => {
 	const { libraries, activeLibrary, switchTo } = useLibrarySelection();
 	const addLibrary = useAddLibraryFlow();
 
@@ -253,11 +263,17 @@ export const LibraryPicker = () => {
 				aria-expanded={open}
 				aria-label={`Library: ${activeLibrary.displayName}`}
 				onClick={() => setOpen((prev) => !prev)}
+				onContextMenu={(event) => {
+					setOpen(false);
+					onContextMenu?.(event);
+				}}
 				onKeyDown={(event) => {
 					if (event.key === "ArrowDown" && !open) {
 						event.preventDefault();
 						setOpen(true);
+						return;
 					}
+					onKeyDown?.(event);
 				}}
 			>
 				<span className={styles.triggerName}>{activeLibrary.displayName}</span>

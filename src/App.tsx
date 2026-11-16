@@ -103,7 +103,8 @@ export const App = () => {
 			return;
 		}
 
-		// A found update badges the sidebar gear (CDL-51).
+		// A found update downloads in the background; once ready, the sidebar
+		// footer row and Citadel > Restart to Update… offer it (CDL-51, CDL-90).
 		safeAsyncEventHandler(platform.updates.check)();
 	}, [hydrated, platform]);
 

@@ -1,4 +1,8 @@
 import createClient, { type ClientOptions } from "openapi-fetch";
+import {
+	reportServerBuild,
+	SERVER_BUILD_HEADER,
+} from "@/lib/updates/server-build";
 import type { paths } from "./schema.generated";
 
 export const SERVER_UNREACHABLE_MESSAGE =
@@ -22,7 +26,9 @@ const reportingUnreachable =
 	(fetcher: ClientOptions["fetch"]) =>
 	async (input: Request): Promise<Response> => {
 		try {
-			return await (fetcher ?? globalThis.fetch)(input);
+			const response = await (fetcher ?? globalThis.fetch)(input);
+			reportServerBuild(response.headers?.get(SERVER_BUILD_HEADER) ?? null);
+			return response;
 		} catch (error) {
 			if (isAbort(error)) throw error;
 			throw new ServerUnreachableError({ cause: error });

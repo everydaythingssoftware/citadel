@@ -1,50 +1,34 @@
 import clsx from "clsx";
-import { UpdateBadge } from "@/components/atoms/UpdateBadge";
 import { F7Gear } from "@/components/icons/F7Gear";
 import { IconButton, Tooltip } from "@/components/ui";
 import styles from "./SettingsButton.module.css";
 
 export interface SettingsButtonProps {
-	/** Version of a pending update; badges the gear when set. */
-	updateVersion: string | null;
 	onClick: () => void;
 	/** Settings is the page showing (web, where Settings is a page). */
 	active?: boolean;
 	className?: string;
 }
 
-/** The sidebar gear. A green ↑ badge marks a waiting Citadel update. */
+/**
+ * The sidebar gear, on the web and on Windows and Linux. The Mac opens
+ * Settings with ⌘, and from the app menu instead.
+ */
 export const SettingsButton = ({
-	updateVersion,
 	onClick,
 	active = false,
 	className,
-}: SettingsButtonProps) => {
-	const button = (
+}: SettingsButtonProps) => (
+	<Tooltip label="Settings">
 		<IconButton
-			aria-label={
-				updateVersion
-					? `Settings, update available: ${updateVersion}`
-					: "Settings"
-			}
+			aria-label="Settings"
 			className={clsx(styles.button, className)}
 			data-active={active || undefined}
 			aria-current={active ? "page" : undefined}
 			onClick={onClick}
 		>
 			{/* F7Gear hardcodes width/height 56; size it to fit the button. */}
-			<F7Gear
-				width={18}
-				height={18}
-				className={updateVersion ? styles.gearCutout : undefined}
-			/>
-			{updateVersion && <UpdateBadge className={styles.badge} />}
+			<F7Gear width={16} height={16} />
 		</IconButton>
-	);
-
-	return updateVersion ? (
-		<Tooltip label={`Update available: ${updateVersion}`}>{button}</Tooltip>
-	) : (
-		button
-	);
-};
+	</Tooltip>
+);

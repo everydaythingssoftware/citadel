@@ -19,11 +19,21 @@
 	padding: 0 16px;
 	background-color: var(--ctd-header-bg);
 	z-index: 100;
+	/* Toolbar items read the chrome inks and control fill (styles.css), which
+	   step down while the window is in the background. */
+	--ctd-ink: var(--ctd-chrome-ink);
+	--ctd-ink-soft: var(--ctd-chrome-ink-soft);
+	--ctd-control-text: var(--ctd-chrome-ink);
+	--ctd-control-bg-strong: var(--ctd-chrome-control-bg);
+	--ctd-border: var(--ctd-chrome-control-border);
+	--ctd-control-shadow: var(--ctd-chrome-control-shadow);
+	/* Links inherit their colour, so the scope sets it as well. */
+	color: var(--ctd-ink);
 }
 
 /* 110px clears the macOS traffic lights at trafficLightPosition x14/y16; the
-   vibrancy flag marks exactly that native window. */
-:root[data-vibrancy] .header {
+   vibrancy flag marks exactly that native window. Full screen hides them. */
+:root[data-vibrancy]:not([data-fullscreen]) .header {
 	padding-left: 110px;
 }
 
@@ -41,17 +51,75 @@
 	min-height: 0;
 }
 
+/*
+ * The sidebar opens and closes by animating its width, so the content panel
+ * beside it slides rather than jumps; its contents keep their width and are
+ * clipped, never reflowed. Hidden once closed, so it leaves the tab order.
+ */
 .nav {
+	position: relative;
 	flex-shrink: 0;
-	width: 200px;
-	padding: 12px;
+	width: var(--sidebar-width, 220px);
 	background-color: var(--ctd-nav-bg);
 	overflow: hidden;
 	z-index: 100;
+	transition:
+		width 200ms ease-out,
+		visibility 0s linear 0s;
 }
 
-.shell:not([data-sidebar-open]) .nav {
-	display: none;
+.navInner {
+	width: var(--sidebar-width, 220px);
+	height: 100%;
+	transition: transform 200ms ease-out;
+}
+
+.nav[data-closed] {
+	width: 0;
+	visibility: hidden;
+	transition:
+		width 200ms ease-out,
+		visibility 0s linear 200ms;
+}
+
+.nav[data-closed] .navInner {
+	transform: translateX(-24px);
+}
+
+.shell[data-sidebar-resizing] .nav,
+.shell[data-sidebar-resizing] .navInner {
+	transition: none;
+}
+
+.shell[data-sidebar-resizing] {
+	cursor: col-resize;
+	user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.nav,
+	.nav[data-closed],
+	.navInner {
+		transition: none;
+	}
+}
+
+/* The sidebar's edge: a thin grab area over the hairline, drawn only while
+   it has keyboard focus. */
+.resizer {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 6px;
+	cursor: col-resize;
+	touch-action: none;
+	z-index: 1;
+}
+
+.resizer:focus-visible {
+	outline: none;
+	box-shadow: inset -2px 0 0 var(--ctd-focus-ring);
 }
 
 .main {
@@ -78,16 +146,43 @@
 /* With no sidebar beside it, the panel runs to the window edge: no left
    hairline or corner to meet. */
 .shell:not([data-sidebar-open]) .content {
-	border-left: 0;
+	border-left-color: transparent;
 	border-top-left-radius: 0;
+}
+
+/* Transparent rather than removed, so the panel doesn't shift a pixel. */
+.content {
+	transition:
+		border-top-left-radius 200ms ease-out,
+		border-left-color 200ms ease-out;
 }
 
 .scrim {
 	display: none;
 }
 
-.sidebarToggle {
+/* A toolbar glyph the size of macOS's (about 18px in a 30px-wide item at the
+   control height), so it reads as one set with Add Book beside it. Scoped
+   to the toolbar to outrank IconButton's own square size. */
+.headerControls .sidebarToggle {
+	width: calc(var(--ctd-control-height) + 6px);
 	color: var(--ctd-ink);
+}
+
+.headerControls .sidebarToggle > svg {
+	width: 18px;
+	height: 18px;
+}
+
+@media (pointer: coarse) {
+	.headerControls .sidebarToggle {
+		width: var(--ctd-control-height);
+	}
+
+	.headerControls .sidebarToggle > svg {
+		width: 22px;
+		height: 22px;
+	}
 }
 
 /* Narrow windows: the sidebar overlays the content instead of squeezing it. */
@@ -113,17 +208,24 @@
 		display: inline-flex;
 	}
 
-	.nav {
+	.nav,
+	.nav[data-closed] {
+		display: none;
+	}
+
+	.resizer {
 		display: none;
 	}
 
 	.shell[data-mobile-sidebar-open] .nav {
 		display: block;
+		visibility: visible;
 		position: fixed;
 		top: 46px;
 		left: 0;
 		bottom: 0;
-		width: 200px;
+		width: 260px;
+		transition: none;
 		/* The toolbar's material, opaque, so the drawer reads as the same
 		   surface sliding out from under it. */
 		background-color: var(--ctd-bg);
@@ -133,6 +235,11 @@
 		clip-path: inset(0 -40px 0 0);
 		z-index: 105;
 		overflow-y: auto;
+	}
+
+	.shell[data-mobile-sidebar-open] .navInner {
+		width: 100%;
+		transform: none;
 	}
 
 	/* Tapping the content beside the open sidebar closes it. */
