@@ -130,7 +130,7 @@ export const EmptyLibrary = () => {
 				</Button>
 			)}
 			<Button variant="subtle" onClick={openSettings}>
-				Switch library…
+				Switch Library…
 			</Button>
 		</EmptyState>
 	);

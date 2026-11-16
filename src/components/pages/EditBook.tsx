@@ -120,7 +120,7 @@ const SubjectSuggestions = ({
 			))}
 			{subjects.length > 1 && (
 				<Button variant="subtle" onClick={onAddAll}>
-					Add all {subjects.length}
+					Add All {subjects.length}
 				</Button>
 			)}
 		</div>

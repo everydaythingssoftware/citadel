@@ -1,20 +1,21 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type {
+	ContextMenuEntry,
+	ContextMenuItemEntry,
+	ContextMenuSeparatorEntry,
+	ContextMenuState,
+} from "@/lib/context-menu";
+import { isMenuItem } from "@/lib/context-menu";
+import { useContextMenuSurface } from "@/lib/hooks/use-context-menu-surface";
 import styles from "./ContextMenu.module.css";
 import { POPOVER_ATTRIBUTE } from "./popover-interop";
 
-export interface ContextMenuItem {
-	id: string;
-	label: string;
-	onSelect: () => void;
-}
-
-/** Anchored at viewport coordinates; null closes the menu. */
-export interface ContextMenuState {
-	x: number;
-	y: number;
-	items: ContextMenuItem[];
-}
+export type {
+	ContextMenuEntry,
+	ContextMenuItemEntry,
+	ContextMenuSeparatorEntry,
+	ContextMenuState,
+};
 
 export interface ContextMenuProps {
 	menu: ContextMenuState | null;
@@ -23,143 +24,100 @@ export interface ContextMenuProps {
 	onClose: () => void;
 }
 
-const VIEWPORT_MARGIN = 8;
+const Checkmark = () => (
+	<svg
+		width="10"
+		height="10"
+		viewBox="0 0 10 10"
+		fill="none"
+		aria-hidden="true"
+	>
+		<path
+			d="M1.5 5.5L4 8l4.5-6"
+			stroke="currentColor"
+			strokeWidth="1.6"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+		/>
+	</svg>
+);
 
 /**
- * Body-portal context menu (right-click / Menu-key style): fixed positioning
- * clamped to the viewport, Apple-style focus on the first item on open,
- * Escape/outside-close, and arrow/Home/End navigation. Same popover treatment
- * as the LibraryPicker menu (POPOVER_ATTRIBUTE keeps dialogs from closing on
- * clicks inside it).
+ * A right-click menu, platform-adaptive through `data-platform`: the glass
+ * NSMenu look on macOS, a plain opaque one elsewhere. Items are title case;
+ * groups are split by separators; one that opens a dialog ends in "…".
+ * Body portal with POPOVER_ATTRIBUTE, so dialogs don't treat clicks in it
+ * as outside clicks.
  */
 export const ContextMenu = ({
 	menu,
 	returnFocusRef,
 	onClose,
 }: ContextMenuProps) => {
-	const menuRef = useRef<HTMLDivElement>(null);
-	const [position, setPosition] = useState<{
-		left: number;
-		top: number;
-	} | null>(null);
+	const surface = useContextMenuSurface({ menu, returnFocusRef, onClose });
+	const { shown, entries, highlighted, position } = surface;
+	if (!shown) return null;
 
-	// Measured after render, before paint, so the clamped position lands with
-	// no flicker; the menu renders offscreen until then.
-	useLayoutEffect(() => {
-		if (!menu) {
-			setPosition(null);
-			return;
-		}
-		const rect = menuRef.current?.getBoundingClientRect();
-		if (!rect) return;
-		const left = Math.max(
-			VIEWPORT_MARGIN,
-			Math.min(menu.x, window.innerWidth - rect.width - VIEWPORT_MARGIN),
-		);
-		const top = Math.max(
-			VIEWPORT_MARGIN,
-			Math.min(menu.y, window.innerHeight - rect.height - VIEWPORT_MARGIN),
-		);
-		setPosition({ left, top });
-	}, [menu]);
-
-	useLayoutEffect(() => {
-		if (!menu || !position) return;
-		menuRef.current
-			?.querySelector<HTMLButtonElement>('[role="menuitem"]')
-			?.focus();
-	}, [menu, position]);
-
-	useEffect(() => {
-		if (!menu) return;
-		const onPointerDown = (event: PointerEvent) => {
-			const target = event.target;
-			if (!(target instanceof Node)) return;
-			if (menuRef.current?.contains(target)) return;
-			onClose();
-		};
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key !== "Escape") return;
-			event.stopPropagation();
-			onClose();
-			returnFocusRef?.current?.focus();
-		};
-		document.addEventListener("pointerdown", onPointerDown);
-		document.addEventListener("keydown", onKeyDown, true);
-		return () => {
-			document.removeEventListener("pointerdown", onPointerDown);
-			document.removeEventListener("keydown", onKeyDown, true);
-		};
-	}, [menu, onClose, returnFocusRef]);
-
-	if (!menu) return null;
-
-	const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-		const items = Array.from(
-			menuRef.current?.querySelectorAll<HTMLButtonElement>(
-				'[role="menuitem"]',
-			) ?? [],
-		);
-		if (items.length === 0) return;
-		const activeElement = document.activeElement;
-		const current =
-			activeElement instanceof HTMLButtonElement
-				? items.indexOf(activeElement)
-				: -1;
-		let next: number;
-		switch (event.key) {
-			case "ArrowDown":
-				event.preventDefault();
-				next = current + 1;
-				break;
-			case "ArrowUp":
-				event.preventDefault();
-				next = current - 1;
-				break;
-			case "Home":
-				event.preventDefault();
-				next = 0;
-				break;
-			case "End":
-				event.preventDefault();
-				next = items.length - 1;
-				break;
-			default:
-				return;
-		}
-		if (next < 0) next = items.length - 1;
-		if (next >= items.length) next = 0;
-		items[next]?.focus();
-	};
+	const highlightedEntry =
+		highlighted === null ? undefined : entries[highlighted];
 
 	return createPortal(
 		<div
-			ref={menuRef}
+			ref={surface.menuRef}
 			role="menu"
-			aria-label="Library actions"
+			aria-label={shown.label}
+			aria-activedescendant={
+				highlightedEntry ? surface.itemDomId(highlightedEntry) : undefined
+			}
+			tabIndex={-1}
 			className={styles.menu}
+			data-closing={surface.closing || undefined}
+			data-check-column={surface.hasCheckColumn || undefined}
 			{...{ [POPOVER_ATTRIBUTE]: "" }}
 			style={{
 				left: position?.left ?? -9999,
 				top: position?.top ?? -9999,
+				visibility: position ? undefined : "hidden",
 			}}
-			onKeyDown={onMenuKeyDown}
+			onKeyDown={surface.onMenuKeyDown}
+			onPointerLeave={surface.onMenuPointerLeave}
+			onContextMenu={(event) => event.preventDefault()}
 		>
-			{menu.items.map((item) => (
-				<button
-					key={item.id}
-					type="button"
-					role="menuitem"
-					className={styles.menuItem}
-					onClick={() => {
-						onClose();
-						returnFocusRef?.current?.focus();
-						item.onSelect();
-					}}
-				>
-					{item.label}
-				</button>
-			))}
+			{entries.map((entry, index) =>
+				isMenuItem(entry) ? (
+					// biome-ignore lint/a11y/noStaticElementInteractions: a menu item, keyboard-driven through the menu's aria-activedescendant
+					// biome-ignore lint/a11y/useKeyWithClickEvents: the menu itself handles Return, Space, arrows and type-ahead
+					// biome-ignore lint/a11y/useAriaPropsSupportedByRole: aria-checked is set only when the role is menuitemcheckbox
+					<div
+						key={entry.id}
+						id={surface.itemDomId(entry)}
+						role={entry.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+						aria-checked={entry.checked}
+						aria-disabled={entry.disabled || undefined}
+						aria-keyshortcuts={entry.keyShortcuts}
+						className={styles.item}
+						data-highlighted={index === highlighted || undefined}
+						data-destructive={entry.destructive || undefined}
+						data-disabled={entry.disabled || undefined}
+						onPointerMove={() => surface.onItemPointerMove(index)}
+						onClick={() => surface.activate(index)}
+					>
+						{surface.hasCheckColumn && (
+							<span className={styles.check}>
+								{entry.checked && <Checkmark />}
+							</span>
+						)}
+						<span className={styles.label}>{entry.label}</span>
+						{entry.shortcut && (
+							<span className={styles.shortcut} aria-hidden="true">
+								{entry.shortcut}
+							</span>
+						)}
+					</div>
+				) : (
+					<hr key={entry.id} className={styles.separator} />
+				),
+			)}
 		</div>,
 		document.body,
 	);

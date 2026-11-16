@@ -128,10 +128,10 @@ const DialogBody = ({ step, send, abbreviate }: DialogBodyProps) => {
 						Open <NoBreak>“{folderName(step.libraryPath)}”?</NoBreak>
 					</>
 				) : step.id === "create-here" ? (
-					"Create a new library?"
+					"Create a New Library?"
 				) : (
 					<>
-						Create a new library inside{" "}
+						Create a New Library Inside{" "}
 						<NoBreak>“{folderName(step.folder)}”?</NoBreak>
 					</>
 				)}

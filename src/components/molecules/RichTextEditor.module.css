@@ -23,7 +23,7 @@
 }
 
 .frame:focus-within {
-	border-color: var(--ctd-accent);
+	border-color: var(--ctd-focus-border);
 	box-shadow: 0 0 0 2px var(--ctd-focus-ring);
 }
 

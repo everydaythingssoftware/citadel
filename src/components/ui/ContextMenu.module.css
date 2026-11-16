@@ -1,45 +1,126 @@
-/* Same menu treatment as the LibraryPicker popover: surface-strong, hairline
-   border, lift shadow. Colors come from --ctd-* tokens only. */
+/* Material, geometry and highlight come from the --ctd-menu-* tokens in
+   styles.css, which change with data-platform (glass NSMenu on macOS, an
+   opaque panel elsewhere). Select's pop-up list reads the same tokens. */
 
 .menu {
 	position: fixed;
 	z-index: 300;
 	min-width: 180px;
+	max-width: min(320px, calc(100vw - 16px));
+	max-height: calc(100vh - 16px);
+	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
-	overflow-y: auto;
-	max-height: calc(100vh - 16px);
-	background-color: var(--ctd-surface-strong);
-	border: var(--ctd-control-border-width) solid var(--ctd-border);
-	border-radius: var(--ctd-radius-control);
-	box-shadow: var(--ctd-popover-shadow);
-	padding: 4px 0;
-	animation: context-menu-fade-in 120ms ease-out;
+	padding: var(--ctd-menu-padding);
+	background-color: var(--ctd-menu-bg);
+	-webkit-backdrop-filter: var(--ctd-menu-backdrop);
+	backdrop-filter: var(--ctd-menu-backdrop);
+	border: 0.5px solid var(--ctd-menu-border);
+	border-radius: var(--ctd-menu-radius);
+	box-shadow:
+		inset 0 0.5px 0 var(--ctd-menu-inner-highlight),
+		var(--ctd-popover-shadow);
+	font-family: var(--ctd-font-ui);
+	font-size: var(--ctd-menu-font-size);
+	color: var(--ctd-ink);
+	outline: none;
 }
 
-@keyframes context-menu-fade-in {
-	from {
+/* Menus appear at once, as on macOS; only dismissal fades. */
+
+.menu[data-closing] {
+	pointer-events: none;
+	animation: context-menu-fade-out 140ms ease-in forwards;
+}
+
+@keyframes context-menu-fade-out {
+	to {
 		opacity: 0;
 	}
-	to {
-		opacity: 1;
+}
+
+@supports not (
+		(backdrop-filter: blur(1px)) or
+		(-webkit-backdrop-filter: blur(1px))
+	) {
+	.menu {
+		background-color: var(--ctd-menu-bg-opaque);
 	}
 }
 
-.menuItem {
-	margin: 1px 5px;
-	padding: 4px 10px;
-	border: none;
-	border-radius: min(4px, var(--ctd-radius-control));
-	background: transparent;
-	font-family: inherit;
-	font-size: 13px;
-	color: var(--ctd-ink);
-	text-align: left;
+@media (prefers-reduced-transparency: reduce) {
+	.menu {
+		background-color: var(--ctd-menu-bg-opaque);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
 }
 
-.menuItem:hover,
-.menuItem:focus-visible {
-	background-color: var(--ctd-nav-hover-bg);
-	outline: none;
+.item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+	min-height: var(--ctd-menu-item-height);
+	padding: 0 var(--ctd-menu-item-pad-x);
+	border-radius: var(--ctd-menu-item-radius);
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.menu[data-check-column] .item {
+	padding-inline-start: 4px;
+}
+
+.check {
+	display: inline-flex;
+	justify-content: center;
+	flex: none;
+	width: 14px;
+	margin-inline-end: -2px;
+}
+
+.label {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.shortcut {
+	flex: none;
+	margin-inline-start: 16px;
+	color: var(--ctd-ink-soft);
+	font-variant-numeric: tabular-nums;
+}
+
+.item[data-destructive] {
+	color: var(--ctd-danger-ink);
+}
+
+.item[data-highlighted] {
+	background-color: var(--ctd-menu-highlight-bg);
+	color: var(--ctd-menu-highlight-text);
+}
+
+.item[data-highlighted] .shortcut {
+	color: inherit;
+	opacity: 0.8;
+}
+
+.item[data-destructive][data-highlighted] {
+	background-color: var(--ctd-menu-danger-highlight-bg);
+	color: var(--ctd-menu-danger-highlight-text);
+}
+
+.item[data-disabled] {
+	color: var(--ctd-control-disabled-text);
+}
+
+.separator {
+	flex: none;
+	height: 1px;
+	border: none;
+	margin: 4px var(--ctd-menu-item-pad-x);
+	background-color: var(--ctd-border);
 }

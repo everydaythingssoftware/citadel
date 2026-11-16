@@ -65,13 +65,13 @@ export const BrowserLibraryGate = ({ children }: { children: ReactNode }) => {
 		case "unreachable":
 			return (
 				<Notice title="Couldn’t reach Citadel" message={state.error}>
-					<Button onClick={() => void refresh()}>Try again</Button>
+					<Button onClick={() => void refresh()}>Try Again</Button>
 				</Notice>
 			);
 		case "unwell":
 			return (
 				<Notice title="Citadel needs attention" message={state.error}>
-					<Button onClick={() => void refresh()}>Try again</Button>
+					<Button onClick={() => void refresh()}>Try Again</Button>
 				</Notice>
 			);
 		case "wrongAddress":
@@ -80,7 +80,7 @@ export const BrowserLibraryGate = ({ children }: { children: ReactNode }) => {
 					title="Citadel isn’t set up for this address"
 					message={state.error}
 				>
-					<Button onClick={() => void refresh()}>Try again</Button>
+					<Button onClick={() => void refresh()}>Try Again</Button>
 				</Notice>
 			);
 		case "needsAdministrator":
@@ -113,9 +113,9 @@ export const BrowserLibraryGate = ({ children }: { children: ReactNode }) => {
 				const notice = readerNotice(session, setup);
 				return (
 					<Notice title={notice.title} message={notice.message}>
-						<Button onClick={() => void refresh()}>Check again</Button>
+						<Button onClick={() => void refresh()}>Check Again</Button>
 						<Button variant="subtle" onClick={() => void signOut()}>
-							Sign out
+							Sign Out
 						</Button>
 					</Notice>
 				);
@@ -157,10 +157,10 @@ const SignedInLibrary = ({
 						await retry();
 					}}
 				>
-					Try again
+					Try Again
 				</Button>
 				<Button variant="subtle" onClick={() => void controls.signOut()}>
-					Sign out
+					Sign Out
 				</Button>
 			</Notice>
 		);
