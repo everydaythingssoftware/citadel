@@ -16,6 +16,7 @@ import {
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton, Tooltip } from "@/components/ui";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
+import { SHELL_SIDEBAR_ATTRIBUTE } from "@/lib/hooks/use-book-grid-layout";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
 import { useNavigationPending } from "@/lib/hooks/use-navigation-pending";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-reduced-motion";
@@ -123,6 +124,7 @@ const Root = () => {
 						ref={sidebarSwipe.panelRef}
 						className={classes.nav}
 						aria-label="Sidebar"
+						{...{ [SHELL_SIDEBAR_ATTRIBUTE]: "" }}
 					>
 						<div className={classes.navInner}>
 							<Sidebar />

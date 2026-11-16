@@ -1,41 +1,31 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-	createContext,
 	type RefObject,
 	useCallback,
-	useContext,
 	useEffect,
 	useLayoutEffect,
-	useMemo,
+	useReducer,
 	useRef,
-	useState,
 } from "react";
 import type { BookView } from "@/BookView";
-import type { LibraryBook } from "@/bindings";
 import { LoadingOverlay } from "@/components/ui";
 import {
-	computeColumnCount,
+	anchoredScrollOffset,
+	BOOK_GRID,
 	computeRowCount,
 	rowOfIndex,
 	rowSlice,
+	type ScrollAnchor,
+	topRowAnchor,
 } from "@/lib/grid-virtual";
+import { useBookGridLayout } from "@/lib/hooks/use-book-grid-layout";
 import { useCoverThumbsMap } from "@/stores/library/store";
 import { BookCard } from "../atoms/BookCard";
 import cardClasses from "../atoms/BookCard.module.css";
 
-/**
- * Shelf-grid layout constants. The per-row tracks mirror the old
- * `repeat(auto-fill, minmax(150px, 1fr))` whole-grid layout; the
- * virtualizer needs the same numbers to compute cards per row.
- */
-const MIN_COLUMN_WIDTH = 150;
-const COLUMN_GAP = 24;
-const ROW_GAP = 32;
-const PADDING = { top: 20, x: 24, bottom: 24 } as const;
+const { columnGap: COLUMN_GAP, rowGap: ROW_GAP, padding: PADDING } = BOOK_GRID;
 /** Cover height cap (BookCover FLUID_MAX_HEIGHT_PX); rows self-measure after mount. */
 const ESTIMATED_ROW_HEIGHT = 230;
-/** Mirrors `.cell { max-width }` in BookCard.module.css. */
-const MAX_CELL_WIDTH = 190;
 /**
  * Height/width fallback for covers whose thumbnail (and so real aspect
  * ratio) isn't known yet: classic 2:3 book proportions, matching the
@@ -79,87 +69,25 @@ interface BookGridProps extends BookView {
 
 export const BookGrid = ({
 	loading,
-	bookList,
-	onBookOpen,
-	selectedBookId,
+	bookList: books,
+	cardActions,
+	isSelected,
 	scrollElementRef,
 	initialScrollOffset,
 	resultKey,
 	scrollToBookIndexRef,
 	onVisibleRangeChange,
 }: BookGridProps) => {
-	const actionsContext = useMemo(() => {
-		return {
-			onViewBook: onBookOpen,
-		};
-	}, [onBookOpen]);
-
-	return (
-		<bookActionsContext.Provider value={actionsContext}>
-			<BookGridPure
-				loading={loading}
-				bookList={bookList}
-				selectedBookId={selectedBookId}
-				scrollElementRef={scrollElementRef}
-				initialScrollOffset={initialScrollOffset}
-				resultKey={resultKey}
-				scrollToBookIndexRef={scrollToBookIndexRef}
-				onVisibleRangeChange={onVisibleRangeChange}
-			/>
-		</bookActionsContext.Provider>
-	);
-};
-
-const BookGridPure = ({
-	loading,
-	bookList: books,
-	selectedBookId,
-	scrollElementRef,
-	initialScrollOffset,
-	resultKey,
-	scrollToBookIndexRef,
-	onVisibleRangeChange,
-}: {
-	loading: boolean;
-	bookList: (LibraryBook | undefined)[];
-	selectedBookId?: LibraryBook["id"] | null;
-	scrollElementRef: RefObject<HTMLElement | null>;
-	initialScrollOffset?: number;
-	resultKey?: string;
-	scrollToBookIndexRef?: RefObject<ScrollToBookIndex | null>;
-	onVisibleRangeChange?: VisibleRangeChange;
-}) => {
-	const actions = useContext(bookActionsContext);
-
 	const wrapperRef = useRef<HTMLDivElement>(null);
-	const [columns, setColumns] = useState(1);
-	const [cellWidth, setCellWidth] = useState<number | null>(null);
-
-	// Cards per row come from the container width (auto-fill exists only in
-	// layout, so recompute it whenever the panel resizes).
-	useLayoutEffect(() => {
-		const wrapper = wrapperRef.current;
-		if (!wrapper) return;
-		const update = () => {
-			const availableWidth = wrapper.clientWidth - PADDING.x * 2;
-			const nextColumns = computeColumnCount({
-				availableWidth,
-				minColumnWidth: MIN_COLUMN_WIDTH,
-				columnGap: COLUMN_GAP,
-			});
-			setColumns(nextColumns);
-			setCellWidth(
-				Math.min(
-					(availableWidth - (nextColumns - 1) * COLUMN_GAP) / nextColumns,
-					MAX_CELL_WIDTH,
-				),
-			);
-		};
-		update();
-		const observer = new ResizeObserver(update);
-		observer.observe(wrapper);
-		return () => observer.disconnect();
-	}, []);
+	// The top row's first book, noted just before the columns change, so the
+	// new layout can put its row back where it was (see the effect below).
+	const anchorRef = useRef<ScrollAnchor | null>(null);
+	const noteAnchorRef = useRef<(() => void) | null>(null);
+	const layout = useBookGridLayout({
+		wrapperRef,
+		onWillRelayout: () => noteAnchorRef.current?.(),
+	});
+	const { columns, cellWidth } = layout;
 
 	// Exact row heights up front: a row is as tall as its tallest cover, and
 	// cover aspect ratios are known before mount (the thumbnail index loads
@@ -169,23 +97,20 @@ const BookGridPure = ({
 	const coverThumbs = useCoverThumbsMap();
 	const estimateRowHeight = useCallback(
 		(rowIndex: number) => {
-			if (cellWidth === null) return ESTIMATED_ROW_HEIGHT;
 			const { start, end } = rowSlice(rowIndex, columns, books.length);
 			let tallest = 0;
 			for (let index = start; index < end; index++) {
 				const book = books[index];
 				const thumb = book !== undefined ? coverThumbs.get(book.id) : undefined;
 				// Unknown ratio = a placeholder (unfetched slot or placeholder
-				// art), which also caps its width at ~150px (.coverPlaceholder).
-				const width =
-					thumb !== undefined ? cellWidth : Math.min(cellWidth, 150);
+				// art), as wide as the cell at the typical 2:3.
 				const ratio =
 					thumb !== undefined
 						? thumb.height / thumb.width
 						: TYPICAL_COVER_RATIO;
 				tallest = Math.max(
 					tallest,
-					Math.min(width * ratio, ESTIMATED_ROW_HEIGHT),
+					Math.min(cellWidth * ratio, ESTIMATED_ROW_HEIGHT),
 				);
 			}
 			return tallest > 0 ? Math.round(tallest) : ESTIMATED_ROW_HEIGHT;
@@ -193,10 +118,19 @@ const BookGridPure = ({
 		[cellWidth, columns, books, coverThumbs],
 	);
 
+	// Rows are keyed by layout as well as index: a new column count regroups
+	// every row, so sizes measured for the old rows must not carry over, and
+	// the exact estimates take their place without a measure-then-correct.
+	const getRowKey = useCallback(
+		(rowIndex: number) => `${columns}x${cellWidth}:${rowIndex}`,
+		[columns, cellWidth],
+	);
+
 	const virtualizer = useVirtualizer({
 		count: computeRowCount(books.length, columns),
 		getScrollElement: () => scrollElementRef.current,
 		estimateSize: estimateRowHeight,
+		getItemKey: getRowKey,
 		gap: ROW_GAP,
 		overscan: OVERSCAN_ROWS,
 		// Rows start below the wrapper's top padding inside the scroll region.
@@ -210,6 +144,40 @@ const BookGridPure = ({
 		measuredForRef.current = resultKey;
 		virtualizer.measure();
 	}, [resultKey, virtualizer]);
+
+	// Keep the top-left book in view when the columns change (a window
+	// resize, a drag of the sidebar's edge): note the top row's first book
+	// and its distance from the viewport's top while the old rows are still
+	// laid out, then scroll its new row to the same distance before the
+	// frame paints. The virtualizer learns the offset at once and renders
+	// again, so the rows around it are the ones that mount. At the very top
+	// there is no anchor and the grid stays there.
+	noteAnchorRef.current = () => {
+		const element = scrollElementRef.current;
+		anchorRef.current = element
+			? topRowAnchor({
+					rows: virtualizer.measurementsCache,
+					columns,
+					scrollOffset: element.scrollTop,
+				})
+			: null;
+	};
+	const [, renderAgain] = useReducer((count: number) => count + 1, 0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: runs when the layout changes, after the virtualizer has taken the new rows.
+	useLayoutEffect(() => {
+		const anchor = anchorRef.current;
+		anchorRef.current = null;
+		const element = scrollElementRef.current;
+		if (anchor === null || !element) return;
+		element.scrollTop = anchoredScrollOffset({
+			anchor,
+			rows: virtualizer.measurementsCache,
+			columns,
+			maxOffset: element.scrollHeight - element.clientHeight,
+		});
+		virtualizer.scrollOffset = element.scrollTop;
+		renderAgain();
+	}, [columns, cellWidth]);
 
 	// Hand the keymap a way to reach unmounted rows; once the row scrolls in,
 	// the selected card mounts and renders its selection ring from props.
@@ -242,6 +210,7 @@ const BookGridPure = ({
 	return (
 		<div
 			ref={wrapperRef}
+			role="presentation"
 			style={{
 				// LoadingOverlay covers the nearest position: relative ancestor.
 				position: "relative",
@@ -250,9 +219,13 @@ const BookGridPure = ({
 		>
 			<LoadingOverlay visible={loading} />
 			<div
+				role="presentation"
 				style={{
 					position: "relative",
 					height: virtualizer.getTotalSize(),
+					// The block of columns, centred: a sidebar toggle only slides it.
+					width: layout.blockWidth,
+					marginInline: "auto",
 				}}
 			>
 				{/*
@@ -274,6 +247,7 @@ const BookGridPure = ({
 							ref={virtualizer.measureElement}
 							data-index={virtualRow.index}
 							data-books-grid
+							role="presentation"
 							style={{
 								position: "absolute",
 								top: 0,
@@ -281,7 +255,7 @@ const BookGridPure = ({
 								width: "100%",
 								transform: `translateY(${virtualRow.start - PADDING.top}px)`,
 								display: "grid",
-								gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+								gridTemplateColumns: `repeat(${columns}, ${cellWidth}px)`,
 								columnGap: COLUMN_GAP,
 							}}
 						>
@@ -290,8 +264,10 @@ const BookGridPure = ({
 									<BookCard
 										key={book.id}
 										book={book}
-										actions={actions}
-										selected={book.id === selectedBookId}
+										index={start + offset}
+										setSize={books.length}
+										actions={cardActions}
+										selected={isSelected(book.id, start + offset)}
 									/>
 								) : (
 									// biome-ignore lint/suspicious/noArrayIndexKey: an unfetched slot has no id; its flat grid index IS its identity until the book arrives (and then the keyed BookCard replaces it).
@@ -312,15 +288,7 @@ const BookGridPure = ({
  * keep their height and books pop in without the shelf reflowing.
  */
 const BookCardPlaceholder = () => (
-	<div className={cardClasses.cell} aria-hidden>
+	<div className={cardClasses.cell} aria-hidden="true">
 		<span className={cardClasses.coverPlaceholder} />
 	</div>
-);
-
-type BookAction = (bookId: LibraryBook["id"]) => void;
-interface BookActionsContext {
-	onViewBook: BookAction;
-}
-const bookActionsContext = createContext<BookActionsContext>(
-	null as unknown as BookActionsContext,
 );

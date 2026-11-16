@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
 	type FormEvent,
+	type MouseEvent,
 	useCallback,
 	useEffect,
 	useRef,
@@ -13,12 +14,15 @@ import { AuthorFilterControls } from "@/components/organisms/AuthorFilterControl
 import {
 	AlertDialog,
 	Button,
+	ContextMenu,
 	FormField,
 	IconButton,
 	Sheet,
 	TextInput,
+	Tooltip,
 } from "@/components/ui";
 import { useAuthorFilters } from "@/lib/hooks/use-author-filters";
+import { useAuthorRowMenu } from "@/lib/hooks/use-author-row-menu";
 import { useVirtualListRows } from "@/lib/hooks/use-virtual-list-rows";
 import {
 	useAuthors,
@@ -101,6 +105,11 @@ export const Authors = () => {
 		[filteredAuthors],
 	);
 
+	const rowMenu = useAuthorRowMenu({
+		onEdit: onOpenEditAuthorSheet,
+		onDelete: onOpenDeleteAuthorDialog,
+	});
+
 	// The confirmation closes as soon as it's confirmed, so a delete that
 	// fails (the author still has books, say) is reported on the page.
 	const [deleteFailure, setDeleteFailure] = useState<string | null>(null);
@@ -151,12 +160,10 @@ export const Authors = () => {
 			<AlertDialog
 				open={deleteDialogOpened}
 				onOpenChange={setDeleteDialogOpened}
-				title="Delete author"
-				description={
-					authorToDelete
-						? `Are you sure you want to delete "${authorToDelete.name}"? This cannot be undone.`
-						: undefined
+				title={
+					authorToDelete ? `Delete “${authorToDelete.name}”?` : "Delete author?"
 				}
+				description="No books are affected. This can't be undone."
 				confirmLabel="Delete"
 				destructive
 				onConfirm={() => void onConfirmDeleteAuthor()}
@@ -227,6 +234,12 @@ export const Authors = () => {
 						resetKey={JSON.stringify(filters)}
 						onEditAuthor={onOpenEditAuthorSheet}
 						onDeleteAuthor={onOpenDeleteAuthorDialog}
+						onAuthorContextMenu={rowMenu.openFor}
+					/>
+					<ContextMenu
+						menu={rowMenu.menu.menu}
+						returnFocusRef={rowMenu.returnFocusRef}
+						onClose={rowMenu.menu.close}
 					/>
 
 					<div data-authors-footer="" className={styles.footer}>
@@ -360,11 +373,13 @@ const AuthorRows = ({
 	resetKey,
 	onEditAuthor,
 	onDeleteAuthor,
+	onAuthorContextMenu,
 }: {
 	authors: LibraryAuthor[];
 	resetKey: string;
 	onEditAuthor: (authorId: string) => void;
 	onDeleteAuthor: (authorId: string) => void;
+	onAuthorContextMenu: AuthorContextMenuHandler;
 }) => {
 	const { rowsRef, virtualizer, scrollMargin } = useVirtualListRows(
 		authors,
@@ -397,6 +412,7 @@ const AuthorRows = ({
 							author={author}
 							onEditAuthor={onEditAuthor}
 							onDeleteAuthor={onDeleteAuthor}
+							onContextMenu={onAuthorContextMenu}
 						/>
 					</div>
 				);
@@ -405,21 +421,32 @@ const AuthorRows = ({
 	);
 };
 
+type AuthorContextMenuHandler = (
+	event: MouseEvent<HTMLElement>,
+	author: LibraryAuthor,
+) => void;
+
 const AuthorRow = ({
 	author,
 	onEditAuthor,
 	onDeleteAuthor,
+	onContextMenu,
 }: {
 	author: LibraryAuthor;
 	onEditAuthor: (authorId: string) => void;
 	onDeleteAuthor: (authorId: string) => void;
+	onContextMenu: AuthorContextMenuHandler;
 }) => {
 	const canEdit = useLibraryStore((state) => state.library?.readOnly === false);
 	return (
 		// The whole row links to the library filtered by this author. The hover
 		// background, 40px min-height, and the overlay-link positioning live in
 		// styles.css (.ctd-author-row / .ctd-author-row-link).
-		<div className={clsx("ctd-author-row", styles.row, styles.grid)}>
+		// biome-ignore lint/a11y/noStaticElementInteractions: the row is not a control; it only catches the contextmenu event that a right-click or the Menu key on its links bubbles up.
+		<div
+			className={clsx("ctd-author-row", styles.row, styles.grid)}
+			onContextMenu={(event) => onContextMenu(event, author)}
+		>
 			{/* Real anchor overlaying the row so middle-click / cmd-click /
 			    keyboard all work. The count link and the action icons sit above
 			    it (position: relative + zIndex), so they keep working on their
@@ -456,21 +483,25 @@ const AuthorRow = ({
 			<div className={styles.actions}>
 				{canEdit && (
 					<>
-						<IconButton
-							className={styles.actionIcon}
-							aria-label={`Edit ${author.name}`}
-							onClick={() => onEditAuthor(author.id)}
-						>
-							<EditGlyph />
-						</IconButton>
-						{author.book_count === 0 ? (
+						<Tooltip label="Edit author…">
 							<IconButton
-								className={clsx(styles.actionIcon, styles.dangerIcon)}
-								aria-label={`Delete ${author.name}`}
-								onClick={() => onDeleteAuthor(author.id)}
+								className={styles.actionIcon}
+								aria-label={`Edit ${author.name}`}
+								onClick={() => onEditAuthor(author.id)}
 							>
-								<TrashGlyph />
+								<EditGlyph />
 							</IconButton>
+						</Tooltip>
+						{author.book_count === 0 ? (
+							<Tooltip label="Delete author…">
+								<IconButton
+									className={clsx(styles.actionIcon, styles.dangerIcon)}
+									aria-label={`Delete ${author.name}`}
+									onClick={() => onDeleteAuthor(author.id)}
+								>
+									<TrashGlyph />
+								</IconButton>
+							</Tooltip>
 						) : (
 							<span className={styles.actionSpacer} />
 						)}

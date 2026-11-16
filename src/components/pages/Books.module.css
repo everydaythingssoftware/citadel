@@ -39,13 +39,16 @@
 	}
 }
 
-/* Finder-style scope bar above the scroll region. */
+/*
+ * Finder-style scope bar above the scroll region. The bar is a size
+ * container: the sidebar and the window both change the content panel's
+ * width, so its controls reflow on the bar's own width, not the viewport's.
+ * (The container is the bar, not .page, so the phone drawer's
+ * position: fixed still escapes to the viewport.)
+ */
 .scopeBar {
 	flex-shrink: 0;
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	flex-wrap: nowrap;
+	container: scope-bar / inline-size;
 	/* The same bar as every list page: 24px insets line the search field up
 	 * with the first column of covers below. */
 	padding: 10px 24px;
@@ -53,18 +56,33 @@
 	border-bottom: 1px solid var(--ctd-border);
 }
 
+/* One row: the search field fills what the other controls leave, down to a
+ * floor where "Search" and the magnifier still read whole. */
+.scopeControls {
+	display: flex;
+	align-items: center;
+	gap: 8px 12px;
+	flex-wrap: nowrap;
+}
+
+/* The other controls keep their natural width. */
+.scopeControls > * {
+	flex: none;
+}
+
 .searchWrap {
 	display: flex;
-	flex-grow: 1;
+	flex: 1 1 auto;
 	max-width: 320px;
-	min-width: 0;
+	min-width: 150px;
 }
 
 .searchInput {
 	width: 100%;
+	min-width: 0;
 }
 
-/* Keeps "Unread only" on one line; the search field gives up the room. */
+/* Keeps "Unread only" on one line. */
 .unreadToggle {
 	display: flex;
 	align-items: center;
@@ -72,10 +90,45 @@
 	white-space: nowrap;
 }
 
-/* The glyph sits inside a 26px hit area; pull it in so the visible gap
-   matches the bar's 12px rhythm. */
+/* A quiet labelled button: the bookmark alone didn't say what it saved.
+ * Its own padding stands in for part of the bar's 12px gap. */
 .shelfButton {
-	margin-inline-start: -5px;
+	flex: none;
+	white-space: nowrap;
+	margin-inline-start: -6px;
+}
+
+/* Too narrow for every label beside a readable search field (150 + sort
+ * 150 + Unread only 97 + Save as shelf… 141, with the gaps): "Save as
+ * shelf…" folds to its bookmark; its tooltip and accessible name stay. */
+@container scope-bar (max-width: 567px) {
+	.shelfLabel {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.shelfButton {
+		padding-inline: 6px;
+	}
+}
+
+/* Narrower still (under 150 + 150 + 97 + the bookmark, with the gaps):
+ * the search field gets its own row and sort, unread and shelf share the
+ * next, rather than squeezing the field. The grid's scroll region sits
+ * below the bar in the page's column, so it simply starts lower. */
+@container scope-bar (max-width: 452px) {
+	.scopeControls {
+		flex-wrap: wrap;
+	}
+
+	.searchWrap {
+		flex-basis: 100%;
+		max-width: none;
+	}
 }
 
 .gridArea {
@@ -130,17 +183,4 @@
 .footerText {
 	font-size: 12px;
 	color: var(--ctd-ink-soft);
-}
-
-/* Phones: search gets its own row; sort, unread and shelf share the next. */
-@media (max-width: 36em) {
-	.scopeBar {
-		flex-wrap: wrap;
-		gap: 8px 12px;
-	}
-
-	.searchWrap {
-		flex-basis: 100%;
-		max-width: none;
-	}
 }
