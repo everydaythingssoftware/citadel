@@ -9,4 +9,6 @@ export const createWebFileOpener = (): FileOpenerAdapter => ({
 		return Promise.resolve();
 	},
 	revealInFileManager: () => Promise.resolve(),
+	defaultApp: async () => null,
+	quickLook: async () => {},
 });

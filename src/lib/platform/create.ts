@@ -1,6 +1,7 @@
 import { isDesktop } from "./runtime";
 import { homeDirectory } from "./paths/tauri";
-import { onAddBook } from "./menu/tauri";
+import { tauriMenu } from "./menu/tauri";
+import { webMenu } from "./menu/web";
 import { tauriUpdates } from "./updates/tauri";
 import { webUpdates } from "./updates/web";
 import { tauriRecovery } from "./recovery/tauri";
@@ -9,7 +10,7 @@ import { createTauriClipboard } from "./clipboard/tauri";
 import { createWebClipboard } from "./clipboard/web";
 import { createTauriDialogs } from "./dialogs/tauri";
 import { createWebDialogs } from "./dialogs/web";
-import { createTauriFileOpener } from "./file-opener/tauri";
+import { createTauriFileOpener, quickLookAvailable } from "./file-opener/tauri";
 import { createWebFileOpener } from "./file-opener/web";
 import { detectOperatingSystem } from "./os";
 import { createTauriSettingsManager } from "./settings/tauri";
@@ -19,27 +20,35 @@ import type { PlatformAdapter } from "./types";
 import { createTauriWindow } from "./window/tauri";
 import { createWebWindow } from "./window/web";
 
-export const createTauriPlatform = (): PlatformAdapter => ({
-	os: detectOperatingSystem(),
-	capabilities: {
-		supportsNativeWindows: true,
-		canPickLocalFiles: true,
-		canRevealInFileManager: true,
-		canCopyToClipboard: true,
-		canOpenLocalPaths: true,
-		supportsAutoUpdates: true,
-		supportsLocalOpdsServer: true,
-	},
-	homeDirectory,
-	menu: { onAddBook },
-	updates: tauriUpdates,
-	recovery: tauriRecovery,
-	dialogs: createTauriDialogs(),
-	clipboard: createTauriClipboard(),
-	fileOpener: createTauriFileOpener(),
-	window: createTauriWindow(),
-	settings: createTauriSettingsManager(defaultSettings),
-});
+export const createTauriPlatform = (): PlatformAdapter => {
+	const os = detectOperatingSystem();
+	return {
+		os,
+		capabilities: {
+			supportsNativeWindows: true,
+			canPickLocalFiles: true,
+			canRevealInFileManager: true,
+			canCopyToClipboard: true,
+			canOpenLocalPaths: true,
+			supportsAutoUpdates: true,
+			supportsLocalOpdsServer: true,
+			/** Read when a menu opens: off once Quick Look has failed. */
+			get canQuickLook() {
+				return os === "macos" && quickLookAvailable();
+			},
+			canDragFilesOut: true,
+		},
+		homeDirectory,
+		menu: tauriMenu,
+		updates: tauriUpdates,
+		recovery: tauriRecovery,
+		dialogs: createTauriDialogs(),
+		clipboard: createTauriClipboard(),
+		fileOpener: createTauriFileOpener(),
+		window: createTauriWindow(),
+		settings: createTauriSettingsManager(defaultSettings),
+	};
+};
 
 export const createWebPlatform = (): PlatformAdapter => ({
 	os: detectOperatingSystem(),
@@ -51,9 +60,11 @@ export const createWebPlatform = (): PlatformAdapter => ({
 		canOpenLocalPaths: false,
 		supportsAutoUpdates: false,
 		supportsLocalOpdsServer: false,
+		canQuickLook: false,
+		canDragFilesOut: false,
 	},
 	homeDirectory: async () => null,
-	menu: { onAddBook: async () => () => {} },
+	menu: webMenu,
 	updates: webUpdates,
 	recovery: webRecovery,
 	dialogs: createWebDialogs(),

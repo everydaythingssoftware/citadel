@@ -16,7 +16,7 @@ export interface PlatformAdapter {
 	readonly fileOpener: FileOpenerAdapter;
 	readonly window: WindowAdapter;
 	readonly homeDirectory: () => Promise<string | null>;
-	readonly menu: { onAddBook(handler: () => void): Promise<() => void> };
+	readonly menu: MenuAdapter;
 	readonly updates: UpdatesAdapter;
 	readonly recovery: RecoveryAdapter;
 	readonly settings: SettingsManager;
@@ -31,6 +31,83 @@ export interface PlatformCapabilities {
 	supportsAutoUpdates: boolean;
 	/** Only the desktop build can host the local OPDS server. */
 	supportsLocalOpdsServer: boolean;
+	/**
+	 * Quick Look previews: the macOS desktop app only, and not once Quick
+	 * Look has failed this session (then it opens the default app).
+	 */
+	canQuickLook: boolean;
+	/** Books' files can be dragged out of the window to other apps. */
+	canDragFilesOut: boolean;
+}
+
+/**
+ * A choice from the desktop menu bar (macOS), mirroring the Rust
+ * `MenuCommand`. Select All is the native item and never arrives here on
+ * macOS; Restart to Update is handled natively and never arrives either.
+ */
+export type MenuCommand =
+	| "new-shelf"
+	| "add-library"
+	| "show-library-in-file-manager"
+	| "find"
+	| "undo"
+	| "redo"
+	| "select-all"
+	| "book-show-details"
+	| "book-open"
+	| "book-edit"
+	| "book-mark-finished"
+	| "book-show-in-file-manager"
+	| "book-copy-title"
+	| "book-delete"
+	| "toggle-sidebar"
+	| "toggle-unread-only"
+	| "sort-name-az"
+	| "sort-name-za"
+	| "sort-author-az"
+	| "sort-author-za"
+	| "go-all-books"
+	| "go-authors"
+	| "go-series"
+	| "go-tags"
+	| "go-publishers"
+	| "go-back"
+	| "go-forward"
+	| "restart-to-update"
+	| { switchLibrary: string };
+
+/** What the menu bar shows that only the library window knows. */
+export interface MenuState {
+	/** Enables the Book menu; labels pluralise ("Delete 2 Books…"). */
+	selectedBookCount: number;
+	/** "Mark as Unfinished" instead of "Mark as Finished". */
+	selectionAllFinished: boolean;
+	/** "Hide Sidebar" or "Show Sidebar". */
+	sidebarVisible: boolean;
+	unreadOnly: boolean;
+	sortOrder: "nameAz" | "nameZa" | "authorAz" | "authorZa";
+	/** The Switch Library submenu, checkmark on the active one. */
+	libraries: { id: string; name: string; active: boolean }[];
+	/** Shows Restart to Update in the app menu. */
+	updateReadyVersion: string | null;
+	/**
+	 * Undo and Redo act on the app's undo history (no text field has the
+	 * keyboard) instead of being the native text-editing items.
+	 */
+	appUndo: boolean;
+	/** "Undo Mark as Finished"; null disables Undo. */
+	undoLabel: string | null;
+	/** "Redo Mark as Finished"; null disables Redo. */
+	redoLabel: string | null;
+}
+
+export interface MenuAdapter {
+	/** Library > Add Book…. */
+	onAddBook(handler: () => void): Promise<() => void>;
+	/** Every other menu choice; never fires without a menu bar. */
+	onCommand(handler: (command: MenuCommand) => void): Promise<() => void>;
+	/** Fields left out keep their value; does nothing without a menu bar. */
+	setState(state: Partial<MenuState>): Promise<void>;
 }
 
 /** A file on this computer, by path: what the desktop chooses and drops. */
@@ -70,6 +147,19 @@ export interface FileOpenerAdapter {
 	readonly fileManagerName: string;
 	openPath(path: string): Promise<void>;
 	revealInFileManager(path: string): Promise<void>;
+	/**
+	 * The app that opens this file by default, with its icon, cached per
+	 * file extension. Null in a browser, off macOS, or when none claims it.
+	 */
+	defaultApp(path: string): Promise<DefaultApp | null>;
+	/** Quick Look; only where `canQuickLook`. */
+	quickLook(path: string): Promise<void>;
+}
+
+export interface DefaultApp {
+	name: string;
+	/** A PNG data URL. */
+	iconDataUrl: string;
 }
 
 export interface WindowAdapter {
@@ -86,6 +176,21 @@ export interface WindowAdapter {
 	 * path (the desktop). Browsers deliver drops to the page instead.
 	 */
 	onFileDrag(handler: (event: FileDragEvent) => void): Promise<() => void>;
+	/**
+	 * Drags files out of the window to other apps, from a pointer-down or
+	 * dragstart; only where `canDragFilesOut`. Without an icon, the file
+	 * manager's icon for the first file is shown.
+	 */
+	startDrag(files: string[], iconPath?: string): Promise<void>;
+	/**
+	 * Whether the window is in front; the handler is called at once with the
+	 * current value, then on every change.
+	 */
+	onActiveChange(handler: (active: boolean) => void): Promise<() => void>;
+	/** Full screen entered or left; called at once with the current value. */
+	onFullscreenChange(
+		handler: (fullscreen: boolean) => void,
+	): Promise<() => void>;
 }
 
 /**
