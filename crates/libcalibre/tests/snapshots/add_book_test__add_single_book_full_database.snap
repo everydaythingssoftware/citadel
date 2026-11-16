@@ -741,7 +741,9 @@ data:
   library_id:
     - id: 1
       uuid: "<UUID>"
-  metadata_dirtied: []
+  metadata_dirtied:
+    - book: 1
+      id: 1
   preferences: []
   publishers: []
   ratings: []

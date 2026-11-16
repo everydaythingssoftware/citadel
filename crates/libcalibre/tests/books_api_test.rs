@@ -169,40 +169,78 @@ fn test_update_book_language_replace_clear_and_untouched() {
     assert!(cleared.language_codes.is_empty());
 }
 
-#[test]
-fn test_metadata_opf_emits_language_codes() {
-    let (_temp, mut lib) = setup_with_library();
-    let library_path = lib.library_path().to_string();
-
-    let book = lib
-        .add_book(BookAdd {
-            language: Some("es".to_string()),
-            ..empty_book("Cien años de soledad")
-        })
+fn dirtied(lib: &libcalibre::Library) -> Vec<i32> {
+    let conn = rusqlite::Connection::open(lib.database_path()).unwrap();
+    let mut statement = conn
+        .prepare("SELECT book FROM metadata_dirtied ORDER BY book")
         .unwrap();
+    statement
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
 
-    let opf_path = std::path::Path::new(&library_path)
+/// What Calibre's backup writer does once it has written a book's OPF.
+fn clear_dirtied(lib: &libcalibre::Library) {
+    rusqlite::Connection::open(lib.database_path())
+        .unwrap()
+        .execute("DELETE FROM metadata_dirtied", [])
+        .unwrap();
+}
+
+#[test]
+fn test_changed_books_are_queued_for_calibres_opf_backup() {
+    let (_temp, mut lib) = setup_with_library();
+    let book = lib.add_book(empty_book("Book")).unwrap();
+    let other = lib.add_book(empty_book("Other")).unwrap();
+    assert_eq!(dirtied(&lib), [book.id.as_i32(), other.id.as_i32()]);
+
+    let opf = std::path::Path::new(lib.library_path())
         .join(&book.book_dir_path)
         .join("metadata.opf");
-    let opf = std::fs::read_to_string(&opf_path).expect("metadata.opf written on add");
-    assert!(
-        opf.contains("<dc:language>spa</dc:language>"),
-        "OPF should emit the actual language code, got:\n{opf}"
-    );
-    assert!(!opf.contains("<dc:language>en</dc:language>"));
+    assert!(!opf.exists(), "libcalibre leaves metadata.opf to Calibre");
+    std::fs::write(&opf, "written by Calibre").unwrap();
 
-    // Editing the language regenerates the OPF from DB state.
+    clear_dirtied(&lib);
     lib.update_book(
         book.id,
         BookUpdate {
-            language_codes: Some(vec!["ja".to_string()]),
+            title: Some("Renamed".to_string()),
             ..empty_update()
         },
     )
     .unwrap();
-    let opf = std::fs::read_to_string(&opf_path).expect("metadata.opf rewritten on update");
-    assert!(opf.contains("<dc:language>jpn</dc:language>"));
-    assert!(!opf.contains("<dc:language>spa</dc:language>"));
+    assert_eq!(dirtied(&lib), [book.id.as_i32()]);
+    assert_eq!(std::fs::read_to_string(&opf).unwrap(), "written by Calibre");
+
+    clear_dirtied(&lib);
+    lib.set_book_read_state(other.id, true).unwrap();
+    assert_eq!(dirtied(&lib), [other.id.as_i32()]);
+
+    clear_dirtied(&lib);
+    lib.set_book_cover(book.id, vec![0xFF, 0xD8, 0xFF]).unwrap();
+    assert_eq!(dirtied(&lib), [book.id.as_i32()]);
+}
+
+#[test]
+fn test_catalogue_wide_changes_queue_no_book() {
+    let (_temp, mut lib) = setup_with_library();
+    lib.add_book(empty_book("Book")).unwrap();
+    clear_dirtied(&lib);
+
+    lib.randomize_library_uuid().unwrap();
+    assert!(dirtied(&lib).is_empty());
+}
+
+#[test]
+fn test_deleting_a_book_drops_it_from_the_backup_queue() {
+    let (_temp, mut lib) = setup_with_library();
+    let doomed = lib.add_book(empty_book("Doomed")).unwrap();
+    let kept = lib.add_book(empty_book("Kept")).unwrap();
+
+    lib.delete_books(&[doomed.id]).unwrap();
+    assert_eq!(dirtied(&lib), [kept.id.as_i32()]);
 }
 
 #[test]
