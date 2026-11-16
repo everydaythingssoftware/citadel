@@ -591,11 +591,13 @@ async clbCmdQuickLook(path: string) : Promise<Result<null, string>> {
 export const events = __makeEvents__<{
 librariesChanged: LibrariesChanged,
 menuCommandChosen: MenuCommandChosen,
+opdsStatusChanged: OpdsStatusChanged,
 showSoftwareUpdate: ShowSoftwareUpdate,
 softwareUpdateChanged: SoftwareUpdateChanged
 }>({
 librariesChanged: "libraries-changed",
 menuCommandChosen: "menu-command-chosen",
+opdsStatusChanged: "opds-status-changed",
 showSoftwareUpdate: "show-software-update",
 softwareUpdateChanged: "software-update-changed"
 })
@@ -927,6 +929,10 @@ export type OpdsServiceStatus = { state: OpdsLifecycleState; activeLibraryId: st
  */
 config: OpdsStartConfig | null }
 export type OpdsStartConfig = { target: OpdsBindTarget; port: number; authenticationEnabled: boolean }
+/**
+ * The sharing status after any change, for every window.
+ */
+export type OpdsStatusChanged = OpdsServiceStatus
 export type OpdsStatusError = { code: OpdsErrorCode; message: string }
 export type ProviderStatus = { provider: MetadataProvider; is_valid: boolean; message: string }
 export type RecoveryStep = 

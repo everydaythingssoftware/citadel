@@ -9,7 +9,6 @@ import type {
 import type { OpdsClient } from "@/lib/services/opds";
 import { opdsClientForPlatform } from "@/lib/services/opds";
 
-const POLL_INTERVAL_MS = 1_000;
 /** Only surface the busy state when an action is actually slow. */
 const ACTING_DELAY_MS = 200;
 
@@ -87,6 +86,23 @@ export const startOutcome = (
 	return error ? { ok: false, error } : { ok: true };
 };
 
+/** The newest status the service announced, and how many it has sent. */
+export interface Announced {
+	status: OpdsServiceStatus | null;
+	count: number;
+}
+
+/** Each announcement is sent after its change, in order, so one that arrived
+ * while a status read was in flight is at least as new as the read's answer. */
+export const newestStatus = (
+	read: OpdsServiceStatus,
+	countBeforeRead: number,
+	announced: Announced,
+): OpdsServiceStatus =>
+	announced.count !== countBeforeRead && announced.status
+		? announced.status
+		: read;
+
 /** Backend status is authoritative: the pane renders what the service
  * reports, never local component state, so a restart elsewhere reads
  * correctly here too. */
@@ -98,11 +114,17 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 	const [isActing, setIsActing] = useState(false);
 	const [error, setError] = useState<SharingError | null>(null);
 	const refreshing = useRef(false);
-	/** A mutation is in flight: the poll must not publish interim states
-	 * (Stopped/Starting) or the pane flaps. */
+	/** A mutation is in flight: status changes must not publish its interim
+	 * states (Stopped/Starting) or the pane flaps; it publishes its own. */
 	const mutating = useRef(false);
-	/** Bumped by every mutation; polls discard results from before the bump. */
+	/** Bumped by every mutation; a load discards results from before the bump. */
 	const mutationSeq = useRef(0);
+	const announced = useRef<Announced>({ status: null, count: 0 });
+	const newestOf = useCallback(
+		(read: OpdsServiceStatus, countBeforeRead: number) =>
+			newestStatus(read, countBeforeRead, announced.current),
+		[],
+	);
 	const actingTimer = useRef<number | null>(null);
 
 	const beginActing = useCallback(() => {
@@ -136,40 +158,58 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 		if (!client || refreshing.current || mutating.current) return;
 		refreshing.current = true;
 		const seq = mutationSeq.current;
+		const countBeforeRead = announced.current.count;
 		try {
 			const [nextStatus, nextKeys] = await Promise.all([
 				client.status(),
 				client.deviceKeys(),
 			]);
-			// A mutation that landed while this poll was in flight publishes
-			// its own fresh status; ours is stale by definition. Polls never
+			// A mutation that landed while this load was in flight publishes
+			// its own fresh status; ours is stale by definition. Loads never
 			// clear mutation errors — those belong to the action that set
-			// them and outlive a single poll cycle.
+			// them.
 			if (seq !== mutationSeq.current) return;
-			setStatus(nextStatus);
+			setStatus(newestOf(nextStatus, countBeforeRead));
 			setDeviceKeys(nextKeys);
 		} catch {
-			// A failed poll says nothing new; the next one will recover.
+			// A failed load says nothing new; the next status change recovers.
 		} finally {
 			refreshing.current = false;
 			setIsLoading(false);
 		}
-	}, [client]);
+	}, [client, newestOf]);
 
 	useEffect(() => {
 		if (!client) {
 			setIsLoading(false);
 			return;
 		}
-		void refresh();
-		const timer = window.setInterval(() => void refresh(), POLL_INTERVAL_MS);
-		const handleVisibility = () => {
-			if (document.visibilityState === "visible") void refresh();
-		};
-		document.addEventListener("visibilitychange", handleVisibility);
+		// The service announces every change, including a listener that dies
+		// on its own, so the pane needs no timer. Listening starts before the
+		// first load, so no change falls between them.
+		let stopListening: (() => void) | null = null;
+		let unmounted = false;
+		void client
+			.onStatusChange((next) => {
+				announced.current = {
+					status: next,
+					count: announced.current.count + 1,
+				};
+				if (!mutating.current) setStatus(next);
+			})
+			.then(
+				(unlisten) => {
+					if (unmounted) unlisten();
+					else stopListening = unlisten;
+				},
+				() => {},
+			)
+			.then(() => {
+				if (!unmounted) void refresh();
+			});
 		return () => {
-			window.clearInterval(timer);
-			document.removeEventListener("visibilitychange", handleVisibility);
+			unmounted = true;
+			stopListening?.();
 		};
 	}, [client, refresh]);
 
@@ -185,8 +225,10 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 			setError(null);
 			try {
 				const value = await action(client);
-				setStatus(await client.status());
+				const countBeforeRead = announced.current.count;
+				const read = await client.status();
 				setDeviceKeys(await client.deviceKeys());
+				setStatus(newestOf(read, countBeforeRead));
 				return { ok: true, value };
 			} catch (cause) {
 				const failure = { source, code: null, message: message(cause) };
@@ -197,7 +239,7 @@ export const useOpdsSharing = (supported: boolean): OpdsSharingController => {
 				endActing();
 			}
 		},
-		[client, beginActing, endActing],
+		[client, beginActing, endActing, newestOf],
 	);
 
 	const start = useCallback(

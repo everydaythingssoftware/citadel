@@ -89,6 +89,7 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 export const eventsByAdapter: Record<string, readonly string[]> = {
 	"src/lib/services/library-catalog/tauri.ts": ["librariesChanged"],
 	"src/lib/platform/menu/tauri.ts": ["menuCommandChosen"],
+	"src/lib/services/opds/tauri.ts": ["opdsStatusChanged"],
 	"src/lib/platform/updates/tauri.ts": [
 		"softwareUpdateChanged",
 		"showSoftwareUpdate",
