@@ -97,12 +97,31 @@ async fn uploads_fixture(
     fixture_opened(CalibreCatalogSource::open_writable, uploads).await
 }
 
-/// No provider is reachable unless a test stands one up locally.
+type Provider = (String, Arc<dyn citadel_core::http::HttpClient>);
+
+/// No provider is reachable unless a test stands one in.
 fn metadata() -> Arc<api::Metadata> {
-    metadata_at("http://127.0.0.1:9".into(), api::MetadataConfig::default())
+    struct Refused;
+    impl citadel_core::http::HttpClient for Refused {
+        fn send(
+            &self,
+            _: citadel_core::http::HttpRequest,
+        ) -> citadel_core::http::HttpFuture<'static, citadel_core::http::HttpResponse> {
+            Box::pin(async {
+                Err(citadel_core::http::HttpError::new(
+                    citadel_core::http::HttpErrorKind::Connection,
+                    "connection refused",
+                ))
+            })
+        }
+    }
+    metadata_at(
+        ("http://127.0.0.1".into(), Arc::new(Refused)),
+        api::MetadataConfig::default(),
+    )
 }
 
-fn metadata_at(base: String, config: api::MetadataConfig) -> Arc<api::Metadata> {
+fn metadata_at((base, http): Provider, config: api::MetadataConfig) -> Arc<api::Metadata> {
     let client = citadel_metadata::MetadataClient::with_endpoints(
         citadel_metadata::ClientOptions {
             version: "test".into(),
@@ -127,7 +146,7 @@ fn metadata_at(base: String, config: api::MetadataConfig) -> Arc<api::Metadata> 
                 https_only: false,
             },
         },
-        std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
+        http,
     )
     .unwrap();
     Arc::new(api::Metadata::with_client(config, client))
@@ -177,14 +196,11 @@ async fn fixture_with_metadata(
     let service = OpdsService::with_ephemeral_credentials(
         source.clone(),
         vec![DeviceKeyVerifier::new("kobo", "reader", "secret")],
-        Arc::new(citadel_host::SystemHost),
+        Arc::new(citadel_host::InProcessHost::default()),
     );
-    let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = reservation.local_addr().unwrap().port();
-    drop(reservation);
     service
         .start(OpdsStartConfig {
-            port: u32::from(port),
+            port: 8080,
             authentication_enabled: true,
             target: OpdsBindTarget::Addresses {
                 addresses: vec!["127.0.0.1".into()],
@@ -2205,7 +2221,8 @@ async fn commits_need_a_finished_upload_a_title_its_owner_and_a_writable_library
 }
 
 /// Stands in for Open Library, counting the requests that reach it.
-async fn fake_openlibrary() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+/// Open Library and Hardcover stand-ins, answered in-process.
+async fn fake_openlibrary() -> (Provider, Arc<std::sync::atomic::AtomicUsize>) {
     use axum::{extract::State, routing::get};
     let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let router = axum::Router::new()
@@ -2244,10 +2261,13 @@ async fn fake_openlibrary() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
             }),
         )
         .with_state(hits.clone());
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, router).await });
-    (format!("http://{address}"), hits)
+    (
+        (
+            "http://127.0.0.1".to_string(),
+            Arc::new(citadel_host::RouterHttp::new(router)),
+        ),
+        hits,
+    )
 }
 
 use axum::response::IntoResponse;
@@ -2324,13 +2344,13 @@ async fn fake_hardcover(
 
 #[tokio::test]
 async fn metadata_lookups_are_signed_in_cached_and_rate_limited_per_user() {
-    let (base, hits) = fake_openlibrary().await;
+    let (provider, hits) = fake_openlibrary().await;
     let config: api::MetadataConfig =
         serde_json::from_value(json!({"search": {"perUserPerMinute": 3}})).unwrap();
     let (_directory, service, router, _, cookie) = fixture_with_metadata(
         CalibreCatalogSource::open,
         api::UploadConfig::default(),
-        metadata_at(base, config),
+        metadata_at(provider, config),
     )
     .await;
     let get = |path: &str, cookie: Option<&str>| {
@@ -2436,11 +2456,11 @@ async fn metadata_lookups_are_signed_in_cached_and_rate_limited_per_user() {
 
 #[tokio::test]
 async fn provider_keys_are_verified_saved_per_user_and_never_returned() {
-    let (base, _) = fake_openlibrary().await;
+    let (provider, _) = fake_openlibrary().await;
     let (_directory, service, router, _, cookie) = fixture_with_metadata(
         CalibreCatalogSource::open,
         api::UploadConfig::default(),
-        metadata_at(base, api::MetadataConfig::default()),
+        metadata_at(provider, api::MetadataConfig::default()),
     )
     .await;
     let call = |method: &str, path: &str, body: Value| {
@@ -2551,13 +2571,13 @@ async fn provider_keys_are_verified_saved_per_user_and_never_returned() {
 
 #[tokio::test]
 async fn covers_are_previewed_and_applied_by_id_never_by_url() {
-    let (base, _) = fake_openlibrary().await;
+    let (provider, _) = fake_openlibrary().await;
     let config: api::MetadataConfig =
         serde_json::from_value(json!({"maxImageBytes": 2 * 1024 * 1024})).unwrap();
     let (_directory, service, router, id, cookie) = fixture_with_metadata(
         CalibreCatalogSource::open_writable,
         api::UploadConfig::default(),
-        metadata_at(base.clone(), config.clone()),
+        metadata_at(provider.clone(), config.clone()),
     )
     .await;
     let call = |method: &str, path: &str, body: Value| {
@@ -2700,7 +2720,7 @@ async fn covers_are_previewed_and_applied_by_id_never_by_url() {
     let (_directory, service, router, id, cookie) = fixture_with_metadata(
         CalibreCatalogSource::open,
         api::UploadConfig::default(),
-        metadata_at(base, config),
+        metadata_at(provider, config),
     )
     .await;
     let (status, _, error) = request(

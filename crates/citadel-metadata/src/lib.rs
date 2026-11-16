@@ -364,14 +364,38 @@ mod tests {
 
     use super::*;
 
-    async fn serve(router: Router) -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, router).await });
-        format!("http://{address}")
+    /// Where the stand-in provider lives, and a client that reaches it.
+    /// Requests are answered by `router` in-process; nothing listens.
+    fn serve(router: Router) -> (String, Arc<dyn citadel_core::http::HttpClient>) {
+        (
+            "http://127.0.0.1".to_string(),
+            Arc::new(citadel_host::RouterHttp::new(router)),
+        )
     }
 
-    fn client(openlibrary: String) -> MetadataClient {
+    /// A provider nobody can reach.
+    fn unreachable() -> (String, Arc<dyn citadel_core::http::HttpClient>) {
+        struct Refused;
+        impl citadel_core::http::HttpClient for Refused {
+            fn send(
+                &self,
+                _: citadel_core::http::HttpRequest,
+            ) -> citadel_core::http::HttpFuture<'static, citadel_core::http::HttpResponse>
+            {
+                Box::pin(async {
+                    Err(citadel_core::http::HttpError::new(
+                        citadel_core::http::HttpErrorKind::Connection,
+                        "connection refused",
+                    ))
+                })
+            }
+        }
+        ("http://127.0.0.1".to_string(), Arc::new(Refused))
+    }
+
+    fn client(
+        (openlibrary, http): (String, Arc<dyn citadel_core::http::HttpClient>),
+    ) -> MetadataClient {
         MetadataClient::with_endpoints(
             ClientOptions {
                 version: "test".into(),
@@ -381,7 +405,7 @@ mod tests {
                 openlibrary,
                 ..Endpoints::default()
             },
-            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
+            http,
         )
         .unwrap()
     }
@@ -402,7 +426,7 @@ mod tests {
 
     #[tokio::test]
     async fn keyed_providers_refuse_an_empty_credential_before_any_request() {
-        let client = client("http://127.0.0.1:9".into());
+        let client = client(unreachable());
         for credential in [None, Some(""), Some("  ")] {
             let error = client
                 .search(MetadataProvider::Hardcover, "dune", credential)
@@ -415,7 +439,7 @@ mod tests {
     #[tokio::test]
     async fn isbn_misses_are_remembered_across_isbn_forms() {
         let hits = Arc::new(AtomicUsize::new(0));
-        let base = serve(
+        let provider = serve(
             Router::new()
                 .route(
                     "/api/books",
@@ -425,9 +449,8 @@ mod tests {
                     }),
                 )
                 .with_state(hits.clone()),
-        )
-        .await;
-        let client = client(base);
+        );
+        let client = client(provider);
         for isbn in ["9780553103540", "0553103547", "978-0-553-10354-0"] {
             assert!(client
                 .by_isbn(MetadataProvider::OpenLibrary, isbn, None)
@@ -441,7 +464,7 @@ mod tests {
     #[tokio::test]
     async fn upstream_429_is_reported_and_honoured() {
         let hits = Arc::new(AtomicUsize::new(0));
-        let base = serve(
+        let provider = serve(
             Router::new()
                 .route(
                     "/search.json",
@@ -455,9 +478,8 @@ mod tests {
                     }),
                 )
                 .with_state(hits.clone()),
-        )
-        .await;
-        let client = client(base);
+        );
+        let client = client(provider);
         for _ in 0..2 {
             let error = client
                 .search(MetadataProvider::OpenLibrary, "dune", None)
@@ -473,7 +495,7 @@ mod tests {
 
     #[tokio::test]
     async fn search_errors_never_echo_the_query_url() {
-        let client = client("http://127.0.0.1:9".into());
+        let client = client(unreachable());
         let error = client
             .search(MetadataProvider::OpenLibrary, "secret title", None)
             .await
@@ -493,7 +515,10 @@ mod tests {
 
     /// A Hardcover stand-in whose results point at images on the same
     /// loopback server, one per refusal case.
-    async fn cover_server() -> (String, Arc<AtomicUsize>) {
+    async fn cover_server() -> (
+        (String, Arc<dyn citadel_core::http::HttpClient>),
+        Arc<AtomicUsize>,
+    ) {
         use axum::{http::header, response::IntoResponse, routing::post};
         let image_hits = Arc::new(AtomicUsize::new(0));
         let base = Arc::new(Mutex::new(String::new()));
@@ -532,10 +557,7 @@ mod tests {
                                 }
                                 "big" => ([(header::CONTENT_TYPE, "image/jpeg")], vec![0u8; 4096]).into_response(),
                                 "html" => ([(header::CONTENT_TYPE, "text/html")], "<html>").into_response(),
-                                "slow" => {
-                                    tokio::time::sleep(Duration::from_secs(5)).await;
-                                    "late".into_response()
-                                }
+                                "slow" => std::future::pending().await,
                                 "offsite" => (
                                     axum::http::StatusCode::FOUND,
                                     [(header::LOCATION, base.replace("127.0.0.1", "localhost") + "/img/ok")],
@@ -549,12 +571,15 @@ mod tests {
                 }),
             )
             .with_state(image_hits.clone());
-        let address = serve(router).await;
-        *base.lock().unwrap() = address.clone();
-        (address, image_hits)
+        let provider = serve(router);
+        *base.lock().unwrap() = provider.0.clone();
+        (provider, image_hits)
     }
 
-    fn cover_client(base: &str, policy: CoverPolicy) -> MetadataClient {
+    fn cover_client(
+        (base, http): &(String, Arc<dyn citadel_core::http::HttpClient>),
+        policy: CoverPolicy,
+    ) -> MetadataClient {
         MetadataClient::with_endpoints(
             ClientOptions {
                 version: "test".into(),
@@ -570,7 +595,7 @@ mod tests {
                 covers: policy,
                 ..Endpoints::default()
             },
-            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
+            http.clone(),
         )
         .unwrap()
     }
@@ -587,8 +612,8 @@ mod tests {
 
     #[tokio::test]
     async fn covers_are_fetched_only_through_their_ids_and_within_limits() {
-        let (base, image_hits) = cover_server().await;
-        let client = cover_client(&base, loopback_policy());
+        let (provider, image_hits) = cover_server().await;
+        let client = cover_client(&provider, loopback_policy());
         let books = client
             .search(MetadataProvider::Hardcover, "dune", Some("key"))
             .await
@@ -649,7 +674,7 @@ mod tests {
 
     #[tokio::test]
     async fn oversized_covers_are_refused_while_downloading() {
-        let (base, _) = cover_server().await;
+        let ((base, http), _) = cover_server().await;
         let client = MetadataClient::with_endpoints(
             ClientOptions {
                 version: "test".into(),
@@ -664,7 +689,7 @@ mod tests {
                 covers: loopback_policy(),
                 ..Endpoints::default()
             },
-            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
+            http,
         )
         .unwrap();
         let books = client
@@ -681,8 +706,8 @@ mod tests {
 
     #[tokio::test]
     async fn production_policy_never_registers_plain_http_or_unknown_hosts() {
-        let (base, _) = cover_server().await;
-        let client = cover_client(&base, CoverPolicy::default());
+        let (provider, _) = cover_server().await;
+        let client = cover_client(&provider, CoverPolicy::default());
         let books = client
             .search(MetadataProvider::Hardcover, "dune", Some("key"))
             .await

@@ -27,6 +27,5 @@ uuid = { version = "1.6.1", features = ["v4", "fast-rng"] }
 [dev-dependencies]
 libcalibre = { path = "../libcalibre", features = ["__internals"] }
 diesel = { version = "2.2.4", features = ["sqlite"] }
-reqwest = { version = "0.12", features = ["json"] }
 tempfile = "3.8"
 tower = "0.5"

@@ -68,7 +68,7 @@ fn fresh_with(
     let service = OpdsService::with_ephemeral_credentials(
         source.clone(),
         Vec::new(),
-        Arc::new(citadel_host::SystemHost),
+        Arc::new(citadel_host::InProcessHost::default()),
     );
     let access = api::ApiAccess {
         accounts: accounts.clone(),
@@ -84,7 +84,7 @@ fn fresh_with(
     let metadata = Arc::new(
         api::Metadata::new(
             api::MetadataConfig::default(),
-            Arc::new(citadel_host::ReqwestHttp::new()),
+            Arc::new(citadel_host::RouterHttp::new(axum::Router::new())),
         )
         .expect("metadata client builds without a network"),
     );
