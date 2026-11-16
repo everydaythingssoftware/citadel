@@ -31,6 +31,7 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
+import { useBookEditorCommands } from "@/lib/hooks/use-book-editor-commands";
 import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
 import { identifierDisplayName } from "@/lib/book-identifiers";
 import type {
@@ -782,6 +783,12 @@ const EditBookForm = ({
 		setValues(previous);
 		requestSave();
 	};
+
+	useBookEditorCommands({
+		canUndo: hasChanges || history.length > 0,
+		undo,
+		save: requestSave,
+	});
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();

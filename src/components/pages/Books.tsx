@@ -56,6 +56,11 @@ import {
 	type LibraryBookSortOrderKey,
 	useLibraryView,
 } from "@/stores/library-view/store";
+import {
+	setShelfSheetOpen,
+	takeFindRequest,
+	useMenuRequests,
+} from "@/stores/menu-requests/store";
 import { createSmartShelf } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
 import { F7Bookmark } from "../icons/F7Bookmark";
@@ -281,6 +286,15 @@ export const Books = ({
 			lastRangeRef.current = { start: 0, end: 0 };
 		}, []),
 	);
+
+	// Edit > Find (⌘F): focus the search, once the page shows.
+	const findPending = useMenuRequests((s) => s.findPending);
+	useEffect(() => {
+		if (!findPending || !takeFindRequest()) return;
+		closeBookDetails();
+		searchInputRef.current?.focus();
+		searchInputRef.current?.select();
+	}, [findPending]);
 
 	useLibraryKeymap({
 		books,
@@ -534,12 +548,16 @@ const SaveAsShelfControl = ({
 	const libraryId = useLibrarySelection().activeLibrary?.id;
 	const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
 
-	const [isOpen, setIsOpen] = useState(false);
+	// Library > New Shelf… opens the same sheet from the menu bar.
+	const isOpen = useMenuRequests((s) => s.shelfSheetOpen);
 	const [name, setName] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
+	// The sheet is the page's: leaving the page closes it.
+	useEffect(() => () => setShelfSheetOpen(false), []);
+
 	const close = () => {
-		setIsOpen(false);
+		setShelfSheetOpen(false);
 		setName("");
 		setError(null);
 	};
@@ -578,7 +596,7 @@ const SaveAsShelfControl = ({
 					ref={bookmarkButtonRef}
 					variant="subtle"
 					className={styles.shelfButton}
-					onClick={() => setIsOpen(true)}
+					onClick={() => setShelfSheetOpen(true)}
 				>
 					<F7Bookmark
 						aria-hidden="true"

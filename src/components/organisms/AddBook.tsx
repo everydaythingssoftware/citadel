@@ -3,12 +3,10 @@ import {
 	type ReactNode,
 	useCallback,
 	useContext,
-	useEffect,
 	useMemo,
 } from "react";
 import { Button } from "@/components/ui";
 import { useChooseBookFiles } from "@/lib/hooks/use-choose-book-files";
-import { usePlatform } from "@/lib/platform/context";
 import {
 	LibraryState,
 	useLibraryState,
@@ -29,11 +27,10 @@ const AddBookContext = createContext<AddBookContextValue | null>(null);
 
 /**
  * Exposes starting the add-books flow via {@link useAddBook} so any control
- * (the toolbar button, an empty-state prompt, File > Add Book…) can start it.
+ * (the toolbar button, an empty-state prompt, Library > Add Book…) can start it.
  */
 export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 	const state = useLibraryState();
-	const platform = usePlatform();
 	const takesBooks = useLibraryStore(
 		(state) => state.library?.uploads !== undefined,
 	);
@@ -43,16 +40,6 @@ export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 	const startAddBook = useCallback(() => {
 		if (canAddBook) chooseBooks();
 	}, [canAddBook, chooseBooks]);
-
-	useEffect(() => {
-		if (!platform.menu.isSome) return;
-		const unlisten = platform.menu.value.onCommand((command) => {
-			if (command === "add-book") startAddBook();
-		});
-		return () => {
-			void unlisten.then((dispose) => dispose());
-		};
-	}, [startAddBook, platform]);
 
 	const contextValue = useMemo<AddBookContextValue>(
 		() => ({ startAddBook, canAddBook }),

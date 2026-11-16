@@ -13,6 +13,7 @@ import {
 	BookUploads,
 	UploadToolbarStatus,
 } from "@/components/organisms/BookUploads";
+import { MenuCommandHost } from "@/components/organisms/MenuCommandHost";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton, Tooltip } from "@/components/ui";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
@@ -151,6 +152,7 @@ const Root = () => {
 				</div>
 			</div>
 			<BookUploads />
+			<MenuCommandHost />
 		</AddBookProvider>
 	);
 };

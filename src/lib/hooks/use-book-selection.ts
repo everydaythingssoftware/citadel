@@ -38,8 +38,10 @@ import {
 	useBookSelectionStore,
 } from "@/stores/book-selection/store";
 import { requestBooksDeletion } from "@/stores/delete-books/store";
+import { finishedEntry } from "@/lib/undo-history";
 import { useLibraryStore } from "@/stores/library/store";
 import { useLibraryView } from "@/stores/library-view/store";
+import { registerUndo } from "@/stores/undo/store";
 
 /** The books the grid shows, which the selection's indices refer to. */
 export const currentShownBooks = () => {
@@ -208,10 +210,16 @@ const withLocalPath = (action: (path: string) => Promise<void>) =>
 
 const toggleFinished = async (books: LibraryBook[]) => {
 	const finished = !books.every((book) => book.is_read);
-	await useLibraryStore.getState().actions.setBooksRead(
-		books.filter((book) => book.is_read !== finished).map((book) => book.id),
-		finished,
-	);
+	const ids = books
+		.filter((book) => book.is_read !== finished)
+		.map((book) => book.id);
+	const { setBooksRead } = useLibraryStore.getState().actions;
+	try {
+		await setBooksRead(ids, finished);
+	} finally {
+		if (ids.length > 0)
+			registerUndo(finishedEntry(ids, finished, setBooksRead));
+	}
 	if (finished && useLibraryView.getState().hideRead)
 		updateBookSelection(clearSelection);
 };

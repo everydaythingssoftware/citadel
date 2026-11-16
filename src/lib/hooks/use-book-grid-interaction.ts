@@ -7,6 +7,7 @@ import {
 	primaryLocalPath,
 	primaryRemoteFile,
 } from "@/lib/book-files";
+import { bookShortcutHint } from "@/lib/app-shortcuts";
 import { BOOK_COMMAND } from "@/lib/book-menu";
 import {
 	type BookClickModifiers,
@@ -134,7 +135,18 @@ export const useBookGridInteraction = (
 						useBookSelectionStore.getState().selection,
 						currentShownBooks().length,
 					) === 1;
-				menu.openAt(event, menuEntries(), single ? book.title : "Book actions");
+				const env = {
+					os: platform.os,
+					desktop: platform.capabilities.supportsNativeWindows,
+				};
+				const items = menuEntries().map((entry) => {
+					if (entry.type === "separator") return entry;
+					const hint = bookShortcutHint(entry.id, env);
+					return hint
+						? { ...entry, shortcut: hint.label, keyShortcuts: hint.aria }
+						: entry;
+				});
+				menu.openAt(event, items, single ? book.title : "Book actions");
 			},
 
 			onDragStart: (event, index, book) => {

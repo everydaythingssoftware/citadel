@@ -7,18 +7,45 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AddBookProvider } from "@/components/organisms/AddBook";
+import { MenuCommandHost } from "@/components/organisms/MenuCommandHost";
 import { emptySelection } from "@/lib/book-selection";
+import { none, some } from "@/lib/option";
 import { PlatformProvider } from "@/lib/platform/context";
-import type { PlatformAdapter } from "@/lib/platform/types";
+import type { OperatingSystem } from "@/lib/platform/os";
+import type {
+	MenuAdapter,
+	MenuCommand,
+	PlatformAdapter,
+} from "@/lib/platform/types";
 import { useBookSelectionStore } from "@/stores/book-selection/store";
 import { LibraryState, useLibraryStore } from "@/stores/library/store";
 import { Books } from "./Books";
 import {
-	desktopStoryPlatform as desktopPlatform,
+	desktopStoryPlatform,
 	fakeStoryLibrary,
 	makeStoryBooks,
+	storyLog,
 	webStoryPlatform as webPlatform,
 } from "./books-story-fixtures";
+
+/**
+ * The macOS menu bar, faked: what the window pushes is logged, and
+ * `window.storyMenu("undo")` chooses an item, as clicking it in the menu
+ * bar would.
+ */
+const fakeMenuBar: MenuAdapter = {
+	onCommand: async (handler) => {
+		(window as { storyMenu?: (command: MenuCommand) => void }).storyMenu =
+			handler;
+		return () => {};
+	},
+	setState: storyLog("menu bar"),
+};
+
+const desktopPlatform = (os: OperatingSystem): PlatformAdapter => ({
+	...desktopStoryPlatform(os),
+	menu: os === "macos" ? some(fakeMenuBar) : none(),
+});
 
 interface FrameProps {
 	platform: PlatformAdapter;
@@ -55,6 +82,7 @@ const Frame = ({ platform, count, readOnly = false }: FrameProps) => {
 					component: () => (
 						<AddBookProvider>
 							<Books />
+							<MenuCommandHost />
 						</AddBookProvider>
 					),
 				}),
@@ -85,7 +113,8 @@ type Story = StoryObj<typeof Frame>;
 
 /**
  * A click shows the book's details, ⌘-click and ⇧-click select without
- * them, a double-click opens the file, ⌘A selects all.
+ * them, a double-click opens the file, ⌘A selects all. Edit > Undo is the
+ * faked menu bar (`window.storyMenu`).
  */
 export const MacDesktop: Story = {
 	args: { platform: desktopPlatform("macos"), count: 1204 },
