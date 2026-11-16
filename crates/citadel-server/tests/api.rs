@@ -176,6 +176,7 @@ async fn fixture_with_metadata(
     let service = OpdsService::with_ephemeral_credentials(
         source.clone(),
         vec![DeviceKeyVerifier::new("kobo", "reader", "secret")],
+        Arc::new(citadel_host::SystemHost),
     );
     let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = reservation.local_addr().unwrap().port();

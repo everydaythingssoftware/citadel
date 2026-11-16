@@ -720,6 +720,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "citadel-core",
+ "citadel-host",
  "citadel-metadata",
  "citadel-opds",
  "diesel",
@@ -761,6 +762,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "citadel-host"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "citadel-opds",
+ "netdev",
+ "socket2",
+ "tokio",
+]
+
+[[package]]
 name = "citadel-metadata"
 version = "0.1.0"
 dependencies = [
@@ -791,12 +803,10 @@ dependencies = [
  "futures-util",
  "libcalibre",
  "log",
- "netdev",
  "quick-xml 0.38.4",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "socket2",
  "specta",
  "subtle",
  "tempfile",
@@ -814,6 +824,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "citadel-core",
+ "citadel-host",
  "citadel-metadata",
  "citadel-opds",
  "dirs 6.0.0",

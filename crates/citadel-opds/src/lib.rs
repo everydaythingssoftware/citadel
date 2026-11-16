@@ -4,6 +4,7 @@ pub mod assets;
 pub mod auth;
 pub mod catalog;
 pub mod credential_store;
+pub mod host;
 mod identity;
 mod limits;
 pub mod network;

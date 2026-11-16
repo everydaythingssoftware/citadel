@@ -195,6 +195,7 @@ fn run_tauri_backend() -> std::io::Result<()> {
             let sharing = citadel_opds::OpdsService::with_ephemeral_credentials(
                 Arc::new(opds_state.clone()),
                 Vec::new(),
+                Arc::new(citadel_host::SystemHost),
             );
             opds::sync_credentials(&sharing, &account).map_err(|error| error.message)?;
             let store = account.shared_store();

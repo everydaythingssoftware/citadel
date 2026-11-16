@@ -1,10 +1,8 @@
 use std::{
     collections::BTreeSet,
-    io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6},
 };
 
-use netdev::interface::types::InterfaceType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, specta::Type)]
@@ -83,71 +81,93 @@ impl InterfaceSnapshot {
     }
 }
 
-pub(crate) trait InterfaceProvider: Send {
-    fn snapshot(&mut self) -> io::Result<Vec<InterfaceSnapshot>>;
+/// What the operating system calls an interface's hardware, as far as
+/// telling LAN from VPN from virtual needs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HostInterfaceType {
+    Loopback,
+    Ethernet,
+    Wireless,
+    Tunnel,
+    Ppp,
+    /// A proprietary virtual adapter, such as a VPN client's.
+    Virtual,
+    Bridge,
+    Other,
 }
 
-pub(crate) struct NetdevInterfaceProvider;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostIpv6Address {
+    pub address: Ipv6Addr,
+    pub deprecated: bool,
+    pub tentative: bool,
+    pub duplicated: bool,
+}
 
-impl InterfaceProvider for NetdevInterfaceProvider {
-    fn snapshot(&mut self) -> io::Result<Vec<InterfaceSnapshot>> {
-        Ok(netdev::get_interfaces()
-            .into_iter()
-            .map(|interface| {
-                let addresses = interface
-                    .ipv4
-                    .iter()
-                    .map(|network| InterfaceAddress {
-                        address: IpAddr::V4(network.addr()),
-                        scope: ipv4_scope(network.addr()),
-                        deprecated: false,
-                        tentative: false,
-                        duplicated: false,
-                    })
-                    .chain(interface.ipv6.iter().enumerate().map(|(index, network)| {
-                        let flags = interface
-                            .ipv6_addr_flags
-                            .get(index)
-                            .copied()
-                            .unwrap_or_default();
-                        InterfaceAddress {
-                            address: IpAddr::V6(network.addr()),
-                            scope: ipv6_scope(network.addr()),
-                            deprecated: flags.deprecated,
-                            tentative: flags.tentative,
-                            duplicated: flags.duplicated,
-                        }
-                    }))
-                    .collect::<Vec<_>>();
-                let label = interface
-                    .friendly_name
-                    .clone()
-                    .filter(|label| !label.trim().is_empty())
-                    .unwrap_or_else(|| interface.name.clone());
-                let kind = classify(
-                    &interface.name,
-                    &label,
-                    interface.description.as_deref(),
-                    interface.if_type,
-                    interface.is_loopback(),
-                    interface.is_point_to_point(),
-                    interface.is_physical(),
-                    &addresses,
-                );
-                InterfaceSnapshot {
-                    id: interface.name.clone(),
-                    label,
-                    description: interface.description.clone(),
-                    state: if interface.is_up() && interface.is_running() {
-                        OpdsInterfaceState::Up
-                    } else {
-                        OpdsInterfaceState::Down
-                    },
-                    kind,
-                    addresses,
-                }
+/// One network interface as the operating system reports it, before Citadel
+/// decides what kind it is and which of its addresses sharing may use.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HostInterface {
+    /// The system name (a GUID on Windows).
+    pub name: String,
+    pub friendly_name: Option<String>,
+    pub description: Option<String>,
+    pub interface_type: HostInterfaceType,
+    pub up: bool,
+    pub loopback: bool,
+    pub point_to_point: bool,
+    pub physical: bool,
+    pub ipv4: Vec<Ipv4Addr>,
+    pub ipv6: Vec<HostIpv6Address>,
+}
+
+impl From<HostInterface> for InterfaceSnapshot {
+    fn from(interface: HostInterface) -> Self {
+        let addresses = interface
+            .ipv4
+            .iter()
+            .map(|&address| InterfaceAddress {
+                address: IpAddr::V4(address),
+                scope: ipv4_scope(address),
+                deprecated: false,
+                tentative: false,
+                duplicated: false,
             })
-            .collect())
+            .chain(interface.ipv6.iter().map(|address| InterfaceAddress {
+                address: IpAddr::V6(address.address),
+                scope: ipv6_scope(address.address),
+                deprecated: address.deprecated,
+                tentative: address.tentative,
+                duplicated: address.duplicated,
+            }))
+            .collect::<Vec<_>>();
+        let label = interface
+            .friendly_name
+            .clone()
+            .filter(|label| !label.trim().is_empty())
+            .unwrap_or_else(|| interface.name.clone());
+        let kind = classify(
+            &interface.name,
+            &label,
+            interface.description.as_deref(),
+            interface.interface_type,
+            interface.loopback,
+            interface.point_to_point,
+            interface.physical,
+            &addresses,
+        );
+        InterfaceSnapshot {
+            id: interface.name,
+            label,
+            description: interface.description,
+            state: if interface.up {
+                OpdsInterfaceState::Up
+            } else {
+                OpdsInterfaceState::Down
+            },
+            kind,
+            addresses,
+        }
     }
 }
 
@@ -157,7 +177,7 @@ fn classify(
     id: &str,
     label: &str,
     description: Option<&str>,
-    interface_type: InterfaceType,
+    interface_type: HostInterfaceType,
     loopback: bool,
     point_to_point: bool,
     physical: bool,
@@ -195,7 +215,7 @@ fn classify(
     ]);
 
     if loopback
-        || interface_type == InterfaceType::Loopback
+        || interface_type == HostInterfaceType::Loopback
         || (!addresses.is_empty()
             && addresses
                 .iter()
@@ -206,20 +226,16 @@ fn classify(
         || vpn_name
         || matches!(
             interface_type,
-            InterfaceType::Tunnel | InterfaceType::Ppp | InterfaceType::ProprietaryVirtual
+            HostInterfaceType::Tunnel | HostInterfaceType::Ppp | HostInterfaceType::Virtual
         )
     {
         OpdsInterfaceKind::Vpn
-    } else if virtual_name || interface_type == InterfaceType::Bridge {
+    } else if virtual_name || interface_type == HostInterfaceType::Bridge {
         OpdsInterfaceKind::Other
     } else if physical
         || matches!(
             interface_type,
-            InterfaceType::Ethernet
-                | InterfaceType::FastEthernetT
-                | InterfaceType::FastEthernetFx
-                | InterfaceType::GigabitEthernet
-                | InterfaceType::Wireless80211
+            HostInterfaceType::Ethernet | HostInterfaceType::Wireless
         )
     {
         OpdsInterfaceKind::Lan
@@ -303,11 +319,14 @@ pub(crate) struct BindPolicy {
     pub allow_global: bool,
 }
 
+/// Where to listen. `ipv6` is whether the host can listen on IPv6 at all:
+/// without it, nothing IPv6 is planned.
 pub(crate) fn plan_bindings(
     interfaces: &[InterfaceSnapshot],
     target: &OpdsBindTarget,
     port: u16,
     policy: BindPolicy,
+    ipv6: bool,
 ) -> BindPlan {
     match target {
         OpdsBindTarget::Addresses { addresses } => match explicit_addresses(addresses, policy) {
@@ -322,7 +341,9 @@ pub(crate) fn plan_bindings(
         OpdsBindTarget::AllInterfaces => {
             let mut sockets = BTreeSet::new();
             sockets.insert(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port));
-            sockets.insert(SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port));
+            if ipv6 {
+                sockets.insert(SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port));
+            }
             BindPlan::Listen(sockets)
         }
         OpdsBindTarget::LocalNetworks => {
@@ -333,6 +354,7 @@ pub(crate) fn plan_bindings(
                         && interface.state == OpdsInterfaceState::Up
                 })
                 .flat_map(|interface| interface.bindable_addresses(port, policy))
+                .filter(|address| ipv6 || address.is_ipv4())
                 .collect::<BTreeSet<_>>();
             if addresses.is_empty() {
                 BindPlan::Wait(WaitingReason::NoLocalInterface)
@@ -429,6 +451,7 @@ mod tests {
             &OpdsBindTarget::LocalNetworks,
             8080,
             BindPolicy::default(),
+            true,
         ));
 
         assert_eq!(
@@ -455,6 +478,7 @@ mod tests {
             &OpdsBindTarget::LocalNetworks,
             8080,
             BindPolicy::default(),
+            true,
         );
         assert_eq!(plan, BindPlan::Wait(WaitingReason::NoLocalInterface));
     }
@@ -466,6 +490,7 @@ mod tests {
             &OpdsBindTarget::AllInterfaces,
             8080,
             BindPolicy::default(),
+            true,
         );
         assert_eq!(
             listen_addresses(plan),
@@ -522,7 +547,7 @@ mod tests {
             id: &'static str,
             label: &'static str,
             description: Option<&'static str>,
-            interface_type: InterfaceType,
+            interface_type: HostInterfaceType,
             loopback: bool,
             point_to_point: bool,
             physical: bool,
@@ -534,7 +559,7 @@ mod tests {
                 id: "en0",
                 label: "en0",
                 description: None,
-                interface_type: InterfaceType::Ethernet,
+                interface_type: HostInterfaceType::Ethernet,
                 loopback: false,
                 point_to_point: false,
                 physical: true,
@@ -545,7 +570,7 @@ mod tests {
                 id: "wlp3s0",
                 label: "wlp3s0",
                 description: None,
-                interface_type: InterfaceType::Wireless80211,
+                interface_type: HostInterfaceType::Wireless,
                 loopback: false,
                 point_to_point: false,
                 physical: true,
@@ -556,7 +581,7 @@ mod tests {
                 id: "utun4",
                 label: "utun4",
                 description: None,
-                interface_type: InterfaceType::Tunnel,
+                interface_type: HostInterfaceType::Tunnel,
                 loopback: false,
                 point_to_point: true,
                 physical: false,
@@ -567,7 +592,7 @@ mod tests {
                 id: "{8A5C1A93-2F0E-4C1B-9D6B-5E1F2A3B4C5D}",
                 label: "Tailscale",
                 description: Some("Tailscale Tunnel"),
-                interface_type: InterfaceType::Ethernet,
+                interface_type: HostInterfaceType::Ethernet,
                 loopback: false,
                 point_to_point: false,
                 physical: false,
@@ -578,7 +603,7 @@ mod tests {
                 id: "{1B2C3D4E-5F6A-7B8C-9D0E-1F2A3B4C5D6E}",
                 label: "OpenVPN TAP-Windows6",
                 description: Some("TAP-Windows Adapter V9"),
-                interface_type: InterfaceType::Ethernet,
+                interface_type: HostInterfaceType::Ethernet,
                 loopback: false,
                 point_to_point: false,
                 physical: false,
@@ -589,7 +614,7 @@ mod tests {
                 id: "lo0",
                 label: "lo0",
                 description: None,
-                interface_type: InterfaceType::Loopback,
+                interface_type: HostInterfaceType::Loopback,
                 loopback: true,
                 point_to_point: false,
                 physical: false,
@@ -606,7 +631,7 @@ mod tests {
                 id: "docker0",
                 label: "docker0",
                 description: None,
-                interface_type: InterfaceType::Bridge,
+                interface_type: HostInterfaceType::Bridge,
                 loopback: false,
                 point_to_point: false,
                 physical: false,
@@ -617,7 +642,7 @@ mod tests {
                 id: "{3C4D5E6F-7A8B-9C0D-1E2F-3A4B5C6D7E8F}",
                 label: "vEthernet (WSL)",
                 description: Some("Hyper-V Virtual Ethernet Adapter"),
-                interface_type: InterfaceType::Ethernet,
+                interface_type: HostInterfaceType::Ethernet,
                 loopback: false,
                 point_to_point: false,
                 physical: false,

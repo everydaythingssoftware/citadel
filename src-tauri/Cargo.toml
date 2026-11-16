@@ -21,6 +21,7 @@ diesel = { version = "2.1.0", features = ["sqlite", "chrono", "returning_clauses
 netdev = { version = "=0.45.0", default-features = false }
 citadel-core = { path = "../crates/citadel-core" }
 citadel-metadata = { path = "../crates/citadel-metadata" }
+citadel-host = { path = "../crates/citadel-host" }
 citadel-opds = { path = "../crates/citadel-opds" }
 libcalibre = { path = "../crates/libcalibre" }
 log = "0.4"
