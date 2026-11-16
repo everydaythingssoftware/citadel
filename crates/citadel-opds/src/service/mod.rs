@@ -443,6 +443,7 @@ impl Default for ServiceDependencies {
 }
 
 mod credentials;
+pub use credentials::CredentialUpdate;
 
 /// The sharing state, published to subscribers whenever a lock on it is
 /// released with the status changed, so nothing has to poll for it.
@@ -514,6 +515,15 @@ impl StatusChanges {
         Some(self.0.borrow_and_update().clone())
     }
 
+    /// The latest status if it changed since the last one returned.
+    pub fn take_change(&mut self) -> Option<OpdsServiceStatus> {
+        if self.0.has_changed().unwrap_or(false) {
+            Some(self.0.borrow_and_update().clone())
+        } else {
+            None
+        }
+    }
+
     /// The current status if it matches, else the first change that does.
     pub async fn wait_for(
         &mut self,
@@ -540,6 +550,9 @@ struct ServiceInner {
     /// into a restart's drain.
     op_lock: tokio::sync::Mutex<()>,
     dependencies: ServiceDependencies,
+    /// The latest retry loop for a share waiting for a network, so a test can
+    /// see it end rather than wait to see nothing happen.
+    wait_poll: Mutex<Option<JoinHandle<()>>>,
 }
 
 #[derive(Clone)]
@@ -614,6 +627,7 @@ impl OpdsService {
                 auth: OpdsBasicAuth::new(),
                 op_lock: tokio::sync::Mutex::new(()),
                 dependencies,
+                wait_poll: Mutex::new(None),
             }),
         }
     }
@@ -815,7 +829,7 @@ impl OpdsService {
 
     fn spawn_wait_poll(&self, gen: u64, config: OpdsStartConfig, port: u16) {
         let inner = self.inner.clone();
-        tokio::spawn(async move {
+        let poll = tokio::spawn(async move {
             loop {
                 tokio::time::sleep(inner.dependencies.wait_retry_interval).await;
                 {
@@ -873,6 +887,7 @@ impl OpdsService {
                 }
             }
         });
+        *self.inner.wait_poll.lock().unwrap() = Some(poll);
     }
 }
 
@@ -1026,7 +1041,7 @@ mod tests {
                 return Err(io::Error::from(kind));
             }
             if address.is_ipv6() && self.no_ipv6.load(Ordering::Acquire) {
-                return Err(io::Error::from_raw_os_error(libc_eafnosupport()));
+                return Err(io::Error::from(io::ErrorKind::Unsupported));
             }
             if self.fail_bind.swap(false, Ordering::AcqRel) {
                 return Err(io::Error::from(io::ErrorKind::AddrInUse));
@@ -1424,7 +1439,13 @@ mod tests {
         assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
 
         interfaces.set(vec![lan(OpdsInterfaceState::Up, [192, 168, 1, 5])]);
-        tokio::time::sleep(Duration::from_millis(60)).await;
+        // The retry loop ends at its next wake without binding, so nothing
+        // can bind later either.
+        let poll = service.inner.wait_poll.lock().unwrap().take().unwrap();
+        tokio::time::timeout(Duration::from_secs(30), poll)
+            .await
+            .expect("the retry loop keeps running after stop")
+            .unwrap();
         assert!(listeners.active.lock().unwrap().is_empty());
         assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
     }
@@ -1480,15 +1501,6 @@ mod tests {
         service.stop().await;
     }
 
-    /// EAFNOSUPPORT, which a host without IPv6 answers an IPv6 bind with.
-    fn libc_eafnosupport() -> i32 {
-        if cfg!(target_os = "linux") {
-            97
-        } else {
-            47
-        }
-    }
-
     #[tokio::test(flavor = "multi_thread")]
     async fn all_interfaces_serves_ipv4_on_a_host_without_ipv6() {
         let listeners = Arc::new(FakeListeners::default());
@@ -1511,6 +1523,42 @@ mod tests {
         let active: Vec<_> = listeners.active.lock().unwrap().iter().copied().collect();
         assert_eq!(active, ["0.0.0.0:8080".parse::<SocketAddr>().unwrap()]);
         service.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn real_factory_binds_dual_wildcards_on_one_port() {
+        if StdTcpListener::bind((std::net::Ipv6Addr::UNSPECIFIED, 0)).is_err() {
+            // No IPv6 on this host, so nothing to observe. This guards the
+            // IPV6_V6ONLY in `bind_socket`: without it Linux's dual-stack
+            // default makes the second bind fail, and the fallback below
+            // would hide that by serving IPv4 alone.
+            return;
+        }
+        let probe = StdTcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+
+        let factory = TcpListenerFactory;
+        let v4 = factory
+            .start(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
+                missing_source(),
+                OpdsBasicAuth::new(),
+            )
+            .expect("v4 wildcard bind");
+        let v6 = factory
+            .start(
+                SocketAddr::new(IpAddr::V6("::".parse().unwrap()), port),
+                missing_source(),
+                OpdsBasicAuth::new(),
+            )
+            .expect("v6 wildcard bind (V6ONLY must be set)");
+
+        // Both sockets answer; then both shut down cleanly.
+        let _ = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        Listeners(vec![v4, v6]).drain().await;
+        let probe2 = StdTcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
+        drop(probe2);
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1758,27 +1806,5 @@ mod tests {
             .start(address, source, OpdsBasicAuth::new())
             .expect("rebind after server-side close must not hit TIME_WAIT");
         drop(second);
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn start_completion_after_stop_discards_the_fresh_listeners() {
-        let source = test_source();
-        let interfaces = Arc::new(FakeInterfaces::new(Vec::new()));
-        let listeners = Arc::new(FakeListeners::default());
-        let service = service_with(
-            source,
-            interfaces.clone(),
-            listeners.clone(),
-            Duration::from_millis(10),
-        );
-
-        // Start while nothing is bindable lands in Waiting; the poll then
-        // retries. Stop right before setting a network so a poll retry is
-        // possible, and assert the retry path respects the stop.
-        service.start(config(8080)).await.unwrap();
-        service.stop().await;
-        interfaces.set(vec![lan(OpdsInterfaceState::Up, [192, 168, 1, 5])]);
-        tokio::time::sleep(Duration::from_millis(60)).await;
-        assert!(listeners.active.lock().unwrap().is_empty());
     }
 }

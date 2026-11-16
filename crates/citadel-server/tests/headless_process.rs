@@ -47,9 +47,10 @@ impl Output {
         }
     }
 
-    fn wait_for(&mut self, within: Duration, what: &str, done: impl Fn(&[String]) -> bool) {
+    /// Reads until a line, from any earlier one on, matches.
+    fn wait_for_line(&mut self, within: Duration, what: &str, matches: impl Fn(&str) -> bool) {
         let deadline = Instant::now() + within;
-        while !done(&self.lines) {
+        while !self.lines.iter().any(|line| matches(line)) {
             match self
                 .received
                 .recv_timeout(deadline.saturating_duration_since(Instant::now()))
@@ -66,10 +67,6 @@ impl Output {
                 }
             }
         }
-    }
-
-    fn wait_for_line(&mut self, within: Duration, what: &str, matches: impl Fn(&str) -> bool) {
-        self.wait_for(within, what, |lines| lines.iter().any(|line| matches(line)));
     }
 
     fn log(&self) -> String {
@@ -281,9 +278,12 @@ addresses = ["127.0.0.1"]
     // The API listens from the start; OPDS followed once the library and a
     // reader existed. No administrator was made, so the setup code was printed.
     output.wait_for_line(START_UP, "API address", |line| line.contains("api=http://"));
-    output.wait_for_line(START_UP, "setup code", |line| {
-        line.contains("\"setup_code\":\"")
-    });
+    // Printed on stdout before the API's address.
+    assert!(
+        output.log().contains("\"setup_code\":\""),
+        "{}",
+        output.log()
+    );
     let api_origin = format!("http://127.0.0.1:{api_port}");
     assert_eq!(
         client

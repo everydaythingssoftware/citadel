@@ -32,7 +32,7 @@ const BASIC_CHALLENGE: &str = "Basic realm=\"Citadel\", charset=\"UTF-8\"";
 const KEY_USE_REPORT_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 pub(crate) type KeyUsedHook = Arc<dyn Fn(&str) + Send + Sync>;
-pub(crate) type CredentialsRefresh = Arc<dyn Fn() -> Option<Vec<DeviceKeyVerifier>> + Send + Sync>;
+pub(crate) type CredentialsRefresh = Arc<dyn Fn(&OpdsBasicAuth) + Send + Sync>;
 
 /// Global exponential backoff on consecutive rejected attempts. With a
 /// ~30.5-bit generated password, throttling the online attacker to a couple
@@ -138,15 +138,16 @@ impl OpdsBasicAuth {
         *self.inner.refresh.lock().unwrap() = Some(refresh);
     }
 
-    /// Asks the host whether the keys changed, so a change applies to the
-    /// very next request rather than after some interval.
+    /// Lets the host bring the keys up to date, so a change applies to the
+    /// very next request rather than after some interval. The host installs
+    /// them itself, on a blocking task that finishes even if this request is
+    /// cancelled, so a change it has noticed is never dropped.
     async fn refresh_credentials(&self) {
         let Some(refresh) = self.inner.refresh.lock().unwrap().clone() else {
             return;
         };
-        if let Ok(Some(credentials)) = tokio::task::spawn_blocking(move || refresh()).await {
-            self.swap_credential_list(credentials);
-        }
+        let auth = self.clone();
+        let _ = tokio::task::spawn_blocking(move || refresh(&auth)).await;
     }
 
     pub(crate) fn swap_credential_list(&self, credentials: Vec<DeviceKeyVerifier>) {
@@ -534,7 +535,11 @@ mod tests {
         )])));
         auth.set_credentials_refresh({
             let changed = changed.clone();
-            Arc::new(move || changed.lock().unwrap().take())
+            Arc::new(move |auth: &OpdsBasicAuth| {
+                if let Some(keys) = changed.lock().unwrap().take() {
+                    auth.swap_credential_list(keys);
+                }
+            })
         });
         let header = |key: &str| Some(basic_header("reader", key.as_bytes()));
 

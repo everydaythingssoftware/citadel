@@ -7,7 +7,23 @@ use std::sync::Arc;
 use citadel_core::store::DeviceKeyVerifier;
 
 use super::OpdsService;
-use crate::credential_store::OpdsCredentialStatus;
+use crate::{
+    auth::OpdsBasicAuth,
+    credential_store::{OpdsCredentialStatus, OpdsCredentialStore},
+};
+
+/// See [`OpdsService::refresh_credentials_with`].
+pub struct CredentialUpdate<'a> {
+    store: &'a OpdsCredentialStore,
+    auth: &'a OpdsBasicAuth,
+}
+
+impl CredentialUpdate<'_> {
+    pub fn replace(&self, verifiers: Vec<DeviceKeyVerifier>) {
+        self.store.replace(verifiers);
+        self.auth.swap_credential_list(self.store.all());
+    }
+}
 
 impl OpdsService {
     pub fn credential_status(&self) -> OpdsCredentialStatus {
@@ -28,20 +44,24 @@ impl OpdsService {
         self.inner.auth.set_key_used_hook(Arc::new(hook));
     }
 
-    /// Asked on a blocking thread before each sign-in is checked: return the
-    /// keys when they changed since the last answer, `None` when they didn't.
-    /// Lets a host whose keys change elsewhere (another process) have the
-    /// change apply to the next request.
+    /// Called on a blocking thread before each sign-in is checked, so a host
+    /// whose keys change elsewhere (another process) can apply the change to
+    /// the next request. Install new keys through the update, while holding
+    /// whatever the host uses to tell which change it has seen: two requests
+    /// can ask at once.
     pub fn refresh_credentials_with(
         &self,
-        refresh: impl Fn() -> Option<Vec<DeviceKeyVerifier>> + Send + Sync + 'static,
+        refresh: impl Fn(&CredentialUpdate<'_>) + Send + Sync + 'static,
     ) {
         let store = self.inner.credentials.clone();
-        self.inner.auth.set_credentials_refresh(Arc::new(move || {
-            let credentials = refresh()?;
-            store.replace(credentials.clone());
-            Some(credentials)
-        }));
+        self.inner
+            .auth
+            .set_credentials_refresh(Arc::new(move |auth: &OpdsBasicAuth| {
+                refresh(&CredentialUpdate {
+                    store: &store,
+                    auth,
+                })
+            }));
     }
 
     #[cfg(test)]

@@ -115,9 +115,10 @@ impl CitadelStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Differs from an earlier value once anything has been committed to
+    /// Differs from an earlier value once anything has been written to
     /// `citadel.db` since, by this store or by another process such as the
-    /// admin CLI. Cheap enough to ask before every request.
+    /// admin CLI. It can also move on a write that was rolled back, which
+    /// only costs a needless reload. Cheap enough to ask before every request.
     pub fn version(&self) -> Result<StoreVersion> {
         #[derive(QueryableByName)]
         struct Version {

@@ -42,10 +42,11 @@ later work that nothing here has to undo.
 
 **Setup mode.** The server starts without a library: the API listens, library
 routes answer 503 "No library is set up on this server yet", and OPDS waits
-until a library is open and at least one user is granted it, then starts from
-a two-second check: the reader usually comes from the admin CLI, a separate
-process with no way to signal the server. Status changes are logged as they
-happen, from `OpdsService::subscribe`. A registered library whose folder can't
+until a library is open and at least one user is granted it. Web setup
+signals the server when it opens a library, so OPDS starts at once; a reader
+added by the admin CLI, a separate process with no way to signal the server,
+is noticed by a two-second check. Status changes are logged as they happen,
+from `OpdsService::subscribe`. A registered library whose folder can't
 be opened is reported, not fatal: administrators see why and can retry or
 adopt it from where it moved to (the Calibre UUID must match; a different
 library is refused).
