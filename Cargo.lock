@@ -772,6 +772,8 @@ dependencies = [
  "reqwest 0.12.28",
  "socket2",
  "tokio",
+ "tower",
+ "url",
 ]
 
 [[package]]

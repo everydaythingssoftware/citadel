@@ -14,7 +14,9 @@ use netdev::interface::types::InterfaceType;
 use tokio::sync::oneshot;
 
 mod http;
+mod in_process;
 pub use http::ReqwestHttp;
+pub use in_process::{InProcessHost, RouterHttp};
 
 pub struct SystemHost;
 
