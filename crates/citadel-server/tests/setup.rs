@@ -82,8 +82,11 @@ fn fresh_with(
     };
     let staging = api::Staging::open(state.join("uploads"), api::UploadConfig::default()).unwrap();
     let metadata = Arc::new(
-        api::Metadata::new(api::MetadataConfig::default())
-            .expect("metadata client builds without a network"),
+        api::Metadata::new(
+            api::MetadataConfig::default(),
+            Arc::new(citadel_host::ReqwestHttp::new()),
+        )
+        .expect("metadata client builds without a network"),
     );
     let router = through_proxy(api::router(
         source.clone(),

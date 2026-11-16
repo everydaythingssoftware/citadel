@@ -159,14 +159,18 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new(config: MetadataConfig) -> Result<Self, String> {
+    /// `http` makes the providers' requests.
+    pub fn new(
+        config: MetadataConfig,
+        http: std::sync::Arc<dyn citadel_core::http::HttpClient>,
+    ) -> Result<Self, String> {
         let client = MetadataClient::new(
             citadel_metadata::ClientOptions {
                 version: env!("CARGO_PKG_VERSION").into(),
                 contact: config.contact.clone(),
                 covers: config.cover_options(),
             },
-            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
+            http,
         )
         .map_err(|error| error.message)?;
         Ok(Self::with_client(config, client))
@@ -758,13 +762,16 @@ mod tests {
 
     #[test]
     fn users_are_limited_independently() {
-        let metadata = Metadata::new(MetadataConfig {
-            search: SearchConfig {
-                per_user_per_minute: 2,
-                ..SearchConfig::default()
+        let metadata = Metadata::new(
+            MetadataConfig {
+                search: SearchConfig {
+                    per_user_per_minute: 2,
+                    ..SearchConfig::default()
+                },
+                ..MetadataConfig::default()
             },
-            ..MetadataConfig::default()
-        })
+            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
+        )
         .unwrap();
         let now = Instant::now();
         metadata.admit_user("a", now).ok().unwrap();
