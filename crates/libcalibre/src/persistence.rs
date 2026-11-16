@@ -113,8 +113,7 @@ pub fn register_sql_functions(conn: &mut SqliteConnection) -> Result<(), diesel:
 /// Run in order as individual statements: `busy_timeout` goes first so the
 /// subsequent WAL switch (which may briefly need a write lock) waits instead of
 /// failing with `SQLITE_BUSY`. WAL plus a non-zero busy timeout removes the
-/// spurious `SQLITE_BUSY` errors that the DB-write + `metadata.opf`-write pair
-/// per book edit can otherwise provoke.
+/// spurious `SQLITE_BUSY` errors that concurrent writers would otherwise see.
 ///
 /// `foreign_keys = ON` is future-proofing: Calibre's schema (including the
 /// custom-column tables) declares no FK constraints today, so enabling

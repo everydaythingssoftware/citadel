@@ -355,6 +355,8 @@ const BOOK_LINKED_TABLES: &[&str] = &[
     "identifiers",
     "annotations",
     "last_read_positions",
+    "metadata_dirtied",
+    "annotations_dirtied",
 ];
 
 /// Delete every database row belonging to `book_id`: the `books` row, its

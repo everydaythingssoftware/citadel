@@ -504,9 +504,7 @@ impl Library {
             }
         }
 
-        // 7. Generate metadata.opf from the freshly written DB state.
         book_queries::touch(&mut self.conn, BookId(book_row.id))?;
-        let _ = self.regenerate_metadata_opf(BookId(book_row.id));
 
         self.get_book(BookId(book_row.id))
     }
@@ -544,33 +542,7 @@ impl Library {
             self.set_book_read_state(book_id, is_read)?;
         }
 
-        // Keep the on-disk metadata.opf faithful to the DB. Best-effort: a
-        // metadata write failure must not fail the (already committed) update.
-        let _ = self.regenerate_metadata_opf(book_id);
-
         self.get_book(book_id)
-    }
-
-    /// Rewrite a book's `metadata.opf` from current DB state (title, authors,
-    /// language codes, …). Called after both add and update so the derived
-    /// file never drifts from the database. Missing files/dirs are surfaced as
-    /// `Err`, but callers treat OPF writes as best-effort.
-    fn regenerate_metadata_opf(&mut self, book_id: BookId) -> Result<(), CalibreError> {
-        let book_row = book_queries::get(&mut self.conn, book_id)?
-            .ok_or(CalibreError::BookNotFound(book_id))?;
-        let author_ids = book_queries::find_authors(&mut self.conn, book_id)?;
-        let authors = author_queries::get_many(&mut self.conn, author_ids)?;
-        let language_codes =
-            crate::queries::languages::find_codes_for_book(&mut self.conn, book_id)?;
-
-        let contents = format_metadata_opf(&book_row, &authors, &language_codes)
-            .map_err(|_| CalibreError::DatabaseIntegrity("Failed to render metadata.opf".into()))?;
-
-        let opf_path = Path::new(&self.db_path.library_path)
-            .join(&book_row.path)
-            .join("metadata.opf");
-        std::fs::write(&opf_path, contents.as_bytes())
-            .map_err(|e| CalibreError::FileSystem(e.to_string()))
     }
 
     pub fn remove_books(&mut self, book_ids: Vec<BookId>) -> Result<Vec<BookId>, CalibreError> {
@@ -1329,77 +1301,6 @@ fn set_custom_value_and_touch(
         book_queries::touch(conn, book_id)?;
     }
     Ok(())
-}
-
-// =============================================================================
-// Metadata OPF generation (ported from calibre_client.rs)
-// =============================================================================
-
-fn format_metadata_opf(
-    book: &crate::entities::book_row::BookRow,
-    authors: &[crate::entities::author::Author],
-    language_codes: &[String],
-) -> Result<String, ()> {
-    let author_sort = book.author_sort.clone().unwrap_or_else(|| {
-        authors
-            .iter()
-            .map(|a| a.name.clone())
-            .collect::<Vec<String>>()
-            .join(", ")
-    });
-
-    let authors_string: String = authors
-        .iter()
-        .map(|author| {
-            format!(
-                "<dc:creator opf:file-as=\"{sortable}\" opf:role=\"aut\">{author}</dc:creator>",
-                sortable = author_sort,
-                author = author.name
-            )
-        })
-        .collect();
-
-    // Calibre emits one <dc:language> per linked language code, falling back to
-    // "und" (undetermined) when the book has none.
-    let languages_string: String = if language_codes.is_empty() {
-        "<dc:language>und</dc:language>".to_string()
-    } else {
-        language_codes
-            .iter()
-            .map(|code| format!("<dc:language>{code}</dc:language>"))
-            .collect()
-    };
-
-    Ok(format!(
-        r#"<?xml version='1.0' encoding='utf-8'?>
-<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
-    <dc:identifier opf:scheme="calibre" id="calibre_id">{calibre_id}</dc:identifier>
-    <dc:identifier opf:scheme="uuid" id="uuid_id">{calibre_uuid}</dc:identifier>
-    <dc:title>{book_title}</dc:title>
-    {authors}
-    <dc:contributor opf:file-as="calibre" opf:role="bkp">citadel (1.0.0) [https://github.com/every-day-things/citadel]</dc:contributor>
-    <dc:date>{pub_date}</dc:date>
-    {languages}
-    <meta name="calibre:timestamp" content="{now}"/>
-    <meta name="calibre:title_sort" content="{book_title_sortable}"/>
-  </metadata>
-  <guide>
-    <reference type="cover" title="Cover" href="cover.jpg"/>
-  </guide>
-</package>"#,
-        calibre_id = book.id,
-        calibre_uuid = book.uuid.as_deref().unwrap_or(""),
-        book_title = book.title,
-        authors = authors_string,
-        languages = languages_string,
-        pub_date = book
-            .pubdate
-            .unwrap_or(chrono::DateTime::UNIX_EPOCH.naive_utc())
-            .to_string(),
-        now = chrono::Utc::now().to_string(),
-        book_title_sortable = book.sort.as_deref().unwrap_or("")
-    ))
 }
 
 fn unique_tag_names<'a>(tag_names: &'a [String]) -> Vec<&'a str> {

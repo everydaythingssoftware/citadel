@@ -318,6 +318,26 @@ pub(crate) fn update(
 }
 
 pub(crate) fn touch(conn: &mut SqliteConnection, book_id: BookId) -> Result<usize, CalibreError> {
+    let touched = bump_last_modified(conn, book_id)?;
+    mark_dirty(conn, &[book_id])?;
+    Ok(touched)
+}
+
+/// Queues books for Calibre's `metadata.opf` backup: Calibre rewrites the
+/// file of each book in `metadata_dirtied`, then removes it from the queue.
+pub(crate) fn mark_dirty(
+    conn: &mut SqliteConnection,
+    book_ids: &[BookId],
+) -> Result<(), CalibreError> {
+    for book_id in book_ids {
+        diesel::sql_query("INSERT OR IGNORE INTO metadata_dirtied (book) VALUES (?)")
+            .bind::<diesel::sql_types::Integer, _>(book_id.as_i32())
+            .execute(conn)?;
+    }
+    Ok(())
+}
+
+fn bump_last_modified(conn: &mut SqliteConnection, book_id: BookId) -> Result<usize, CalibreError> {
     use crate::schema::books::dsl::{books, id, last_modified};
 
     let previous = books
@@ -356,10 +376,11 @@ pub(crate) fn touch_many(
         })
         .unwrap_or_else(|| chrono::Utc::now().naive_utc());
     let ids = book_ids.iter().map(|book_id| book_id.as_i32());
-    diesel::update(books.filter(id.eq_any(ids)))
+    let touched = diesel::update(books.filter(id.eq_any(ids)))
         .set(last_modified.eq(updated_at))
-        .execute(conn)
-        .map_err(CalibreError::from)
+        .execute(conn)?;
+    mark_dirty(conn, book_ids)?;
+    Ok(touched)
 }
 
 pub(crate) fn touch_catalog(conn: &mut SqliteConnection) -> Result<usize, CalibreError> {
@@ -371,7 +392,7 @@ pub(crate) fn touch_catalog(conn: &mut SqliteConnection) -> Result<usize, Calibr
         .first::<i32>(conn)
         .optional()?
     {
-        Some(book_id) => touch(conn, BookId(book_id)),
+        Some(book_id) => bump_last_modified(conn, BookId(book_id)),
         None => Ok(0),
     }
 }
