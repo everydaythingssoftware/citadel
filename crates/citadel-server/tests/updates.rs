@@ -37,7 +37,7 @@ async fn a_newer_release_is_offered_and_kept_through_a_failed_check() {
     let answer: Answer = Arc::new(Mutex::new((StatusCode::OK, release("v0.7.1"))));
     let feed = stand_in(answer.clone()).await;
     let updates = Updates::with_feed("0.7.1", UpdateChecks::On, &feed);
-    let client = reqwest::Client::new();
+    let client = citadel_host::ReqwestHttp::new();
 
     updates.check_now(&client).await.unwrap();
     let status = updates.details();
@@ -70,7 +70,7 @@ async fn drafts_prereleases_and_odd_tags_are_not_offered() {
     let answer: Answer = Arc::new(Mutex::new((StatusCode::OK, Value::Null)));
     let feed = stand_in(answer.clone()).await;
     let updates = Updates::with_feed("0.7.1", UpdateChecks::On, &feed);
-    let client = reqwest::Client::new();
+    let client = citadel_host::ReqwestHttp::new();
     for body in [
         json!({"tag_name": "v9.0.0", "html_url": "x", "published_at": null, "draft": true, "prerelease": false}),
         json!({"tag_name": "v9.0.0-nightly.1", "html_url": "x", "published_at": null, "draft": false, "prerelease": true}),

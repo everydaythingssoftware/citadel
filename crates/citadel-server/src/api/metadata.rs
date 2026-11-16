@@ -160,11 +160,14 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn new(config: MetadataConfig) -> Result<Self, String> {
-        let client = MetadataClient::new(citadel_metadata::ClientOptions {
-            version: env!("CARGO_PKG_VERSION").into(),
-            contact: config.contact.clone(),
-            covers: config.cover_options(),
-        })
+        let client = MetadataClient::new(
+            citadel_metadata::ClientOptions {
+                version: env!("CARGO_PKG_VERSION").into(),
+                contact: config.contact.clone(),
+                covers: config.cover_options(),
+            },
+            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
+        )
         .map_err(|error| error.message)?;
         Ok(Self::with_client(config, client))
     }

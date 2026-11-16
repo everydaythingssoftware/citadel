@@ -127,6 +127,7 @@ fn metadata_at(base: String, config: api::MetadataConfig) -> Arc<api::Metadata> 
                 https_only: false,
             },
         },
+        std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
     )
     .unwrap();
     Arc::new(api::Metadata::with_client(config, client))

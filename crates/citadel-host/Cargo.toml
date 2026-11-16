@@ -7,7 +7,9 @@ description = "Operating-system networking for Citadel's core crates: interfaces
 
 [dependencies]
 axum = "0.8.9"
+citadel-core = { path = "../citadel-core" }
 citadel-opds = { path = "../citadel-opds" }
 netdev = { version = "=0.45.0", default-features = false }
+reqwest = "0.12"
 socket2 = "0.6"
 tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "sync"] }

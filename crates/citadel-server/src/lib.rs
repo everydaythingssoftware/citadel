@@ -737,7 +737,9 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
             ),
         ),
     };
-    access.updates.spawn();
+    access
+        .updates
+        .spawn(Arc::new(citadel_host::ReqwestHttp::new()));
     let staging = match api::Staging::open(
         state_directory.join(UPLOADS_DIRECTORY),
         config.api.uploads.clone(),

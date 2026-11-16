@@ -766,8 +766,10 @@ name = "citadel-host"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "citadel-core",
  "citadel-opds",
  "netdev",
+ "reqwest 0.12.28",
  "socket2",
  "tokio",
 ]
@@ -777,15 +779,17 @@ name = "citadel-metadata"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "citadel-core",
+ "citadel-host",
  "image",
  "log",
  "quick-xml 0.38.4",
- "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sha2",
  "specta",
  "tokio",
+ "url",
  "urlencoding",
  "utoipa",
 ]

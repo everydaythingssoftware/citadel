@@ -7,6 +7,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use citadel_core::http::{HttpClient, HttpRequest};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -166,19 +167,26 @@ impl Updates {
     }
 
     /// Asks once. Failures are logged and leave the last answer in place.
-    pub async fn check_now(&self, client: &reqwest::Client) -> Result<(), String> {
+    pub async fn check_now(&self, client: &dyn HttpClient) -> Result<(), String> {
+        // No version or other detail about this server in the request.
         let response = client
-            .get(&self.feed)
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-            .send()
+            .send(
+                HttpRequest::get(&self.feed)
+                    .header("accept", "application/vnd.github+json")
+                    .header("user-agent", "citadel-server")
+                    .timeout(Duration::from_secs(30))
+                    .follow_redirects(10),
+            )
             .await
             .map_err(|error| format!("could not reach GitHub: {error}"))?;
-        if !response.status().is_success() {
-            return Err(format!("GitHub answered {}", response.status()));
+        if !response.is_success() {
+            return Err(format!("GitHub answered {}", response.status));
         }
-        let release: GitHubRelease = response
-            .json()
+        let body = response
+            .bytes()
             .await
+            .map_err(|error| format!("could not reach GitHub: {error}"))?;
+        let release: GitHubRelease = serde_json::from_slice(&body)
             .map_err(|error| format!("unexpected answer from GitHub: {error}"))?;
         let latest = (!release.draft && !release.prerelease)
             .then(|| {
@@ -209,26 +217,14 @@ impl Updates {
     }
 
     /// Checks now and then daily, while checks are on.
-    pub fn spawn(self: &Arc<Self>) {
+    pub fn spawn(self: &Arc<Self>, client: Arc<dyn HttpClient>) {
         if self.checks != UpdateChecks::On {
             return;
         }
         let updates = self.clone();
         tokio::spawn(async move {
-            // No version or other detail about this server in the request.
-            let client = match reqwest::Client::builder()
-                .user_agent("citadel-server")
-                .timeout(Duration::from_secs(30))
-                .build()
-            {
-                Ok(client) => client,
-                Err(error) => {
-                    eprintln!("citadel_server warning=\"update checks are off: {error}\"");
-                    return;
-                }
-            };
             loop {
-                let wait = match updates.check_now(&client).await {
+                let wait = match updates.check_now(client.as_ref()).await {
                     Ok(()) => CHECK_EVERY,
                     Err(error) => {
                         eprintln!(
