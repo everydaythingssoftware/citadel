@@ -4,6 +4,8 @@ import React, { type PropsWithChildren, useEffect, useCallback } from "react";
 import { DARK_MODE_EVENT_NAME } from "storybook-dark-mode";
 
 import { TooltipProvider } from "../src/components/ui";
+import { setChordPlatform } from "../src/lib/keymap";
+import type { OperatingSystem } from "../src/lib/platform/os";
 import "../src/styles.css";
 
 const STORYBOOK_IFRAME_PADDING_OFFSET = "36px";
@@ -28,7 +30,36 @@ function ColorSchemeWrapper({ children }: PropsWithChildren<unknown>) {
 	return <>{children}</>;
 }
 
+/**
+ * Same attributes main.tsx sets on <html>, switchable from the toolbar so
+ * platform-adaptive components can be compared side by side.
+ */
+function PlatformAttributes({
+	platform,
+	children,
+}: PropsWithChildren<{ platform: string }>) {
+	useEffect(() => {
+		const html = document.documentElement;
+		html.dataset.platform = platform;
+		html.dataset.runtime = "web";
+		setChordPlatform(platform as OperatingSystem);
+	}, [platform]);
+	return <>{children}</>;
+}
+
 const preview: Preview = {
+	globalTypes: {
+		platform: {
+			description: "data-platform on <html>",
+			toolbar: {
+				title: "Platform",
+				icon: "browser",
+				items: ["macos", "windows", "linux", "ios"],
+				dynamicTitle: true,
+			},
+		},
+	},
+	initialGlobals: { platform: "macos" },
 	parameters: {
 		controls: {
 			matchers: {
@@ -38,6 +69,11 @@ const preview: Preview = {
 		},
 	},
 	decorators: [
+		(Story, context) => (
+			<PlatformAttributes platform={String(context.globals.platform ?? "macos")}>
+				<Story />
+			</PlatformAttributes>
+		),
 		(Story) => (
 			<ColorSchemeWrapper>
 				{/* Same provider the app mounts in App.tsx. */}

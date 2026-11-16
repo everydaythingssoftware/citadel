@@ -88,7 +88,9 @@ interface PathWellProps {
 const PathWell = ({ path, home, bad = false, change }: PathWellProps) => (
 	<div className={clsx(styles.well, bad && styles.wellBad)}>
 		<FolderGlyph />
-		<span className={styles.pathText}>{abbreviateHomePath(path, home)}</span>
+		<span className={styles.pathText} data-selectable>
+			{abbreviateHomePath(path, home)}
+		</span>
 		{change && (
 			<Button
 				variant="subtle"

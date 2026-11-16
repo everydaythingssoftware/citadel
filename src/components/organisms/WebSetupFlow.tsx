@@ -124,7 +124,9 @@ const AddressView = ({
 					{urls.listed.map((url) => (
 						<li key={url}>
 							<GlobeGlyph />
-							<span className={styles.urlListText}>{url}</span>
+							<span className={styles.urlListText} data-selectable>
+								{url}
+							</span>
 							{url === urls.current && (
 								<span className={styles.currentPill}>current</span>
 							)}
@@ -173,7 +175,9 @@ const AddressView = ({
 				<div className={styles.currentUrl}>
 					<span className={styles.currentUrlLabel}>Current URL</span>
 					<div className={styles.currentUrlRow}>
-						<code className={styles.currentUrlValue}>{current}</code>
+						<code className={styles.currentUrlValue} data-selectable>
+							{current}
+						</code>
 						<Button
 							variant="subtle"
 							className={styles.copyButton}
@@ -263,7 +267,11 @@ const BrowserPanel = ({
 				>
 					<UpGlyph />
 				</Button>
-				<span className={styles.browserPath} title={browser.path}>
+				<span
+					className={styles.browserPath}
+					title={browser.path}
+					data-selectable
+				>
 					{browser.path}
 				</span>
 			</div>
@@ -580,7 +588,7 @@ const ConfirmView = ({
 			</h1>
 			<div className={styles.pathLine}>
 				<FolderGlyph />
-				<span>{path}</span>
+				<span data-selectable>{path}</span>
 			</div>
 			<div className={styles.field}>
 				<TextInput
@@ -658,7 +666,7 @@ const BrokenView = ({
 			<h1 className={card.title}>{library.name} isn’t reachable</h1>
 			<div className={styles.pathLine}>
 				<FolderGlyph />
-				<span>{library.path}</span>
+				<span data-selectable>{library.path}</span>
 			</div>
 			<p className={styles.problem}>
 				{library.problem ??

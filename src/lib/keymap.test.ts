@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeymapDispatchEventLike } from "./keymap";
 import {
 	NO_SELECTION,
@@ -7,6 +7,8 @@ import {
 	isEditableTarget,
 	moveSelection,
 	parseChord,
+	setChordPlatform,
+	usesCommandKey,
 } from "./keymap";
 
 const makeEvent = (
@@ -20,11 +22,16 @@ const makeEvent = (
 	...overrides,
 });
 
+// The default `mod` for calls that don't name a platform: ⌘, as on a Mac.
+beforeEach(() => setChordPlatform("macos"));
+afterEach(() => setChordPlatform("other"));
+
 describe("parseChord", () => {
 	it("parses a bare key with no modifiers", () => {
 		expect(parseChord("escape")).toEqual({
 			key: "escape",
 			mod: false,
+			ctrl: false,
 			shift: false,
 			alt: false,
 		});
@@ -34,6 +41,7 @@ describe("parseChord", () => {
 		expect(parseChord("mod+f")).toEqual({
 			key: "f",
 			mod: true,
+			ctrl: false,
 			shift: false,
 			alt: false,
 		});
@@ -43,6 +51,7 @@ describe("parseChord", () => {
 		expect(parseChord("mod+shift+alt+k")).toEqual({
 			key: "k",
 			mod: true,
+			ctrl: false,
 			shift: true,
 			alt: true,
 		});
@@ -52,6 +61,7 @@ describe("parseChord", () => {
 		expect(parseChord("Mod+F")).toEqual({
 			key: "f",
 			mod: true,
+			ctrl: false,
 			shift: false,
 			alt: false,
 		});
@@ -60,6 +70,38 @@ describe("parseChord", () => {
 	it("parses digit and arrow chords", () => {
 		expect(parseChord("mod+1").key).toBe("1");
 		expect(parseChord("arrowdown").key).toBe("arrowdown");
+	});
+
+	it("parses Ctrl apart from mod", () => {
+		expect(parseChord("mod+ctrl+s")).toEqual({
+			key: "s",
+			mod: true,
+			ctrl: true,
+			shift: false,
+			alt: false,
+		});
+	});
+
+	it("parses Alt with arrows and Enter", () => {
+		expect(parseChord("alt+arrowleft")).toEqual({
+			key: "arrowleft",
+			mod: false,
+			ctrl: false,
+			shift: false,
+			alt: true,
+		});
+		expect(parseChord("alt+enter")).toMatchObject({ key: "enter", alt: true });
+	});
+});
+
+describe("usesCommandKey", () => {
+	it("is Apple's keyboards only", () => {
+		expect(usesCommandKey("macos")).toBe(true);
+		expect(usesCommandKey("ios")).toBe(true);
+		expect(usesCommandKey("windows")).toBe(false);
+		expect(usesCommandKey("linux")).toBe(false);
+		expect(usesCommandKey("android")).toBe(false);
+		expect(usesCommandKey("other")).toBe(false);
 	});
 });
 
@@ -80,14 +122,60 @@ describe("eventMatchesChord", () => {
 		);
 	});
 
-	it("treats mod as meta OR ctrl", () => {
+	it("treats mod as ⌘ alone on macOS", () => {
+		const f = (overrides: Partial<KeymapDispatchEventLike>) =>
+			eventMatchesChord(
+				makeEvent({ key: "f", ...overrides }),
+				"mod+f",
+				"macos",
+			);
+		expect(f({ metaKey: true })).toBe(true);
+		expect(f({ ctrlKey: true })).toBe(false);
+		expect(f({ metaKey: true, ctrlKey: true })).toBe(false);
+		expect(f({})).toBe(false);
+	});
+
+	it("treats mod as Ctrl alone on Windows and Linux", () => {
+		for (const os of ["windows", "linux"] as const) {
+			const f = (overrides: Partial<KeymapDispatchEventLike>) =>
+				eventMatchesChord(makeEvent({ key: "f", ...overrides }), "mod+f", os);
+			expect(f({ ctrlKey: true })).toBe(true);
+			expect(f({ metaKey: true })).toBe(false);
+			expect(f({ metaKey: true, ctrlKey: true })).toBe(false);
+		}
+	});
+
+	it("uses the platform set at startup when none is given", () => {
+		const undo = makeEvent({ key: "z", ctrlKey: true });
+		expect(eventMatchesChord(undo, "mod+z")).toBe(false);
+		setChordPlatform("windows");
+		expect(eventMatchesChord(undo, "mod+z")).toBe(true);
+	});
+
+	it("keeps Ctrl a key of its own on macOS", () => {
+		const event = makeEvent({ key: "s", metaKey: true, ctrlKey: true });
+		expect(eventMatchesChord(event, "mod+ctrl+s", "macos")).toBe(true);
+		expect(eventMatchesChord(event, "mod+s", "macos")).toBe(false);
+	});
+
+	it("matches Alt with arrows and Enter", () => {
 		expect(
-			eventMatchesChord(makeEvent({ key: "f", metaKey: true }), "mod+f"),
+			eventMatchesChord(
+				makeEvent({ key: "ArrowLeft", altKey: true }),
+				"alt+arrowleft",
+				"windows",
+			),
 		).toBe(true);
 		expect(
-			eventMatchesChord(makeEvent({ key: "f", ctrlKey: true }), "mod+f"),
+			eventMatchesChord(
+				makeEvent({ key: "Enter", altKey: true }),
+				"alt+enter",
+				"linux",
+			),
 		).toBe(true);
-		expect(eventMatchesChord(makeEvent({ key: "f" }), "mod+f")).toBe(false);
+		expect(
+			eventMatchesChord(makeEvent({ key: "Enter" }), "alt+enter", "linux"),
+		).toBe(false);
 	});
 
 	it("requires exact modifiers", () => {
@@ -120,6 +208,25 @@ describe("eventMatchesChord", () => {
 		).toBe(true);
 	});
 
+	it("names the space bar “space”", () => {
+		expect(eventMatchesChord(makeEvent({ key: " " }), "space")).toBe(true);
+		expect(
+			eventMatchesChord(makeEvent({ key: " ", shiftKey: true }), "space"),
+		).toBe(false);
+	});
+
+	it("matches shifted letters and arrows", () => {
+		expect(
+			eventMatchesChord(makeEvent({ key: "A", metaKey: true }), "mod+a"),
+		).toBe(true);
+		expect(
+			eventMatchesChord(
+				makeEvent({ key: "ArrowLeft", shiftKey: true }),
+				"shift+arrowleft",
+			),
+		).toBe(true);
+	});
+
 	it("does not match a different key", () => {
 		expect(
 			eventMatchesChord(makeEvent({ key: "g", metaKey: true }), "mod+f"),
@@ -147,6 +254,15 @@ describe("isEditableTarget", () => {
 		expect(isEditableTarget({ tagName: "DIV", isContentEditable: true })).toBe(
 			true,
 		);
+	});
+
+	it("is false for inputs that take no typing", () => {
+		expect(isEditableTarget({ tagName: "INPUT", type: "checkbox" })).toBe(
+			false,
+		);
+		expect(isEditableTarget({ tagName: "INPUT", type: "Radio" })).toBe(false);
+		expect(isEditableTarget({ tagName: "INPUT", type: "search" })).toBe(true);
+		expect(isEditableTarget({ tagName: "INPUT", type: "text" })).toBe(true);
 	});
 
 	it("is false for ordinary elements", () => {
@@ -263,6 +379,14 @@ describe("createKeymapHandler", () => {
 		expect(handled).toBe(true);
 		expect(onMatch).toHaveBeenCalledTimes(1);
 		expect(preventDefault).toHaveBeenCalledTimes(1);
+	});
+
+	it("matches for the platform it is given", () => {
+		const onMatch = vi.fn();
+		const handler = createKeymapHandler([{ chord: "mod+s", onMatch }], "linux");
+		expect(handler(makeEvent({ key: "s", metaKey: true }))).toBe(false);
+		expect(handler(makeEvent({ key: "s", ctrlKey: true }))).toBe(true);
+		expect(onMatch).toHaveBeenCalledTimes(1);
 	});
 
 	it("falls past editable-skipped bindings to a later allowInEditable match", () => {

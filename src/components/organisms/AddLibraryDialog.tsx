@@ -88,7 +88,7 @@ export const AddLibraryDialog = ({ step, send }: AddLibraryDialogProps) => {
 const FolderPath = ({ path }: { path: string }) => {
 	const segments = path.split(/(?<=[\\/])/);
 	return (
-		<span className={styles.path}>
+		<span className={styles.path} data-selectable>
 			{segments.map((segment, index) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: segments are positional and can repeat.
 				<Fragment key={index}>
