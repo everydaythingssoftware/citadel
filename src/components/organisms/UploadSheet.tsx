@@ -9,8 +9,8 @@ import {
 	DialogCloseButton,
 	HoldButton,
 	IconButton,
+	Tooltip,
 } from "@/components/ui";
-import { ignorePopoverInteractOutside } from "@/components/ui/popover-interop";
 import { useFollowNewest } from "@/lib/hooks/use-follow-newest";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
 import {
@@ -79,8 +79,7 @@ export const UploadSheet = ({
 				<Dialog.Content
 					className={styles.content}
 					aria-describedby={undefined}
-					onPointerDownOutside={ignorePopoverInteractOutside}
-					onInteractOutside={ignorePopoverInteractOutside}
+					onInteractOutside={(event) => event.preventDefault()}
 				>
 					{/* Phones get an iOS navigation bar: Done, the title, and +. */}
 					<div
@@ -101,13 +100,15 @@ export const UploadSheet = ({
 							</span>
 						)}
 						{!reviewing && items.length > 0 && (
-							<IconButton
-								className={styles.addMore}
-								aria-label="Choose more books"
-								onClick={onChooseFiles}
-							>
-								<PlusGlyph />
-							</IconButton>
+							<Tooltip label="Choose more books…">
+								<IconButton
+									className={styles.addMore}
+									aria-label="Choose more books"
+									onClick={onChooseFiles}
+								>
+									<PlusGlyph />
+								</IconButton>
+							</Tooltip>
 						)}
 						<Dialog.Close asChild>
 							<DialogCloseButton className={styles.close} />

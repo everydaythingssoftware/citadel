@@ -36,7 +36,7 @@
 
 /* Same halo as TextInput, driven by the inner input's focus. */
 .field:focus-within {
-	border-color: var(--ctd-accent);
+	border-color: var(--ctd-focus-border);
 	box-shadow: var(--ctd-focus-shadow);
 }
 

@@ -108,6 +108,7 @@
 	--ctd-content-bg: var(--pal-base);
 	--ctd-radius-panel: 10px;
 	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.3);
+	--ctd-focus-border: var(--ctd-accent);
 	--ctd-scrollbar-thumb: oklch(from var(--pal-text) l c h / 0.4);
 	--ctd-control-shadow: 0 0.5px 1.5px oklch(0% 0 0 / 0.12);
 	--ctd-field-inner-shadow: inset 0 0.5px 1px oklch(0% 0 0 / 0.05);
@@ -134,8 +135,9 @@
 	--ctd-control-active-shadow: var(--ctd-control-shadow);
 	--ctd-focus-shadow: 0 0 0 2px var(--ctd-focus-ring);
 	/* One height for every regular control: fields, pop-ups and buttons line
-	   up on any row they share. */
-	--ctd-control-height: 28px;
+	   up on any row they share. 24px with 13px text, like a regular AppKit
+	   control; touch screens raise it below. */
+	--ctd-control-height: 24px;
 	/* Space between a field's label and its box, the same for every field. */
 	--ctd-field-label-gap: 6px;
 	/* Switches stay in the marble palette: ink for on, stone for off. */
@@ -151,7 +153,9 @@
 	--ctd-dialog-shadow: var(--ctd-shadow-lift);
 
 	font-family: var(--ctd-font-ui);
-	font-size: 14px;
+	/* A share of the reader's default size, so a larger browser or system
+	   text setting scales the whole UI: 14px at the usual 16px. */
+	font-size: 87.5%;
 	line-height: 1.45;
 	font-weight: 400;
 
@@ -261,6 +265,7 @@
 		0 2px 6px oklch(0% 0 0 / 0.45), 0 16px 32px oklch(0% 0 0 / 0.5);
 	--ctd-content-bg: var(--pal-base);
 	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.4);
+	--ctd-focus-border: var(--ctd-accent);
 	/* On is the near-white ink with a dark knob; off is a dim stone with a
 	   dimmed knob, so it doesn't glow. */
 	--ctd-success: oklch(74% 0.13 150);
@@ -290,6 +295,85 @@
 
 :root[data-vibrancy][data-theme="dark"] {
 	--ctd-shell-gradient: oklch(from var(--pal-base) l c h / 0.12);
+}
+
+/*
+ * Type scale: font sizes come from these steps (some older rules still
+ * use raw values), in rem so they follow the root size above. 1rem is the
+ * root, 14px at the usual 16px browser default, so each step is its size
+ * at that default over 14.
+ *   2xs  11px  pills, tags, sidebar section headings
+ *   xs   12px  secondary lines, small controls
+ *   sm   13px  controls, menus, rows, group titles
+ *   base 14px  body text
+ *   md   15px  touch-sized rows and menus
+ *   lg   17px  headings; phone-sized text
+ *   xl   22px  a compact book title
+ *   2xl  24px  a book title
+ */
+:root {
+	--ctd-text-2xs: calc(11rem / 14); /* 11px */
+	--ctd-text-xs: calc(12rem / 14); /* 12px */
+	--ctd-text-sm: calc(13rem / 14); /* 13px */
+	--ctd-text-base: 1rem; /* 14px */
+	--ctd-text-md: calc(15rem / 14); /* 15px */
+	--ctd-text-lg: calc(17rem / 14); /* 17px */
+	--ctd-text-xl: calc(22rem / 14); /* 22px */
+	--ctd-text-2xl: calc(24rem / 14); /* 24px */
+}
+
+/*
+ * Menus (ContextMenu, Select's pop-up list) share one material and one
+ * highlight, so every menu in the app reads alike. Generic: an opaque
+ * surface with a quiet grey highlight. macOS: NSMenu's glass, compact 22px
+ * rows inset in a 10px-round panel, and an ink highlight (the monochrome
+ * stand-in for the system's selection fill, never the accent colour).
+ */
+:root {
+	--ctd-menu-bg: var(--ctd-surface-strong);
+	--ctd-menu-bg-opaque: var(--ctd-surface-strong);
+	--ctd-menu-backdrop: none;
+	--ctd-menu-border: var(--ctd-border);
+	--ctd-menu-inner-highlight: transparent;
+	--ctd-menu-radius: 8px;
+	--ctd-menu-padding: 4px;
+	--ctd-menu-item-radius: 4px;
+	--ctd-menu-item-height: 26px;
+	--ctd-menu-item-pad-x: 10px;
+	--ctd-menu-font-size: var(--ctd-text-sm);
+	--ctd-menu-highlight-bg: var(--ctd-nav-hover-bg);
+	--ctd-menu-highlight-text: var(--ctd-ink);
+	--ctd-menu-danger-highlight-bg: oklch(from var(--ctd-danger-bg) l c h / 0.14);
+	--ctd-menu-danger-highlight-text: var(--ctd-danger-ink);
+}
+
+:root[data-platform="macos"] {
+	--ctd-menu-bg: oklch(from var(--pal-base) l c h / 0.72);
+	--ctd-menu-backdrop: blur(24px) saturate(1.8);
+	--ctd-menu-border: oklch(from var(--pal-text) l c h / 0.12);
+	--ctd-menu-radius: 10px;
+	--ctd-menu-padding: 5px;
+	--ctd-menu-item-radius: 5px;
+	--ctd-menu-item-height: 22px;
+	--ctd-menu-item-pad-x: 9px;
+	--ctd-menu-highlight-bg: var(--ctd-accent);
+	--ctd-menu-highlight-text: var(--ctd-accent-text);
+	--ctd-menu-danger-highlight-bg: var(--ctd-danger-bg);
+	--ctd-menu-danger-highlight-text: var(--ctd-danger-text);
+}
+
+:root[data-platform="macos"][data-theme="dark"] {
+	--ctd-menu-bg: oklch(from var(--pal-surface0) l c h / 0.62);
+	--ctd-menu-border: oklch(0% 0 0 / 0.5);
+	--ctd-menu-inner-highlight: oklch(100% 0 0 / 0.12);
+}
+
+@media (pointer: coarse) {
+	:root,
+	:root[data-platform] {
+		--ctd-menu-item-height: 36px;
+		--ctd-menu-font-size: var(--ctd-text-md);
+	}
 }
 
 body {

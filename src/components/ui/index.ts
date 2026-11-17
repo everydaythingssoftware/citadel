@@ -3,7 +3,7 @@ export { Button, type ButtonProps } from "./Button";
 export { Checkbox, type CheckboxProps } from "./Checkbox";
 export {
 	ContextMenu,
-	type ContextMenuItem,
+	type ContextMenuEntry,
 	type ContextMenuProps,
 	type ContextMenuState,
 } from "./ContextMenu";

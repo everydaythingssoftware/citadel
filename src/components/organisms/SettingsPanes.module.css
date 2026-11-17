@@ -250,10 +250,8 @@
 	border-radius: var(--ctd-radius-capsule);
 	background-color: color-mix(in oklch, var(--ctd-brass) 16%, transparent);
 	color: color-mix(in oklch, var(--ctd-brass) 80%, var(--ctd-ink));
-	font-size: 0.78125rem;
+	font-size: var(--ctd-text-2xs);
 	font-weight: 600;
-	font-variant: all-small-caps;
-	letter-spacing: 0.05em;
 	line-height: 1;
 }
 

@@ -445,7 +445,7 @@ const PublicUrlLine = ({
 		<span className={classes.urlText} data-selectable>
 			{url}
 		</span>
-		{current && <span className={classes.currentPill}>current</span>}
+		{current && <span className={classes.currentPill}>Current</span>}
 		{always && (
 			<Tooltip label="Always included" openDelay={150}>
 				<button
