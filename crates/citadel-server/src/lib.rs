@@ -4,6 +4,7 @@ pub mod api;
 pub mod environment;
 pub mod release;
 pub mod served;
+pub mod shell;
 pub mod updates;
 
 use std::{
@@ -419,6 +420,16 @@ pub fn load(source: &ConfigSource) -> Result<ServerConfig, String> {
 /// Asks the server listening where `config` says whether it can serve, and
 /// prints the checks that aren't fine.
 pub async fn health(config: &ServerConfig) -> Result<(), String> {
+    health_with(config, &citadel_host::ReqwestHttp::new())
+        .await
+        .map(|summary| println!("{summary}"))
+}
+
+/// [`health`] through `http`; returns the line to print when it is healthy.
+pub async fn health_with(
+    config: &ServerConfig,
+    http: &dyn citadel_core::http::HttpClient,
+) -> Result<String, String> {
     let mut address = config.api.listen;
     if address.ip().is_unspecified() {
         address.set_ip(match address {
@@ -427,16 +438,18 @@ pub async fn health(config: &ServerConfig) -> Result<(), String> {
         });
     }
     let url = format!("http://{address}/api/health");
-    let response = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|error| error.to_string())?
-        .get(&url)
-        .send()
+    let response = http
+        .send(citadel_core::http::HttpRequest::get(&url).timeout(Duration::from_secs(5)))
         .await
         .map_err(|error| format!("no answer from {url}: {error}"))?;
-    let status = response.status();
-    let body: serde_json::Value = response.json().await.unwrap_or_default();
+    let status = response.status;
+    let healthy = response.is_success();
+    let body: serde_json::Value = response
+        .bytes()
+        .await
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
     let unwell: Vec<String> = body["checks"]
         .as_array()
         .into_iter()
@@ -455,9 +468,8 @@ pub async fn health(config: &ServerConfig) -> Result<(), String> {
         body["status"].as_str().unwrap_or("unknown"),
         unwell.join(" ")
     );
-    if status.is_success() {
-        println!("citadel_server {}", summary.trim_end());
-        Ok(())
+    if healthy {
+        Ok(format!("citadel_server {}", summary.trim_end()))
     } else {
         Err(format!("{url} answered {status}: {}", summary.trim_end()))
     }
@@ -597,19 +609,20 @@ pub(crate) fn open_accounts(config: &ServerConfig) -> Result<(PathBuf, CitadelSt
 fn open_secrets(
     state_directory: &Path,
     accounts: &CitadelStore,
+    log: &dyn shell::ServerLog,
 ) -> Result<Arc<citadel_core::vault::Vault>, String> {
     let vault = citadel_core::vault::Vault::open_or_create(&citadel_core::vault::directory(
         state_directory,
     ))?;
     match accounts.unreadable_provider_credentials(&vault) {
         Ok(0) => {}
-        Ok(count) => eprintln!(
+        Ok(count) => log.warn(format!(
             "citadel_server warning=\"{count} saved provider key(s) were sealed with a different \
              vault key and must be entered again by their users\""
-        ),
-        Err(error) => {
-            eprintln!("citadel_server warning=\"could not check provider keys: {error}\"")
-        }
+        )),
+        Err(error) => log.warn(format!(
+            "citadel_server warning=\"could not check provider keys: {error}\""
+        )),
     }
     Ok(Arc::new(vault))
 }
@@ -628,16 +641,33 @@ fn opds_users(
         .map_err(|error| error.to_string())
 }
 
+/// Serves until the process is signalled to stop.
 pub async fn run(config: ServerConfig) -> Result<(), String> {
+    run_in(config, shell::Shell::system()).await
+}
+
+/// Serves until `shell.shutdown` completes, reaching the outside world only
+/// through `shell`.
+pub async fn run_in(config: ServerConfig, shell: shell::Shell) -> Result<(), String> {
+    let shell::Shell {
+        opds_host,
+        http,
+        api: api_listener,
+        log,
+        shutdown,
+        check_now,
+    } = shell;
     validate_config(&config)?;
-    println!(
+    log.info(format!(
         "citadel_server version={} commit={}",
         release::VERSION,
         release::COMMIT
-    );
+    ));
     let (state_directory, accounts) = match open_accounts(&config) {
         Ok(opened) => opened,
-        Err(reason) => return serve_unavailable(&config, reason).await,
+        Err(reason) => {
+            return serve_unavailable(&config, reason, api_listener.as_ref(), &*log, shutdown).await
+        }
     };
     let accounts = Arc::new(accounts);
     let source = Arc::new(CalibreCatalogSource::empty());
@@ -656,20 +686,19 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     );
     let open_at = browser_address(&config, &addresses);
     match served.open_registered()? {
-        Some(info) if info.available => println!(
+        Some(info) if info.available => log.info(format!(
             "citadel_server library={} path={}",
-            info.name,
-            info.path
-        ),
-        Some(info) => eprintln!(
+            info.name, info.path
+        )),
+        Some(info) => log.warn(format!(
             "citadel_server warning=\"library {} at {} is unavailable: {}\"",
             info.name,
             info.path,
             info.problem.unwrap_or_default()
-        ),
-        None => println!(
+        )),
+        None => log.info(format!(
             "citadel_server library=none message=\"No library yet; an administrator sets one up at {open_at}\""
-        ),
+        )),
     }
     let setup_code = if accounts
         .administrator_exists()
@@ -678,29 +707,32 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         None
     } else {
         let code = generate_setup_code();
-        println!("{}", setup_code_announcement(&code, &open_at));
+        log.info(setup_code_announcement(&code, &open_at));
         Some(code)
     };
 
-    let (readers, users) = OpdsReaders::open(accounts.clone(), {
-        let served = served.clone();
-        move || served.library_id()
-    })?;
+    let (readers, users) = OpdsReaders::open(
+        accounts.clone(),
+        {
+            let served = served.clone();
+            move || served.library_id()
+        },
+        log.clone(),
+    )?;
     let readers = Arc::new(readers);
-    let service = OpdsService::with_ephemeral_credentials(
-        source.clone(),
-        users.clone(),
-        Arc::new(citadel_host::SystemHost),
-    );
+    let service = OpdsService::with_ephemeral_credentials(source.clone(), users.clone(), opds_host);
     let mut status_changes = service.subscribe();
     service.refresh_credentials_with({
         let readers = readers.clone();
         move |update| readers.refresh(|users| update.replace(users))
     });
     let touched = accounts.clone();
+    let warn = log.clone();
     service.on_device_key_used(move |key_id| {
         if let Err(error) = touched.touch_device_key(key_id) {
-            eprintln!("citadel_server warning=\"could not record device key use: {error}\"");
+            warn.warn(format!(
+                "citadel_server warning=\"could not record device key use: {error}\""
+            ));
         }
     });
     let mut opds_started = false;
@@ -709,13 +741,14 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         &config,
         source.is_open() && !users.is_empty(),
         &mut opds_started,
+        &*log,
     )
     .await?;
     if let Some(status) = status_changes.take_change() {
-        log_status(&status);
+        log_status(&*log, &status);
     }
 
-    let secrets = match open_secrets(&state_directory, &accounts) {
+    let secrets = match open_secrets(&state_directory, &accounts, &*log) {
         Ok(secrets) => secrets,
         Err(error) => {
             service.stop().await;
@@ -737,9 +770,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
             ),
         ),
     };
-    access
-        .updates
-        .spawn(Arc::new(citadel_host::ReqwestHttp::new()));
+    access.updates.spawn(http.clone());
     let staging = match api::Staging::open(
         state_directory.join(UPLOADS_DIRECTORY),
         config.api.uploads.clone(),
@@ -750,7 +781,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
             return Err(error);
         }
     };
-    let metadata = match api::Metadata::new(config.api.metadata.clone()) {
+    let metadata = match api::Metadata::new(config.api.metadata.clone(), http) {
         Ok(metadata) => Arc::new(metadata),
         Err(error) => {
             service.stop().await;
@@ -765,14 +796,14 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         staging,
         metadata,
     );
-    let mut api = match api::start(&config.api, router).await {
+    let mut api = match api_listener.start(config.api.listen, router).await {
         Ok(api) => {
             let known: Vec<String> = addresses
                 .all()
                 .into_iter()
                 .map(|address| address.origin().to_string())
                 .collect();
-            println!(
+            log.info(format!(
                 "citadel_server api=http://{} public_urls={}",
                 config.api.listen,
                 if known.is_empty() {
@@ -780,7 +811,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
                 } else {
                     known.join(",")
                 }
-            );
+            ));
             api
         }
         Err(error) => {
@@ -795,7 +826,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     let mut interval = tokio::time::interval(Duration::from_secs(2));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     interval.tick().await;
-    let mut shutdown = Box::pin(shutdown_signal());
+    let mut shutdown = shutdown;
     loop {
         tokio::select! {
             result = &mut shutdown => {
@@ -806,14 +837,15 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
                 service.stop().await;
                 return Err(error);
             }
-            Some(status) = status_changes.next() => log_status(&status),
+            Some(status) = status_changes.next() => log_status(&*log, &status),
             () = async {
                 tokio::select! {
                     _ = interval.tick() => {}
                     () = served.changed() => {}
+                    () = check_now.notified() => {}
                 }
             } => {
-                if let Err(error) = reconcile(&service, &readers, &source, &config, &mut opds_started).await {
+                if let Err(error) = reconcile(&service, &readers, &source, &config, &mut opds_started, &*log).await {
                     api.stop().await;
                     service.stop().await;
                     return Err(error);
@@ -824,26 +856,32 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
 
     api.stop().await;
     let stopped = service.stop().await;
-    log_status(&stopped);
+    log_status(&*log, &stopped);
     Ok(())
 }
 
 /// `citadel.db` can't be opened. Rather than exit (and, under a restart
 /// policy, loop), keep answering until stopped: health fails with the
 /// reason and the browser shows it. Exits with the reason once stopped.
-async fn serve_unavailable(config: &ServerConfig, reason: String) -> Result<(), String> {
-    eprintln!(
+async fn serve_unavailable(
+    config: &ServerConfig,
+    reason: String,
+    api_listener: &dyn shell::ApiListener,
+    log: &dyn shell::ServerLog,
+    shutdown: shell::ShellFuture<Result<(), String>>,
+) -> Result<(), String> {
+    log.warn(format!(
         "citadel_server error=\"{reason}\" message=\"Citadel can't open its database. It \
          keeps answering so health checks and the browser show this; fix it and restart.\""
-    );
+    ));
     let router = api::unavailable_router(reason.clone(), config.api.web_directory.as_deref());
-    let mut api = api::start(&config.api, router).await?;
-    println!(
+    let mut api = api_listener.start(config.api.listen, router).await?;
+    log.info(format!(
         "citadel_server api=http://{} health=failing",
         config.api.listen
-    );
+    ));
     tokio::select! {
-        result = shutdown_signal() => result?,
+        result = shutdown => result?,
         error = api.wait() => return Err(error),
     }
     api.stop().await;
@@ -920,6 +958,7 @@ async fn ensure_opds_started(
     config: &ServerConfig,
     ready: bool,
     started: &mut bool,
+    log: &dyn shell::ServerLog,
 ) -> Result<(), String> {
     if *started || !ready {
         return Ok(());
@@ -929,7 +968,7 @@ async fn ensure_opds_started(
         .await
         .map_err(|error| error.message)?;
     if is_fatal_startup(&status) {
-        log_status(&status);
+        log_status(log, &status);
         return Err(status
             .error
             .map(|error| error.message)
@@ -944,6 +983,7 @@ async fn ensure_opds_started(
 /// before every sign-in, so a change applies to the next request.
 struct OpdsReaders {
     accounts: Arc<CitadelStore>,
+    log: Arc<dyn shell::ServerLog>,
     library_id: Box<dyn Fn() -> Option<String> + Send + Sync>,
     seen: Mutex<Seen>,
 }
@@ -960,12 +1000,14 @@ impl OpdsReaders {
     fn open(
         accounts: Arc<CitadelStore>,
         library_id: impl Fn() -> Option<String> + Send + Sync + 'static,
+        log: Arc<dyn shell::ServerLog>,
     ) -> Result<(Self, Vec<DeviceKeyVerifier>), String> {
         let version = accounts.version().map_err(|error| error.to_string())?;
         let library = library_id();
         let users = opds_users(&accounts, library.as_deref())?;
         let readers = Self {
             accounts,
+            log,
             library_id: Box::new(library_id),
             seen: Mutex::new(Seen {
                 at: (version, library),
@@ -1006,7 +1048,9 @@ impl OpdsReaders {
             }
             Err(error) => {
                 if seen.failure.as_ref() != Some(&error) {
-                    eprintln!("citadel_server warning=\"could not refresh OPDS users: {error}\"");
+                    self.log.warn(format!(
+                        "citadel_server warning=\"could not refresh OPDS users: {error}\""
+                    ));
                     seen.failure = Some(error);
                 }
             }
@@ -1022,6 +1066,7 @@ async fn reconcile(
     source: &CalibreCatalogSource,
     config: &ServerConfig,
     started: &mut bool,
+    log: &dyn shell::ServerLog,
 ) -> Result<(), String> {
     let (refreshed, refreshing) = (service.clone(), readers.clone());
     let _ = tokio::task::spawn_blocking(move || {
@@ -1029,7 +1074,7 @@ async fn reconcile(
     })
     .await;
     let ready = source.is_open() && service.credential_status().configured;
-    ensure_opds_started(service, config, ready, started).await
+    ensure_opds_started(service, config, ready, started, log).await
 }
 
 fn is_fatal_startup(status: &OpdsServiceStatus) -> bool {
@@ -1039,7 +1084,7 @@ fn is_fatal_startup(status: &OpdsServiceStatus) -> bool {
     )
 }
 
-fn log_status(status: &OpdsServiceStatus) {
+fn log_status(log: &dyn shell::ServerLog, status: &OpdsServiceStatus) {
     let urls = if status.urls.is_empty() {
         "-".to_string()
     } else {
@@ -1055,7 +1100,7 @@ fn log_status(status: &OpdsServiceStatus) {
         .as_ref()
         .map(|error| format!("{:?}", error.message))
         .unwrap_or_else(|| "-".to_string());
-    println!(
+    log.info(format!(
         "citadel_server state={:?} port={} urls={} error={} message={}",
         status.state,
         status
@@ -1066,11 +1111,11 @@ fn log_status(status: &OpdsServiceStatus) {
         urls,
         error_code,
         message
-    );
+    ));
 }
 
 #[cfg(unix)]
-async fn shutdown_signal() -> Result<(), String> {
+pub(crate) async fn shutdown_signal() -> Result<(), String> {
     use tokio::signal::unix::{signal, SignalKind};
 
     let mut interrupt = signal(SignalKind::interrupt())
@@ -1084,7 +1129,7 @@ async fn shutdown_signal() -> Result<(), String> {
 }
 
 #[cfg(not(unix))]
-async fn shutdown_signal() -> Result<(), String> {
+pub(crate) async fn shutdown_signal() -> Result<(), String> {
     tokio::signal::ctrl_c()
         .await
         .map_err(|error| format!("could not install Ctrl-C handler: {error}"))
@@ -1117,10 +1162,14 @@ mod tests {
                 .register_library("library", &directory.path().join("books"), None)
                 .unwrap();
             let served = Arc::new(Mutex::new(Some("library".to_string())));
-            let (readers, users) = OpdsReaders::open(accounts.clone(), {
-                let served = served.clone();
-                move || served.lock().unwrap().clone()
-            })
+            let (readers, users) = OpdsReaders::open(
+                accounts.clone(),
+                {
+                    let served = served.clone();
+                    move || served.lock().unwrap().clone()
+                },
+                Arc::new(shell::StdLog),
+            )
             .unwrap();
             assert!(users.is_empty());
             assert_eq!(installed(&readers), None, "nothing changed");
