@@ -100,6 +100,8 @@ pub struct Staging {
     directory: PathBuf,
     config: UploadConfig,
     uploads: Mutex<HashMap<String, Upload>>,
+    /// Signalled whenever an upload stops being busy.
+    released: tokio::sync::Notify,
     now: Box<dyn Fn() -> SystemTime + Send + Sync>,
 }
 
@@ -220,6 +222,7 @@ impl Staging {
             }
         }
         let staging = Self {
+            released: tokio::sync::Notify::new(),
             directory,
             config,
             uploads: Mutex::default(),
@@ -657,6 +660,7 @@ impl Drop for Committing {
                 upload.last_active = (self.staging.now)();
             }
         }
+        self.staging.released.notify_waiters();
     }
 }
 
@@ -743,6 +747,7 @@ impl Drop for Receiving {
                 }
             }
         }
+        self.staging.released.notify_waiters();
     }
 }
 
@@ -769,6 +774,67 @@ pub(super) async fn receive(
     }
 }
 
+/// A client that resends after its connection dropped can arrive before the
+/// server has noticed and rolled the dropped chunk back. Waits for that chunk
+/// (or a commit) to finish rather than refuse, then claims the upload.
+async fn claim_chunk_when_free(
+    staging: &Staging,
+    id: &str,
+    owner: &Owner,
+    offset: u64,
+) -> Result<(u64, MimeType, String, String), ApiFailure> {
+    let waiting_until = tokio::time::Instant::now() + IDLE_TIMEOUT;
+    loop {
+        let released = staging.released.notified();
+        tokio::pin!(released);
+        released.as_mut().enable();
+        let claimed = staging.with_upload(id, owner, |upload| {
+            if upload.busy {
+                return Ok(None);
+            }
+            claim_chunk(upload, offset).map(Some)
+        })?;
+        if let Some(claimed) = claimed {
+            return Ok(claimed);
+        }
+        if tokio::time::timeout_at(waiting_until, released)
+            .await
+            .is_err()
+        {
+            return Err(failure(
+                LibraryErrorCode::Conflict,
+                "A chunk is already being received",
+            ));
+        }
+    }
+}
+
+/// Marks the upload busy for a chunk starting at `offset`, if it can take one.
+fn claim_chunk(
+    upload: &mut Upload,
+    offset: u64,
+) -> Result<(u64, MimeType, String, String), ApiFailure> {
+    if upload.received == upload.size {
+        return Err(failure(
+            LibraryErrorCode::Conflict,
+            "The upload is already complete",
+        ));
+    }
+    if offset != upload.received {
+        return Err(failure(
+            LibraryErrorCode::Conflict,
+            format!("The next chunk starts at byte {}", upload.received),
+        ));
+    }
+    upload.busy = true;
+    Ok((
+        upload.size,
+        upload.format,
+        upload.extension.clone(),
+        upload.file_name.clone(),
+    ))
+}
+
 /// Runs as its own task so a cancelled request can't stop it between a
 /// queued write and the rollback in `Receiving`.
 async fn receive_chunk(
@@ -785,33 +851,8 @@ async fn receive_chunk(
         .ok_or_else(|| LibraryError::invalid("Upload-Offset must be a byte offset"))?;
     let staging = state.uploads.clone();
     let owner = Owner::new(&state, &user);
-    let (size, format, extension, file_name) = staging.with_upload(&id, &owner, |upload| {
-        if upload.busy {
-            return Err(failure(
-                LibraryErrorCode::Conflict,
-                "A chunk is already being received",
-            ));
-        }
-        if upload.received == upload.size {
-            return Err(failure(
-                LibraryErrorCode::Conflict,
-                "The upload is already complete",
-            ));
-        }
-        if offset != upload.received {
-            return Err(failure(
-                LibraryErrorCode::Conflict,
-                format!("The next chunk starts at byte {}", upload.received),
-            ));
-        }
-        upload.busy = true;
-        Ok((
-            upload.size,
-            upload.format,
-            upload.extension.clone(),
-            upload.file_name.clone(),
-        ))
-    })?;
+    let (size, format, extension, file_name) =
+        claim_chunk_when_free(&staging, &id, &owner, offset).await?;
     let path = staging.book_path(&id, &extension);
     let mut transfer = Receiving {
         staging: staging.clone(),
@@ -991,6 +1032,52 @@ mod tests {
             book: None,
             ready_at: None,
         }
+    }
+
+    fn busy_upload() -> (tempfile::TempDir, Arc<Staging>, Owner) {
+        let directory = tempfile::tempdir().unwrap();
+        let (staging, _) = staging_at(directory.path(), SystemTime::now());
+        staging
+            .uploads
+            .lock()
+            .unwrap()
+            .insert("id".into(), upload(SystemTime::now(), true));
+        let owner = Owner {
+            user_id: "user".into(),
+            library_id: "library".into(),
+        };
+        (directory, staging, owner)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_chunk_waits_for_the_one_before_it_to_finish() {
+        let (_directory, staging, owner) = busy_upload();
+        let claiming = tokio::spawn({
+            let staging = staging.clone();
+            async move {
+                claim_chunk_when_free(&staging, "id", &owner, 0)
+                    .await
+                    .map(|_| ())
+            }
+        });
+        // The clock is paused: it moves only once every task is waiting.
+        tokio::time::sleep(IDLE_TIMEOUT / 2).await;
+        assert!(
+            !claiming.is_finished(),
+            "not refused while the other chunk runs"
+        );
+
+        staging.uploads.lock().unwrap().get_mut("id").unwrap().busy = false;
+        staging.released.notify_waiters();
+        assert!(claiming.await.unwrap().is_ok());
+        assert!(staging.uploads.lock().unwrap()["id"].busy, "claimed it");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_chunk_stuck_behind_another_is_refused_after_the_idle_timeout() {
+        let (_directory, staging, owner) = busy_upload();
+        let refused = claim_chunk_when_free(&staging, "id", &owner, 0).await;
+        assert!(refused.is_err());
     }
 
     fn book() -> StagedBook {

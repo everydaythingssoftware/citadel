@@ -36,6 +36,7 @@ pub struct ServedLibrary {
     /// the container: each holds a library itself or one per subfolder.
     library_roots: Vec<PathBuf>,
     served: Mutex<Served>,
+    changed: tokio::sync::Notify,
 }
 
 /// What the administrator sees about the served library.
@@ -188,6 +189,7 @@ impl ServedLibrary {
             state_directory,
             library_roots: Vec::new(),
             served: Mutex::default(),
+            changed: tokio::sync::Notify::new(),
         }
     }
 
@@ -195,6 +197,12 @@ impl ServedLibrary {
     pub fn with_library_roots(mut self, roots: Vec<PathBuf>) -> Self {
         self.library_roots = roots;
         self
+    }
+
+    /// Completes after the served library changes, such as when web setup
+    /// opens one, so the server can start OPDS without waiting for its check.
+    pub async fn changed(&self) {
+        self.changed.notified().await;
     }
 
     pub fn state_directory(&self) -> &Path {
@@ -241,6 +249,7 @@ impl ServedLibrary {
             .map_err(|error| error.to_string())?;
         let Some(registered) = registered else {
             *self.served() = Served::default();
+            self.changed.notify_one();
             return Ok(None);
         };
         let problem = match self.open(Path::new(&registered.path), registered.read_only) {
@@ -254,6 +263,7 @@ impl ServedLibrary {
             registered: Some(registered),
             problem,
         };
+        self.changed.notify_one();
         Ok(self.info())
     }
 
@@ -278,6 +288,7 @@ impl ServedLibrary {
             registered: Some(registered.clone()),
             problem: None,
         };
+        self.changed.notify_one();
         Ok(registered)
     }
 
@@ -639,6 +650,7 @@ impl ServedLibrary {
             registered: Some(registered),
             problem: None,
         };
+        self.changed.notify_one();
         self.register_found();
         Ok(self.info().expect("a library was just registered"))
     }

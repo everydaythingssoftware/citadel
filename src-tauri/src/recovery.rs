@@ -350,10 +350,21 @@ mod tests {
     fn opening_takes_a_snapshot_at_most_once_a_day() {
         let directory = tempfile::tempdir().unwrap();
         with_backup(directory.path());
-        // Backup names are dated to the second; a second snapshot would show.
-        std::thread::sleep(Duration::from_millis(1100));
+        let [backup] = files(directory.path(), "citadel.db.backup-")
+            .try_into()
+            .unwrap();
+        let taken = std::fs::metadata(&backup).unwrap().modified().unwrap();
         drop(opened(directory.path()));
-        assert_eq!(files(directory.path(), "citadel.db.backup-").len(), 1);
+        // A second snapshot within the same second would replace the file
+        // under the same name, so check the file itself is untouched.
+        let [after] = files(directory.path(), "citadel.db.backup-")
+            .try_into()
+            .unwrap();
+        assert_eq!(after, backup);
+        assert_eq!(
+            std::fs::metadata(&after).unwrap().modified().unwrap(),
+            taken
+        );
     }
 
     #[test]

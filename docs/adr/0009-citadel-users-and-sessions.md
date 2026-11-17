@@ -87,8 +87,10 @@ back off like OPDS Basic. The built frontend is public so signed-out browsers ca
 load the sign-in form; all data comes from the protected API.
 
 OPDS remains HTTP Basic, checked against the device keys of users granted the
-served library (ADR 0013). The server reloads that list from `citadel.db` every two seconds
-so admin changes apply without a restart.
+served library (ADR 0013). Before each sign-in check the server asks SQLite
+whether `citadel.db` changed (`PRAGMA data_version` for other processes'
+commits, `total_changes()` for its own) and reloads the list only if so, so
+an admin change applies to the next request without a restart.
 
 The operator is the administrator. `citadel-server --config <path> users …`,
 `grant` and `revoke` edit `citadel.db` from a separate process; `users add`

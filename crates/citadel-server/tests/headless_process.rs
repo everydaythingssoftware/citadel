@@ -2,10 +2,10 @@
 
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read},
     net::TcpListener,
     process::{Command, Stdio},
-    sync::mpsc,
+    sync::mpsc::{self, RecvTimeoutError},
     time::{Duration, Instant},
 };
 
@@ -15,6 +15,94 @@ use nix::{
     sys::signal::{kill, Signal},
     unistd::Pid,
 };
+
+/// Deadlines are generous so a loaded machine (the whole workspace's tests at
+/// once) doesn't fail them; every wait returns as soon as its condition holds.
+const START_UP: Duration = Duration::from_secs(60);
+const SETTLE: Duration = Duration::from_secs(30);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Every line a child prints on the given streams, in the order they arrive.
+/// Lines from different streams can arrive in either order, so wait for each
+/// line needed rather than for one and then expect the others.
+struct Output {
+    received: mpsc::Receiver<String>,
+    lines: Vec<String>,
+}
+
+impl Output {
+    fn of(streams: Vec<Box<dyn Read + Send>>) -> Self {
+        let (sender, received) = mpsc::channel();
+        for stream in streams {
+            let sender = sender.clone();
+            std::thread::spawn(move || {
+                for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                    let _ = sender.send(line);
+                }
+            });
+        }
+        Self {
+            received,
+            lines: Vec::new(),
+        }
+    }
+
+    /// Reads until a line, from any earlier one on, matches.
+    fn wait_for_line(&mut self, within: Duration, what: &str, matches: impl Fn(&str) -> bool) {
+        let deadline = Instant::now() + within;
+        while !self.lines.iter().any(|line| matches(line)) {
+            match self
+                .received
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            {
+                Ok(line) => self.lines.push(line),
+                Err(RecvTimeoutError::Timeout) => {
+                    panic!("no {what} within {within:?}: {:#?}", self.lines)
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    panic!(
+                        "the server closed its output before {what}: {:#?}",
+                        self.lines
+                    )
+                }
+            }
+        }
+    }
+
+    fn log(&self) -> String {
+        self.lines.join("\n")
+    }
+}
+
+fn client() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .no_proxy()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .unwrap()
+}
+
+/// Sends SIGTERM and waits for the exit. A server that hangs is killed after
+/// `SETTLE`, so the test fails instead of hanging too.
+fn stop(child: &mut ServerProcess) -> std::process::ExitStatus {
+    let pid = Pid::from_raw(child.id() as i32);
+    kill(pid, Signal::SIGTERM).unwrap();
+    let (exited, exit_seen) = mpsc::channel::<()>();
+    let watchdog = std::thread::spawn(move || {
+        let hung = exit_seen.recv_timeout(SETTLE) == Err(RecvTimeoutError::Timeout);
+        if hung {
+            let _ = kill(pid, Signal::SIGKILL);
+        }
+        hung
+    });
+    let status = child.wait().unwrap();
+    drop(exited);
+    assert!(
+        !watchdog.join().unwrap(),
+        "no exit within {SETTLE:?} of SIGTERM"
+    );
+    status
+}
 
 struct ServerProcess(std::process::Child);
 impl std::ops::Deref for ServerProcess {
@@ -140,42 +228,22 @@ addresses = ["127.0.0.1"]
             .spawn()
             .unwrap(),
     );
-    let stdout = child.stdout.take().unwrap();
-    let (lines_tx, lines_rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            let _ = lines_tx.send(line);
-        }
-    });
-
-    let deadline = Instant::now() + Duration::from_secs(15);
-    let mut observed = Vec::new();
-    let catalog_url = loop {
-        assert!(
-            Instant::now() < deadline,
-            "server did not start: {observed:?}"
-        );
-        if let Ok(line) = lines_rx.recv_timeout(Duration::from_millis(250)) {
-            if let Some(urls) = line
-                .split_whitespace()
+    let mut output = Output::of(vec![Box::new(child.stdout.take().unwrap())]);
+    let running = |line: &str| line.contains("state=Running") && line.contains("urls=");
+    output.wait_for_line(START_UP, "running OPDS status", running);
+    let catalog_url = output
+        .lines
+        .iter()
+        .find(|line| running(line))
+        .and_then(|line| {
+            line.split_whitespace()
                 .find_map(|field| field.strip_prefix("urls="))
-            {
-                if line.contains("state=Running") {
-                    break urls.split(',').next().unwrap().to_string();
-                }
-            }
-            observed.push(line);
-        }
-        if let Some(status) = child.try_wait().unwrap() {
-            panic!("server exited before listening with {status}: {observed:?}");
-        }
-    };
+        })
+        .and_then(|urls| urls.split(',').next())
+        .unwrap()
+        .to_string();
 
-    let client = reqwest::blocking::Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = client();
     assert_eq!(client.get(&catalog_url).send().unwrap().status(), 401);
     let feed = client
         .get(&catalog_url)
@@ -209,15 +277,12 @@ addresses = ["127.0.0.1"]
 
     // The API listens from the start; OPDS followed once the library and a
     // reader existed. No administrator was made, so the setup code was printed.
-    while !observed.iter().any(|line| line.contains("api=http://")) {
-        assert!(Instant::now() < deadline, "API did not start: {observed:?}");
-        observed.push(lines_rx.recv_timeout(Duration::from_secs(5)).unwrap());
-    }
+    output.wait_for_line(START_UP, "API address", |line| line.contains("api=http://"));
+    // Printed on stdout before the API's address.
     assert!(
-        observed
-            .iter()
-            .any(|line| line.contains("\"setup_code\":\"")),
-        "{observed:?}"
+        output.log().contains("\"setup_code\":\""),
+        "{}",
+        output.log()
     );
     let api_origin = format!("http://127.0.0.1:{api_port}");
     assert_eq!(
@@ -296,7 +361,6 @@ addresses = ["127.0.0.1"]
     // Admin changes reach the running server without a restart.
     let rotated = device_key(&admin(&["users", "keys", "reader", "rotate", "Kobo"], ""));
     admin(&["revoke", "reviewer"], "");
-    std::thread::sleep(Duration::from_secs(3));
     let opds_status = |username: &str, password: &str| {
         client
             .get(&catalog_url)
@@ -309,32 +373,20 @@ addresses = ["127.0.0.1"]
     assert_eq!(opds_status("reader", &reader_app), 401);
     assert_eq!(opds_status("reviewer", &reviewer_app), 401);
     // Signing in records when the key was last used.
-    std::thread::sleep(Duration::from_millis(500));
     let keys = admin(&["users", "keys", "reader"], "");
     assert!(
         keys.contains("Kobo") && keys.contains("last used"),
         "{keys}"
     );
 
-    kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let exit = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            child.kill().unwrap();
-            panic!("server did not stop after SIGTERM");
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    };
-    assert!(exit.success());
+    assert!(stop(&mut child).success());
     let released =
         TcpListener::bind(("127.0.0.1", api_port)).expect("API listener released on shutdown");
     drop(released);
 
-    observed.extend(lines_rx.try_iter());
-    assert!(observed.iter().any(|line| line.contains("state=Stopped")));
+    output.wait_for_line(SETTLE, "stopped OPDS status", |line| {
+        line.contains("state=Stopped")
+    });
     assert!(state_directory.join("citadel.db").is_file());
 }
 
@@ -379,31 +431,17 @@ fn the_server_runs_from_environment_variables_alone() {
             .spawn()
             .unwrap(),
     );
-    let (lines, received) = mpsc::channel();
-    for stream in [
-        Box::new(child.stdout.take().unwrap()) as Box<dyn std::io::Read + Send>,
+    let mut output = Output::of(vec![
+        Box::new(child.stdout.take().unwrap()),
         Box::new(child.stderr.take().unwrap()),
-    ] {
-        let lines = lines.clone();
-        std::thread::spawn(move || {
-            for line in BufReader::new(stream).lines().map_while(Result::ok) {
-                let _ = lines.send(line);
-            }
-        });
-    }
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let mut seen = Vec::new();
-    while !seen
-        .iter()
-        .any(|line: &String| line.contains("citadel_server api="))
-    {
-        let wait = deadline.saturating_duration_since(Instant::now());
-        match received.recv_timeout(wait) {
-            Ok(line) => seen.push(line),
-            Err(_) => panic!("server did not start: {seen:#?}"),
-        }
-    }
-    let log = seen.join("\n");
+    ]);
+    output.wait_for_line(START_UP, "API address", |line| {
+        line.contains("citadel_server api=")
+    });
+    output.wait_for_line(START_UP, "misspelled setting warning", |line| {
+        line.contains("configure nothing")
+    });
+    let log = output.log();
     assert!(log.contains("\"setup_code\":\""), "{log}");
     assert!(
         log.contains("public_urls=any"),
@@ -457,32 +495,17 @@ fn a_database_from_a_newer_citadel_keeps_the_server_answering_with_the_reason() 
             .spawn()
             .unwrap(),
     );
-    let (lines, received) = mpsc::channel();
-    for stream in [
-        Box::new(child.stdout.take().unwrap()) as Box<dyn std::io::Read + Send>,
+    let mut output = Output::of(vec![
+        Box::new(child.stdout.take().unwrap()),
         Box::new(child.stderr.take().unwrap()),
-    ] {
-        let lines = lines.clone();
-        std::thread::spawn(move || {
-            for line in BufReader::new(stream).lines().map_while(Result::ok) {
-                let _ = lines.send(line);
-            }
-        });
-    }
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let mut seen = Vec::new();
-    while !seen
-        .iter()
-        .any(|line: &String| line.contains("health=failing"))
-    {
-        let wait = deadline.saturating_duration_since(Instant::now());
-        match received.recv_timeout(wait) {
-            Ok(line) => seen.push(line),
-            Err(_) => panic!("server did not keep answering: {seen:#?}"),
-        }
-    }
-    let log = seen.join("\n");
-    assert!(log.contains("newer version of Citadel"), "{log}");
+    ]);
+    // The address is printed on stdout once listening, the reason on stderr.
+    output.wait_for_line(START_UP, "failing health", |line| {
+        line.contains("health=failing")
+    });
+    output.wait_for_line(START_UP, "reason", |line| {
+        line.contains("newer version of Citadel")
+    });
 
     let mut health = Command::new(env!("CARGO_BIN_EXE_citadel-server"));
     with_settings(&mut health);
@@ -491,7 +514,7 @@ fn a_database_from_a_newer_citadel_keeps_the_server_answering_with_the_reason() 
     let said = String::from_utf8_lossy(&output.stderr);
     assert!(said.contains("health=failing database=failing"), "{said}");
 
-    let client = reqwest::blocking::Client::new();
+    let client = client();
     let refused = client
         .get(format!("http://127.0.0.1:{api_port}/api/setup"))
         .send()
@@ -519,7 +542,8 @@ fn a_database_from_a_newer_citadel_keeps_the_server_answering_with_the_reason() 
         "{health}"
     );
 
-    kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
-    let status = child.wait().unwrap();
-    assert!(!status.success(), "stopping still reports the failure");
+    assert!(
+        !stop(&mut child).success(),
+        "stopping still reports the failure"
+    );
 }

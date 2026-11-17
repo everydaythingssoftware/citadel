@@ -1,6 +1,6 @@
 //! Operator commands against `citadel.db`. They run in their own process and
-//! never need the server stopped: a running server picks up OPDS changes
-//! within seconds and checks sessions and grants on every request. The
+//! never need the server stopped: a running server checks OPDS keys,
+//! sessions and grants against `citadel.db` on every request. The
 //! browser does the same jobs for administrators; the CLI remains for
 //! scripts and for getting back in when nobody can sign in.
 use std::io::BufRead;

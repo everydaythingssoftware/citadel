@@ -85,13 +85,8 @@ fn remove_book_dir(
     let mut current = root.clone();
     for component in components {
         current.push(component.as_os_str());
-        let metadata = match std::fs::symlink_metadata(&current) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-            Err(error) => return Err(error.to_string()),
-        };
-        if !metadata.is_dir() || metadata.file_type().is_symlink() {
-            return Err("The book folder changed or contains a symbolic link".into());
+        if step(entry(&current))? == Step::Gone {
+            return Ok(false);
         }
     }
     let canonical = dir.canonicalize().map_err(|error| error.to_string())?;
@@ -100,6 +95,39 @@ fn remove_book_dir(
     }
     remove(dir)?;
     Ok(true)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Entry {
+    Directory,
+    /// A file, or a symbolic link to anything.
+    Other,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Step {
+    Descend,
+    Gone,
+}
+
+fn entry(path: &Path) -> std::io::Result<Entry> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    Ok(if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        Entry::Directory
+    } else {
+        Entry::Other
+    })
+}
+
+/// Only a missing folder is safe to treat as already removed. Any other
+/// failure to look (permissions, I/O) means its contents are unknown.
+fn step(found: std::io::Result<Entry>) -> Result<Step, String> {
+    match found {
+        Ok(Entry::Directory) => Ok(Step::Descend),
+        Ok(Entry::Other) => Err("The book folder changed or contains a symbolic link".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Step::Gone),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 fn is_book_folder_name(name: &std::ffi::OsStr) -> bool {
@@ -252,18 +280,17 @@ mod tests {
         assert!(outside.book().is_dir());
     }
 
-    #[cfg(unix)]
     #[test]
-    fn access_errors_are_reported_instead_of_skipped() {
-        use std::os::unix::fs::PermissionsExt;
-        let lib = TestLibrary::new();
-        let author = lib.root().join("Author");
-        std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0)).unwrap();
-        let result = remove_book_dir(lib.root(), &lib.book(), |_| {
-            panic!("inaccessible path must not be removed")
-        });
-        std::fs::set_permissions(&author, std::fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(result.is_err());
+    fn only_a_missing_folder_counts_as_already_removed() {
+        use std::io::{Error, ErrorKind};
+        assert_eq!(step(Ok(Entry::Directory)).unwrap(), Step::Descend);
+        assert_eq!(
+            step(Err(Error::from(ErrorKind::NotFound))).unwrap(),
+            Step::Gone
+        );
+        assert!(step(Ok(Entry::Other)).is_err());
+        assert!(step(Err(Error::from(ErrorKind::PermissionDenied))).is_err());
+        assert!(step(Err(Error::other("I/O error"))).is_err());
     }
 
     #[test]

@@ -32,6 +32,7 @@ const BASIC_CHALLENGE: &str = "Basic realm=\"Citadel\", charset=\"UTF-8\"";
 const KEY_USE_REPORT_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 pub(crate) type KeyUsedHook = Arc<dyn Fn(&str) + Send + Sync>;
+pub(crate) type CredentialsRefresh = Arc<dyn Fn(&OpdsBasicAuth) + Send + Sync>;
 
 /// Global exponential backoff on consecutive rejected attempts. With a
 /// ~30.5-bit generated password, throttling the online attacker to a couple
@@ -84,6 +85,7 @@ struct AuthInner {
     credentials: Mutex<Option<Arc<Vec<DeviceKeyVerifier>>>>,
     backoff: Mutex<Backoff>,
     key_used: Mutex<Option<KeyUsedHook>>,
+    refresh: Mutex<Option<CredentialsRefresh>>,
     reported: Mutex<HashMap<String, Instant>>,
 }
 
@@ -104,6 +106,7 @@ impl OpdsBasicAuth {
                 credentials: Mutex::new(None),
                 backoff: Mutex::new(Backoff::default()),
                 key_used: Mutex::new(None),
+                refresh: Mutex::new(None),
                 reported: Mutex::new(HashMap::new()),
             }),
         }
@@ -129,6 +132,22 @@ impl OpdsBasicAuth {
 
     pub(crate) fn set_key_used_hook(&self, hook: KeyUsedHook) {
         *self.inner.key_used.lock().unwrap() = Some(hook);
+    }
+
+    pub(crate) fn set_credentials_refresh(&self, refresh: CredentialsRefresh) {
+        *self.inner.refresh.lock().unwrap() = Some(refresh);
+    }
+
+    /// Lets the host bring the keys up to date, so a change applies to the
+    /// very next request rather than after some interval. The host installs
+    /// them itself, on a blocking task that finishes even if this request is
+    /// cancelled, so a change it has noticed is never dropped.
+    async fn refresh_credentials(&self) {
+        let Some(refresh) = self.inner.refresh.lock().unwrap().clone() else {
+            return;
+        };
+        let auth = self.clone();
+        let _ = tokio::task::spawn_blocking(move || refresh(&auth)).await;
     }
 
     pub(crate) fn swap_credential_list(&self, credentials: Vec<DeviceKeyVerifier>) {
@@ -209,6 +228,7 @@ pub(crate) async fn require_basic_auth(
         return next.run(request).await;
     }
 
+    auth.refresh_credentials().await;
     let authorization = request
         .headers()
         .get(AUTHORIZATION)
@@ -217,7 +237,9 @@ pub(crate) async fn require_basic_auth(
         AuthOutcome::Authorized(key_id) => {
             if let Some(key_id) = key_id {
                 if let Some(hook) = auth.key_use_to_report(&key_id, Instant::now()) {
-                    tokio::task::spawn_blocking(move || hook(&key_id));
+                    // At most hourly per key; recorded before answering, so
+                    // whoever saw the response can see the use.
+                    let _ = tokio::task::spawn_blocking(move || hook(&key_id)).await;
                 }
             }
             next.run(request).await
@@ -313,10 +335,18 @@ mod tests {
         }
         // The next attempt is refused without a credential check.
         assert!(matches!(auth.authorize(wrong), AuthOutcome::Backoff));
+    }
 
-        // Backoff expires and checks resume.
-        tokio::time::sleep(BACKOFF_BASE).await;
-        assert!(matches!(auth.authorize(wrong), AuthOutcome::Rejected));
+    #[test]
+    fn the_backoff_window_expires() {
+        let start = Instant::now();
+        let mut backoff = Backoff::default();
+        for _ in 0..BACKOFF_START_THRESHOLD {
+            assert_eq!(backoff.refused_until(start), None);
+            backoff.note_rejection(start);
+        }
+        assert_eq!(backoff.refused_until(start), Some(BACKOFF_BASE));
+        assert_eq!(backoff.refused_until(start + BACKOFF_BASE), None);
     }
 
     #[tokio::test]
@@ -495,6 +525,46 @@ mod tests {
         assert!(auth
             .key_use_to_report("key", now + KEY_USE_REPORT_INTERVAL)
             .is_some());
+    }
+
+    #[tokio::test]
+    async fn a_key_changed_elsewhere_applies_to_the_next_request() {
+        let auth = enabled_auth("reader", "old key");
+        let changed = Arc::new(Mutex::new(Some(vec![DeviceKeyVerifier::new(
+            "key", "reader", "new key",
+        )])));
+        auth.set_credentials_refresh({
+            let changed = changed.clone();
+            Arc::new(move |auth: &OpdsBasicAuth| {
+                if let Some(keys) = changed.lock().unwrap().take() {
+                    auth.swap_credential_list(keys);
+                }
+            })
+        });
+        let header = |key: &str| Some(basic_header("reader", key.as_bytes()));
+
+        assert_eq!(
+            response(auth.clone(), header("new key")).await.status(),
+            200
+        );
+        assert_eq!(
+            response(auth.clone(), header("old key")).await.status(),
+            401,
+            "unchanged since, so the new keys stay"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_key_use_is_recorded_before_the_response() {
+        let auth = enabled_auth("reader", "correct horse");
+        let used = Arc::new(Mutex::new(Vec::new()));
+        auth.set_key_used_hook({
+            let used = used.clone();
+            Arc::new(move |key_id| used.lock().unwrap().push(key_id.to_string()))
+        });
+        let ok = response(auth, Some(basic_header("reader", b"correct horse"))).await;
+        assert_eq!(ok.status(), 200);
+        assert_eq!(*used.lock().unwrap(), ["key"]);
     }
 
     #[test]

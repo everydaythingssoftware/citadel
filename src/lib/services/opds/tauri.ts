@@ -1,5 +1,5 @@
 import type { OpdsStatusError, Result } from "@/bindings";
-import { commands } from "@/bindings";
+import { commands, events } from "@/bindings";
 import type { OpdsClient } from "./types";
 
 const unwrap = <T>(result: Result<T, OpdsStatusError>): T => {
@@ -24,4 +24,6 @@ export const tauriOpdsClient: OpdsClient = {
 		unwrap(await commands.clbCmdRevokeOpdsDeviceKey(keyId)),
 	renameUser: async (username) =>
 		unwrap(await commands.clbCmdRenameOpdsUser(username)),
+	onStatusChange: (listener) =>
+		events.opdsStatusChanged.listen((event) => listener(event.payload)),
 };

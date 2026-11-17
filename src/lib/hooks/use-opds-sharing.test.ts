@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpdsServiceStatus } from "@/bindings";
-import { startOutcome } from "@/lib/hooks/use-opds-sharing";
+import { newestStatus, startOutcome } from "@/lib/hooks/use-opds-sharing";
 
 const status = (patch: Partial<OpdsServiceStatus>): OpdsServiceStatus => ({
 	state: "running",
@@ -43,5 +43,18 @@ describe("startOutcome", () => {
 			error: { source: "server", code: null, message: "Open a library first." },
 		} as const;
 		expect(startOutcome(rejected)).toEqual(rejected);
+	});
+});
+
+describe("newestStatus", () => {
+	const read = status({ state: "running" });
+	const died = status({ state: "error", urls: [] });
+
+	it("keeps the read when nothing was announced during it", () => {
+		expect(newestStatus(read, 3, { status: died, count: 3 })).toBe(read);
+	});
+
+	it("prefers a change announced while the read was in flight", () => {
+		expect(newestStatus(read, 3, { status: died, count: 4 })).toBe(died);
 	});
 });

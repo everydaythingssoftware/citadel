@@ -15,4 +15,9 @@ export interface OpdsClient {
 	rotateDeviceKey(keyId: string): Promise<NewDeviceKey>;
 	revokeDeviceKey(keyId: string): Promise<OpdsDeviceKeys>;
 	renameUser(username: string): Promise<OpdsDeviceKeys>;
+	/** Calls `listener` with each new status as it changes; resolves to a
+	 * function that stops listening. */
+	onStatusChange(
+		listener: (status: OpdsServiceStatus) => void,
+	): Promise<() => void>;
 }

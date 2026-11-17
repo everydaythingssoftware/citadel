@@ -114,6 +114,38 @@ impl CitadelStore {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+
+    /// Differs from an earlier value once anything has been written to
+    /// `citadel.db` since, by this store or by another process such as the
+    /// admin CLI. It can also move on a write that was rolled back, which
+    /// only costs a needless reload. Cheap enough to ask before every request.
+    pub fn version(&self) -> Result<StoreVersion> {
+        #[derive(QueryableByName)]
+        struct Version {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            others: i64,
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            own: i64,
+        }
+        // data_version moves when another connection commits; this
+        // connection's own writes show only in total_changes.
+        let version = diesel::sql_query(
+            "SELECT (SELECT data_version FROM pragma_data_version()) AS others, \
+             total_changes() AS own",
+        )
+        .get_result::<Version>(&mut *self.connection())?;
+        Ok(StoreVersion {
+            others: version.others,
+            own: version.own,
+        })
+    }
+}
+
+/// See [`CitadelStore::version`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StoreVersion {
+    others: i64,
+    own: i64,
 }
 
 /// SQLite's own check, cheap at citadel.db's size; damage found at open is
@@ -194,5 +226,30 @@ mod test_support {
             .register_library(LIBRARY_ID, &directory.path().join("library"), None)
             .unwrap();
         (directory, store, library)
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::test_support::store;
+    use super::CitadelStore;
+
+    #[test]
+    fn the_version_moves_with_any_commit_and_only_then() {
+        let (directory, store, _) = store();
+        let before = store.version().unwrap();
+        assert_eq!(store.version().unwrap(), before, "reading changes nothing");
+
+        store.create_user("own", "password").unwrap();
+        let after_own = store.version().unwrap();
+        assert_ne!(after_own, before, "this store's own write");
+
+        let other = CitadelStore::open(&directory.path().join("citadel.db")).unwrap();
+        other.create_user("other", "password").unwrap();
+        assert_ne!(
+            store.version().unwrap(),
+            after_own,
+            "another process's write"
+        );
     }
 }

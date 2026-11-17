@@ -443,9 +443,104 @@ impl Default for ServiceDependencies {
 }
 
 mod credentials;
+pub use credentials::CredentialUpdate;
+
+/// The sharing state, published to subscribers whenever a lock on it is
+/// released with the status changed, so nothing has to poll for it.
+struct PublishedState {
+    state: Mutex<SharingState>,
+    published: tokio::sync::watch::Sender<OpdsServiceStatus>,
+}
+
+impl PublishedState {
+    fn new(state: SharingState) -> Self {
+        let (published, _) = tokio::sync::watch::channel(OpdsServiceStatus::from(&state));
+        Self {
+            state: Mutex::new(state),
+            published,
+        }
+    }
+
+    fn lock(&self) -> StateGuard<'_> {
+        StateGuard {
+            state: self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            published: &self.published,
+        }
+    }
+}
+
+struct StateGuard<'a> {
+    state: std::sync::MutexGuard<'a, SharingState>,
+    published: &'a tokio::sync::watch::Sender<OpdsServiceStatus>,
+}
+
+impl std::ops::Deref for StateGuard<'_> {
+    type Target = SharingState;
+    fn deref(&self) -> &SharingState {
+        &self.state
+    }
+}
+
+impl std::ops::DerefMut for StateGuard<'_> {
+    fn deref_mut(&mut self) -> &mut SharingState {
+        &mut self.state
+    }
+}
+
+impl Drop for StateGuard<'_> {
+    fn drop(&mut self) {
+        let next = OpdsServiceStatus::from(&*self.state);
+        self.published.send_if_modified(|current| {
+            let changed = *current != next;
+            if changed {
+                *current = next;
+            }
+            changed
+        });
+    }
+}
+
+/// See [`OpdsService::subscribe`]. Hands out copies only: a held borrow of
+/// the published status would block the next change from being published.
+pub struct StatusChanges(tokio::sync::watch::Receiver<OpdsServiceStatus>);
+
+impl StatusChanges {
+    /// The next status that differs from the last one returned, or `None`
+    /// once the service is gone.
+    pub async fn next(&mut self) -> Option<OpdsServiceStatus> {
+        self.0.changed().await.ok()?;
+        Some(self.0.borrow_and_update().clone())
+    }
+
+    /// The latest status if it changed since the last one returned.
+    pub fn take_change(&mut self) -> Option<OpdsServiceStatus> {
+        if self.0.has_changed().unwrap_or(false) {
+            Some(self.0.borrow_and_update().clone())
+        } else {
+            None
+        }
+    }
+
+    /// The current status if it matches, else the first change that does.
+    pub async fn wait_for(
+        &mut self,
+        mut matches: impl FnMut(&OpdsServiceStatus) -> bool,
+    ) -> Option<OpdsServiceStatus> {
+        let status = self
+            .0
+            .wait_for(|status| matches(status))
+            .await
+            .ok()?
+            .clone();
+        Some(status)
+    }
+}
 
 struct ServiceInner {
-    state: Mutex<SharingState>,
+    state: PublishedState,
     next_gen: std::sync::atomic::AtomicU64,
     source: Arc<dyn CatalogSource>,
     credentials: OpdsCredentialStore,
@@ -455,6 +550,9 @@ struct ServiceInner {
     /// into a restart's drain.
     op_lock: tokio::sync::Mutex<()>,
     dependencies: ServiceDependencies,
+    /// The latest retry loop for a share waiting for a network, so a test can
+    /// see it end rather than wait to see nothing happen.
+    wait_poll: Mutex<Option<JoinHandle<()>>>,
 }
 
 #[derive(Clone)]
@@ -522,20 +620,27 @@ impl OpdsService {
     ) -> Self {
         Self {
             inner: Arc::new(ServiceInner {
-                state: Mutex::new(SharingState::Stopped),
+                state: PublishedState::new(SharingState::Stopped),
                 next_gen: AtomicU64::new(0),
                 source,
                 credentials,
                 auth: OpdsBasicAuth::new(),
                 op_lock: tokio::sync::Mutex::new(()),
                 dependencies,
+                wait_poll: Mutex::new(None),
             }),
         }
     }
 
+    /// Changes of lifecycle state, URLs or error. The statuses carry no
+    /// `active_library_id`; ask [`Self::status`] for it.
+    pub fn subscribe(&self) -> StatusChanges {
+        StatusChanges(self.inner.state.published.subscribe())
+    }
+
     pub async fn status(&self) -> OpdsServiceStatus {
         let library_id = active_library_id(self.inner.source.clone());
-        let mut status = OpdsServiceStatus::from(&*self.inner.state.lock().unwrap());
+        let mut status = OpdsServiceStatus::from(&*self.inner.state.lock());
         if status.state == OpdsLifecycleState::Running {
             status.active_library_id = library_id;
         }
@@ -552,7 +657,7 @@ impl OpdsService {
         let _guard = self.inner.op_lock.lock().await;
         self.preflight(&config)?;
         let listeners = {
-            let mut state = self.inner.state.lock().unwrap();
+            let mut state = self.inner.state.lock();
             state.stop()
         };
         if let Some(listeners) = listeners {
@@ -576,7 +681,7 @@ impl OpdsService {
         let Preflight { port, policy } = self.preflight(&config)?;
 
         let already_running = {
-            let state = self.inner.state.lock().unwrap();
+            let state = self.inner.state.lock();
             matches!(
                 &*state,
                 SharingState::Running { config: active_config, .. } if *active_config == config
@@ -588,7 +693,7 @@ impl OpdsService {
 
         let gen = self.inner.next_gen.fetch_add(1, Ordering::Relaxed) + 1;
         {
-            let mut state = self.inner.state.lock().unwrap();
+            let mut state = self.inner.state.lock();
             state.begin_start(gen)?;
         }
 
@@ -611,7 +716,7 @@ impl OpdsService {
         let mut lost = None;
         let mut death_notifications = None;
         {
-            let mut state = self.inner.state.lock().unwrap();
+            let mut state = self.inner.state.lock();
             match outcome {
                 BindOutcome::Bound {
                     listeners,
@@ -694,7 +799,7 @@ impl OpdsService {
 
     async fn stop_inner(&self) -> OpdsServiceStatus {
         let listeners = {
-            let mut state = self.inner.state.lock().unwrap();
+            let mut state = self.inner.state.lock();
             state.stop()
         };
         if let Some(listeners) = listeners {
@@ -712,7 +817,7 @@ impl OpdsService {
         tokio::spawn(async move {
             while let Some(_address) = death_notifications.recv().await {
                 let handled = {
-                    let mut state = inner.state.lock().unwrap();
+                    let mut state = inner.state.lock();
                     state.listener_died(gen, listener_failed_error())
                 };
                 if !handled {
@@ -724,11 +829,11 @@ impl OpdsService {
 
     fn spawn_wait_poll(&self, gen: u64, config: OpdsStartConfig, port: u16) {
         let inner = self.inner.clone();
-        tokio::spawn(async move {
+        let poll = tokio::spawn(async move {
             loop {
                 tokio::time::sleep(inner.dependencies.wait_retry_interval).await;
                 {
-                    let state = inner.state.lock().unwrap();
+                    let state = inner.state.lock();
                     if !matches!(
                         &*state,
                         SharingState::Waiting { gen: current, .. } if *current == gen
@@ -750,7 +855,7 @@ impl OpdsService {
                 let mut succeeded = None;
                 let mut permanent_failure = None;
                 {
-                    let mut state = inner.state.lock().unwrap();
+                    let mut state = inner.state.lock();
                     match outcome {
                         BindOutcome::Bound {
                             listeners,
@@ -775,13 +880,14 @@ impl OpdsService {
                     return;
                 }
                 if let Some(error) = permanent_failure {
-                    let mut state = inner.state.lock().unwrap();
+                    let mut state = inner.state.lock();
                     if state.failed(gen, error) {
                         return;
                     }
                 }
             }
         });
+        *self.inner.wait_poll.lock().unwrap() = Some(poll);
     }
 }
 
@@ -921,6 +1027,7 @@ mod tests {
         fail_task: AtomicBool,
         hold_shutdown: Arc<AtomicBool>,
         fail_every: Mutex<Option<io::ErrorKind>>,
+        no_ipv6: AtomicBool,
     }
 
     impl ListenerFactory for FakeListeners {
@@ -932,6 +1039,9 @@ mod tests {
         ) -> io::Result<ServerTask> {
             if let Some(kind) = *self.fail_every.lock().unwrap() {
                 return Err(io::Error::from(kind));
+            }
+            if address.is_ipv6() && self.no_ipv6.load(Ordering::Acquire) {
+                return Err(io::Error::from(io::ErrorKind::Unsupported));
             }
             if self.fail_bind.swap(false, Ordering::AcqRel) {
                 return Err(io::Error::from(io::ErrorKind::AddrInUse));
@@ -1099,17 +1209,19 @@ mod tests {
         service: &OpdsService,
         expected: OpdsLifecycleState,
     ) -> OpdsServiceStatus {
-        for _ in 0..200 {
-            let status = service.status().await;
-            if status.state == expected {
-                return status;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
+        let mut changes = service.subscribe();
+        let reached = tokio::time::timeout(
+            Duration::from_secs(30),
+            changes.wait_for(|status| status.state == expected),
+        )
+        .await;
+        if !matches!(reached, Ok(Some(_))) {
+            panic!(
+                "never reached {expected:?}; current status: {:?}",
+                service.status().await
+            );
         }
-        panic!(
-            "timed out waiting for {expected:?}; current status: {:?}",
-            service.status().await
-        );
+        service.status().await
     }
 
     // ---- state machine transitions (pure, no sockets) ----
@@ -1327,7 +1439,13 @@ mod tests {
         assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
 
         interfaces.set(vec![lan(OpdsInterfaceState::Up, [192, 168, 1, 5])]);
-        tokio::time::sleep(Duration::from_millis(60)).await;
+        // The retry loop ends at its next wake without binding, so nothing
+        // can bind later either.
+        let poll = service.inner.wait_poll.lock().unwrap().take().unwrap();
+        tokio::time::timeout(Duration::from_secs(30), poll)
+            .await
+            .expect("the retry loop keeps running after stop")
+            .unwrap();
         assert!(listeners.active.lock().unwrap().is_empty());
         assert_eq!(service.status().await.state, OpdsLifecycleState::Stopped);
     }
@@ -1384,7 +1502,38 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn all_interfaces_serves_ipv4_on_a_host_without_ipv6() {
+        let listeners = Arc::new(FakeListeners::default());
+        listeners.no_ipv6.store(true, Ordering::Release);
+        let service = service_with(
+            test_source(),
+            Arc::new(FakeInterfaces::new(Vec::new())),
+            listeners.clone(),
+            Duration::from_millis(10),
+        );
+        let started = service
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::AllInterfaces,
+                port: 8080,
+                authentication_enabled: true,
+            })
+            .await
+            .unwrap();
+        assert_eq!(started.state, OpdsLifecycleState::Running, "{started:?}");
+        let active: Vec<_> = listeners.active.lock().unwrap().iter().copied().collect();
+        assert_eq!(active, ["0.0.0.0:8080".parse::<SocketAddr>().unwrap()]);
+        service.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn real_factory_binds_dual_wildcards_on_one_port() {
+        if StdTcpListener::bind((std::net::Ipv6Addr::UNSPECIFIED, 0)).is_err() {
+            // No IPv6 on this host, so nothing to observe. This guards the
+            // IPV6_V6ONLY in `bind_socket`: without it Linux's dual-stack
+            // default makes the second bind fail, and the fallback below
+            // would hide that by serving IPv4 alone.
+            return;
+        }
         let probe = StdTcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = probe.local_addr().unwrap().port();
         drop(probe);
@@ -1657,27 +1806,5 @@ mod tests {
             .start(address, source, OpdsBasicAuth::new())
             .expect("rebind after server-side close must not hit TIME_WAIT");
         drop(second);
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn start_completion_after_stop_discards_the_fresh_listeners() {
-        let source = test_source();
-        let interfaces = Arc::new(FakeInterfaces::new(Vec::new()));
-        let listeners = Arc::new(FakeListeners::default());
-        let service = service_with(
-            source,
-            interfaces.clone(),
-            listeners.clone(),
-            Duration::from_millis(10),
-        );
-
-        // Start while nothing is bindable lands in Waiting; the poll then
-        // retries. Stop right before setting a network so a poll retry is
-        // possible, and assert the retry path respects the stop.
-        service.start(config(8080)).await.unwrap();
-        service.stop().await;
-        interfaces.set(vec![lan(OpdsInterfaceState::Up, [192, 168, 1, 5])]);
-        tokio::time::sleep(Duration::from_millis(60)).await;
-        assert!(listeners.active.lock().unwrap().is_empty());
     }
 }

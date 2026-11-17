@@ -4,7 +4,29 @@ use citadel_opds::{
     OpdsService,
 };
 
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Runtime};
+use tauri_specta::Event;
+
 use crate::account::{LocalAccount, OpdsDeviceKeys};
+
+/// The sharing status after any change, for every window.
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct OpdsStatusChanged(pub OpdsServiceStatus);
+
+/// Sends every change of the sharing status to the windows as it happens.
+pub fn broadcast_status_changes<R: Runtime>(service: &OpdsService, app: AppHandle<R>) {
+    let service = service.clone();
+    let mut changes = service.subscribe();
+    tauri::async_runtime::spawn(async move {
+        while changes.next().await.is_some() {
+            let status = service.status().await;
+            if let Err(error) = OpdsStatusChanged(status).emit(&app) {
+                log::warn!("could not broadcast the sharing status: {error}");
+            }
+        }
+    });
+}
 
 fn unexpected(message: String) -> OpdsStatusError {
     OpdsStatusError {

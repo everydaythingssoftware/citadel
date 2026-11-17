@@ -33,6 +33,7 @@ fn command_builder() -> Builder<tauri::Wry> {
             app_updates::SoftwareUpdateChanged,
             app_updates::ShowSoftwareUpdate,
             menu::MenuCommandChosen,
+            opds::OpdsStatusChanged,
         ])
         .commands(collect_commands![
             // Library and initialization commands
@@ -202,6 +203,7 @@ fn run_tauri_backend() -> std::io::Result<()> {
                     log::warn!("could not record device key use: {error}");
                 }
             });
+            opds::broadcast_status_changes(&sharing, app.handle().clone());
             app.manage(account);
             app.manage(sharing);
 

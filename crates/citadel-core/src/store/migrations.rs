@@ -97,7 +97,7 @@ fn migrate_with(
         }
     }
     let backup = match applied.last() {
-        Some(version) => Some(backup(connection, path, version)?),
+        Some(version) => Some(backup(connection, path, version, unix_now())?),
         None => None,
     };
     write_marker(
@@ -252,8 +252,9 @@ pub(super) fn backup(
     connection: &mut SqliteConnection,
     path: &Path,
     version: &str,
+    taken_at: i64,
 ) -> Result<PathBuf> {
-    let name = format!("{BACKUP_SUFFIX}{version}-{}", unix_now());
+    let name = format!("{BACKUP_SUFFIX}{version}-{taken_at}");
     let backup = sidecar(path, &name);
     let partial = sidecar(path, &format!("{name}{PARTIAL_SUFFIX}"));
     remove_partial_backups(path).map_err(|error| backup_error(&backup, error))?;

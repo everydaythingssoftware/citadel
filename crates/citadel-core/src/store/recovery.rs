@@ -51,6 +51,10 @@ impl CitadelStore {
     /// database can go back to a recent state. Only the newest few backups are
     /// kept. Returns the new backup, if one was taken.
     pub fn snapshot_if_older_than(&self, age: Duration) -> Result<Option<PathBuf>> {
+        self.snapshot_at(age, unix_now())
+    }
+
+    fn snapshot_at(&self, age: Duration, now: i64) -> Result<Option<PathBuf>> {
         let newest = Self::backups(&self.path)?
             .into_iter()
             .filter_map(|backup| backup.modified)
@@ -63,7 +67,7 @@ impl CitadelStore {
         let Some(version) = migrations::current_version(&mut connection)? else {
             return Ok(None);
         };
-        migrations::backup(&mut connection, &self.path, &version).map(Some)
+        migrations::backup(&mut connection, &self.path, &version, now).map(Some)
     }
 
     /// Moves the database and its WAL files aside, so the next open starts
@@ -150,14 +154,26 @@ mod tests {
         assert!(store.snapshot_if_older_than(day).unwrap().is_some());
         assert!(store.snapshot_if_older_than(day).unwrap().is_none());
 
-        for second in 0..4 {
-            // Names are dated to the second; wait so each one is distinct.
-            if second > 0 {
-                std::thread::sleep(Duration::from_millis(1100));
-            }
-            store.snapshot_if_older_than(Duration::ZERO).unwrap();
-        }
-        assert_eq!(CitadelStore::backups(&path).unwrap().len(), 3);
+        // Names are dated to the second, so each snapshot gets its own.
+        let later = unix_now() + 1;
+        let taken: Vec<_> = (0..4)
+            .map(|second| {
+                store
+                    .snapshot_at(Duration::ZERO, later + second)
+                    .unwrap()
+                    .unwrap()
+            })
+            .collect();
+        let kept: Vec<_> = CitadelStore::backups(&path)
+            .unwrap()
+            .into_iter()
+            .map(|backup| backup.path)
+            .collect();
+        assert_eq!(
+            kept,
+            taken[1..].iter().rev().cloned().collect::<Vec<_>>(),
+            "the newest three"
+        );
     }
 
     #[test]

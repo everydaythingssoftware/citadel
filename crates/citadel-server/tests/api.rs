@@ -1786,10 +1786,13 @@ async fn a_cancelled_chunk_request_still_rolls_back_and_frees_the_upload() {
     let staged = directory.path().join(format!("state/uploads/{id}.epub"));
 
     // The body stays open after its first half until the client goes away,
-    // then fails the way a dropped connection does.
+    // then fails the way a dropped connection does. The server asks for more
+    // only once it has written the first half.
+    let (asked_for_more, first_half_written) = tokio::sync::oneshot::channel::<()>();
     let (disconnect, disconnected) = tokio::sync::oneshot::channel::<()>();
     let body = futures_util::stream::iter([Ok::<_, std::io::Error>(epub[..2048].to_vec())]).chain(
         futures_util::stream::once(async move {
+            let _ = asked_for_more.send(());
             let _ = disconnected.await;
             Err(std::io::Error::other("connection reset"))
         }),
@@ -1803,39 +1806,21 @@ async fn a_cancelled_chunk_request_still_rolls_back_and_frees_the_upload() {
             .body(Body::from_stream(body))
             .unwrap(),
     );
-    let half_written = async {
-        while std::fs::metadata(&staged).map_or(0, |file| file.len()) < 2048 {
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        }
-    };
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        tokio::select! {
-            response = pending => panic!("the chunk finished early: {response:?}"),
-            () = half_written => {}
-        }
-    })
-    .await
-    .expect("the first half of the chunk was never written");
+    tokio::select! {
+        response = pending => panic!("the chunk finished early: {response:?}"),
+        written = first_half_written => written.unwrap(),
+    }
+    // The client gives up on that request and resends at once, before the
+    // server has noticed: the resend waits for the rollback, then succeeds.
     drop(disconnect);
-
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        while std::fs::metadata(&staged).unwrap().len() != 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .expect("the interrupted chunk was never rolled back");
-
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
-    let (status, body) = loop {
-        let (status, body) = send_chunk(&router, &cookie, &id, 0, epub[..4096].to_vec()).await;
-        if status != StatusCode::CONFLICT || tokio::time::Instant::now() > deadline {
-            break (status, body);
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    };
+    let (status, body) = send_chunk(&router, &cookie, &id, 0, epub[..4096].to_vec()).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["receivedBytes"], 4096);
+    assert_eq!(
+        std::fs::metadata(&staged).unwrap().len(),
+        4096,
+        "nothing of the first try is left"
+    );
     service.stop().await;
 }
 
