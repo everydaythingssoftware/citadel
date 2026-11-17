@@ -354,12 +354,6 @@
 	}
 }
 
-.sectionLabel {
-	font-size: 13px;
-	font-weight: 600;
-	color: var(--ctd-ink);
-}
-
 .sectionHeader {
 	display: flex;
 	align-items: center;

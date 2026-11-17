@@ -69,7 +69,7 @@ export const DeviceKeySheet = ({
 									</span>
 								))}
 							</code>
-							<Tooltip label="Copy Password">
+							<Tooltip label="Copy password">
 								<IconButton
 									aria-label="Copy password"
 									className={copied ? classes.copied : undefined}

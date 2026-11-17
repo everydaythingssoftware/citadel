@@ -9,11 +9,11 @@ const Demo = () => {
 	const [name, setName] = useState("Unread Fiction");
 	return (
 		<>
-			<Button onClick={() => setOpen(true)}>Save as Shelf…</Button>
+			<Button onClick={() => setOpen(true)}>Save as shelf…</Button>
 			<Sheet
 				open={open}
 				onOpenChange={setOpen}
-				title="Save as Shelf"
+				title="Save as shelf"
 				width={420}
 			>
 				<form

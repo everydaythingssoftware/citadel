@@ -36,17 +36,14 @@ function ColorSchemeWrapper({ children }: PropsWithChildren<unknown>) {
  */
 function PlatformAttributes({
 	platform,
-	focusRing,
 	children,
-}: PropsWithChildren<{ platform: string; focusRing: string }>) {
+}: PropsWithChildren<{ platform: string }>) {
 	useEffect(() => {
 		const html = document.documentElement;
 		html.dataset.platform = platform;
 		html.dataset.runtime = "web";
 		setChordPlatform(platform as OperatingSystem);
-		if (focusRing === "accent") html.dataset.focusRing = "accent";
-		else delete html.dataset.focusRing;
-	}, [platform, focusRing]);
+	}, [platform]);
 	return <>{children}</>;
 }
 
@@ -61,17 +58,8 @@ const preview: Preview = {
 				dynamicTitle: true,
 			},
 		},
-		focusRing: {
-			description: "data-focus-ring on <html>",
-			toolbar: {
-				title: "Focus ring",
-				icon: "eye",
-				items: ["monochrome", "accent"],
-				dynamicTitle: true,
-			},
-		},
 	},
-	initialGlobals: { platform: "macos", focusRing: "monochrome" },
+	initialGlobals: { platform: "macos" },
 	parameters: {
 		controls: {
 			matchers: {
@@ -82,10 +70,7 @@ const preview: Preview = {
 	},
 	decorators: [
 		(Story, context) => (
-			<PlatformAttributes
-				platform={String(context.globals.platform ?? "macos")}
-				focusRing={String(context.globals.focusRing ?? "monochrome")}
-			>
+			<PlatformAttributes platform={String(context.globals.platform ?? "macos")}>
 				<Story />
 			</PlatformAttributes>
 		),

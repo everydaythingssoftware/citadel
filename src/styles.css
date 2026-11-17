@@ -107,9 +107,8 @@
 		0 2px 6px oklch(0% 0 0 / 0.08), 0 14px 28px oklch(0% 0 0 / 0.1);
 	--ctd-content-bg: var(--pal-base);
 	--ctd-radius-panel: 10px;
-	--ctd-focus-ring-mono: oklch(from var(--pal-accent) l c h / 0.3);
-	--ctd-focus-ring: var(--ctd-focus-ring-mono);
-	/* A focused field's border; follows the ring (see data-focus-ring). */
+	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.3);
+	/* A focused field's border, beside the ring. */
 	--ctd-focus-border: var(--ctd-accent);
 	--ctd-scrollbar-thumb: oklch(from var(--pal-text) l c h / 0.4);
 	--ctd-control-shadow: 0 0.5px 1.5px oklch(0% 0 0 / 0.12);
@@ -155,7 +154,9 @@
 	--ctd-dialog-shadow: var(--ctd-shadow-lift);
 
 	font-family: var(--ctd-font-ui);
-	font-size: 14px;
+	/* A share of the reader's default size, so a larger browser or system
+	   text setting scales the whole UI: 14px at the usual 16px. */
+	font-size: 87.5%;
 	line-height: 1.45;
 	font-weight: 400;
 
@@ -264,8 +265,7 @@
 	--ctd-shadow-lift:
 		0 2px 6px oklch(0% 0 0 / 0.45), 0 16px 32px oklch(0% 0 0 / 0.5);
 	--ctd-content-bg: var(--pal-base);
-	--ctd-focus-ring-mono: oklch(from var(--pal-accent) l c h / 0.4);
-	--ctd-focus-ring: var(--ctd-focus-ring-mono);
+	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.4);
 	--ctd-focus-border: var(--ctd-accent);
 	/* On is the near-white ink with a dark knob; off is a dim stone with a
 	   dimmed knob, so it doesn't glow. */
@@ -299,6 +299,39 @@
 }
 
 /*
+ * Type scale: font sizes come from these steps (some older rules still
+ * use raw values), in rem so they follow the root size above. 1rem is the
+ * root, 14px at the usual 16px browser default, so each step is its size
+ * at that default over 14.
+ *   2xs  11px  pills, tags, sidebar section headings
+ *   xs   12px  secondary lines, small controls
+ *   sm   13px  controls, menus, rows, group titles
+ *   base 14px  body text
+ *   md   15px  touch-sized rows and menus
+ *   lg   17px  headings; phone-sized text
+ *   xl   22px  a compact book title
+ *   2xl  24px  a book title
+ */
+:root {
+	--ctd-text-2xs: calc(11rem / 14); /* 11px */
+	--ctd-text-xs: calc(12rem / 14); /* 12px */
+	--ctd-text-sm: calc(13rem / 14); /* 13px */
+	--ctd-text-base: 1rem; /* 14px */
+	--ctd-text-md: calc(15rem / 14); /* 15px */
+	--ctd-text-lg: calc(17rem / 14); /* 17px */
+	--ctd-text-xl: calc(22rem / 14); /* 22px */
+	--ctd-text-2xl: calc(24rem / 14); /* 24px */
+}
+
+/* A group's title over its card or rows (the library cards, Edit Book's
+   sections): restyle the role here. */
+.ctd-section-title {
+	font-size: var(--ctd-text-sm);
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
+/*
  * Menus (ContextMenu, Select's pop-up list) share one material and one
  * highlight, so every menu in the app reads alike. Generic: an opaque
  * surface with a quiet grey highlight. macOS: NSMenu's glass, compact 22px
@@ -316,7 +349,7 @@
 	--ctd-menu-item-radius: 4px;
 	--ctd-menu-item-height: 26px;
 	--ctd-menu-item-pad-x: 10px;
-	--ctd-menu-font-size: 13px;
+	--ctd-menu-font-size: var(--ctd-text-sm);
 	--ctd-menu-highlight-bg: var(--ctd-nav-hover-bg);
 	--ctd-menu-highlight-text: var(--ctd-ink);
 	--ctd-menu-danger-highlight-bg: oklch(from var(--ctd-danger-bg) l c h / 0.14);
@@ -348,28 +381,8 @@
 	:root,
 	:root[data-platform] {
 		--ctd-menu-item-height: 36px;
-		--ctd-menu-font-size: 15px;
+		--ctd-menu-font-size: var(--ctd-text-md);
 	}
-}
-
-/*
- * Focus ring: monochrome ink by default. Setting data-focus-ring="accent" on
- * <html> (the one-line switch) swaps in the link blue; any element can carry
- * it too, which is how Storybook shows both side by side. Never the system
- * accent colour, which would pull a user's tint into Citadel's palette.
- */
-:root[data-focus-ring="accent"],
-[data-focus-ring="accent"] {
-	--ctd-focus-ring: oklch(from var(--ctd-text-link) l c h / 0.45);
-	--ctd-focus-border: var(--ctd-text-link);
-	--ctd-focus-shadow: 0 0 0 2px var(--ctd-focus-ring);
-}
-
-:root[data-focus-ring="monochrome"],
-[data-focus-ring="monochrome"] {
-	--ctd-focus-ring: var(--ctd-focus-ring-mono);
-	--ctd-focus-border: var(--ctd-accent);
-	--ctd-focus-shadow: 0 0 0 2px var(--ctd-focus-ring);
 }
 
 body {

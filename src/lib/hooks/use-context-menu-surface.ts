@@ -70,7 +70,6 @@ export interface ContextMenuSurface {
 	closing: boolean;
 	position: { left: number; top: number } | null;
 	highlighted: number | null;
-	hasCheckColumn: boolean;
 	menuRef: React.RefObject<HTMLDivElement | null>;
 	itemDomId: (entry: ContextMenuEntry) => string;
 	onMenuKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
@@ -104,9 +103,6 @@ export const useContextMenuSurface = ({
 	const entries = useMemo(
 		() => (shown ? tidyEntries(shown.items) : []),
 		[shown],
-	);
-	const hasCheckColumn = entries.some(
-		(entry) => isMenuItem(entry) && entry.checked !== undefined,
 	);
 
 	useLayoutEffect(() => {
@@ -244,7 +240,6 @@ export const useContextMenuSurface = ({
 		closing: !menu && fading !== null,
 		position,
 		highlighted,
-		hasCheckColumn,
 		menuRef,
 		itemDomId: (entry) => `${domId}-${entry.id}`,
 		onMenuKeyDown,

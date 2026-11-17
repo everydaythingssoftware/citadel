@@ -10,8 +10,6 @@ export interface ContextMenuItemEntry {
 	onSelect: () => void;
 	destructive?: boolean;
 	disabled?: boolean;
-	/** Defined for items that show a checkmark column; true draws the check. */
-	checked?: boolean;
 	/** A key equivalent shown at the right, e.g. "⌘I". Display only. */
 	shortcut?: string;
 	/** The same, spelled for `aria-keyshortcuts` ("Meta+I"). */

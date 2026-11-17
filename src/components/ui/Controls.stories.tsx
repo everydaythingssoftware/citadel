@@ -75,7 +75,7 @@ const Row = () => {
 				<Switch
 					checked={unread}
 					onCheckedChange={setUnread}
-					label="Unread Only"
+					label="Unread only"
 				/>
 			</div>
 			<div style={{ display: "flex", gap: 8 }}>

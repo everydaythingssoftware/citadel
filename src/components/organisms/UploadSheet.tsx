@@ -79,8 +79,7 @@ export const UploadSheet = ({
 				<Dialog.Content
 					className={styles.content}
 					aria-describedby={undefined}
-					// A sheet is modal: a click outside it does nothing.
-					onPointerDownOutside={(event) => event.preventDefault()}
+					// A sheet is modal: nothing outside it dismisses it.
 					onInteractOutside={(event) => event.preventDefault()}
 				>
 					{/* Phones get an iOS navigation bar: Done, the title, and +. */}
@@ -102,7 +101,7 @@ export const UploadSheet = ({
 							</span>
 						)}
 						{!reviewing && items.length > 0 && (
-							<Tooltip label="Choose More Books…">
+							<Tooltip label="Choose more books…">
 								<IconButton
 									className={styles.addMore}
 									aria-label="Choose more books"

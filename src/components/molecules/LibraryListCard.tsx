@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useRef, useState } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import {
@@ -157,7 +158,7 @@ export const LibraryListCard = ({
 
 	return (
 		<div>
-			<h4 className={styles.cardTitle}>Libraries</h4>
+			<h4 className={clsx(styles.cardTitle, "ctd-section-title")}>Libraries</h4>
 			<div className={styles.card}>
 				{entries.map(({ kind, library }, index) => {
 					const isLeaving = kind === "leaving";

@@ -29,7 +29,7 @@ const preventClosing = (event: Event) => event.preventDefault();
 /**
  * A macOS document sheet: detached below the toolbar, dimming the window.
  * Like a native sheet it is modal: a click outside does nothing; Escape and
- * the content's own Cancel or Done close it. Title in title case.
+ * the content's own Cancel or Done close it.
  */
 export const Sheet = ({
 	open,
@@ -52,7 +52,7 @@ export const Sheet = ({
 				onOpenAutoFocus={onOpenAutoFocus}
 				onCloseAutoFocus={onCloseAutoFocus}
 				onEscapeKeyDown={dismissible ? undefined : preventClosing}
-				onPointerDownOutside={preventClosing}
+				// A sheet is modal: nothing outside it dismisses it.
 				onInteractOutside={preventClosing}
 			>
 				<div className={styles.header}>

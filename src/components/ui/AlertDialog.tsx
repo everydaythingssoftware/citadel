@@ -7,7 +7,7 @@ import { Button } from "./Button";
 export interface AlertDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	/** The question, in title case, e.g. "Delete “Middlemarch”?" */
+	/** The question, in sentence case, e.g. "Delete “Middlemarch”?" */
 	title: ReactNode;
 	/** Smaller informative text below the title: what is and isn't affected. */
 	description?: string;

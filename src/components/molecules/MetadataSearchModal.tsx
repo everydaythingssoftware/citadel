@@ -28,7 +28,7 @@ export interface MetadataSearchModalProps {
 }
 
 /**
- * The unified "Find Book Details" sheet, opened from Edit Book. Purely
+ * The unified "Find book details" sheet, opened from Edit Book. Purely
  * presentational — the caller owns all state. Results from
  * any provider share one list; each row shows where it came from and a designed
  * placeholder when the source carries no cover.
@@ -51,7 +51,7 @@ export const MetadataSearchModal = ({
 	<Sheet
 		open={open}
 		onOpenChange={onOpenChange}
-		title="Find Book Details"
+		title="Find book details"
 		width={width}
 	>
 		<div className={styles.searchStack}>

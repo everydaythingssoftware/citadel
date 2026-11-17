@@ -49,34 +49,6 @@ const BOOK_ITEMS: ContextMenuEntry[] = [
 	},
 ];
 
-const SORT_ITEMS: ContextMenuEntry[] = [
-	{
-		id: "name-az",
-		label: "Name A–Z",
-		checked: true,
-		onSelect: log("Name A–Z"),
-	},
-	{
-		id: "name-za",
-		label: "Name Z–A",
-		checked: false,
-		onSelect: log("Name Z–A"),
-	},
-	{ type: "separator", id: "s" },
-	{
-		id: "author-az",
-		label: "Author A–Z",
-		checked: false,
-		onSelect: log("Author A–Z"),
-	},
-	{
-		id: "author-za",
-		label: "Author Z–A",
-		checked: false,
-		onSelect: log("Author Z–A"),
-	},
-];
-
 interface DemoProps {
 	items: ContextMenuEntry[];
 	label: string;
@@ -165,8 +137,4 @@ type Story = StoryObj<typeof meta>;
 /** Switch the toolbar's Platform between macos and windows to compare. */
 export const BookActions: Story = {
 	render: () => <Demo items={BOOK_ITEMS} label="Book actions" />,
-};
-
-export const Checkmarks: Story = {
-	render: () => <Demo items={SORT_ITEMS} label="Sort by" />,
 };

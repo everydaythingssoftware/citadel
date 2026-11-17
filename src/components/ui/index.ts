@@ -4,9 +4,7 @@ export { Checkbox, type CheckboxProps } from "./Checkbox";
 export {
 	ContextMenu,
 	type ContextMenuEntry,
-	type ContextMenuItemEntry,
 	type ContextMenuProps,
-	type ContextMenuSeparatorEntry,
 	type ContextMenuState,
 } from "./ContextMenu";
 export {
