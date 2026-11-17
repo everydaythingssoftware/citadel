@@ -28,11 +28,13 @@ Calibre's cluttered chrome, generic web-app SaaS.
   window only.
 - Prefer tokens that change per platform over per-component branches. Menus
   are the first example: `--ctd-menu-*` gives `ContextMenu` and `Select`'s
-  list NSMenu's glass on macOS (blurred translucent material with an opaque
-  fallback, 10px panel, 5px inset 22px rows, `sm` text, an ink highlight) and
-  an opaque panel with a grey highlight elsewhere. Both menus share the same
-  highlight, so they always match.
-- Never take the system accent colour.
+  list NSMenu's glass and ink highlight on macOS, and an opaque panel with a
+  grey highlight elsewhere.
+- A platform feature that may be missing is `Option`-typed
+  (`platform.menu`, `fileOpener.quickLook`, `window.startDrag`;
+  `src/lib/option.ts`): code acts on it when it is there, never through a
+  `canX` flag beside a no-op. Hook results that may be absent are `Option`
+  too.
 
 ## Color
 
@@ -41,12 +43,13 @@ Calibre's cluttered chrome, generic web-app SaaS.
   with OKLCH relative colour syntax (see the comment at the top of
   `styles.css`).
 - `--ctd-accent` is ink (near-black in light, marble-white in dark), used for
-  the default button, current selection, menu highlights and state. Never
-  decoration.
-- `--ctd-text-link` (macOS's link blue) is only for links in prose.
-- Danger is red (`--ctd-danger-ink` for words, `--ctd-danger-bg` for the rare
-  fill). Brass (`--ctd-brass`) is the one warm accent, for time and drop
-  targets. `--ctd-success` marks a finished book's state, never chrome.
+  the default button, current selection, menu highlights and the focus ring.
+  Never decoration. The system accent colour is never used.
+- A few state colours, each only for its state, never chrome: link blue
+  (`--ctd-text-link`) for links in prose; red for danger (`--ctd-danger-ink`
+  for words, `--ctd-danger-bg` for the rare fill); brass (`--ctd-brass`) for
+  time and drop targets; green (`--ctd-success`) for a finished book.
+- The one deliberate exception: file-format badges are coloured.
 - Layering: `--ctd-bg` (window) → `--ctd-surface*` (content) → controls.
   Sidebar/toolbar share `--ctd-nav-bg`/`--ctd-header-bg` with hairline
   `--ctd-border` separators. No gradients in chrome.
@@ -63,8 +66,9 @@ Calibre's cluttered chrome, generic web-app SaaS.
 - **Type scale**: font sizes come from the `--ctd-text-*` steps in
   `src/styles.css`, in rem: `2xs` 11px, `xs` 12px, `sm` 13px, `base` 14px,
   `md` 15px, `lg` 17px, `xl` 22px, `2xl` 24px (at the default). Controls,
-  menus and dialog text are `sm`. New CSS uses a step, never a raw px or
-  ad-hoc rem size; a size between steps moves to the nearest one.
+  menus and dialog text are `sm` (menus are `md` on touch screens). New CSS
+  uses a step, never a raw px or ad-hoc rem size; a size between steps moves
+  to the nearest one.
 - **No ALL CAPS anywhere**: no `text-transform: uppercase`, no small caps, no
   wide-tracked eyebrow labels. Text is written the way it shows ("Current"
   in a pill, not "current" uppercased by CSS). Acronyms (ISBN, EPUB) stay as
@@ -72,9 +76,10 @@ Calibre's cluttered chrome, generic web-app SaaS.
   "OPENLIBRARY", `identifierDisplayName` in `src/lib/book-identifiers.ts`).
 - **Sentence case** for titles, headings, buttons, labels and tooltips
   ("Create a new library?", "Save as shelf", "Try again", "Unread only").
-  Names keep their capitals ("Current Library", "All Books").
-- **Title case** for menu items only, in context menus and the menu bar
-  ("Show Details", "Mark as Finished", "Delete 2 Books…").
+  Proper names keep their capitals ("Open Library").
+- **Title case** for menu items, in context menus and the menu bar ("Show
+  Details", "Mark as Finished", "Delete 2 Books…"), and for the few buttons
+  that already had it ("Add Book…").
 - A menu item or button that opens a dialog ends in "…".
 
 ## Controls
@@ -91,8 +96,8 @@ Calibre's cluttered chrome, generic web-app SaaS.
   what they do.
 - Hold-to-confirm buttons stay for actions that would otherwise need a
   dialog mid-flow.
-- Focus ring: monochrome (`--ctd-focus-ring`, with `--ctd-focus-border` on
-  focused fields). Never the system accent colour.
+- Focus ring: monochrome ink (`--ctd-focus-ring`, with `--ctd-focus-border`
+  on focused fields).
 
 ## Sheets and alerts
 
@@ -144,9 +149,11 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   container query, since the sidebar and the window both move it): first
   Save as shelf… folds to its bookmark (tooltip and accessible name stay),
   then the search field takes its own row above the rest.
-- **Sidebar width:** 150–280 px and never over a third of the window
-  (220 by default; double-click resets; arrow keys, Home and End on its
-  edge). A width saved under older limits is clamped on load.
+- **Panel widths:** the sidebar and the details drawer resize from their
+  edge the same way (double-click resets; arrow keys, Home and End on the
+  edge), each within its limits and a share of the space it sits in,
+  through one store (`createPanelWidthStore`, `src/stores/panel-width.ts`). A saved
+  width outside the limits is clamped on load.
 - Dragging covers out copies their files on the desktop
   (`platform.window.startDrag`); drops that arrive while that drag is in
   flight are ignored (`src/lib/drag-out-guard.ts`), so dropping books back
@@ -156,66 +163,52 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   right-click menu, the Book menu and the drawer.
 - Bulk actions are Mark as Finished and Delete; one confirmation for delete
   (ADR 0014). The status bar says "2 of 14 selected".
-- **Details drawer:** a layer of the content panel, not the window: from the
-  panel's top (under the toolbar) to the status bar, at the panel's right
-  edge, over the grid with a hairline and a left-only shadow. No scrim and
-  non-modal (`Drawer`): toolbar, sidebar, search and the
-  covers beside it stay live, a click on another cover switches the book,
-  and it closes with Escape (see Keys), its close button or a click on empty
-  grid. It covers the scope bar's right end too, so in a narrow panel sort,
-  Unread only and Save as shelf… sit under it until it closes. Its
-  left edge resizes it like the sidebar's (380–720 px, never over 70% of the
-  panel; double-click resets; per device). On desktop-sized screens the
-  hero (wash, cover, title, byline, Open and Edit) stays pinned and the body
-  scrolls under a hairline; a short window or narrow drawer gets a smaller
-  cover. Phones get a full-screen sheet that scrolls as one and swipes
-  closed to the right from its inner (left) edge, as the phone sidebar
-  swipes closed to the left (`useSwipeToClose`). While the
-  window is in the background the file-type badges and default-app icons
-  lose most of their colour; covers keep theirs. Grouped rounded sections ("Files",
-  "Details"), label left, value right. File rows show the file-type icon, the
-  format in bold and the filename shortened in the middle. macOS desktop: a
-  folder (Show in Finder) and the default app's own icon (Open in …).
-  Windows/Linux: our folder/open icons. Web on a desktop: a download icon,
-  grey until done, with progress in its ring. Mobile: tap the row; it ends in
-  a download glyph and the size.
+- **Details drawer:** one non-modal panel (`Drawer`) over the right of the
+  content panel, under the toolbar, with no scrim: toolbar, sidebar, search
+  and the covers beside it stay live, and app-wide shortcuts keep working.
+  A click on another cover switches the book; Escape (see Keys), its close
+  button or a click on empty grid closes it. The hero (cover, title, byline,
+  Open and Edit) stays pinned while the body scrolls. Phones get a
+  full-screen sheet that swipes closed from its inner edge. Grouped rounded
+  sections ("Files", "Details"), label left, value right; file rows show
+  what the platform can do with the file (open, show in the file manager,
+  download).
 
 ## Menu bar and shortcuts
 
-- macOS desktop has the full menu bar (Citadel · Library · Edit · Book · View
-  · Go · Window · Help, `src-tauri/src/menu/`). The library window pushes what
-  it shows (selection count, sidebar, sort, libraries, Undo and Redo) and takes
-  its commands through `useMenuCommands`. The menu is the one place each of
-  its chords is handled there: the page binds none of them.
-- Every chord lives in one table, `src/lib/app-shortcuts.ts`. Windows and
-  Linux desktop bind the same chords in the page (Delete for Delete…). A
-  browser keeps its own chords (Ctrl/⌘+1…5, O, E, N, ⇧R, ","); there only
-  Undo, Redo, Find, Show Details and Delete are bound. Menus show a chord only where it
-  works, as "⌘I" on macOS and "Ctrl+I" elsewhere.
+- macOS desktop has the full menu bar (Citadel · Library · Edit · Book ·
+  View · Go · Window · Help, `src-tauri/src/menu/`). Each command's key
+  equivalent is defined once there (`MENU_ACCELERATORS`, exported into
+  `src/bindings.ts`). The library window pushes the menu state in groups
+  (`MenuStateUpdate`: selection, view, libraries, undo, update notice), each
+  when it changes (`useMenuBarSync`), and runs the menu's commands through
+  `useMenuCommands`. There the menu bar handles its own chords and the page
+  doesn't bind them again.
+- Elsewhere the page binds the same chords (`src/lib/app-shortcuts.ts`, which
+  reads the Rust table and adds only what Rust doesn't know). Windows and
+  Linux desktop bind them all except Hide Sidebar. A browser keeps its own
+  chords (Ctrl/⌘+1…5, O, E, N, ⇧R, ","), so there only Undo, Redo, Find,
+  Show Details and Delete are bound. Menus show a chord only where it works,
+  as "⌘I" on macOS and "Ctrl+I" elsewhere. Keys that belong to one page
+  (arrows, Return, Space and ⌘A in the grid, ⌘S in the book editor) live in
+  that page's keymap.
 - Each platform gets its own conventions, not the Mac's spelled with Ctrl.
-  `mod` is ⌘ alone on macOS (and iPad) and Ctrl alone elsewhere, so Ctrl+Z
-  does nothing on a Mac and the Windows key never stands in for Ctrl
-  (`setChordPlatform` in `src/lib/keymap.ts`, set once at startup). Windows
-  and Linux add their own chords: Redo is also Ctrl+Y; Back and Forward are
-  Alt+← / Alt+→ in the app (the browser keeps them in a tab); Show Details is
-  also Alt+Enter in the app, as Properties is there; Delete deletes. Menus
-  show only the primary chord.
+  `mod` is ⌘ alone on macOS (and iPad) and Ctrl alone elsewhere
+  (`setChordPlatform` in `src/lib/keymap.ts`). Windows and Linux add their
+  own chords: Redo is also Ctrl+Y; Back and Forward are Alt+← / Alt+→ in the
+  app; Show Details is also Alt+Enter in the app; Delete deletes. Menus show
+  only the primary chord.
 - **Undo** works like NSUndoManager: one history for the library window
   (`src/lib/undo-history.ts`, `src/stores/undo/store.ts`). Edit > Undo and
   Redo name the top entry ("Undo Mark as Finished") and are disabled when
-  there is none; ⌘Z/⇧⌘Z (Ctrl+Z/Ctrl+Shift+Z or Ctrl+Y off the Mac) do the same and
-  are left to the browser when there is nothing to undo. A focused text
-  field keeps its own typing undo, and the menu shows the native items.
-- Every action that changes the library does exactly one of two things: it
-  registers an undo entry, or, if it can't be undone, it clears the history,
-  so Undo never reaches back across it. Registered: Mark as Finished /
-  Unfinished (one book or many). Clearing: every other write through the
-  library store (delete, edits, covers, identifiers, authors), adding books,
-  shelf changes and a library switch or forget. A new action picks a side
-  deliberately.
+  there is none; the keys do the same and are left to the browser when there
+  is nothing to undo. A focused text field keeps its own typing undo, and
+  the menu shows the native items.
+- Every action that changes the library either registers an undo entry or,
+  if it can't be undone, clears the history, so Undo never reaches back
+  across it. A new action picks a side deliberately.
 - The book editor saves with ⌘S/Ctrl+S everywhere. While it is open, Undo
-  outside text fields is its own ("Undo Edit": drop unsaved edits, then step
-  back saves), with no Redo; its saves clear the app's history.
+  outside text fields is its own ("Undo Edit"), with no Redo.
 - While a field or a sheet has the keyboard, the Book menu stands down, so
   ⌘⌫ deletes text, not books.
 
@@ -226,8 +219,8 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   click restarts at once, right-click offers "Hide Until Next Update". On
   macOS Citadel > Restart to Update… appears too. No badge, notification or
   automatic restart; an ignored update installs at quit.
-- Web: one banner when the server's version changes under an open page,
-  "Citadel was updated. Reload to get the latest version."
+- Web: when the server's version changes under an open page, one toast,
+  "Citadel was updated", with a Reload button. It stays until dismissed.
 - The Settings gear is hidden on macOS desktop (⌘, and the app menu open
   Settings); it stays on the web and on Windows/Linux.
 
@@ -244,24 +237,13 @@ scroller is hovered or scrolling (`data-scrolling`, from
 ## Materials (Liquid Glass)
 
 - On macOS the webview is transparent over an `NSVisualEffectView` with the
-  **popover material** (Tauri's `Effect::Popover`), applied in
-  `src-tauri/src/window.rs` (`apply_glass`), which lets the desktop's colour
-  read through. The platform sidebar material (`Effect::Sidebar`, the one
-  Apple's own apps use) was tried in CDL-90 and rejected by the owner on
-  seeing it: it flattens the backdrop into a uniform grey. The material
-  follows the window's active state, so the glass goes flat by itself when
-  the window isn't in front; the interface greys its accents with it
-  (`data-window-inactive`, `useWindowChromeState`, desktop runtime only)
-  but adds no tint of its own over the glass. As on the Mac, the chrome
-  also steps down: toolbar items (sidebar toggle, Add Book with a flatter,
-  shadowless fill, upload status) and the sidebar's rows, section headers
-  and footer read `--ctd-chrome-ink`/`--ctd-chrome-ink-soft`, which the
-  toolbar and sidebar map their ink onto and which soften while inactive
-  (≥ 3:1 everywhere, about 4:1 or more for labels on the flat glass, in
-  both themes); the selected row keeps a quiet grey fill. Content (covers,
-  titles, the details panel, the status bar) keeps its ink. The chrome
-  tokens are registered (`@property`) so the change eases over 150 ms.
-  The toolbar + sidebar L-region is real glass.
+  popover material (`apply_glass` in `src-tauri/src/window.rs`), so the
+  desktop's colour reads through the toolbar and sidebar. The material
+  follows the window's active state; while the window is in the background
+  the chrome steps down with it (`data-window-inactive`,
+  `--ctd-chrome-ink`/`--ctd-chrome-ink-soft`, still ≥ 3:1) and adds no tint
+  of its own. Content (covers, titles, the details panel, the status bar)
+  keeps its ink.
 - `:root[data-vibrancy]` (macOS desktop only) swaps `--ctd-nav-bg`/
   `--ctd-header-bg` to transparent and the page background to transparent.
   Elsewhere the opaque fallbacks apply; never assume transparency exists.
@@ -278,14 +260,11 @@ scroller is hovered or scrolling (`data-scrolling`, from
 - Inside the content panel: chrome-free lists and grids separated by 1px
   `--ctd-border` hairlines; 20–24px insets at panel edges. Page headers are
   compact control rows, not hero titles.
-- The cover grid is a centred block of fixed 150px covers with 24px gaps
-  (32px between rows), its column count set by the window as if the sidebar
-  were open: at least three, which shrink to share the row on a phone. A
-  sidebar toggle slides the block and changes nothing else; a window resize
-  or a drag of the sidebar's edge changes the columns in one frame and keeps
-  the top row's first book where it was (`src/lib/grid-virtual.ts`). Rows
-  are as tall as their tallest cover (capped at 230px), covers sitting on
-  the row's bottom edge like books on a shelf.
+- The cover grid is a centred block of fixed-width covers whose column
+  count comes from the window as if the sidebar were open, so a sidebar
+  toggle only slides the block. A resize keeps the top row's first book in
+  place (`src/lib/grid-virtual.ts`). Covers sit on their row's bottom edge
+  like books on a shelf.
 - Shadows are reserved for overlays (menus, modals, drawers) and book
   covers.
 
@@ -295,13 +274,10 @@ scroller is hovered or scrolling (`data-scrolling`, from
   honoured globally in `styles.css`.
 - Menus appear at once, as on macOS, and fade quickly on dismiss.
 - Hover feedback is a background tint on rows and controls. The one hover
-  motion is on covers you can open: they lift 2px (`BookCover.module.css`);
-  display-only covers (details drawer, edit page) stay still. The lift moves
-  the art inside the hit target, never the target itself, so a pointer
-  resting on a cover's edge can't make it flicker.
-- The cover grid doesn't reflow while the sidebar slides: its columns come
-  from the window, as if the sidebar were open, so a toggle only slides the
-  centred block (see Layout).
+  motion is on covers you can open: they lift 2px; display-only covers
+  (details drawer, edit page) stay still. The lift moves the art inside the
+  hit target, never the target itself, so the cover can't flicker under a
+  resting pointer.
 
 ## Accessibility
 
