@@ -14,7 +14,7 @@ mod bar;
 mod model;
 
 use model::{menu_view, MenuState, MenuView};
-pub use model::{MenuCommand, MenuStateUpdate};
+pub use model::{MenuCommand, MenuStateUpdate, MENU_ACCELERATORS};
 
 /// A menu choice, sent to the library window.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]

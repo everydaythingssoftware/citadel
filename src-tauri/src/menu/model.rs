@@ -43,7 +43,47 @@ impl MenuCommand {
     pub fn from_menu_id(id: &str) -> Option<Self> {
         serde_json::from_str(id).ok()
     }
+
+    pub fn accelerator(&self) -> Option<&'static str> {
+        MENU_ACCELERATORS
+            .commands
+            .iter()
+            .find(|(command, _)| command == self)
+            .map(|(_, accelerator)| *accelerator)
+    }
 }
+
+/// Every menu bar key equivalent. The frontend binds the same chords itself
+/// where there is no menu bar (`src/lib/app-shortcuts.ts`).
+#[derive(Serialize, specta::Type)]
+pub struct MenuAccelerators {
+    pub commands: &'static [(MenuCommand, &'static str)],
+    /// Settings… is the app menu's own item, not a [`MenuCommand`].
+    pub settings: &'static str,
+}
+
+pub const MENU_ACCELERATORS: MenuAccelerators = MenuAccelerators {
+    commands: &[
+        (MenuCommand::AddBook, "CmdOrCtrl+N"),
+        (MenuCommand::Undo, "CmdOrCtrl+Z"),
+        (MenuCommand::Redo, "CmdOrCtrl+Shift+Z"),
+        (MenuCommand::Find, "CmdOrCtrl+F"),
+        (MenuCommand::BookShowDetails, "CmdOrCtrl+I"),
+        (MenuCommand::BookOpen, "CmdOrCtrl+O"),
+        (MenuCommand::BookEdit, "CmdOrCtrl+E"),
+        (MenuCommand::BookShowInFileManager, "CmdOrCtrl+Shift+R"),
+        (MenuCommand::BookDelete, "CmdOrCtrl+Backspace"),
+        (MenuCommand::ToggleSidebar, "Ctrl+Cmd+S"),
+        (MenuCommand::Go(GoDestination::AllBooks), "CmdOrCtrl+1"),
+        (MenuCommand::Go(GoDestination::Authors), "CmdOrCtrl+2"),
+        (MenuCommand::Go(GoDestination::Series), "CmdOrCtrl+3"),
+        (MenuCommand::Go(GoDestination::Tags), "CmdOrCtrl+4"),
+        (MenuCommand::Go(GoDestination::Publishers), "CmdOrCtrl+5"),
+        (MenuCommand::GoBack, "CmdOrCtrl+["),
+        (MenuCommand::GoForward, "CmdOrCtrl+]"),
+    ],
+    settings: "CmdOrCtrl+,",
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -349,6 +389,16 @@ pub fn menu_changes(previous: Option<&MenuView>, next: &MenuView) -> MenuChanges
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accelerators_are_looked_up_per_command() {
+        assert_eq!(
+            MenuCommand::Go(GoDestination::Tags).accelerator(),
+            Some("CmdOrCtrl+4")
+        );
+        assert_eq!(MenuCommand::GoBack.accelerator(), Some("CmdOrCtrl+["));
+        assert_eq!(MenuCommand::NewShelf.accelerator(), None);
+    }
 
     #[test]
     fn menu_ids_round_trip_every_command_shape() {

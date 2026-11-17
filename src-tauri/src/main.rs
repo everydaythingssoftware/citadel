@@ -27,6 +27,7 @@ mod window;
 
 fn command_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
+        .constant("MENU_ACCELERATORS", menu::MENU_ACCELERATORS)
         .events(collect_events![
             library::registry::LibrariesChanged,
             app_updates::SoftwareUpdateChanged,

@@ -602,7 +602,7 @@ softwareUpdateChanged: "software-update-changed"
 
 /** user-defined constants **/
 
-
+export const MENU_ACCELERATORS = {"commands":[["add-book","CmdOrCtrl+N"],["undo","CmdOrCtrl+Z"],["redo","CmdOrCtrl+Shift+Z"],["find","CmdOrCtrl+F"],["book-show-details","CmdOrCtrl+I"],["book-open","CmdOrCtrl+O"],["book-edit","CmdOrCtrl+E"],["book-show-in-file-manager","CmdOrCtrl+Shift+R"],["book-delete","CmdOrCtrl+Backspace"],["toggle-sidebar","Ctrl+Cmd+S"],[{"go":"allBooks"},"CmdOrCtrl+1"],[{"go":"authors"},"CmdOrCtrl+2"],[{"go":"series"},"CmdOrCtrl+3"],[{"go":"tags"},"CmdOrCtrl+4"],[{"go":"publishers"},"CmdOrCtrl+5"],["go-back","CmdOrCtrl+["],["go-forward","CmdOrCtrl+]"]],"settings":"CmdOrCtrl+,"} as const;
 
 /** user-defined types **/
 

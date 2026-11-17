@@ -8,7 +8,7 @@ use tauri::{
 };
 
 use super::model::{
-    menu_changes, GoDestination, ItemView, MenuCommand, MenuSortOrder, MenuView,
+    menu_changes, GoDestination, ItemView, MenuCommand, MenuSortOrder, MenuView, MENU_ACCELERATORS,
     RESTART_TO_UPDATE_LABEL,
 };
 
@@ -51,18 +51,9 @@ fn command_item<R: Runtime>(
     app: &AppHandle<R>,
     command: MenuCommand,
     label: &str,
-    accelerator: Option<&str>,
 ) -> tauri::Result<MenuItem<R>> {
+    let accelerator = command.accelerator();
     MenuItem::with_id(app, command.menu_id(), label, true, accelerator)
-}
-
-fn go_item<R: Runtime>(
-    app: &AppHandle<R>,
-    destination: GoDestination,
-    label: &str,
-    accelerator: &str,
-) -> tauri::Result<MenuItem<R>> {
-    command_item(app, MenuCommand::Go(destination), label, Some(accelerator))
 }
 
 fn set_item<R: Runtime>(item: &MenuItem<R>, view: &ItemView) -> tauri::Result<()> {
@@ -108,7 +99,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
                 MENU_ID_SETTINGS,
                 "Settings…",
                 true,
-                Some("CmdOrCtrl+,"),
+                Some(MENU_ACCELERATORS.settings),
             )?,
             &separator()?,
             &PredefinedMenuItem::services(app, None)?,
@@ -127,16 +118,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
         "Library",
         true,
         &[
-            &command_item(app, MenuCommand::AddBook, "Add Book…", Some("CmdOrCtrl+N"))?,
-            &command_item(app, MenuCommand::NewShelf, "New Shelf…", None)?,
-            &command_item(app, MenuCommand::AddLibrary, "Add Library…", None)?,
+            &command_item(app, MenuCommand::AddBook, "Add Book…")?,
+            &command_item(app, MenuCommand::NewShelf, "New Shelf…")?,
+            &command_item(app, MenuCommand::AddLibrary, "Add Library…")?,
             &separator()?,
             &switch_library,
             &command_item(
                 app,
                 MenuCommand::ShowLibraryInFileManager,
                 &format!("Show Library in {FILE_MANAGER_NAME}"),
-                None,
             )?,
             &separator()?,
             &PredefinedMenuItem::close_window(app, None)?,
@@ -149,8 +139,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
     // its top entry and disabled when it is empty.
     let native_undo = PredefinedMenuItem::undo(app, None)?;
     let native_redo = PredefinedMenuItem::redo(app, None)?;
-    let app_undo = command_item(app, MenuCommand::Undo, "Undo", Some("CmdOrCtrl+Z"))?;
-    let app_redo = command_item(app, MenuCommand::Redo, "Redo", Some("CmdOrCtrl+Shift+Z"))?;
+    let app_undo = command_item(app, MenuCommand::Undo, "Undo")?;
+    let app_redo = command_item(app, MenuCommand::Redo, "Redo")?;
     let edit_menu = Submenu::with_items(
         app,
         "Edit",
@@ -164,33 +154,22 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
             &PredefinedMenuItem::paste(app, None)?,
             &PredefinedMenuItem::select_all(app, None)?,
             &separator()?,
-            &command_item(app, MenuCommand::Find, "Find", Some("CmdOrCtrl+F"))?,
+            &command_item(app, MenuCommand::Find, "Find")?,
         ],
     )?;
 
     let book = BookItems {
-        show_details: command_item(
-            app,
-            MenuCommand::BookShowDetails,
-            "Show Details",
-            Some("CmdOrCtrl+I"),
-        )?,
-        open: command_item(app, MenuCommand::BookOpen, "Open", Some("CmdOrCtrl+O"))?,
-        edit: command_item(app, MenuCommand::BookEdit, "Edit…", Some("CmdOrCtrl+E"))?,
-        mark_finished: command_item(app, MenuCommand::BookMarkFinished, "Mark as Finished", None)?,
+        show_details: command_item(app, MenuCommand::BookShowDetails, "Show Details")?,
+        open: command_item(app, MenuCommand::BookOpen, "Open")?,
+        edit: command_item(app, MenuCommand::BookEdit, "Edit…")?,
+        mark_finished: command_item(app, MenuCommand::BookMarkFinished, "Mark as Finished")?,
         show_in_file_manager: command_item(
             app,
             MenuCommand::BookShowInFileManager,
             &format!("Show in {FILE_MANAGER_NAME}"),
-            Some("CmdOrCtrl+Shift+R"),
         )?,
-        copy_title: command_item(app, MenuCommand::BookCopyTitle, "Copy Title", None)?,
-        delete: command_item(
-            app,
-            MenuCommand::BookDelete,
-            "Delete…",
-            Some("CmdOrCtrl+Backspace"),
-        )?,
+        copy_title: command_item(app, MenuCommand::BookCopyTitle, "Copy Title")?,
+        delete: command_item(app, MenuCommand::BookDelete, "Delete…")?,
     };
     let book_menu = Submenu::with_items(
         app,
@@ -210,12 +189,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
         ],
     )?;
 
-    let sidebar = command_item(
-        app,
-        MenuCommand::ToggleSidebar,
-        "Hide Sidebar",
-        Some("Ctrl+Cmd+S"),
-    )?;
+    let sidebar = command_item(app, MenuCommand::ToggleSidebar, "Hide Sidebar")?;
     let sort = MenuSortOrder::ALL
         .iter()
         .map(|order| {
@@ -261,14 +235,18 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
         "Go",
         true,
         &[
-            &go_item(app, GoDestination::AllBooks, "All Books", "CmdOrCtrl+1")?,
-            &go_item(app, GoDestination::Authors, "Authors", "CmdOrCtrl+2")?,
-            &go_item(app, GoDestination::Series, "Series", "CmdOrCtrl+3")?,
-            &go_item(app, GoDestination::Tags, "Tags", "CmdOrCtrl+4")?,
-            &go_item(app, GoDestination::Publishers, "Publishers", "CmdOrCtrl+5")?,
+            &command_item(app, MenuCommand::Go(GoDestination::AllBooks), "All Books")?,
+            &command_item(app, MenuCommand::Go(GoDestination::Authors), "Authors")?,
+            &command_item(app, MenuCommand::Go(GoDestination::Series), "Series")?,
+            &command_item(app, MenuCommand::Go(GoDestination::Tags), "Tags")?,
+            &command_item(
+                app,
+                MenuCommand::Go(GoDestination::Publishers),
+                "Publishers",
+            )?,
             &separator()?,
-            &command_item(app, MenuCommand::GoBack, "Back", Some("CmdOrCtrl+["))?,
-            &command_item(app, MenuCommand::GoForward, "Forward", Some("CmdOrCtrl+]"))?,
+            &command_item(app, MenuCommand::GoBack, "Back")?,
+            &command_item(app, MenuCommand::GoForward, "Forward")?,
         ],
     )?;
 
