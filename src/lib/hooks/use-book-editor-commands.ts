@@ -1,42 +1,20 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useKeymap } from "@/lib/hooks/use-keymap";
-import type { KeyBinding } from "@/lib/keymap";
-import {
-	registerBookEditor,
-	unregisterBookEditor,
-} from "@/stores/book-editor/store";
-
-interface BookEditorCommandsOptions {
-	canUndo: boolean;
-	undo: () => void;
-	save: () => void;
-}
+import { none, type Option, some } from "@/lib/option";
+import { useBookEditor } from "@/stores/book-editor/store";
 
 /**
  * The book editor's keys: ⌘S (Ctrl+S) saves on every platform, never the
- * browser's Save Page. While it is open its Undo, which steps back its
- * saves, is what Edit > Undo and ⌘Z/Ctrl+Z run outside text fields
- * (`useMenuCommands`); text fields keep their own typing undo.
+ * browser's Save Page. While it is open its Undo is what Edit > Undo and
+ * ⌘Z/Ctrl+Z run outside text fields (`useMenuCommands`).
  */
-export const useBookEditorCommands = ({
-	canUndo,
-	undo,
-	save,
-}: BookEditorCommandsOptions) => {
-	const latest = useRef({ undo, save });
-	latest.current = { undo, save };
-
+export const useBookEditorCommands = (
+	undo: Option<() => void>,
+	save: () => void,
+) => {
 	useEffect(() => {
-		registerBookEditor({ canUndo, undo: () => latest.current.undo() });
-	}, [canUndo]);
-	useEffect(() => unregisterBookEditor, []);
-
-	const bindings: KeyBinding[] = [
-		{
-			chord: "mod+s",
-			allowInEditable: true,
-			onMatch: () => latest.current.save(),
-		},
-	];
-	useKeymap(bindings);
+		useBookEditor.setState({ editor: some({ undo }) });
+		return () => useBookEditor.setState({ editor: none() });
+	}, [undo]);
+	useKeymap([{ chord: "mod+s", allowInEditable: true, onMatch: save }]);
 };

@@ -33,6 +33,7 @@ import {
 } from "@/components/ui";
 import { useBookEditorCommands } from "@/lib/hooks/use-book-editor-commands";
 import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
+import { none, some } from "@/lib/option";
 import { identifierDisplayName } from "@/lib/book-identifiers";
 import type {
 	CoverSize,
@@ -784,11 +785,10 @@ const EditBookForm = ({
 		requestSave();
 	};
 
-	useBookEditorCommands({
-		canUndo: hasChanges || history.length > 0,
-		undo,
-		save: requestSave,
-	});
+	useBookEditorCommands(
+		hasChanges || history.length > 0 ? some(undo) : none(),
+		requestSave,
+	);
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();

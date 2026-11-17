@@ -58,7 +58,6 @@ import {
 } from "@/stores/library-view/store";
 import {
 	setShelfSheetOpen,
-	takeFindRequest,
 	useMenuRequests,
 } from "@/stores/menu-requests/store";
 import { createSmartShelf } from "@/stores/settings/actions";
@@ -290,7 +289,8 @@ export const Books = ({
 	// Edit > Find (⌘F): focus the search, once the page shows.
 	const findPending = useMenuRequests((s) => s.findPending);
 	useEffect(() => {
-		if (!findPending || !takeFindRequest()) return;
+		if (!findPending) return;
+		useMenuRequests.setState({ findPending: false });
 		closeBookDetails();
 		searchInputRef.current?.focus();
 		searchInputRef.current?.select();

@@ -1,14 +1,8 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useKeymap } from "@/lib/hooks/use-keymap";
 import { usePlatform } from "@/lib/platform/context";
+import { overlayOpen } from "@/lib/keyboard-owner";
 import type { KeyBinding } from "@/lib/keymap";
-
-// Radix keeps overlay content mounted only while open, so any open dialog
-// (Drawer, Sheet, AlertDialog) in the DOM should own the keyboard.
-const overlayOpen = () =>
-	document.querySelector(
-		'[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
-	) !== null;
 
 export const useAppKeymap = () => {
 	const navigate = useNavigate();

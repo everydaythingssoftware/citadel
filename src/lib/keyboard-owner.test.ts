@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { type KeyboardOwnerTarget, keyboardBusyAt } from "./keyboard-owner";
+import {
+	type KeyboardOwnerTarget,
+	keyboardBusyAt,
+	overlayBlocksAppChords,
+} from "./keyboard-owner";
 
 const element = (
 	fields: Partial<KeyboardOwnerTarget>,
@@ -33,5 +37,23 @@ describe("keyboardBusyAt", () => {
 
 	it("is busy inside an alert or sheet", () => {
 		expect(keyboardBusyAt(element({}, ['[role="alertdialog"]']))).toBe(true);
+	});
+});
+
+describe("overlayBlocksAppChords", () => {
+	const dialog = (attributes: string[]) => ({
+		hasAttribute: (name: string) => attributes.includes(name),
+	});
+
+	it("leaves app-wide chords working beside the details panel", () => {
+		expect(overlayBlocksAppChords([])).toBe(false);
+		expect(overlayBlocksAppChords([dialog(["data-drawer"])])).toBe(false);
+	});
+
+	it("holds them while a sheet or alert is open", () => {
+		expect(overlayBlocksAppChords([dialog([])])).toBe(true);
+		expect(overlayBlocksAppChords([dialog(["data-drawer"]), dialog([])])).toBe(
+			true,
+		);
 	});
 });

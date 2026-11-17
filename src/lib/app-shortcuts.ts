@@ -1,14 +1,23 @@
+import { MENU_ACCELERATORS } from "@/bindings";
 import type { TBookCommand } from "@/lib/book-menu";
 import { BOOK_COMMAND } from "@/lib/book-menu";
-import type { MenuCommand } from "@/lib/platform/types";
-import type { OperatingSystem } from "@/lib/platform/os";
 import { usesCommandKey } from "@/lib/keymap";
+import { none, type Option, some } from "@/lib/option";
+import type { OperatingSystem } from "@/lib/platform/os";
+import type { MenuCommand, PlatformAdapter } from "@/lib/platform/types";
 
 /** Where a shortcut is pressed: which OS, and the app or a browser tab. */
 export interface ShortcutEnvironment {
 	os: OperatingSystem;
 	desktop: boolean;
 }
+
+export const shortcutEnvironment = (
+	platform: PlatformAdapter,
+): ShortcutEnvironment => ({
+	os: platform.os,
+	desktop: platform.capabilities.supportsNativeWindows,
+});
 
 /**
  * The macOS app has a menu bar whose items carry these chords; there the
@@ -21,148 +30,104 @@ export const menuBarOwnsChords = ({ os, desktop }: ShortcutEnvironment) =>
 /** Settings… is the native menu item; elsewhere it is only a shortcut. */
 export type TShortcutCommand = MenuCommand | "open-settings";
 
-const sameCommand = (a: TShortcutCommand, b: TShortcutCommand): boolean =>
-	JSON.stringify(a) === JSON.stringify(b);
+type TNamedCommand = Extract<TShortcutCommand, string>;
 
-/** Where a chord applies besides the macOS menu bar. */
-const SCOPE = {
-	/** Windows and Linux desktop, and every browser. */
-	everywhere: "everywhere",
-	/** Windows and Linux desktop only: a browser keeps the chord for itself. */
-	desktopOnly: "desktop-only",
-	/** Only the macOS menu bar has it. */
-	menuOnly: "menu-only",
-} as const;
-
-type TScope = (typeof SCOPE)[keyof typeof SCOPE];
-
-interface AlternateChord {
-	chord: string;
-	scope: TScope;
-}
-
-interface ShortcutDefinition {
+export interface Shortcut {
 	command: TShortcutCommand;
 	/** `keymap.ts` chord syntax; `mod` is ⌘ on macOS and Ctrl elsewhere. */
 	chord: string;
-	/**
-	 * Off Apple keyboards, where Windows and Linux have their own chord
-	 * (Delete instead of ⌘⌫, Alt+← instead of ⌘[).
-	 */
-	otherChord?: string;
-	scope: TScope;
-	/**
-	 * Further chords Windows and Linux also accept, by their own convention
-	 * (Ctrl+Y for Redo, Alt+Enter for Properties). Menus show only the first.
-	 */
-	otherAlternates?: readonly AlternateChord[];
 }
 
-/**
- * Every app-wide shortcut, matching the macOS menu bar
- * (`src-tauri/src/menu/bar.rs`). In a browser, chords the browser itself
- * uses (Ctrl+O, Ctrl+N, Ctrl+1…, ⇧⌘R, Ctrl+E) stay the browser's.
- */
-export const SHORTCUTS: readonly ShortcutDefinition[] = [
-	{ command: "undo", chord: "mod+z", scope: SCOPE.everywhere },
+/** "CmdOrCtrl+Shift+Z" (a Tauri accelerator) as "mod+shift+z". */
+export const chordFromAccelerator = (accelerator: string): string =>
+	accelerator
+		.toLowerCase()
+		.split("+")
+		.map((part) => (part === "cmdorctrl" || part === "cmd" ? "mod" : part))
+		.join("+");
+
+/** The menu bar's chords, as `src-tauri/src/menu/model.rs` defines them. */
+const MENU_SHORTCUTS: readonly Shortcut[] = [
+	...MENU_ACCELERATORS.commands.map(([command, accelerator]) => ({
+		command,
+		chord: chordFromAccelerator(accelerator),
+	})),
 	{
-		command: "redo",
-		chord: "mod+shift+z",
-		scope: SCOPE.everywhere,
-		otherAlternates: [{ chord: "mod+y", scope: SCOPE.everywhere }],
+		command: "open-settings",
+		chord: chordFromAccelerator(MENU_ACCELERATORS.settings),
 	},
-	{ command: "find", chord: "mod+f", scope: SCOPE.everywhere },
-	{ command: { go: "allBooks" }, chord: "mod+1", scope: SCOPE.desktopOnly },
-	{ command: { go: "authors" }, chord: "mod+2", scope: SCOPE.desktopOnly },
-	{ command: { go: "series" }, chord: "mod+3", scope: SCOPE.desktopOnly },
-	{ command: { go: "tags" }, chord: "mod+4", scope: SCOPE.desktopOnly },
-	{ command: { go: "publishers" }, chord: "mod+5", scope: SCOPE.desktopOnly },
-	{
-		command: "go-back",
-		chord: "mod+[",
-		otherChord: "alt+arrowleft",
-		scope: SCOPE.desktopOnly,
-	},
-	{
-		command: "go-forward",
-		chord: "mod+]",
-		otherChord: "alt+arrowright",
-		scope: SCOPE.desktopOnly,
-	},
-	{
-		command: "book-show-details",
-		chord: "mod+i",
-		scope: SCOPE.everywhere,
-		otherAlternates: [{ chord: "alt+enter", scope: SCOPE.desktopOnly }],
-	},
-	{ command: "book-open", chord: "mod+o", scope: SCOPE.desktopOnly },
-	{ command: "book-edit", chord: "mod+e", scope: SCOPE.desktopOnly },
-	{
-		command: "book-show-in-file-manager",
-		chord: "mod+shift+r",
-		scope: SCOPE.desktopOnly,
-	},
-	{
-		command: "book-delete",
-		chord: "mod+backspace",
-		otherChord: "delete",
-		scope: SCOPE.everywhere,
-	},
-	{ command: "toggle-sidebar", chord: "mod+ctrl+s", scope: SCOPE.menuOnly },
-	{ command: "add-book", chord: "mod+n", scope: SCOPE.desktopOnly },
-	{ command: "open-settings", chord: "mod+,", scope: SCOPE.desktopOnly },
 ];
 
-const chordFor = (
-	definition: ShortcutDefinition,
-	os: OperatingSystem,
-): string =>
-	!usesCommandKey(os) && definition.otherChord !== undefined
-		? definition.otherChord
-		: definition.chord;
+/** The chords a browser tab binds; it keeps the rest (Ctrl+O, Ctrl+1…). */
+const IN_BROWSER: readonly TNamedCommand[] = [
+	"undo",
+	"redo",
+	"find",
+	"book-show-details",
+	"book-delete",
+];
 
-const appliesIn = (scope: TScope, env: ShortcutEnvironment): boolean => {
-	if (menuBarOwnsChords(env)) return true;
-	if (scope === SCOPE.menuOnly) return false;
-	return scope === SCOPE.everywhere || env.desktop;
+/** Only the macOS menu bar has these. */
+const MENU_ONLY: readonly TNamedCommand[] = ["toggle-sidebar"];
+
+/** Off Apple keyboards: Windows and Linux's own chord instead of the Mac's. */
+const OFF_MAC_CHORD: Partial<Record<TNamedCommand, string>> = {
+	"go-back": "alt+arrowleft",
+	"go-forward": "alt+arrowright",
+	"book-delete": "delete",
 };
 
-/** The chord for a command here, or null where it has none. */
-export const shortcutChord = (
+/**
+ * Further chords Windows and Linux also accept, by their own convention
+ * (Ctrl+Y for Redo, Alt+Enter for Properties). Menus show only the first.
+ */
+const OFF_MAC_EXTRAS: readonly (Shortcut & { inBrowser: boolean })[] = [
+	{ command: "redo", chord: "mod+y", inBrowser: true },
+	{ command: "book-show-details", chord: "alt+enter", inBrowser: false },
+];
+
+const named = (
 	command: TShortcutCommand,
-	env: ShortcutEnvironment,
-): string | null => {
-	const definition = SHORTCUTS.find((candidate) =>
-		sameCommand(candidate.command, command),
-	);
-	if (definition === undefined || !appliesIn(definition.scope, env))
-		return null;
-	return chordFor(definition, env.os);
-};
+	list: readonly TNamedCommand[],
+): boolean => typeof command === "string" && list.includes(command);
 
-const alternatesFor = (
-	definition: ShortcutDefinition,
+const boundHere = (command: TShortcutCommand, env: ShortcutEnvironment) =>
+	menuBarOwnsChords(env) ||
+	(!named(command, MENU_ONLY) && (env.desktop || named(command, IN_BROWSER)));
+
+const chordHere = ({ command, chord }: Shortcut, os: OperatingSystem) =>
+	(!usesCommandKey(os) && typeof command === "string"
+		? OFF_MAC_CHORD[command]
+		: undefined) ?? chord;
+
+/** The chord a named command has here, where it has one. */
+export const shortcutChord = (
+	command: TNamedCommand | TBookCommand,
 	env: ShortcutEnvironment,
-): string[] =>
-	usesCommandKey(env.os)
-		? []
-		: (definition.otherAlternates ?? [])
-				.filter((alternate) => appliesIn(alternate.scope, env))
-				.map((alternate) => alternate.chord);
+): Option<string> => {
+	const shortcut = MENU_SHORTCUTS.find(
+		(candidate) => candidate.command === command,
+	);
+	return shortcut !== undefined && boundHere(shortcut.command, env)
+		? some(chordHere(shortcut, env.os))
+		: none();
+};
 
 /** Chords the page itself must handle: none the menu bar already does. */
-export const pageShortcuts = (
-	env: ShortcutEnvironment,
-): { command: ShortcutDefinition["command"]; chord: string }[] =>
-	menuBarOwnsChords(env)
+export const pageShortcuts = (env: ShortcutEnvironment): Shortcut[] => {
+	if (menuBarOwnsChords(env)) return [];
+	const extras = usesCommandKey(env.os)
 		? []
-		: SHORTCUTS.filter((definition) =>
-				appliesIn(definition.scope, env),
-			).flatMap((definition) =>
-				[chordFor(definition, env.os), ...alternatesFor(definition, env)].map(
-					(chord) => ({ command: definition.command, chord }),
-				),
-			);
+		: OFF_MAC_EXTRAS.filter((extra) => env.desktop || extra.inBrowser);
+	return MENU_SHORTCUTS.filter(({ command }) =>
+		boundHere(command, env),
+	).flatMap((shortcut) => [
+		{ command: shortcut.command, chord: chordHere(shortcut, env.os) },
+		...extras
+			.filter((extra) => extra.command === shortcut.command)
+			.map(({ command, chord }) => ({ command, chord })),
+	]);
+};
 
 const MAC_MODIFIER_SYMBOLS: Record<string, string> = {
 	ctrl: "⌃",
@@ -248,14 +213,6 @@ export const ariaChord = (chord: string, os: OperatingSystem): string => {
 	return [...new Set(modifiers), keyName].join("+");
 };
 
-const BOOK_SHORTCUT_COMMANDS: Partial<Record<TBookCommand, MenuCommand>> = {
-	[BOOK_COMMAND.showDetails]: "book-show-details",
-	[BOOK_COMMAND.open]: "book-open",
-	[BOOK_COMMAND.edit]: "book-edit",
-	[BOOK_COMMAND.showInFileManager]: "book-show-in-file-manager",
-	[BOOK_COMMAND.delete]: "book-delete",
-};
-
 export interface ShortcutHint {
 	/** What the menu shows, e.g. "⌘I" or "Ctrl+I". */
 	label: string;
@@ -270,13 +227,14 @@ export interface ShortcutHint {
 export const bookShortcutHint = (
 	command: TBookCommand,
 	env: ShortcutEnvironment,
-): ShortcutHint | null => {
+): Option<ShortcutHint> => {
 	if (command === BOOK_COMMAND.quickLook)
-		return { label: "Space", aria: "Space" };
-	const menuCommand = BOOK_SHORTCUT_COMMANDS[command];
-	if (menuCommand === undefined) return null;
-	const chord = shortcutChord(menuCommand, env);
-	return chord === null
-		? null
-		: { label: formatChord(chord, env.os), aria: ariaChord(chord, env.os) };
+		return some({ label: "Space", aria: "Space" });
+	const chord = shortcutChord(command, env);
+	return chord.isSome
+		? some({
+				label: formatChord(chord.value, env.os),
+				aria: ariaChord(chord.value, env.os),
+			})
+		: none();
 };

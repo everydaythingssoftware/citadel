@@ -6,7 +6,6 @@ import {
 	RouterProvider,
 } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { AddBookProvider } from "@/components/organisms/AddBook";
 import { MenuCommandHost } from "@/components/organisms/MenuCommandHost";
 import { emptySelection } from "@/lib/book-selection";
 import { none, some } from "@/lib/option";
@@ -80,10 +79,10 @@ const Frame = ({ platform, count, readOnly = false }: FrameProps) => {
 			createRouter({
 				routeTree: createRootRoute({
 					component: () => (
-						<AddBookProvider>
+						<>
 							<Books />
 							<MenuCommandHost />
-						</AddBookProvider>
+						</>
 					),
 				}),
 				history: createMemoryHistory(),

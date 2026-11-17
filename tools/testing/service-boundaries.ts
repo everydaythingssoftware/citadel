@@ -108,6 +108,10 @@ function resolve(file: string, specifier: string): string {
 	return resolved.replace(/\.[cm]?[jt]sx?$/, "");
 }
 
+/** Generated constants (`MENU_ACCELERATORS`) are data, not IPC. */
+const isGeneratedConstant = (item: ts.ImportSpecifier) =>
+	/^[A-Z][A-Z0-9_]*$/.test((item.propertyName ?? item.name).text);
+
 /** Inspect imports structurally so aliases, mixed type imports and re-exports cannot bypass the boundary. */
 export function checkServiceBoundaries(file: string, text: string): string[] {
 	if (file === "src/bindings.ts" || /\.(test|stories)\.[jt]sx?$/.test(file))
@@ -167,7 +171,9 @@ export function checkServiceBoundaries(file: string, text: string): string[] {
 					(named &&
 						ts.isNamedImports(named) &&
 						named.elements.length > 0 &&
-						named.elements.every((x) => x.isTypeOnly)),
+						named.elements.every(
+							(x) => x.isTypeOnly || isGeneratedConstant(x),
+						)),
 			);
 			module(node, node.moduleSpecifier.text, typeOnly);
 			if (
@@ -180,7 +186,7 @@ export function checkServiceBoundaries(file: string, text: string): string[] {
 						if (imported === "commands") commandAliases.add(item.name.text);
 						else if (imported === "events" && allowedEvents)
 							eventAliases.add(item.name.text);
-						else if (!item.isTypeOnly)
+						else if (!item.isTypeOnly && !isGeneratedConstant(item))
 							diagnostic(
 								item,
 								"Only commands (and owned events) may be imported at runtime from generated bindings.",

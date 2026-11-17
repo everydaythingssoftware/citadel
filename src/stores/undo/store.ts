@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { Option } from "@/lib/option";
 import {
 	emptyUndoHistory,
 	redoStep,
@@ -11,7 +12,7 @@ import {
 
 interface UndoState {
 	history: UndoHistory;
-	/** An undo or redo is writing; library writes it makes don't clear. */
+	/** An undo or redo is still writing: the next one waits its turn. */
 	running: boolean;
 }
 
@@ -36,16 +37,16 @@ export const clearUndoHistory = () => {
 };
 
 const run = async (
-	step: (history: UndoHistory) => UndoStep | null,
+	step: (history: UndoHistory) => Option<UndoStep>,
 	direction: "undo" | "redo",
 ): Promise<void> => {
 	const { history, running } = useUndoStore.getState();
 	if (running) return;
 	const next = step(history);
-	if (next === null) return;
-	useUndoStore.setState({ history: next.history, running: true });
+	if (!next.isSome) return;
+	useUndoStore.setState({ history: next.value.history, running: true });
 	try {
-		await next.entry[direction]();
+		await next.value.entry[direction]();
 	} catch (error) {
 		// Half undone: the entries below no longer describe the library.
 		useUndoStore.setState({ history: emptyUndoHistory });

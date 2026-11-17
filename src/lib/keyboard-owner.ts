@@ -9,7 +9,7 @@ export interface KeyboardOwnerTarget extends EditableTargetLike {
  * Sheets, alerts and menus own the keyboard while they are open. The book
  * drawer doesn't: it shows the selection, so the Book menu still applies.
  */
-export const OVERLAY_SELECTOR =
+const OVERLAY_SELECTOR =
 	'[role="alertdialog"], [role="dialog"]:not([data-drawer]), [role="menu"]';
 
 /**
@@ -21,3 +21,19 @@ export const keyboardBusyAt = (
 ): boolean =>
 	focused != null &&
 	(isEditableTarget(focused) || focused.closest(OVERLAY_SELECTOR) != null);
+
+/**
+ * Whether an open sheet or alert keeps app-wide chords (Go, Find, Add
+ * Book…) from running. The details panel is a non-modal dialog the app
+ * stays live beside, so it never does.
+ */
+export const overlayBlocksAppChords = (
+	openDialogs: readonly { hasAttribute(name: string): boolean }[],
+): boolean => openDialogs.some((dialog) => !dialog.hasAttribute("data-drawer"));
+
+export const overlayOpen = (): boolean =>
+	overlayBlocksAppChords([
+		...document.querySelectorAll(
+			'[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+		),
+	]);

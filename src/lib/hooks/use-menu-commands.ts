@@ -1,13 +1,11 @@
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useAddBook } from "@/components/organisms/AddBook";
+import { useEffect, useEffectEvent } from "react";
 import {
 	pageShortcuts,
-	type ShortcutEnvironment,
+	shortcutEnvironment,
 	type TShortcutCommand,
 } from "@/lib/app-shortcuts";
-import { keyboardBusyAt } from "@/lib/keyboard-owner";
-import type { KeyBinding } from "@/lib/keymap";
+import { useAddBook } from "@/lib/hooks/use-add-book";
 import {
 	type AddLibraryFlow,
 	useAddLibraryFlow,
@@ -16,104 +14,32 @@ import { useBookSelectionActions } from "@/lib/hooks/use-book-selection";
 import { useKeymap } from "@/lib/hooks/use-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOpenSettings } from "@/lib/hooks/use-open-settings";
-import {
-	type MenuAction,
-	type MenuBarState,
-	menuAction,
-	menuStateFor,
-	menuStateUpdates,
-	type UndoTitles,
-	undoTitles,
-} from "@/lib/menu-commands";
+import { listen } from "@/lib/hooks/use-window-chrome-state";
+import { keyboardBusyAt, overlayOpen } from "@/lib/keyboard-owner";
+import type { KeyBinding } from "@/lib/keymap";
+import { appUndo, GO_PATHS, isBookCommand } from "@/lib/menu-commands";
 import { usePlatform } from "@/lib/platform/context";
 import { useBookEditor } from "@/stores/book-editor/store";
 import { useLibraryView } from "@/stores/library-view/store";
 import { requestFind, setShelfSheetOpen } from "@/stores/menu-requests/store";
-import { toggleSidebar, useSidebar } from "@/stores/sidebar/store";
+import { toggleSidebar } from "@/stores/sidebar/store";
 import { redoLast, undoLast, useUndoStore } from "@/stores/undo/store";
-import { redoTitle, type UndoHistory, undoTitle } from "@/lib/undo-history";
-import type { PlatformAdapter } from "@/lib/platform/types";
 
-/** Coalesces bursts (a ⇧-click range, focus hopping) into one push. */
-const PUSH_DELAY_MS = 40;
-
-// Radix keeps overlay content mounted only while open, so any open dialog
-// (drawer, sheet, alert) in the DOM owns the keyboard for navigation chords.
-const overlayOpen = () =>
-	document.querySelector(
-		'[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
-	) !== null;
-
-const keyboardBusy = () =>
-	keyboardBusyAt(document.activeElement as HTMLElement | null);
-
-/** Tracks whether a field or overlay has the keyboard, as focus moves. */
-const useKeyboardBusy = (): boolean => {
-	const [busy, setBusy] = useState(keyboardBusy);
-	useEffect(() => {
-		// focusout lands on <body> before the next focusin; read once both ran.
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		const update = () => {
-			clearTimeout(timer);
-			timer = setTimeout(() => setBusy(keyboardBusy()), 0);
-		};
-		document.addEventListener("focusin", update);
-		document.addEventListener("focusout", update);
-		return () => {
-			clearTimeout(timer);
-			document.removeEventListener("focusin", update);
-			document.removeEventListener("focusout", update);
-		};
-	}, []);
-	return busy;
-};
-
-/** Whether the library window is in front, as it changes. */
-const useWindowActive = (platform: PlatformAdapter): boolean => {
-	const [active, setActive] = useState(true);
-	useEffect(() => {
-		let stop: (() => void) | undefined;
-		let cancelled = false;
-		platform.window
-			.onActiveChange(setActive)
-			.then((unlisten) => {
-				if (cancelled) unlisten();
-				else stop = unlisten;
-			})
-			.catch((error: unknown) => console.error("Window focus:", error));
-		return () => {
-			cancelled = true;
-			stop?.();
-		};
-	}, [platform]);
-	return active;
-};
-
-const historyTitles = (history: UndoHistory): UndoTitles => ({
-	undo: undoTitle(history),
-	redo: redoTitle(history),
-});
-
-/** What Edit > Undo and Redo would do right now. */
-const currentUndoTitles = (): UndoTitles =>
-	undoTitles({
-		editor: useBookEditor.getState(),
-		history: historyTitles(useUndoStore.getState().history),
-	});
+const keyboardBusy = () => keyboardBusyAt(document.activeElement);
 
 /**
- * Edit > Undo / Redo (⌘Z / ⇧⌘Z; Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y off the Mac): a
- * focused text field's own undo, else the open book editor's, else the
- * app's undo history.
+ * Edit > Undo / Redo: a focused text field's own undo, else the open book
+ * editor's, else the app's undo history.
  */
 const runUndo = (command: "undo" | "redo") => {
 	if (keyboardBusy()) {
 		document.execCommand(command);
 		return;
 	}
-	const editor = useBookEditor.getState();
-	if (editor.open) {
-		if (command === "undo" && editor.canUndo) editor.undo();
+	const { editor } = useBookEditor.getState();
+	if (editor.isSome) {
+		if (command === "undo" && editor.value.undo.isSome)
+			editor.value.undo.value();
 		return;
 	}
 	(command === "undo" ? undoLast() : redoLast()).catch((error: unknown) =>
@@ -121,19 +47,20 @@ const runUndo = (command: "undo" | "redo") => {
 	);
 };
 
-const BOOKS_PATH = "/";
-
-export interface MenuCommands {
-	/** Add Library… from the menu bar; render `AddLibraryDialog` with it. */
-	addLibrary: AddLibraryFlow;
-}
+const hasUndo = (command: "undo" | "redo") => {
+	const undo = appUndo(
+		useBookEditor.getState().editor,
+		useUndoStore.getState().history,
+	);
+	return (command === "undo" ? undo.undoLabel : undo.redoLabel) !== null;
+};
 
 /**
  * Carries out the menu bar's commands and, where there is no menu bar, the
- * same shortcuts from the keyboard; and tells the menu bar what to show.
- * Mounted once, in the library window's shell.
+ * same shortcuts from the keyboard. Mounted once, in the library window's
+ * shell; Add Library… opens the flow it returns.
  */
-export const useMenuCommands = (): MenuCommands => {
+export const useMenuCommands = (): { addLibrary: AddLibraryFlow } => {
 	const platform = usePlatform();
 	const navigate = useNavigate();
 	const router = useRouter();
@@ -141,45 +68,43 @@ export const useMenuCommands = (): MenuCommands => {
 		select: (state) => state.location.pathname,
 	});
 	const selectionActions = useBookSelectionActions();
-	const { libraries, activeLibrary, switchTo } = useLibrarySelection();
+	const { activeLibrary, switchTo } = useLibrarySelection();
 	const addLibrary = useAddLibraryFlow();
 	const { startAddBook } = useAddBook();
 	const openSettings = useOpenSettings();
-	const sidebarVisible = useSidebar((state) => state.visible);
-	const unreadOnly = useLibraryView((state) => state.hideRead);
-	const sortOrder = useLibraryView((state) => state.sortOrder);
-	const editorOpen = useBookEditor((state) => state.open);
-	const editorCanUndo = useBookEditor((state) => state.canUndo);
-	const history = useUndoStore((state) => state.history);
-	const undo = useMemo(
-		() =>
-			undoTitles({
-				editor: { open: editorOpen, canUndo: editorCanUndo },
-				history: historyTitles(history),
-			}),
-		[editorOpen, editorCanUndo, history],
-	);
-	const busy = useKeyboardBusy();
-	const windowActive = useWindowActive(platform);
-
-	const env = useMemo<ShortcutEnvironment>(
-		() => ({
-			os: platform.os,
-			desktop: platform.capabilities.supportsNativeWindows,
-		}),
-		[platform],
-	);
+	const env = shortcutEnvironment(platform);
 	const enabled = platform.window.isMain;
 
-	const run = (action: MenuAction) => {
-		switch (action.type) {
-			case "book":
-				if (selectionActions.selectedCount > 0)
-					selectionActions.run(action.command);
-				return;
+	const toBooks = () => {
+		if (pathname !== GO_PATHS.allBooks)
+			void navigate({ to: GO_PATHS.allBooks });
+	};
+
+	const run = (command: TShortcutCommand) => {
+		if (isBookCommand(command)) {
+			if (selectionActions.selectedCount > 0) selectionActions.run(command);
+			return;
+		}
+		if (typeof command !== "string") {
+			if ("sort" in command)
+				useLibraryView.getState().setSortOrder(command.sort);
+			else if ("go" in command) {
+				// All Books also clears the search and shelf, like the sidebar link.
+				if (command.go === "allBooks") {
+					useLibraryView.getState().resetToAllBooks();
+					void navigate({ to: GO_PATHS.allBooks, search: {} });
+				} else void navigate({ to: GO_PATHS[command.go] });
+			} else void switchTo(command.switchLibrary);
+			return;
+		}
+		switch (command) {
 			case "find":
-				if (pathname !== BOOKS_PATH) void navigate({ to: BOOKS_PATH });
+				toBooks();
 				requestFind();
+				return;
+			case "new-shelf":
+				toBooks();
+				setShelfSheetOpen(true);
 				return;
 			case "toggle-sidebar":
 				toggleSidebar();
@@ -189,23 +114,11 @@ export const useMenuCommands = (): MenuCommands => {
 				view.setHideRead(!view.hideRead);
 				return;
 			}
-			case "sort":
-				useLibraryView.getState().setSortOrder(action.order);
+			case "go-back":
+				router.history.back();
 				return;
-			case "go":
-				if (action.resetToAllBooks) useLibraryView.getState().resetToAllBooks();
-				void navigate({
-					to: action.path,
-					...(action.path === BOOKS_PATH ? { search: {} } : {}),
-				});
-				return;
-			case "history":
-				if (action.direction === "back") router.history.back();
-				else router.history.forward();
-				return;
-			case "new-shelf":
-				if (pathname !== BOOKS_PATH) void navigate({ to: BOOKS_PATH });
-				setShelfSheetOpen(true);
+			case "go-forward":
+				router.history.forward();
 				return;
 			case "add-library":
 				addLibrary.start();
@@ -216,118 +129,59 @@ export const useMenuCommands = (): MenuCommands => {
 						.revealInFileManager(activeLibrary.absolutePath)
 						.catch((error: unknown) => console.error("Show library:", error));
 				return;
-			case "switch-library":
-				void switchTo(action.libraryId);
-				return;
-			case "edit":
-				runUndo(action.command);
+			case "undo":
+			case "redo":
+				runUndo(command);
 				return;
 			case "add-book":
 				startAddBook();
 				return;
 			case "open-settings":
 				openSettings();
-				return;
 		}
 	};
-	const runRef = useRef(run);
-	runRef.current = run;
 
+	const onMenuCommand = useEffectEvent(run);
 	useEffect(() => {
 		if (!enabled || !platform.menu.isSome) return;
-		const unlisten = platform.menu.value.onCommand((command) =>
-			runRef.current(menuAction(command)),
-		);
-		return () => {
-			void unlisten.then((dispose) => dispose());
-		};
+		return listen(platform.menu.value.onCommand(onMenuCommand), "Menu bar");
 	}, [enabled, platform]);
 
-	const bindings: KeyBinding[] = enabled
-		? pageShortcuts(env).map(({ command, chord }) => bindingFor(command, chord))
-		: [];
-	function bindingFor(command: TShortcutCommand, chord: string): KeyBinding {
-		const action = menuAction(command);
-		const onMatch = () => runRef.current(action);
-		switch (action.type) {
-			case "book":
-				return {
-					chord,
-					when: () => selectionActions.selectedCount > 0 && !keyboardBusy(),
-					onMatch,
-				};
+	const guard = (
+		command: TShortcutCommand,
+	): Pick<KeyBinding, "when" | "allowInEditable"> => {
+		if (isBookCommand(command))
+			return {
+				when: () => selectionActions.selectedCount > 0 && !keyboardBusy(),
+			};
+		switch (command) {
 			case "find":
 				// A browser keeps its own Find on pages without a search field.
 				return {
-					chord,
 					allowInEditable: true,
-					when: () => !overlayOpen() && (env.desktop || pathname === "/"),
-					onMatch,
-				};
-			case "history":
-				return { chord, when: () => !overlayOpen(), onMatch };
-			case "edit":
-				// Nothing to undo: the key stays the browser's and the field's.
-				return {
-					chord,
 					when: () =>
-						!keyboardBusy() && currentUndoTitles()[action.command] !== null,
-					onMatch,
+						!overlayOpen() && (env.desktop || pathname === GO_PATHS.allBooks),
 				};
+			case "go-back":
+			case "go-forward":
+				return { when: () => !overlayOpen() };
+			case "undo":
+			case "redo":
+				// Nothing to undo: the key stays the browser's and the field's.
+				return { when: () => !keyboardBusy() && hasUndo(command) };
 			default:
-				return {
-					chord,
-					allowInEditable: true,
-					when: () => !overlayOpen(),
-					onMatch,
-				};
+				return { allowInEditable: true, when: () => !overlayOpen() };
 		}
-	}
-	useKeymap(bindings);
-
-	const state = useMemo(
-		() =>
-			menuStateFor({
-				selectedBookCount: selectionActions.selectedCount,
-				selectionAllFinished: selectionActions.allFinished,
-				keyboardBusy: busy,
-				windowActive,
-				sidebarVisible,
-				unreadOnly,
-				sortOrder,
-				libraries,
-				activeLibraryId: activeLibrary?.id,
-				undo,
-			}),
-		[
-			selectionActions.selectedCount,
-			selectionActions.allFinished,
-			busy,
-			windowActive,
-			sidebarVisible,
-			unreadOnly,
-			sortOrder,
-			libraries,
-			activeLibrary?.id,
-			undo,
-		],
+	};
+	useKeymap(
+		enabled
+			? pageShortcuts(env).map(({ command, chord }) => ({
+					chord,
+					onMatch: () => run(command),
+					...guard(command),
+				}))
+			: [],
 	);
-	const pushed = useRef<MenuBarState | null>(null);
-	useEffect(() => {
-		const { menu } = platform;
-		if (!enabled || !menu.isSome) return;
-		const timer = setTimeout(() => {
-			const updates = menuStateUpdates(pushed.current, state);
-			pushed.current = state;
-			for (const update of updates)
-				menu.value
-					.setState(update)
-					.catch((error: unknown) =>
-						console.error("Failed to update the menu bar:", error),
-					);
-		}, PUSH_DELAY_MS);
-		return () => clearTimeout(timer);
-	}, [enabled, state, platform]);
 
 	return { addLibrary };
 };

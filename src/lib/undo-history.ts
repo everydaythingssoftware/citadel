@@ -1,3 +1,5 @@
+import { none, type Option, some } from "@/lib/option";
+
 /**
  * One undo history for the library window, modelled on AppKit's
  * NSUndoManager: Edit > Undo and Redo always name the top entry ("Undo Mark
@@ -11,9 +13,6 @@
  * Clearing is what keeps Undo honest: without it, Undo would offer to undo
  * something older across a change it can't see, against a library that has
  * moved on. A new action picks a side deliberately; doing neither is a bug.
- *
- * Registered today: Mark as Finished / Mark as Unfinished. Everything else
- * that writes clears (`src/stores/undo/store.ts` has `clearUndoHistory`).
  */
 export interface UndoEntry {
 	/** The action's name as the menu shows it after "Undo": "Mark as Finished". */
@@ -50,29 +49,29 @@ export interface UndoStep {
 }
 
 /** The entry Undo runs, and the history after it (the entry moves to Redo). */
-export const undoStep = (history: UndoHistory): UndoStep | null => {
+export const undoStep = (history: UndoHistory): Option<UndoStep> => {
 	const entry = history.undo.at(-1);
-	if (entry === undefined) return null;
-	return {
+	if (entry === undefined) return none();
+	return some({
 		entry,
 		history: {
 			undo: history.undo.slice(0, -1),
 			redo: [...history.redo, entry],
 		},
-	};
+	});
 };
 
 /** The entry Redo runs, and the history after it (the entry moves to Undo). */
-export const redoStep = (history: UndoHistory): UndoStep | null => {
+export const redoStep = (history: UndoHistory): Option<UndoStep> => {
 	const entry = history.redo.at(-1);
-	if (entry === undefined) return null;
-	return {
+	if (entry === undefined) return none();
+	return some({
 		entry,
 		history: {
 			undo: [...history.undo, entry],
 			redo: history.redo.slice(0, -1),
 		},
-	};
+	});
 };
 
 /** "Undo Mark as Finished", or null when there is nothing to undo. */

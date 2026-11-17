@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
 	ariaChord,
 	bookShortcutHint,
+	chordFromAccelerator,
 	formatChord,
 	menuBarOwnsChords,
 	pageShortcuts,
-	SHORTCUTS,
 	shortcutChord,
 } from "./app-shortcuts";
 import { BOOK_COMMAND } from "./book-menu";
+import { none, some } from "./option";
 
 const macApp = { os: "macos", desktop: true } as const;
 const windowsApp = { os: "windows", desktop: true } as const;
@@ -59,8 +60,8 @@ describe("pageShortcuts", () => {
 
 	it("binds Undo and Redo everywhere the page handles keys", () => {
 		for (const env of [windowsApp, linuxApp, macBrowser, windowsBrowser]) {
-			expect(shortcutChord("undo", env)).toBe("mod+z");
-			expect(shortcutChord("redo", env)).toBe("mod+shift+z");
+			expect(shortcutChord("undo", env)).toEqual(some("mod+z"));
+			expect(shortcutChord("redo", env)).toEqual(some("mod+shift+z"));
 		}
 		expect(commandsOf(macApp)).not.toContain("undo");
 	});
@@ -78,12 +79,12 @@ describe("pageShortcuts", () => {
 
 	it("goes back and forward with Alt+arrows on Windows and Linux desktop", () => {
 		for (const env of [windowsApp, linuxApp]) {
-			expect(shortcutChord("go-back", env)).toBe("alt+arrowleft");
-			expect(shortcutChord("go-forward", env)).toBe("alt+arrowright");
+			expect(shortcutChord("go-back", env)).toEqual(some("alt+arrowleft"));
+			expect(shortcutChord("go-forward", env)).toEqual(some("alt+arrowright"));
 		}
-		expect(shortcutChord("go-back", macApp)).toBe("mod+[");
-		expect(shortcutChord("go-back", windowsBrowser)).toBeNull();
-		expect(shortcutChord("go-back", macBrowser)).toBeNull();
+		expect(shortcutChord("go-back", macApp)).toEqual(some("mod+["));
+		expect(shortcutChord("go-back", windowsBrowser)).toEqual(none());
+		expect(shortcutChord("go-back", macBrowser)).toEqual(none());
 	});
 
 	it("shows details with Alt+Enter too on Windows and Linux desktop", () => {
@@ -95,16 +96,20 @@ describe("pageShortcuts", () => {
 		expect(detailsChords(linuxApp)).toEqual(["mod+i", "alt+enter"]);
 		expect(detailsChords(windowsBrowser)).toEqual(["mod+i"]);
 		expect(detailsChords(macBrowser)).toEqual(["mod+i"]);
-		expect(shortcutChord("book-show-details", windowsApp)).toBe("mod+i");
+		expect(shortcutChord("book-show-details", windowsApp)).toEqual(
+			some("mod+i"),
+		);
 	});
 
 	it("deletes with the Delete key off macOS", () => {
-		expect(shortcutChord("book-delete", windowsApp)).toBe("delete");
-		expect(shortcutChord("book-delete", macBrowser)).toBe("mod+backspace");
+		expect(shortcutChord("book-delete", windowsApp)).toEqual(some("delete"));
+		expect(shortcutChord("book-delete", macBrowser)).toEqual(
+			some("mod+backspace"),
+		);
 	});
 
 	it("numbers Go the same everywhere it exists", () => {
-		const go = SHORTCUTS.flatMap(({ command, chord }) =>
+		const go = pageShortcuts(windowsApp).flatMap(({ command, chord }) =>
 			typeof command !== "string" && "go" in command
 				? [[command.go, chord]]
 				: [],
@@ -116,7 +121,15 @@ describe("pageShortcuts", () => {
 			["tags", "mod+4"],
 			["publishers", "mod+5"],
 		]);
-		expect(shortcutChord({ go: "tags" }, windowsApp)).toBe("mod+4");
+	});
+});
+
+describe("chordFromAccelerator", () => {
+	it("reads the menu bar's accelerators as keymap chords", () => {
+		expect(chordFromAccelerator("CmdOrCtrl+Shift+Z")).toBe("mod+shift+z");
+		expect(chordFromAccelerator("Ctrl+Cmd+S")).toBe("ctrl+mod+s");
+		expect(chordFromAccelerator("CmdOrCtrl+Backspace")).toBe("mod+backspace");
+		expect(chordFromAccelerator("CmdOrCtrl+[")).toBe("mod+[");
 	});
 });
 
@@ -148,41 +161,45 @@ describe("ariaChord", () => {
 
 describe("bookShortcutHint", () => {
 	it("shows the menu bar's chords in the macOS app", () => {
-		expect(bookShortcutHint(BOOK_COMMAND.showDetails, macApp)?.label).toBe(
-			"⌘I",
-		);
 		expect(
-			bookShortcutHint(BOOK_COMMAND.showInFileManager, macApp)?.label,
+			bookShortcutHint(BOOK_COMMAND.showDetails, macApp).value?.label,
+		).toBe("⌘I");
+		expect(
+			bookShortcutHint(BOOK_COMMAND.showInFileManager, macApp).value?.label,
 		).toBe("⇧⌘R");
-		expect(bookShortcutHint(BOOK_COMMAND.quickLook, macApp)?.label).toBe(
+		expect(bookShortcutHint(BOOK_COMMAND.quickLook, macApp).value?.label).toBe(
 			"Space",
 		);
 	});
 
 	it("shows Ctrl chords on Windows", () => {
-		expect(bookShortcutHint(BOOK_COMMAND.open, windowsApp)?.label).toBe(
+		expect(bookShortcutHint(BOOK_COMMAND.open, windowsApp).value?.label).toBe(
 			"Ctrl+O",
 		);
-		expect(bookShortcutHint(BOOK_COMMAND.delete, windowsApp)?.label).toBe(
+		expect(bookShortcutHint(BOOK_COMMAND.delete, windowsApp).value?.label).toBe(
 			"Delete",
 		);
 	});
 
 	it("shows only the primary chord for Show Details", () => {
-		expect(bookShortcutHint(BOOK_COMMAND.showDetails, windowsApp)?.label).toBe(
-			"Ctrl+I",
-		);
+		expect(
+			bookShortcutHint(BOOK_COMMAND.showDetails, windowsApp).value?.label,
+		).toBe("Ctrl+I");
 	});
 
 	it("leaves out chords a browser keeps", () => {
-		expect(bookShortcutHint(BOOK_COMMAND.edit, windowsBrowser)).toBeNull();
-		expect(bookShortcutHint(BOOK_COMMAND.showDetails, macBrowser)?.label).toBe(
-			"⌘I",
+		expect(bookShortcutHint(BOOK_COMMAND.edit, windowsBrowser).isSome).toBe(
+			false,
 		);
+		expect(
+			bookShortcutHint(BOOK_COMMAND.showDetails, macBrowser).value?.label,
+		).toBe("⌘I");
 	});
 
 	it("has none for items without a chord", () => {
-		expect(bookShortcutHint(BOOK_COMMAND.copyTitle, macApp)).toBeNull();
-		expect(bookShortcutHint(BOOK_COMMAND.toggleFinished, macApp)).toBeNull();
+		expect(bookShortcutHint(BOOK_COMMAND.copyTitle, macApp).isSome).toBe(false);
+		expect(bookShortcutHint(BOOK_COMMAND.toggleFinished, macApp).isSome).toBe(
+			false,
+		);
 	});
 });

@@ -19,12 +19,5 @@ export const useMenuRequests = create<MenuRequestsState>(() => ({
 export const requestFind = () =>
 	useMenuRequests.setState({ findPending: true });
 
-/** True once per request: the caller focuses the search field. */
-export const takeFindRequest = (): boolean => {
-	if (!useMenuRequests.getState().findPending) return false;
-	useMenuRequests.setState({ findPending: false });
-	return true;
-};
-
 export const setShelfSheetOpen = (shelfSheetOpen: boolean) =>
 	useMenuRequests.setState({ shelfSheetOpen });
