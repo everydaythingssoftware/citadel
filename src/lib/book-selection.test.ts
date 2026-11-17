@@ -7,11 +7,10 @@ import {
 	emptySelection,
 	extendSelection,
 	isBookSelected,
-	isSelectionEmpty,
 	materializePending,
 	movedBeyondClickSlop,
 	type ParkedSelection,
-	parkedWithoutBooks,
+	withoutBooks,
 	restorableSelection,
 	selectAll,
 	selectedBookCount,
@@ -176,7 +175,7 @@ describe("selectAll", () => {
 	});
 
 	it("is empty over an empty result", () => {
-		expect(isSelectionEmpty(selectAll(emptySelection), 0)).toBe(true);
+		expect(selectedBookCount(selectAll(emptySelection), 0)).toBe(0);
 		expect(unresolvedRange(selectAll(emptySelection), 0)).toBeNull();
 	});
 });
@@ -186,7 +185,7 @@ describe("clearSelection", () => {
 		const cleared = clearSelection(
 			extendSelection(selectOnly(1, "b1"), 4, shelf(6)),
 		);
-		expect(isSelectionEmpty(cleared, 6)).toBe(true);
+		expect(selectedBookCount(cleared, 6)).toBe(0);
 		expect(cleared.cursor).toBe(4);
 	});
 });
@@ -317,24 +316,24 @@ describe("parked selection", () => {
 
 	it("keeps a selection whose books are all still there", () => {
 		const left = parked(two, book("a"), true);
-		expect(parkedWithoutBooks(left, ["z"])).toBe(left);
+		expect(withoutBooks(left, ["z"])).toBe(left);
 	});
 
 	it("clears the selection and closes the details when a shown book is deleted", () => {
-		const after = parkedWithoutBooks(parked(two, book("a"), true), ["a"]);
+		const after = withoutBooks(parked(two, book("a"), true), ["a"]);
 		expect(selectedBookCount(after.selection, 10)).toBe(0);
 		expect(after.selection.cursor).toBe(1);
 		expect(after.detailsOpen).toBe(false);
 	});
 
 	it("closes details on a deleted book outside the selection only", () => {
-		const after = parkedWithoutBooks(parked(two, book("c"), true), ["c"]);
+		const after = withoutBooks(parked(two, book("c"), true), ["c"]);
 		expect(after.selection).toBe(two);
 		expect(after.detailsOpen).toBe(false);
 	});
 
 	it("clears Select All, which covered the deleted book", () => {
-		const after = parkedWithoutBooks(parked(selectAll(two)), ["q"]);
+		const after = withoutBooks(parked(selectAll(two)), ["q"]);
 		expect(after.selection.mode).toBe("some");
 		expect(selectedBookCount(after.selection, 10)).toBe(0);
 	});

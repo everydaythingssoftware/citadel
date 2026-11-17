@@ -1,19 +1,24 @@
 import type { RefObject } from "react";
 import type { LibraryBook } from "@/bindings";
+import type { BookGridHandle } from "@/components/molecules/BookGrid";
+import { safeAsyncEventHandler } from "@/lib/async";
+import { primaryLocalPath } from "@/lib/book-files";
 import {
 	clearSelection,
 	extendSelection,
 	selectAll,
 	selectOnly,
 } from "@/lib/book-selection";
-import {
-	followWithDetails,
-	updateBookSelection,
-	useBookSelectionStore,
-} from "@/lib/hooks/use-book-selection";
 import { useKeymap } from "@/lib/hooks/use-keymap";
 import type { KeyBinding, SelectionDirection } from "@/lib/keymap";
 import { moveSelection } from "@/lib/keymap";
+import { usePlatform } from "@/lib/platform/context";
+import {
+	followWithDetails,
+	openBookDetails,
+	updateBookSelection,
+	useBookSelectionStore,
+} from "@/stores/book-selection/store";
 
 interface LibraryKeymapOptions {
 	/**
@@ -28,15 +33,10 @@ interface LibraryKeymapOptions {
 	searchInputRef: RefObject<HTMLInputElement | null>;
 	gridContainerRef: RefObject<HTMLElement | null>;
 	/**
-	 * The virtualized grid's scroll-to-index function (BookGrid). The cursor
-	 * can land on a row that is not mounted; this brings the row into view so
-	 * the selected card mounts and renders its ring.
+	 * The virtualized grid's columns, and its way to bring a row that is not
+	 * mounted into view so the selected card mounts and renders its ring.
 	 */
-	scrollToBookIndexRef?: RefObject<((index: number) => void) | null>;
-	/** Return: show the cursor's book in the details drawer. */
-	onBookOpen: (book: LibraryBook) => void;
-	/** Space: Quick Look, where the platform has it. */
-	onQuickLook?: (book: LibraryBook) => void;
+	gridRef: RefObject<BookGridHandle | null>;
 	onClearSearch: () => void;
 }
 
@@ -47,22 +47,12 @@ const ARROW_CHORDS: [string, SelectionDirection][] = [
 	["arrowright", "right"],
 ];
 
-// The cover grid's column count lives in BookGrid's layout (derived from
-// the window's width); read it off the resolved grid-template-columns track
-// list of any mounted shelf row.
-const measureColumns = (container: HTMLElement | null): number => {
-	const grid = container?.querySelector("[data-books-grid]");
-	if (!(grid instanceof HTMLElement)) return 1;
-	const tracks = window.getComputedStyle(grid).gridTemplateColumns;
-	const count = tracks.split(" ").filter((track) => track !== "").length;
-	return Math.max(count, 1);
-};
-
 // An open menu, sheet or alert owns the keyboard; the grid behind it must
 // not move its selection on the same keystroke.
-const OVERLAY_SELECTOR = '[role="menu"], [role="dialog"], [role="alertdialog"]';
+const MENU_OR_ALERT = '[role="menu"], [role="alertdialog"]';
+const OVERLAY_SELECTOR = `${MENU_OR_ALERT}, [role="dialog"]`;
 const gridOwnsKeyboard = () =>
-	!(document.activeElement?.closest(OVERLAY_SELECTOR) ?? null);
+	!document.activeElement?.closest(OVERLAY_SELECTOR);
 
 // The details drawer shows the selection, so arrows pressed in it still
 // move through the grid, unless they belong to a control there (a list,
@@ -73,7 +63,7 @@ const arrowsMoveGrid = (grid: RefObject<HTMLElement | null>) => () => {
 	const focused = document.activeElement;
 	if (focused === null || focused === grid.current || focused === document.body)
 		return true;
-	if (focused.closest('[role="alertdialog"], [role="menu"]')) return false;
+	if (focused.closest(MENU_OR_ALERT)) return false;
 	const inDrawer = focused.closest("[data-drawer]") !== null;
 	if (!inDrawer) return gridOwnsKeyboard();
 	return focused.closest(ARROW_WIDGETS) === null;
@@ -84,11 +74,10 @@ export const useLibraryKeymap = ({
 	drawerOpened,
 	searchInputRef,
 	gridContainerRef,
-	scrollToBookIndexRef,
-	onBookOpen,
-	onQuickLook,
+	gridRef,
 	onClearSearch,
 }: LibraryKeymapOptions): void => {
+	const { quickLook } = usePlatform().fileOpener;
 	const selection = useBookSelectionStore((state) => state.selection);
 	const cursor =
 		selection.cursor >= 0 && selection.cursor < books.length
@@ -101,7 +90,7 @@ export const useLibraryKeymap = ({
 		// the virtualizer to scroll it into view first (which also pages the
 		// books covering it in). When the card is already mounted, the
 		// follow-up scrollIntoView fine-tunes alignment.
-		scrollToBookIndexRef?.current?.(index);
+		gridRef.current?.scrollToIndex(index);
 		const book = books[index];
 		if (book !== undefined) {
 			document
@@ -114,7 +103,7 @@ export const useLibraryKeymap = ({
 		const nextIndex = moveSelection({
 			index: cursor,
 			count: books.length,
-			columns: measureColumns(gridContainerRef.current),
+			columns: gridRef.current?.columns ?? 1,
 			direction,
 		});
 		if (nextIndex < 0 || nextIndex >= books.length) return;
@@ -180,7 +169,7 @@ export const useLibraryKeymap = ({
 			bindings.push({
 				chord: "enter",
 				when: gridOwnsKeyboard,
-				onMatch: () => onBookOpen(cursorBook),
+				onMatch: () => openBookDetails(cursorBook),
 			});
 		}
 	}
@@ -199,11 +188,14 @@ export const useLibraryKeymap = ({
 			},
 		);
 	}
-	if (cursorBook !== undefined && onQuickLook) {
+	if (cursorBook !== undefined && quickLook.isSome) {
 		bindings.push({
 			chord: "space",
 			when: gridOwnsKeyboard,
-			onMatch: () => onQuickLook(cursorBook),
+			onMatch: () => {
+				const path = primaryLocalPath(cursorBook);
+				if (path !== null) safeAsyncEventHandler(() => quickLook.value(path))();
+			},
 		});
 	}
 

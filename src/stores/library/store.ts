@@ -36,6 +36,20 @@ import { sortAuthors } from "@/lib/domain/author";
 import type { Library, Options } from "@/lib/services/library";
 import { libraryCatalog } from "@/lib/services/library-catalog";
 
+/** An update that changes only whether the book is finished. */
+const readStatusUpdate = (isRead: boolean): BookUpdate => ({
+	author_id_list: null,
+	tag_list: null,
+	title: null,
+	timestamp: null,
+	publication_date: null,
+	is_read: isRead,
+	description: null,
+	series: null,
+	series_index: null,
+	language_list: null,
+});
+
 export enum LibraryState {
 	uninitialized = "uninitialized",
 	initializing = "initializing",
@@ -89,6 +103,8 @@ interface LibraryActions {
 
 	// Book and author mutations
 	updateBook: (bookId: string, updates: BookUpdate) => Promise<void>;
+	/** Marks books finished or not, refreshing the grid once. */
+	setBooksRead: (bookIds: readonly string[], isRead: boolean) => Promise<void>;
 	updateAuthor: (authorId: string, updates: AuthorUpdate) => Promise<void>;
 	/** Resolves with the authors as created, IDs included. */
 	createAuthors: (newAuthors: NewAuthor[]) => Promise<LibraryAuthor[]>;
@@ -823,6 +839,18 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 
 			updateBook: (id, updates) =>
 				withActiveLibrary((library) => library.updateBook(id, updates), true),
+
+			setBooksRead: (ids, isRead) =>
+				withActiveLibrary(async (library, assertCurrent) => {
+					try {
+						for (const id of ids) {
+							await library.updateBook(id, readStatusUpdate(isRead));
+							assertCurrent();
+						}
+					} finally {
+						if (ids.length > 0) get().actions.invalidateBooks();
+					}
+				}),
 
 			updateAuthor: (id, updates) =>
 				withActiveLibrary(async (library, assertCurrent) => {

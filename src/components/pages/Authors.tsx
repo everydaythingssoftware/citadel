@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
 	type FormEvent,
-	type MouseEvent,
 	useCallback,
 	useEffect,
 	useRef,
@@ -23,6 +22,7 @@ import {
 } from "@/components/ui";
 import { useAuthorFilters } from "@/lib/hooks/use-author-filters";
 import { useAuthorRowMenu } from "@/lib/hooks/use-author-row-menu";
+import type { ContextMenuTarget } from "@/lib/hooks/use-context-menu";
 import { useVirtualListRows } from "@/lib/hooks/use-virtual-list-rows";
 import {
 	useAuthors,
@@ -234,11 +234,11 @@ export const Authors = () => {
 						resetKey={JSON.stringify(filters)}
 						onEditAuthor={onOpenEditAuthorSheet}
 						onDeleteAuthor={onOpenDeleteAuthorDialog}
-						onAuthorContextMenu={rowMenu.openFor}
+						menuTargetFor={rowMenu.targetFor}
 					/>
 					<ContextMenu
 						menu={rowMenu.menu.menu}
-						returnFocusRef={rowMenu.returnFocusRef}
+						returnFocusRef={rowMenu.menu.returnFocusRef}
 						onClose={rowMenu.menu.close}
 					/>
 
@@ -373,13 +373,13 @@ const AuthorRows = ({
 	resetKey,
 	onEditAuthor,
 	onDeleteAuthor,
-	onAuthorContextMenu,
+	menuTargetFor,
 }: {
 	authors: LibraryAuthor[];
 	resetKey: string;
 	onEditAuthor: (authorId: string) => void;
 	onDeleteAuthor: (authorId: string) => void;
-	onAuthorContextMenu: AuthorContextMenuHandler;
+	menuTargetFor: (author: LibraryAuthor) => ContextMenuTarget;
 }) => {
 	const { rowsRef, virtualizer, scrollMargin } = useVirtualListRows(
 		authors,
@@ -412,7 +412,7 @@ const AuthorRows = ({
 							author={author}
 							onEditAuthor={onEditAuthor}
 							onDeleteAuthor={onDeleteAuthor}
-							onContextMenu={onAuthorContextMenu}
+							menuTarget={menuTargetFor(author)}
 						/>
 					</div>
 				);
@@ -421,31 +421,25 @@ const AuthorRows = ({
 	);
 };
 
-type AuthorContextMenuHandler = (
-	event: MouseEvent<HTMLElement>,
-	author: LibraryAuthor,
-) => void;
-
 const AuthorRow = ({
 	author,
 	onEditAuthor,
 	onDeleteAuthor,
-	onContextMenu,
+	menuTarget,
 }: {
 	author: LibraryAuthor;
 	onEditAuthor: (authorId: string) => void;
 	onDeleteAuthor: (authorId: string) => void;
-	onContextMenu: AuthorContextMenuHandler;
+	menuTarget: ContextMenuTarget;
 }) => {
 	const canEdit = useLibraryStore((state) => state.library?.readOnly === false);
 	return (
 		// The whole row links to the library filtered by this author. The hover
 		// background, 40px min-height, and the overlay-link positioning live in
 		// styles.css (.ctd-author-row / .ctd-author-row-link).
-		// biome-ignore lint/a11y/noStaticElementInteractions: the row is not a control; it only catches the contextmenu event that a right-click or the Menu key on its links bubbles up.
 		<div
 			className={clsx("ctd-author-row", styles.row, styles.grid)}
-			onContextMenu={(event) => onContextMenu(event, author)}
+			{...menuTarget}
 		>
 			{/* Real anchor overlaying the row so middle-click / cmd-click /
 			    keyboard all work. The count link and the action icons sit above

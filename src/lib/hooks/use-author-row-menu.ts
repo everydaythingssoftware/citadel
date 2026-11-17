@@ -1,23 +1,19 @@
 import { useNavigate } from "@tanstack/react-router";
-import type React from "react";
-import { useRef } from "react";
 import type { LibraryAuthor } from "@/bindings";
 import type { ContextMenuEntry } from "@/lib/context-menu";
-import { contextMenuPoint } from "@/lib/context-menu-point";
 import {
 	type ContextMenuController,
+	type ContextMenuOpenEvent,
+	type ContextMenuTarget,
+	keyboardMenuEvent,
 	useContextMenu,
 } from "@/lib/hooks/use-context-menu";
 import { useLibraryStore } from "@/stores/library/store";
 
 export interface AuthorRowMenu {
 	menu: ContextMenuController;
-	/** The row's link, where focus goes back to when the menu closes. */
-	returnFocusRef: React.RefObject<HTMLElement | null>;
-	openFor: (
-		event: React.MouseEvent<HTMLElement>,
-		author: LibraryAuthor,
-	) => void;
+	/** Right-click or the Menu key on a row's links opens its menu. */
+	targetFor: (author: LibraryAuthor) => ContextMenuTarget;
 }
 
 /**
@@ -34,10 +30,10 @@ export const useAuthorRowMenu = ({
 	const navigate = useNavigate();
 	const menu = useContextMenu();
 	const canEdit = useLibraryStore((state) => state.library?.readOnly === false);
-	const returnFocusRef = useRef<HTMLElement | null>(null);
 
-	const openFor = (
-		event: React.MouseEvent<HTMLElement>,
+	const open = (
+		event: ContextMenuOpenEvent,
+		row: HTMLElement,
 		author: LibraryAuthor,
 	) => {
 		const items: ContextMenuEntry[] = [
@@ -65,11 +61,21 @@ export const useAuthorRowMenu = ({
 					]
 				: []),
 		];
-		const link = event.currentTarget.querySelector("a");
-		returnFocusRef.current = link instanceof HTMLElement ? link : null;
-		const rect = event.currentTarget.getBoundingClientRect();
-		menu.openAt(contextMenuPoint(event, rect), items, author.name);
+		// Focus goes back to the row's link; the row itself isn't focusable.
+		menu.returnFocusRef.current = row.querySelector("a");
+		menu.openAt(event, items, author.name);
 	};
 
-	return { menu, returnFocusRef, openFor };
+	const targetFor = (author: LibraryAuthor): ContextMenuTarget => ({
+		onContextMenu: (event) => open(event, event.currentTarget, author),
+		onKeyDown: (event) => {
+			const opened = keyboardMenuEvent(
+				event,
+				event.currentTarget.getBoundingClientRect(),
+			);
+			if (opened.isSome) open(opened.value, event.currentTarget, author);
+		},
+	});
+
+	return { menu, targetFor };
 };

@@ -58,16 +58,7 @@ export const isBookSelected = (
 	return index !== undefined && inRange(selection.pending, index);
 };
 
-/** True when nothing is selected (Select All over an empty result included). */
-export const isSelectionEmpty = (
-	selection: BookSelection,
-	total: number,
-): boolean => selectedBookCount(selection, total) === 0;
-
-/**
- * How many books are selected. Pending indices are counted once each, even
- * though a few of them may already be in `ids` from an earlier range.
- */
+/** How many books are selected, fetched or not. */
 export const selectedBookCount = (
 	selection: BookSelection,
 	total: number,
@@ -281,12 +272,19 @@ export const bookClickIntent = (
 };
 
 /** A move under this many pixels between press and release is still a click. */
-export const CLICK_SLOP_PX = 4;
+const CLICK_SLOP_PX = 4;
 
 export const movedBeyondClickSlop = (
 	from: { x: number; y: number },
 	to: { x: number; y: number },
 ): boolean => Math.hypot(to.x - from.x, to.y - from.y) > CLICK_SLOP_PX;
+
+/** The selection and the book the details show, live or parked. */
+export interface SelectionAndDetails {
+	readonly selection: BookSelection;
+	readonly detailsBook: LibraryBook | null;
+	readonly detailsOpen: boolean;
+}
 
 /**
  * Where the grid was when its page was left, so coming Back to the same
@@ -301,11 +299,7 @@ export interface GridPlace {
 	readonly viewKey: string;
 }
 
-export interface ParkedSelection extends GridPlace {
-	readonly selection: BookSelection;
-	readonly detailsBook: LibraryBook | null;
-	readonly detailsOpen: boolean;
-}
+export interface ParkedSelection extends GridPlace, SelectionAndDetails {}
 
 /**
  * The parked selection, if the grid is back where it was left: the same
@@ -324,26 +318,23 @@ export const restorableSelection = (
 		: null;
 
 /**
- * A parked selection after books were deleted while the grid was away: as a
- * delete from the grid does, one that took a selected book clears the
+ * After books are deleted: a delete that took a selected book clears the
  * selection (keeping the keyboard position), and the details close on a
  * book that is gone.
  */
-export const parkedWithoutBooks = (
-	parked: ParkedSelection,
+export const withoutBooks = <TState extends SelectionAndDetails>(
+	state: TState,
 	deleted: readonly BookId[],
-): ParkedSelection => {
+): TState => {
 	const hitSelection = deleted.some((id) =>
-		isBookSelected(parked.selection, id),
+		isBookSelected(state.selection, id),
 	);
 	const hitDetails =
-		parked.detailsBook !== null && deleted.includes(parked.detailsBook.id);
-	if (!hitSelection && !hitDetails) return parked;
+		state.detailsBook !== null && deleted.includes(state.detailsBook.id);
+	if (!hitSelection && !hitDetails) return state;
 	return {
-		...parked,
-		selection: hitSelection
-			? clearSelection(parked.selection)
-			: parked.selection,
-		detailsOpen: hitDetails ? false : parked.detailsOpen,
+		...state,
+		selection: hitSelection ? clearSelection(state.selection) : state.selection,
+		detailsOpen: hitDetails ? false : state.detailsOpen,
 	};
 };

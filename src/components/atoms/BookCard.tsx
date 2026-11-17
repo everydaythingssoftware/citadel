@@ -2,32 +2,14 @@ import clsx from "clsx";
 import React, { useRef } from "react";
 import type { LibraryBook } from "@/bindings";
 import { formatAuthorList } from "@/lib/authors";
+import { movedBeyondClickSlop } from "@/lib/book-selection";
 import {
-	type BookClickModifiers,
-	movedBeyondClickSlop,
-} from "@/lib/book-selection";
-import type { ContextMenuTrigger } from "@/lib/context-menu-point";
+	type BookCardActions,
+	bookCardDomId,
+} from "@/lib/hooks/use-book-grid-interaction";
 import { useCoverThumb } from "@/stores/library/store";
 import classes from "./BookCard.module.css";
 import { BookCover } from "./BookCover";
-
-export interface BookCardActions {
-	onPress: (
-		index: number,
-		book: LibraryBook,
-		modifiers: BookClickModifiers,
-	) => void;
-	onContextMenu: (
-		event: ContextMenuTrigger,
-		index: number,
-		book: LibraryBook,
-	) => void;
-	onDragStart: (
-		event: React.DragEvent,
-		index: number,
-		book: LibraryBook,
-	) => void;
-}
 
 interface BookCardProps {
 	book: LibraryBook;
@@ -37,9 +19,6 @@ interface BookCardProps {
 	actions: BookCardActions;
 	selected?: boolean;
 }
-
-/** The DOM id `aria-activedescendant` points the grid at. */
-export const bookCardDomId = (bookId: LibraryBook["id"]) => `book-${bookId}`;
 
 export const BookCard = React.memo(function BookCard({
 	book,

@@ -1,43 +1,43 @@
 import type React from "react";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import type { LibraryBook } from "@/bindings";
-import type { BookCardActions } from "@/components/atoms/BookCard";
 import {
 	downloadUrlDragData,
 	dragIconPath,
 	primaryLocalPath,
 	primaryRemoteFile,
 } from "@/lib/book-files";
-import { bookMenuEntries } from "@/lib/book-menu";
+import { BOOK_COMMAND } from "@/lib/book-menu";
 import {
+	type BookClickModifiers,
 	bookClickIntent,
 	clearSelection,
 	extendSelection,
+	selectedBookCount,
 	selectedBooks,
 	selectForContextMenu,
 	selectOnly,
 	toggleBook,
 } from "@/lib/book-selection";
-import type { ContextMenuEntry } from "@/lib/context-menu";
-import { contextMenuPoint, fromKeyboard } from "@/lib/context-menu-point";
 import { dragOutGuard } from "@/lib/drag-out-guard";
 import {
-	bookMenuContext,
-	closeBookDetails,
-	openBookDetails,
-	openBookFile,
-	updateBookSelection,
+	currentShownBooks,
 	useBookSelectionActions,
-	useBookSelectionStore,
 } from "@/lib/hooks/use-book-selection";
 import {
 	type ContextMenuController,
+	type ContextMenuOpenEvent,
+	keyboardMenuEvent,
 	useContextMenu,
 } from "@/lib/hooks/use-context-menu";
 import { usePlatform } from "@/lib/platform/context";
-import { bookCardDomId } from "@/components/atoms/BookCard";
+import {
+	closeBookDetails,
+	openBookDetails,
+	updateBookSelection,
+	useBookSelectionStore,
+} from "@/stores/book-selection/store";
 import { useLibraryStore } from "@/stores/library/store";
-import { useLibraryView } from "@/stores/library-view/store";
 
 // Only Chromium reads `DownloadURL`; it is also the only engine with
 // `navigator.userAgentData`. Elsewhere a cover drags nothing at all rather
@@ -45,13 +45,36 @@ import { useLibraryView } from "@/stores/library-view/store";
 const supportsDownloadUrlDrag = () =>
 	typeof navigator !== "undefined" && "userAgentData" in navigator;
 
+/** The DOM id `aria-activedescendant` points the grid at. */
+export const bookCardDomId = (bookId: LibraryBook["id"]) => `book-${bookId}`;
+
+export interface BookCardActions {
+	onPress: (
+		index: number,
+		book: LibraryBook,
+		modifiers: BookClickModifiers,
+	) => void;
+	onContextMenu: (
+		event: ContextMenuOpenEvent,
+		index: number,
+		book: LibraryBook,
+	) => void;
+	onDragStart: (
+		event: React.DragEvent,
+		index: number,
+		book: LibraryBook,
+	) => void;
+}
+
 export interface BookGridInteraction {
 	cardActions: BookCardActions;
 	menu: ContextMenuController;
+	/** The option `aria-activedescendant` names: the cursor's book. */
+	activeDescendant: string | undefined;
 	/** A click on the grid's empty space clears the selection and details. */
 	onBackgroundClick: (event: React.MouseEvent) => void;
 	/** The Menu key or Shift-F10 on the grid: the menu for the cursor's book. */
-	onGridContextMenu: (event: React.MouseEvent) => void;
+	onGridKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
 }
 
 /**
@@ -65,14 +88,13 @@ export const useBookGridInteraction = (
 ): BookGridInteraction => {
 	const platform = usePlatform();
 	const menu = useContextMenu();
-	const selectionActions = useBookSelectionActions();
-	const latest = useRef({ books, platform, menu, selectionActions });
-	latest.current = { books, platform, menu, selectionActions };
+	const { run, menuEntries } = useBookSelectionActions();
+	const cursor = useBookSelectionStore((state) => state.selection.cursor);
+	const cursorBook = cursor >= 0 ? books[cursor] : undefined;
 
 	const cardActions = useMemo<BookCardActions>(
 		() => ({
 			onPress: (index, book, modifiers) => {
-				const { books, platform } = latest.current;
 				const intent = bookClickIntent(modifiers, {
 					isMac: platform.os === "macos",
 				});
@@ -84,7 +106,7 @@ export const useBookGridInteraction = (
 						return;
 					case "extend":
 						updateBookSelection((selection) =>
-							extendSelection(selection, index, books),
+							extendSelection(selection, index, currentShownBooks()),
 						);
 						return;
 					case "show":
@@ -92,7 +114,11 @@ export const useBookGridInteraction = (
 						openBookDetails(book);
 						return;
 					case "open":
-						openBookFile(book, platform);
+						run(
+							platform.capabilities.canOpenLocalPaths
+								? BOOK_COMMAND.open
+								: BOOK_COMMAND.download,
+						);
 						return;
 					case "none":
 						return;
@@ -100,40 +126,24 @@ export const useBookGridInteraction = (
 			},
 
 			onContextMenu: (event, index, book) => {
-				const { books, platform, menu, selectionActions } = latest.current;
 				updateBookSelection((selection) =>
 					selectForContextMenu(selection, index, book.id),
 				);
-				const library = useLibraryStore.getState();
-				const context = bookMenuContext({
-					selection: useBookSelectionStore.getState().selection,
-					books,
-					total: library.bookCache.total ?? books.length,
-					hideRead: useLibraryView.getState().hideRead,
-					canEdit: library.library?.readOnly === false,
-					platform,
-				});
-				const items: ContextMenuEntry[] = bookMenuEntries(context).map(
-					(entry) =>
-						entry.type === "separator"
-							? entry
-							: { ...entry, onSelect: () => selectionActions.run(entry.id) },
-				);
-				menu.openAt(
-					event,
-					items,
-					context.selectedCount === 1 ? book.title : "Book actions",
-				);
+				const single =
+					selectedBookCount(
+						useBookSelectionStore.getState().selection,
+						currentShownBooks().length,
+					) === 1;
+				menu.openAt(event, menuEntries(), single ? book.title : "Book actions");
 			},
 
 			onDragStart: (event, index, book) => {
-				const { books, platform } = latest.current;
 				updateBookSelection((selection) =>
 					selectForContextMenu(selection, index, book.id),
 				);
 				const dragged = selectedBooks(
 					useBookSelectionStore.getState().selection,
-					books,
+					currentShownBooks(),
 				);
 				const { startDrag } = platform.window;
 				if (startDrag.isSome) {
@@ -165,19 +175,16 @@ export const useBookGridInteraction = (
 				event.dataTransfer.setData("text/uri-list", remote.url);
 			},
 		}),
-		[],
+		[platform, menu.openAt, run, menuEntries],
 	);
 
-	const onGridContextMenu = (event: React.MouseEvent) => {
-		if (event.defaultPrevented || !fromKeyboard(event)) return;
-		const { cursor } = useBookSelectionStore.getState().selection;
-		const book = cursor >= 0 ? books[cursor] : undefined;
-		if (book === undefined) return;
-		const card = document
-			.getElementById(bookCardDomId(book.id))
-			?.querySelector("img, [style]");
-		const rect = card?.getBoundingClientRect() ?? null;
-		cardActions.onContextMenu(contextMenuPoint(event, rect), cursor, book);
+	const onGridKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+		if (cursorBook === undefined) return;
+		const card = document.getElementById(bookCardDomId(cursorBook.id));
+		if (card === null) return;
+		const opened = keyboardMenuEvent(event, card.getBoundingClientRect());
+		if (opened.isSome)
+			cardActions.onContextMenu(opened.value, cursor, cursorBook);
 	};
 
 	const onBackgroundClick = (event: React.MouseEvent) => {
@@ -187,5 +194,12 @@ export const useBookGridInteraction = (
 		closeBookDetails();
 	};
 
-	return { cardActions, menu, onBackgroundClick, onGridContextMenu };
+	return {
+		cardActions,
+		menu,
+		activeDescendant:
+			cursorBook !== undefined ? bookCardDomId(cursorBook.id) : undefined,
+		onBackgroundClick,
+		onGridKeyDown,
+	};
 };

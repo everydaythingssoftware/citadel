@@ -1,4 +1,9 @@
+import { revealLabel } from "@/lib/book-file-actions";
 import { booksTitle, formatCount } from "@/lib/book-count";
+import type {
+	ContextMenuItemEntry,
+	ContextMenuSeparatorEntry,
+} from "@/lib/context-menu";
 
 export const BOOK_COMMAND = {
 	showDetails: "book-show-details",
@@ -14,102 +19,88 @@ export const BOOK_COMMAND = {
 
 export type TBookCommand = (typeof BOOK_COMMAND)[keyof typeof BOOK_COMMAND];
 
-/** What the selection and platform allow, for the book menus. */
-export interface BookMenuContext {
-	selectedCount: number;
-	allFinished: boolean;
-	/** Books open in their default app (the desktop). */
-	canOpen: boolean;
-	/** The library can be changed (not read-only). */
-	canEdit: boolean;
-	canQuickLook: boolean;
-	canShowInFileManager: boolean;
-	/** "Finder", "File Explorer" or "File Manager". */
-	fileManagerName: string;
-	canCopyTitle: boolean;
-	/** Files download from the server (the web). */
-	canDownload: boolean;
-}
+/** The commands this platform and selection support; the rest are absent. */
+export type BookCommands = Partial<Record<TBookCommand, () => void>>;
 
 export type BookMenuEntry =
-	| {
-			type: "item";
-			id: TBookCommand;
-			label: string;
-			destructive?: boolean;
-	  }
-	| { type: "separator"; id: string };
+	| (ContextMenuItemEntry & { id: TBookCommand })
+	| ContextMenuSeparatorEntry;
 
-const item = (
-	id: TBookCommand,
-	label: string,
-	destructive?: boolean,
-): BookMenuEntry => ({
-	type: "item",
-	id,
-	label,
-	...(destructive ? { destructive } : {}),
-});
+interface BookMenuLabels {
+	count: number;
+	/** Every selected book is finished: offer "Mark as Unfinished". */
+	allFinished: boolean;
+	fileManagerName: string;
+}
 
-/** "Mark as Finished", or "Mark as Unfinished" once every book is. */
-export const finishedLabel = (allFinished: boolean): string =>
-	allFinished ? "Mark as Unfinished" : "Mark as Finished";
+const labelFor = (
+	command: TBookCommand,
+	{ count, allFinished, fileManagerName }: BookMenuLabels,
+): string => {
+	const single = count === 1;
+	switch (command) {
+		case BOOK_COMMAND.showDetails:
+			return "Show Details";
+		case BOOK_COMMAND.open:
+			return single ? "Open" : `Open ${booksTitle(count)}`;
+		case BOOK_COMMAND.edit:
+			return "Edit…";
+		case BOOK_COMMAND.quickLook:
+			return "Quick Look";
+		case BOOK_COMMAND.toggleFinished:
+			return allFinished ? "Mark as Unfinished" : "Mark as Finished";
+		case BOOK_COMMAND.showInFileManager:
+			return revealLabel(fileManagerName);
+		case BOOK_COMMAND.copyTitle:
+			return single ? "Copy Title" : `Copy ${formatCount(count)} Titles`;
+		case BOOK_COMMAND.download:
+			return "Download";
+		case BOOK_COMMAND.delete:
+			return single ? "Delete…" : `Delete ${booksTitle(count)}…`;
+	}
+};
 
-export const openLabel = (count: number): string =>
-	count === 1 ? "Open" : `Open ${booksTitle(count)}`;
-
-export const deleteLabel = (count: number): string =>
-	count === 1 ? "Delete…" : `Delete ${booksTitle(count)}…`;
-
-export const copyTitleLabel = (count: number): string =>
-	count === 1 ? "Copy Title" : `Copy ${formatCount(count)} Titles`;
+const GROUPS: readonly (readonly TBookCommand[])[] = [
+	[
+		BOOK_COMMAND.showDetails,
+		BOOK_COMMAND.open,
+		BOOK_COMMAND.edit,
+		BOOK_COMMAND.quickLook,
+	],
+	[BOOK_COMMAND.toggleFinished],
+	[
+		BOOK_COMMAND.showInFileManager,
+		BOOK_COMMAND.copyTitle,
+		BOOK_COMMAND.download,
+	],
+	[BOOK_COMMAND.delete],
+];
 
 /**
- * The book right-click menu, grouped. Items that don't apply to this
- * platform or to several books are left out rather than greyed out, and
- * separators only sit between groups that have items.
+ * The book right-click menu, grouped: the commands present in `commands`,
+ * with separators only between groups that have items.
  */
-export const bookMenuEntries = (context: BookMenuContext): BookMenuEntry[] => {
-	const { selectedCount: count } = context;
-	if (count === 0) return [];
-	const single = count === 1;
-	const groups: BookMenuEntry[][] = [
-		[
-			...(single ? [item(BOOK_COMMAND.showDetails, "Show Details")] : []),
-			...(context.canOpen ? [item(BOOK_COMMAND.open, openLabel(count))] : []),
-			...(single && context.canEdit ? [item(BOOK_COMMAND.edit, "Edit…")] : []),
-			...(single && context.canQuickLook
-				? [item(BOOK_COMMAND.quickLook, "Quick Look")]
-				: []),
-		],
-		context.canEdit
-			? [item(BOOK_COMMAND.toggleFinished, finishedLabel(context.allFinished))]
-			: [],
-		[
-			...(single && context.canShowInFileManager
-				? [
-						item(
-							BOOK_COMMAND.showInFileManager,
-							`Show in ${context.fileManagerName}`,
-						),
-					]
-				: []),
-			...(context.canCopyTitle
-				? [item(BOOK_COMMAND.copyTitle, copyTitleLabel(count))]
-				: []),
-			...(single && context.canDownload
-				? [item(BOOK_COMMAND.download, "Download")]
-				: []),
-		],
-		context.canEdit
-			? [item(BOOK_COMMAND.delete, deleteLabel(count), true)]
-			: [],
-	];
-	return groups
+export const bookMenuEntries = (
+	commands: BookCommands,
+	labels: BookMenuLabels,
+): BookMenuEntry[] =>
+	GROUPS.map((group) =>
+		group.flatMap((id): BookMenuEntry[] => {
+			const onSelect = commands[id];
+			if (onSelect === undefined) return [];
+			return [
+				{
+					id,
+					label: labelFor(id, labels),
+					onSelect,
+					...(id === BOOK_COMMAND.delete ? { destructive: true } : {}),
+				},
+			];
+		}),
+	)
 		.filter((group) => group.length > 0)
 		.flatMap((group, index) =>
 			index === 0
 				? group
 				: [{ type: "separator" as const, id: `separator-${index}` }, ...group],
 		);
-};

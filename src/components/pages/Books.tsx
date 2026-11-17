@@ -1,7 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LibraryBook } from "@/bindings";
 import {
 	AlertDialog,
 	Button,
@@ -13,42 +12,34 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
-import { safeAsyncEventHandler } from "@/lib/async";
 import { bookCountStatus } from "@/lib/book-count";
-import { primaryLocalPath } from "@/lib/book-files";
 import {
 	BOOK_PAGE_SIZE,
 	type BookGridFilter,
 	serializeBookFilter,
-	sparseBookItems,
+	shownBookItems,
 } from "@/lib/book-page-cache";
-import {
-	deleteBooksCopy,
-	deleteBooksDialogTitle,
-} from "@/lib/delete-book-title";
 import { useBookGridInteraction } from "@/lib/hooks/use-book-grid-interaction";
 import {
-	closeBookDetails,
-	openBookDetails,
+	useBookDetails,
 	useBookSelection,
-	useBookSelectionStore,
 	useBookSelectionSync,
-	useDeleteBooksDialog,
 } from "@/lib/hooks/use-book-selection";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { useDeleteBooksDialog } from "@/lib/hooks/use-delete-books-dialog";
 import { useEntryScroll } from "@/lib/hooks/use-entry-scroll";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { useShownEntryKey } from "@/lib/hooks/use-shown-entry-key";
 import { SCROLL_REGION, scrollRegionAttributes } from "@/lib/navigation";
-import { usePlatform } from "@/lib/platform/context";
 import {
 	type BookRouteFilters,
 	deepLinkClearsQuery,
 	hasRouteFilters,
 	routeFiltersToShelf,
 } from "@/lib/shelves";
+import { closeBookDetails } from "@/stores/book-selection/store";
 import {
 	useAuthors,
 	useBookCache,
@@ -68,8 +59,7 @@ import {
 import { createSmartShelf } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
 import { F7Bookmark } from "../icons/F7Bookmark";
-import { bookCardDomId } from "../atoms/BookCard";
-import { BookGrid, type ScrollToBookIndex } from "../molecules/BookGrid";
+import { BookGrid, type BookGridHandle } from "../molecules/BookGrid";
 import { EmptyLibrary, EmptyState } from "../molecules/EmptyState";
 import { BookDetailsDrawer } from "../organisms/BookDrawer";
 import styles from "./Books.module.css";
@@ -199,10 +189,10 @@ export const Books = ({
 	// (cache.total === null), show the previous snapshot so the grid never
 	// blanks. Once the new query resolves, live cache takes over.
 	const queryResolved = cache.total !== null;
-	const activeBooks = useMemo(() => sparseBookItems(cache), [cache]);
-	const books = queryResolved
-		? activeBooks
-		: (staleSnapshot?.items ?? activeBooks);
+	const books = useMemo(
+		() => shownBookItems(cache, staleSnapshot),
+		[cache, staleSnapshot],
+	);
 	const total = queryResolved ? cache.total : (staleSnapshot?.total ?? 0);
 
 	// True loading = no resolved data at all (fresh library open, no stale
@@ -247,16 +237,7 @@ export const Books = ({
 		}
 	}, [libraryReady, tag_id, publisher_id, tags, publishers, actions]);
 
-	const platform = usePlatform();
-	const isBookSidebarOpen = useBookSelectionStore((s) => s.detailsOpen);
-	const detailsBook = useBookSelectionStore((s) => s.detailsBook);
-	// The drawer follows the book's latest copy (marked finished from the
-	// grid, say) while it is in the loaded pages.
-	const selectedSidebarBook: LibraryBook | null =
-		detailsBook === null
-			? null
-			: (books.find((candidate) => candidate?.id === detailsBook.id) ??
-				detailsBook);
+	const details = useBookDetails(books);
 
 	// Coming Back to this entry finds the selection and details as left.
 	const entryKey = useShownEntryKey("/");
@@ -266,17 +247,14 @@ export const Books = ({
 		viewKey: serializeBookFilter(filter),
 		entryKey,
 	});
-	const { selection, selectedCount, isSelected } = useBookSelection();
-	const { cardActions, menu, onBackgroundClick, onGridContextMenu } =
-		useBookGridInteraction(books);
-	const cursorBook =
-		selection.cursor >= 0 ? books[selection.cursor] : undefined;
+	const { selectedCount, isSelected } = useBookSelection();
+	const grid = useBookGridInteraction(books);
 
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const gridContainerRef = useRef<HTMLDivElement>(null);
 	// Filled in by the virtualized BookGrid; lets keyboard selection scroll
 	// rows into view even when their cards are not mounted.
-	const scrollToBookIndexRef = useRef<ScrollToBookIndex | null>(null);
+	const gridHandleRef = useRef<BookGridHandle | null>(null);
 
 	// Back returns the grid to where it was left; a new search, filter or
 	// sort starts at the top. Generation bumps from same-key invalidations
@@ -304,21 +282,12 @@ export const Books = ({
 		}, []),
 	);
 
-	const { quickLook } = platform.fileOpener;
 	useLibraryKeymap({
 		books,
-		drawerOpened: isBookSidebarOpen,
+		drawerOpened: details.open,
 		searchInputRef,
 		gridContainerRef,
-		scrollToBookIndexRef,
-		onBookOpen: openBookDetails,
-		onQuickLook: quickLook.isSome
-			? (book) => {
-					const path = primaryLocalPath(book);
-					if (path !== null)
-						safeAsyncEventHandler(() => quickLook.value(path))();
-				}
-			: undefined,
+		gridRef: gridHandleRef,
 		onClearSearch: () => setQuery(""),
 	});
 
@@ -331,6 +300,16 @@ export const Books = ({
 	const noMatches =
 		!loading && queryResolved && total === 0 && (libraryTotal ?? 0) > 0;
 	const showGrid = !emptyLibrary && !noMatches;
+	const regionProps = {
+		ref: gridContainerRef,
+		...scrollRegionAttributes(SCROLL_REGION.libraryGrid),
+		style: { outline: "none" },
+		className: clsx(
+			styles.gridArea,
+			"ctd-scroller",
+			isSearching && styles.gridAreaSearching,
+		),
+	};
 	const trimmedQuery = query.trim();
 
 	const searchTokens = [
@@ -421,44 +400,37 @@ export const Books = ({
 					/>
 				</div>
 			</div>
-			{/*
-			 * The scroll region is the listbox VoiceOver reads: it keeps focus
-			 * while arrows move the cursor (aria-activedescendant), since the
-			 * virtualized cards come and go. Its keys live in use-library-keymap;
-			 * the role is spread in only while the grid shows, which the
-			 * linter can't see.
-			 */}
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: a listbox while the grid shows (see above). */}
-			{/* biome-ignore lint/a11y/useKeyWithClickEvents: the click only clears the selection; Escape does that from the keyboard. */}
-			<div
-				ref={gridContainerRef}
-				{...scrollRegionAttributes(SCROLL_REGION.libraryGrid)}
-				// biome-ignore lint/a11y/noNoninteractiveTabindex: a listbox while the grid shows (see above).
-				tabIndex={0}
-				style={{ outline: "none" }}
-				className={clsx(
-					styles.gridArea,
-					"ctd-scroller",
-					isSearching && styles.gridAreaSearching,
-				)}
-				onClick={onBackgroundClick}
-				onContextMenu={onGridContextMenu}
-				{...(showGrid
-					? {
-							role: "listbox",
-							"aria-label": "Books",
-							"aria-multiselectable": true,
-							"aria-activedescendant":
-								cursorBook !== undefined
-									? bookCardDomId(cursorBook.id)
-									: undefined,
-						}
-					: {})}
-			>
-				{emptyLibrary ? (
-					<EmptyLibrary />
-				) : noMatches ? (
-					trimmedQuery.length > 0 ? (
+			{showGrid ? (
+				// The scroll region is the listbox VoiceOver reads: it keeps focus
+				// while arrows move the cursor (aria-activedescendant), since the
+				// virtualized cards come and go. Its keys live in use-library-keymap.
+				<div
+					{...regionProps}
+					role="listbox"
+					aria-label="Books"
+					aria-multiselectable
+					aria-activedescendant={grid.activeDescendant}
+					tabIndex={0}
+					onClick={grid.onBackgroundClick}
+					onKeyDown={grid.onGridKeyDown}
+				>
+					<BookGrid
+						bookList={books}
+						loading={loading}
+						cardActions={grid.cardActions}
+						isSelected={isSelected}
+						scrollElementRef={gridContainerRef}
+						initialScrollOffset={gridStartOffset}
+						resultKey={`${cache.key}:${queryResolved}`}
+						handleRef={gridHandleRef}
+						onVisibleRangeChange={onVisibleRangeChange}
+					/>
+				</div>
+			) : (
+				<div {...regionProps} tabIndex={-1}>
+					{emptyLibrary ? (
+						<EmptyLibrary />
+					) : trimmedQuery.length > 0 ? (
 						<EmptyState
 							art="search"
 							title={`No books match “${trimmedQuery}”`}
@@ -483,21 +455,9 @@ export const Books = ({
 								Show all books
 							</Button>
 						</EmptyState>
-					)
-				) : (
-					<BookGrid
-						bookList={books}
-						loading={loading}
-						cardActions={cardActions}
-						isSelected={isSelected}
-						scrollElementRef={gridContainerRef}
-						initialScrollOffset={gridStartOffset}
-						resultKey={`${cache.key}:${queryResolved}`}
-						scrollToBookIndexRef={scrollToBookIndexRef}
-						onVisibleRangeChange={onVisibleRangeChange}
-					/>
-				)}
-			</div>
+					)}
+				</div>
+			)}
 			<div className={styles.footer}>
 				<span className={styles.footerText} aria-live="polite">
 					{bookCountStatus({
@@ -509,16 +469,16 @@ export const Books = ({
 				</span>
 			</div>
 			<BookDetailsDrawer
-				book={selectedSidebarBook}
-				open={isBookSidebarOpen}
+				book={details.book}
+				open={details.open}
 				onClose={closeBookDetails}
 				returnFocusRef={gridContainerRef}
 				className={styles.drawer}
 			/>
 			<ContextMenu
-				menu={menu.menu}
+				menu={grid.menu.menu}
 				returnFocusRef={gridContainerRef}
-				onClose={menu.close}
+				onClose={grid.menu.close}
 			/>
 			<DeleteBooksDialogs />
 		</div>
@@ -528,36 +488,30 @@ export const Books = ({
 /** "Delete 2 books?" and, when files stayed behind, what to do about them. */
 const DeleteBooksDialogs = () => {
 	const dialog = useDeleteBooksDialog();
-	const copy = deleteBooksCopy(dialog.deletion, dialog.books.length);
 	return (
 		<>
 			<AlertDialog
-				open={dialog.open}
+				open={dialog.confirmOpen}
 				onOpenChange={(open) => {
 					if (!open) dialog.cancel();
 				}}
-				title={deleteBooksDialogTitle(dialog.books.map((book) => book.title))}
+				title={dialog.title}
 				textAlign="left"
-				description={copy.description}
-				confirmLabel={copy.confirmLabel}
+				description={dialog.copy.description}
+				confirmLabel={dialog.copy.confirmLabel}
 				destructive
 				onConfirm={dialog.confirm}
 			/>
 			<AlertDialog
-				open={dialog.failures !== null || dialog.error !== null}
+				open={dialog.problemOpen}
 				onOpenChange={(open) => {
-					if (!open) dialog.dismissFailures();
+					if (!open) dialog.dismissProblem();
 				}}
-				title={
-					dialog.error !== null ? "Couldn’t delete books" : copy.failureTitle
-				}
+				title={dialog.problemTitle}
 				textAlign="left"
-				description={
-					dialog.error ??
-					`${copy.failureDescription} ${(dialog.failures ?? []).join(", ")}`
-				}
+				description={dialog.problemDescription}
 				confirmLabel="OK"
-				onConfirm={dialog.dismissFailures}
+				onConfirm={dialog.dismissProblem}
 			/>
 		</>
 	);

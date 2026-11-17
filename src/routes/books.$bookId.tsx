@@ -13,7 +13,7 @@ import {
 	preloadEditBook,
 	useEditBookData,
 } from "@/lib/hooks/use-edit-book-data";
-import { forgetDeletedBooks } from "@/lib/hooks/use-book-selection";
+import { forgetDeletedBooks } from "@/stores/book-selection/store";
 import { useGoBack } from "@/lib/hooks/use-go-back";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { BookDeletion } from "@/lib/services/library";

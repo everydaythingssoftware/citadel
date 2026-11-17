@@ -1,36 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { type BookMenuContext, bookMenuEntries } from "./book-menu";
+import {
+	BOOK_COMMAND,
+	type BookCommands,
+	bookMenuEntries,
+	type TBookCommand,
+} from "./book-menu";
 
-const macDesktop: BookMenuContext = {
-	selectedCount: 1,
-	allFinished: false,
-	canOpen: true,
-	canEdit: true,
-	canQuickLook: true,
-	canShowInFileManager: true,
-	fileManagerName: "Finder",
-	canCopyTitle: true,
-	canDownload: false,
-};
+const run = () => {};
+const commandsOf = (...ids: TBookCommand[]): BookCommands =>
+	Object.fromEntries(ids.map((id) => [id, run]));
 
-const web: BookMenuContext = {
-	...macDesktop,
-	canOpen: false,
-	canQuickLook: false,
-	canShowInFileManager: false,
-	fileManagerName: "File Manager",
-	canDownload: true,
-	canEdit: false,
-};
+const everything = commandsOf(...Object.values(BOOK_COMMAND));
+const single = { count: 1, allFinished: false, fileManagerName: "Finder" };
 
-const labels = (context: BookMenuContext) =>
-	bookMenuEntries(context).map((entry) =>
+const labels = (commands: BookCommands, input = single) =>
+	bookMenuEntries(commands, input).map((entry) =>
 		entry.type === "separator" ? "---" : entry.label,
 	);
 
 describe("bookMenuEntries", () => {
-	it("offers the full single-book menu in the Mac app", () => {
-		expect(labels(macDesktop)).toEqual([
+	it("lists the commands present, grouped", () => {
+		expect(labels(everything)).toEqual([
 			"Show Details",
 			"Open",
 			"Edit…",
@@ -40,19 +30,29 @@ describe("bookMenuEntries", () => {
 			"---",
 			"Show in Finder",
 			"Copy Title",
+			"Download",
 			"---",
 			"Delete…",
 		]);
 	});
 
-	it("marks the delete item destructive", () => {
-		const entry = bookMenuEntries(macDesktop).at(-1);
+	it("marks the delete item destructive and runs the command", () => {
+		const entry = bookMenuEntries(everything, single).at(-1);
 		expect(entry).toMatchObject({ id: "book-delete", destructive: true });
+		expect(entry?.type === "separator" ? null : entry?.onSelect).toBe(run);
 	});
 
-	it("pluralises and drops single-book items for a multi-selection", () => {
+	it("pluralises for a multi-selection", () => {
 		expect(
-			labels({ ...macDesktop, selectedCount: 2, allFinished: true }),
+			labels(
+				commandsOf(
+					BOOK_COMMAND.open,
+					BOOK_COMMAND.toggleFinished,
+					BOOK_COMMAND.copyTitle,
+					BOOK_COMMAND.delete,
+				),
+				{ count: 2, allFinished: true, fileManagerName: "Finder" },
+			),
 		).toEqual([
 			"Open 2 Books",
 			"---",
@@ -66,24 +66,26 @@ describe("bookMenuEntries", () => {
 
 	it("names the platform's file manager", () => {
 		expect(
-			labels({
-				...macDesktop,
-				canQuickLook: false,
+			labels(commandsOf(BOOK_COMMAND.showInFileManager), {
+				...single,
 				fileManagerName: "File Explorer",
 			}),
-		).toContain("Show in File Explorer");
+		).toEqual(["Show in File Explorer"]);
 	});
 
-	it("offers Download instead of Open in a read-only browser library", () => {
-		expect(labels(web)).toEqual([
-			"Show Details",
-			"---",
-			"Copy Title",
-			"Download",
-		]);
+	it("drops separators around missing groups", () => {
+		expect(
+			labels(
+				commandsOf(
+					BOOK_COMMAND.showDetails,
+					BOOK_COMMAND.copyTitle,
+					BOOK_COMMAND.download,
+				),
+			),
+		).toEqual(["Show Details", "---", "Copy Title", "Download"]);
 	});
 
-	it("is empty with nothing selected", () => {
-		expect(bookMenuEntries({ ...macDesktop, selectedCount: 0 })).toEqual([]);
+	it("is empty with no commands", () => {
+		expect(bookMenuEntries({}, single)).toEqual([]);
 	});
 });

@@ -7,7 +7,7 @@ import {
 	useReducer,
 	useRef,
 } from "react";
-import type { BookView } from "@/BookView";
+import type { LibraryBook } from "@/bindings";
 import { LoadingOverlay } from "@/components/ui";
 import {
 	anchoredScrollOffset,
@@ -18,6 +18,7 @@ import {
 	type ScrollAnchor,
 	topRowAnchor,
 } from "@/lib/grid-virtual";
+import type { BookCardActions } from "@/lib/hooks/use-book-grid-interaction";
 import { useBookGridLayout } from "@/lib/hooks/use-book-grid-layout";
 import { useCoverThumbsMap } from "@/stores/library/store";
 import { BookCard } from "../atoms/BookCard";
@@ -39,13 +40,28 @@ const TYPICAL_COVER_RATIO = 1.5;
 // so don't raise it past where fling tests stop improving.
 const OVERSCAN_ROWS = 10;
 
-/** Scrolls the shelf row containing the given flat book index into view. */
-export type ScrollToBookIndex = (index: number) => void;
+/** What the keyboard needs of the windowed grid (use-library-keymap). */
+export interface BookGridHandle {
+	columns: number;
+	/** Scrolls the shelf row holding this flat book index into view. */
+	scrollToIndex(index: number): void;
+}
 
 /** The inclusive flat-index range of books near the viewport. */
 export type VisibleRangeChange = (startIndex: number, endIndex: number) => void;
 
-interface BookGridProps extends BookView {
+interface BookGridProps {
+	loading: boolean;
+	/**
+	 * Indexed array of the filtered library: length is the total match
+	 * count, `undefined` entries are books whose page has not been fetched
+	 * yet (they render as placeholders).
+	 */
+	bookList: (LibraryBook | undefined)[];
+	/** Press, right-click and drag on a cover. */
+	cardActions: BookCardActions;
+	/** Membership in the selection, by id (and index, for pending slots). */
+	isSelected: (bookId: LibraryBook["id"], index: number) => boolean;
 	/** The page-owned scroll region the virtualizer windows against. */
 	scrollElementRef: RefObject<HTMLElement | null>;
 	/** Where the scroll region starts when the grid mounts. */
@@ -56,10 +72,10 @@ interface BookGridProps extends BookView {
 	 */
 	resultKey?: string;
 	/**
-	 * Receives the grid's scroll-to-index function so keyboard selection can
-	 * reach rows that are not currently mounted (use-library-keymap).
+	 * Receives the grid's column count and a way to reach rows that are not
+	 * mounted, for keyboard selection.
 	 */
-	scrollToBookIndexRef?: RefObject<ScrollToBookIndex | null>;
+	handleRef?: RefObject<BookGridHandle | null>;
 	/**
 	 * Fires when the rendered (viewport + overscan) flat-index range moves,
 	 * so the owner can page the covered books in (ensureBookRange).
@@ -75,7 +91,7 @@ export const BookGrid = ({
 	scrollElementRef,
 	initialScrollOffset,
 	resultKey,
-	scrollToBookIndexRef,
+	handleRef,
 	onVisibleRangeChange,
 }: BookGridProps) => {
 	const wrapperRef = useRef<HTMLDivElement>(null);
@@ -179,19 +195,21 @@ export const BookGrid = ({
 		renderAgain();
 	}, [columns, cellWidth]);
 
-	// Hand the keymap a way to reach unmounted rows; once the row scrolls in,
-	// the selected card mounts and renders its selection ring from props.
+	// Once a row scrolls in, the selected card mounts and renders its
+	// selection ring from props.
 	useEffect(() => {
-		if (!scrollToBookIndexRef) return;
-		scrollToBookIndexRef.current = (index) => {
-			virtualizer.scrollToIndex(rowOfIndex(index, columns), {
-				align: "auto",
-			});
+		if (!handleRef) return;
+		handleRef.current = {
+			columns,
+			scrollToIndex: (index) =>
+				virtualizer.scrollToIndex(rowOfIndex(index, columns), {
+					align: "auto",
+				}),
 		};
 		return () => {
-			scrollToBookIndexRef.current = null;
+			handleRef.current = null;
 		};
-	}, [scrollToBookIndexRef, virtualizer, columns]);
+	}, [handleRef, virtualizer, columns]);
 
 	// Report the rendered row window (includes overscan) as a flat-index
 	// range so unfetched pages covering it can load.

@@ -6,16 +6,17 @@ import {
 	useMemo,
 	useRef,
 } from "react";
-import { create } from "zustand";
 import type { LibraryBook } from "@/bindings";
 import { safeAsyncEventHandler } from "@/lib/async";
-import { sparseBookItems } from "@/lib/book-page-cache";
 import { primaryLocalPath, primaryRemoteFile } from "@/lib/book-files";
 import {
-	type BookMenuContext,
 	BOOK_COMMAND,
+	type BookCommands,
+	type BookMenuEntry,
+	bookMenuEntries,
 	type TBookCommand,
 } from "@/lib/book-menu";
+import { shownBookItems } from "@/lib/book-page-cache";
 import {
 	type BookSelection,
 	clearSelection,
@@ -23,10 +24,7 @@ import {
 	type GridPlace,
 	isBookSelected,
 	materializePending,
-	type ParkedSelection,
-	parkedWithoutBooks,
 	restorableSelection,
-	selectAll,
 	selectedBookCount,
 	selectedBooks,
 	unresolvedRange,
@@ -34,63 +32,20 @@ import {
 import { downloadFile } from "@/lib/download";
 import { usePlatform } from "@/lib/platform/context";
 import type { PlatformAdapter } from "@/lib/platform/types";
-import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
+import {
+	openBookDetails,
+	updateBookSelection,
+	useBookSelectionStore,
+} from "@/stores/book-selection/store";
+import { requestBooksDeletion } from "@/stores/delete-books/store";
 import { useLibraryStore } from "@/stores/library/store";
 import { useLibraryView } from "@/stores/library-view/store";
 
-interface DeleteRequest {
-	books: LibraryBook[];
-}
-
-interface BookSelectionStore {
-	selection: BookSelection;
-	/** The book the details drawer shows, kept while it slides closed. */
-	detailsBook: LibraryBook | null;
-	detailsOpen: boolean;
-	/** The books the delete confirmation names, kept while it fades out. */
-	deleteRequest: DeleteRequest | null;
-	deleteDialogOpen: boolean;
-	deleting: boolean;
-	/** Files a finished delete couldn't remove, shown until dismissed. */
-	deleteFailures: string[] | null;
-	deleteError: string | null;
-	/**
-	 * The selection and details the grid had when its page was left, for
-	 * coming Back to it. Not the live selection: the menus see none while
-	 * the grid isn't showing.
-	 */
-	parked: ParkedSelection | null;
-}
-
-/**
- * The library grid's selection and the dialogs it drives, outside React so
- * the menu bar's commands (wired elsewhere) act on the same selection the
- * grid shows.
- */
-export const useBookSelectionStore = create<BookSelectionStore>(() => ({
-	selection: emptySelection,
-	detailsBook: null,
-	detailsOpen: false,
-	deleteRequest: null,
-	deleteDialogOpen: false,
-	deleting: false,
-	deleteFailures: null,
-	deleteError: null,
-	parked: null,
-}));
-
-export const updateBookSelection = (
-	update: (selection: BookSelection) => BookSelection,
-) => {
-	useBookSelectionStore.setState((state) => {
-		const selection = update(state.selection);
-		return selection === state.selection ? state : { selection };
-	});
+/** The books the grid shows, which the selection's indices refer to. */
+export const currentShownBooks = () => {
+	const { bookCache, staleBookSnapshot } = useLibraryStore.getState();
+	return shownBookItems(bookCache, staleBookSnapshot);
 };
-
-const currentItems = () =>
-	sparseBookItems(useLibraryStore.getState().bookCache);
-const currentTotal = () => useLibraryStore.getState().bookCache.total ?? 0;
 
 /**
  * Every selected book, fetching the pages Select All or a long ⇧-range
@@ -99,60 +54,16 @@ const currentTotal = () => useLibraryStore.getState().bookCache.total ?? 0;
 export const resolveSelectedBooks = async (): Promise<LibraryBook[]> => {
 	const range = unresolvedRange(
 		useBookSelectionStore.getState().selection,
-		currentTotal(),
+		currentShownBooks().length,
 	);
 	if (range !== null)
 		await useLibraryStore
 			.getState()
 			.actions.ensureBookRange(range.start, range.end);
+	const books = currentShownBooks();
 	const { selection } = useBookSelectionStore.getState();
-	return selectedBooks(
-		materializePending(selection, currentItems()),
-		currentItems(),
-	);
+	return selectedBooks(materializePending(selection, books), books);
 };
-
-export const openBookDetails = (book: LibraryBook) =>
-	useBookSelectionStore.setState({ detailsBook: book, detailsOpen: true });
-
-/** The open details follow the keyboard onto another book. */
-export const followWithDetails = (book: LibraryBook) => {
-	const { detailsOpen, detailsBook } = useBookSelectionStore.getState();
-	if (detailsOpen && detailsBook?.id !== book.id)
-		useBookSelectionStore.setState({ detailsBook: book });
-};
-
-/**
- * A double-click: the book's preferred file opens in its default app on
- * the desktop, or downloads in the browser.
- */
-export const openBookFile = (
-	book: LibraryBook,
-	{
-		capabilities,
-		fileOpener,
-	}: Pick<PlatformAdapter, "capabilities" | "fileOpener">,
-) => {
-	if (capabilities.canOpenLocalPaths) {
-		const path = primaryLocalPath(book);
-		if (path !== null)
-			fileOpener
-				.openPath(path)
-				.catch((error: unknown) => console.error("Open book:", error));
-		return;
-	}
-	const file = primaryRemoteFile(book);
-	if (file !== null) downloadFile(file.url);
-};
-
-export const closeBookDetails = () =>
-	useBookSelectionStore.setState({ detailsOpen: false });
-
-/** Books deleted away from the grid (a book's own page) leave its parked selection. */
-export const forgetDeletedBooks = (ids: readonly LibraryBook["id"][]) =>
-	useBookSelectionStore.setState(({ parked }) =>
-		parked === null ? {} : { parked: parkedWithoutBooks(parked, ids) },
-	);
 
 /**
  * Keeps the selection in step with the grid: empties it when the result
@@ -236,7 +147,9 @@ export const useBookSelectionSync = ({
 /** The selection as the grid draws it. */
 export const useBookSelection = () => {
 	const selection = useBookSelectionStore((state) => state.selection);
-	const total = useLibraryStore((state) => state.bookCache.total ?? 0);
+	const total = useLibraryStore(
+		(state) => state.bookCache.total ?? state.staleBookSnapshot?.total ?? 0,
+	);
 	const isSelected = useCallback(
 		(id: LibraryBook["id"], index?: number) =>
 			isBookSelected(selection, id, index),
@@ -249,241 +162,179 @@ export const useBookSelection = () => {
 	};
 };
 
-export interface BookSelectionActions {
+interface SelectionSummary {
 	/** Books the next action applies to; Select All counts unfetched ones. */
 	selectedCount: number;
 	/** Every loaded selected book is finished: offer "Mark as Unfinished". */
 	allFinished: boolean;
-	/** What the menus may offer here, for `bookMenuEntries`. */
-	menuContext: BookMenuContext;
-	showDetails(): void;
-	open(): void;
-	edit(): void;
-	quickLook(): void;
-	toggleFinished(): void;
-	showInFileManager(): void;
-	copyTitle(): void;
-	download(): void;
-	requestDelete(): void;
-	selectAll(): void;
-	clearSelection(): void;
-	/** Runs a book menu item by its id (context menu and menu bar alike). */
-	run(command: TBookCommand): void;
 }
 
-interface BookMenuContextInput {
-	selection: BookSelection;
-	books: readonly (LibraryBook | undefined)[];
-	total: number;
+const summarize = (
+	selection: BookSelection,
+	books: readonly (LibraryBook | undefined)[],
 	/** Unread only is on: nothing shown can be finished. */
-	hideRead: boolean;
-	canEdit: boolean;
-	platform: PlatformAdapter;
-}
-
-/** What the book menus may offer for this selection on this platform. */
-export const bookMenuContext = ({
-	selection,
-	books,
-	total,
-	hideRead,
-	canEdit,
-	platform: { capabilities, fileOpener },
-}: BookMenuContextInput): BookMenuContext => {
-	const selectedCount = selectedBookCount(selection, total);
+	hideRead: boolean,
+): SelectionSummary => {
+	const selectedCount = selectedBookCount(selection, books.length);
 	const loaded =
 		hideRead || selectedCount === 0 ? [] : selectedBooks(selection, books);
 	return {
 		selectedCount,
 		allFinished: loaded.length > 0 && loaded.every((book) => book.is_read),
-		canOpen: capabilities.canOpenLocalPaths,
-		canEdit,
-		canQuickLook: fileOpener.quickLook.isSome,
-		canShowInFileManager: capabilities.canRevealInFileManager,
-		fileManagerName: fileOpener.fileManagerName,
-		canCopyTitle: capabilities.canCopyToClipboard,
-		canDownload: !capabilities.canOpenLocalPaths,
 	};
 };
 
-const fullUpdate = (isRead: boolean) => ({
-	author_id_list: null,
-	tag_list: null,
-	title: null,
-	timestamp: null,
-	publication_date: null,
-	is_read: isRead,
-	description: null,
-	series: null,
-	series_index: null,
-	language_list: null,
-});
+const currentSummary = () =>
+	summarize(
+		useBookSelectionStore.getState().selection,
+		currentShownBooks(),
+		useLibraryView.getState().hideRead,
+	);
+
+const withBooks = (action: (books: LibraryBook[]) => unknown) =>
+	safeAsyncEventHandler(async () => {
+		const books = await resolveSelectedBooks();
+		if (books.length > 0) await action(books);
+	});
+
+const withBook = (action: (book: LibraryBook) => unknown) =>
+	withBooks(([book]) => (book !== undefined ? action(book) : undefined));
+
+const withLocalPath = (action: (path: string) => Promise<void>) =>
+	withBook((book) => {
+		const path = primaryLocalPath(book);
+		return path !== null ? action(path) : undefined;
+	});
+
+const toggleFinished = async (books: LibraryBook[]) => {
+	const finished = !books.every((book) => book.is_read);
+	await useLibraryStore.getState().actions.setBooksRead(
+		books.filter((book) => book.is_read !== finished).map((book) => book.id),
+		finished,
+	);
+	if (finished && useLibraryView.getState().hideRead)
+		updateBookSelection(clearSelection);
+};
+
+interface BookCommandDeps {
+	platform: PlatformAdapter;
+	editBook: (book: LibraryBook) => void;
+}
 
 /**
- * What can be done with the selected books, for the right-click menu and
- * the Book menu. Every action resolves the selection when it runs, so
- * Select All acts on books whose pages were never fetched.
+ * The commands the current selection supports on this platform. Each one
+ * resolves the selection when it runs, so Select All acts on books whose
+ * pages were never fetched.
  */
+const bookCommands = (
+	{ platform, editBook }: BookCommandDeps,
+	count: number,
+): BookCommands => {
+	if (count === 0) return {};
+	const single = count === 1;
+	const canEdit = useLibraryStore.getState().library?.readOnly === false;
+	const { capabilities, fileOpener, clipboard } = platform;
+	const desktop = capabilities.canOpenLocalPaths;
+	const { quickLook } = fileOpener;
+	return {
+		...(single
+			? { [BOOK_COMMAND.showDetails]: withBook(openBookDetails) }
+			: {}),
+		...(desktop
+			? {
+					[BOOK_COMMAND.open]: withBooks(async (books) => {
+						for (const path of books.map(primaryLocalPath))
+							if (path !== null) await fileOpener.openPath(path);
+					}),
+				}
+			: {}),
+		...(single && canEdit ? { [BOOK_COMMAND.edit]: withBook(editBook) } : {}),
+		...(single && quickLook.isSome
+			? { [BOOK_COMMAND.quickLook]: withLocalPath(quickLook.value) }
+			: {}),
+		...(canEdit
+			? { [BOOK_COMMAND.toggleFinished]: withBooks(toggleFinished) }
+			: {}),
+		...(single && capabilities.canRevealInFileManager
+			? {
+					[BOOK_COMMAND.showInFileManager]: withLocalPath((path) =>
+						fileOpener.revealInFileManager(path),
+					),
+				}
+			: {}),
+		...(capabilities.canCopyToClipboard
+			? {
+					[BOOK_COMMAND.copyTitle]: withBooks((books) =>
+						clipboard.writeText(books.map((book) => book.title).join("\n")),
+					),
+				}
+			: {}),
+		...(single && !desktop
+			? {
+					[BOOK_COMMAND.download]: withBook((book) => {
+						const file = primaryRemoteFile(book);
+						if (file !== null) downloadFile(file.url);
+					}),
+				}
+			: {}),
+		...(canEdit
+			? { [BOOK_COMMAND.delete]: withBooks(requestBooksDeletion) }
+			: {}),
+	};
+};
+
+export interface BookSelectionActions extends SelectionSummary {
+	/** Runs a book command, if the selection supports it here. */
+	run(command: TBookCommand): void;
+	/** The right-click menu for the selection as it is now. */
+	menuEntries(): BookMenuEntry[];
+}
+
+/** What can be done with the selected books, for the menus and the grid. */
 export const useBookSelectionActions = (): BookSelectionActions => {
 	const platform = usePlatform();
 	const navigate = useNavigate();
 	const selection = useBookSelectionStore((state) => state.selection);
 	const cache = useLibraryStore((state) => state.bookCache);
-	const canEdit = useLibraryStore((state) => state.library?.readOnly === false);
+	const snapshot = useLibraryStore((state) => state.staleBookSnapshot);
 	const hideRead = useLibraryView((state) => state.hideRead);
 
-	const menuContext = useMemo(
-		() =>
-			bookMenuContext({
-				selection,
-				books: sparseBookItems(cache),
-				total: cache.total ?? 0,
-				hideRead,
-				canEdit,
-				platform,
-			}),
-		[selection, cache, hideRead, canEdit, platform],
+	const commands = useMemo(() => {
+		const deps: BookCommandDeps = {
+			platform,
+			editBook: (book) =>
+				void navigate({ to: "/books/$bookId", params: { bookId: book.id } }),
+		};
+		return {
+			run: (command: TBookCommand) =>
+				bookCommands(deps, currentSummary().selectedCount)[command]?.(),
+			menuEntries: () => {
+				const { selectedCount, allFinished } = currentSummary();
+				return bookMenuEntries(bookCommands(deps, selectedCount), {
+					count: selectedCount,
+					allFinished,
+					fileManagerName: platform.fileOpener.fileManagerName,
+				});
+			},
+		};
+	}, [platform, navigate]);
+	const summary = useMemo(
+		() => summarize(selection, shownBookItems(cache, snapshot), hideRead),
+		[selection, cache, snapshot, hideRead],
 	);
-	const { selectedCount, allFinished } = menuContext;
-	const { fileOpener } = platform;
-
-	const withBooks = (action: (books: LibraryBook[]) => unknown) =>
-		safeAsyncEventHandler(async () => {
-			const books = await resolveSelectedBooks();
-			if (books.length > 0) await action(books);
-		});
-
-	const first = (action: (book: LibraryBook) => unknown) =>
-		withBooks((books) => {
-			const [book] = books;
-			if (book !== undefined) return action(book);
-		});
-
-	const showDetails = first(openBookDetails);
-	const open = withBooks(async (books) => {
-		for (const path of books.map(primaryLocalPath))
-			if (path !== null) await fileOpener.openPath(path);
-	});
-	const edit = first((book) =>
-		navigate({ to: "/books/$bookId", params: { bookId: book.id } }),
-	);
-	const quickLook = first((book) => {
-		const path = primaryLocalPath(book);
-		if (path !== null && fileOpener.quickLook.isSome)
-			return fileOpener.quickLook.value(path);
-	});
-	const toggleFinished = withBooks(async (books) => {
-		const finished = !books.every((book) => book.is_read);
-		const { actions } = useLibraryStore.getState();
-		for (const book of books) {
-			if (book.is_read === finished) continue;
-			await actions.updateBook(book.id, fullUpdate(finished));
-		}
-		if (finished && useLibraryView.getState().hideRead)
-			updateBookSelection(clearSelection);
-	});
-	const showInFileManager = first((book) => {
-		const path = primaryLocalPath(book);
-		if (path !== null) return fileOpener.revealInFileManager(path);
-	});
-	const copyTitle = withBooks((books) =>
-		platform.clipboard.writeText(books.map((book) => book.title).join("\n")),
-	);
-	const download = first((book) => {
-		const file = primaryRemoteFile(book);
-		if (file !== null) downloadFile(file.url);
-	});
-	const requestDelete = withBooks((books) => {
-		useBookSelectionStore.setState({
-			deleteRequest: { books },
-			deleteDialogOpen: true,
-		});
-	});
-
-	const handlers: Record<TBookCommand, () => void> = {
-		[BOOK_COMMAND.showDetails]: showDetails,
-		[BOOK_COMMAND.open]: open,
-		[BOOK_COMMAND.edit]: edit,
-		[BOOK_COMMAND.quickLook]: quickLook,
-		[BOOK_COMMAND.toggleFinished]: toggleFinished,
-		[BOOK_COMMAND.showInFileManager]: showInFileManager,
-		[BOOK_COMMAND.copyTitle]: copyTitle,
-		[BOOK_COMMAND.download]: download,
-		[BOOK_COMMAND.delete]: requestDelete,
-	};
-
-	return {
-		selectedCount,
-		allFinished,
-		menuContext,
-		showDetails,
-		open,
-		edit,
-		quickLook,
-		toggleFinished,
-		showInFileManager,
-		copyTitle,
-		download,
-		requestDelete,
-		selectAll: () => updateBookSelection(selectAll),
-		clearSelection: () => updateBookSelection(clearSelection),
-		run: (command) => handlers[command](),
-	};
+	return useMemo(() => ({ ...summary, ...commands }), [summary, commands]);
 };
 
-/** The one confirmation a delete from the grid asks for (ADR 0014). */
-export const useDeleteBooksDialog = () => {
-	const request = useBookSelectionStore((state) => state.deleteRequest);
-	const open = useBookSelectionStore((state) => state.deleteDialogOpen);
-	const deleting = useBookSelectionStore((state) => state.deleting);
-	const failures = useBookSelectionStore((state) => state.deleteFailures);
-	const error = useBookSelectionStore((state) => state.deleteError);
-	const deletion: TBookDeletion = useLibraryStore(
-		(state) => state.library?.bookDeletion ?? BookDeletion.trash,
-	);
-
-	const confirm = async () => {
-		if (request === null || useBookSelectionStore.getState().deleting) return;
-		const ids = request.books.map((book) => book.id);
-		useBookSelectionStore.setState({
-			deleteDialogOpen: false,
-			deleting: true,
-			deleteError: null,
-		});
-		try {
-			const outcome = await useLibraryStore.getState().actions.deleteBooks(ids);
-			const { detailsBook } = useBookSelectionStore.getState();
-			useBookSelectionStore.setState((state) => ({
-				selection: clearSelection(state.selection),
-				deleteFailures:
-					outcome.folder_failures.length > 0 ? outcome.folder_failures : null,
-				detailsOpen:
-					detailsBook !== null && ids.includes(detailsBook.id)
-						? false
-						: state.detailsOpen,
-			}));
-		} catch (cause) {
-			useBookSelectionStore.setState({
-				deleteError: cause instanceof Error ? cause.message : String(cause),
-			});
-		} finally {
-			useBookSelectionStore.setState({ deleting: false });
-		}
-	};
-
-	return {
-		open,
-		books: request?.books ?? [],
-		deletion,
-		deleting,
-		failures,
-		error,
-		confirm: () => void confirm(),
-		cancel: () => useBookSelectionStore.setState({ deleteDialogOpen: false }),
-		dismissFailures: () =>
-			useBookSelectionStore.setState({
-				deleteFailures: null,
-				deleteError: null,
-			}),
-	};
+/**
+ * The details drawer's book, at its latest copy while it is in the loaded
+ * pages (marked finished from the grid, say).
+ */
+export const useBookDetails = (books: readonly (LibraryBook | undefined)[]) => {
+	const open = useBookSelectionStore((state) => state.detailsOpen);
+	const shown = useBookSelectionStore((state) => state.detailsBook);
+	const book =
+		shown === null
+			? null
+			: (books.find((candidate) => candidate?.id === shown.id) ?? shown);
+	return { open, book };
 };

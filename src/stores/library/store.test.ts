@@ -200,6 +200,28 @@ describe("deleteBooks", () => {
 	});
 });
 
+describe("setBooksRead", () => {
+	beforeEach(() => {
+		initClient.mockReset();
+	});
+
+	it("writes every book and refreshes the grid once", async () => {
+		const { useLibraryStore, a } = await bootOnA();
+		const before = useLibraryStore.getState().bookCache.generation;
+
+		await useLibraryStore
+			.getState()
+			.actions.setBooksRead(["1", "2", "3"], true);
+
+		expect(a.fake.updateBook).toHaveBeenCalledTimes(3);
+		expect(a.fake.updateBook).toHaveBeenCalledWith(
+			"2",
+			expect.objectContaining({ is_read: true, title: null }),
+		);
+		expect(useLibraryStore.getState().bookCache.generation).toBe(before + 1);
+	});
+});
+
 describe("selected-library custom fields, genres and covers", () => {
 	beforeEach(() => {
 		initClient.mockReset();
