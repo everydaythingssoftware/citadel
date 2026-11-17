@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	ariaChord,
+	windowShortcuts,
 	bookShortcutHint,
 	chordFromAccelerator,
 	formatChord,
@@ -33,7 +34,7 @@ describe("pageShortcuts", () => {
 		expect(pageShortcuts(macApp)).toEqual([]);
 	});
 
-	it("gives Windows and Linux the menu bar's chords, minus Hide Sidebar", () => {
+	it("gives Windows and Linux the menu bar's chords, including Toggle Sidebar", () => {
 		for (const env of [windowsApp, linuxApp]) {
 			const commands = commandsOf(env);
 			expect(commands).toContainEqual({ go: "allBooks" });
@@ -41,7 +42,7 @@ describe("pageShortcuts", () => {
 			expect(commands).toContain("book-open");
 			expect(commands).toContain("add-book");
 			expect(commands).toContain("open-settings");
-			expect(commands).not.toContain("toggle-sidebar");
+			expect(commands).toContain("toggle-sidebar");
 		}
 	});
 
@@ -202,4 +203,22 @@ describe("bookShortcutHint", () => {
 			false,
 		);
 	});
+});
+
+it("binds sidebar and window actions only in the intended desktop windows", () => {
+	for (const env of [windowsApp, linuxApp]) {
+		expect(shortcutChord("toggle-sidebar", env)).toEqual(some("mod+shift+l"));
+		expect(windowShortcuts(env, true)).toEqual([
+			{ command: "toggle-fullscreen", chord: "f11" },
+		]);
+		expect(windowShortcuts(env, false)).toEqual([
+			{ command: "close-settings", chord: "mod+w" },
+		]);
+		const chords = pageShortcuts(env).map(({ chord }) => chord);
+		expect(chords.filter((chord) => chord === "mod+shift+l")).toHaveLength(1);
+	}
+	for (const env of [macApp, macBrowser, windowsBrowser]) {
+		expect(windowShortcuts(env, true)).toEqual([]);
+		expect(windowShortcuts(env, false)).toEqual([]);
+	}
 });

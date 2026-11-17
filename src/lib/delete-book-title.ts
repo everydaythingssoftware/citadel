@@ -1,5 +1,9 @@
+import type { OperatingSystem } from "@/lib/platform/os";
 import { formatCount, pluralize } from "@/lib/book-count";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
+
+export const trashNameFor = (os: OperatingSystem): string =>
+	os === "windows" ? "Recycle Bin" : "Trash";
 
 interface DeleteBookCopy {
 	description: string;
@@ -8,15 +12,16 @@ interface DeleteBookCopy {
 	failureDescription: string;
 }
 
-export const deleteBookCopy = (deletion: TBookDeletion): DeleteBookCopy =>
+export const deleteBookCopy = (
+	deletion: TBookDeletion,
+	os: OperatingSystem = "other",
+): DeleteBookCopy =>
 	deletion === BookDeletion.trash
 		? {
-				description:
-					"This book will be removed from Citadel and its files moved to the Trash. You can recover the files, then re-import the book.",
-				confirmLabel: "Move to Trash",
-				failureTitle: "Book removed, files not moved to Trash",
-				failureDescription:
-					"The book was removed from your library, but its files could not be moved to the Trash. The files remain in your library folder at the locations below. You can move them manually or re-import them.",
+				description: `This book will be removed from Citadel and its files moved to the ${trashNameFor(os)}. You can recover the files, then re-import the book.`,
+				confirmLabel: `Move to ${trashNameFor(os)}`,
+				failureTitle: `Book removed, files not moved to ${trashNameFor(os)}`,
+				failureDescription: `The book was removed from your library, but its files could not be moved to the ${trashNameFor(os)}. The files remain in your library folder at the locations below. You can move them manually or re-import them.`,
 			}
 		: {
 				description:
@@ -38,16 +43,16 @@ export const deleteBookDialogTitle = (title: string): string => {
 export const deleteBooksCopy = (
 	deletion: TBookDeletion,
 	count: number,
+	os: OperatingSystem = "other",
 ): DeleteBookCopy => {
-	if (count === 1) return deleteBookCopy(deletion);
+	if (count === 1) return deleteBookCopy(deletion, os);
 	const books = `${formatCount(count)} books`;
 	return deletion === BookDeletion.trash
 		? {
-				description: `These ${books} will be removed from Citadel and their files moved to the Trash. Other books in the library are not affected. You can recover the files, then re-import the books.`,
-				confirmLabel: "Move to Trash",
-				failureTitle: "Books removed, some files not moved to Trash",
-				failureDescription:
-					"The books were removed from your library, but some of their files could not be moved to the Trash. They remain in your library folder at the locations below. You can move them manually or re-import them.",
+				description: `These ${books} will be removed from Citadel and their files moved to the ${trashNameFor(os)}. Other books in the library are not affected. You can recover the files, then re-import the books.`,
+				confirmLabel: `Move to ${trashNameFor(os)}`,
+				failureTitle: `Books removed, some files not moved to ${trashNameFor(os)}`,
+				failureDescription: `The books were removed from your library, but some of their files could not be moved to the ${trashNameFor(os)}. They remain in your library folder at the locations below. You can move them manually or re-import them.`,
 			}
 		: {
 				description: `These ${books} and their files will be deleted from the library. Other books are not affected. This can't be undone.`,

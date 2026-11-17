@@ -1,3 +1,4 @@
+import { usePlatform } from "@/lib/platform/context";
 import {
 	deleteBooksCopy,
 	deleteBooksDialogTitle,
@@ -45,6 +46,7 @@ const closeStep = (step: "confirm" | "problem") => () => {
 
 /** The one confirmation a delete from the grid asks for (ADR 0014). */
 export const useDeleteBooksDialog = () => {
+	const platform = usePlatform();
 	const state = useDeleteBooksStore();
 	const deletion = useLibraryStore(
 		(library) => library.library?.bookDeletion ?? BookDeletion.trash,
@@ -53,6 +55,7 @@ export const useDeleteBooksDialog = () => {
 	const copy = deleteBooksCopy(
 		deletion,
 		state.step === "problem" ? state.count : books.length,
+		platform.os,
 	);
 	const problem = state.step === "problem" ? state.problem : null;
 	return {

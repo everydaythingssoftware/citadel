@@ -31,7 +31,11 @@ if (platform.capabilities.supportsNativeWindows && platform.os === "macos") {
 }
 
 setChordPlatform(platform.os);
-installChromeGuards(document, { allowInspect: import.meta.env.DEV });
+installChromeGuards(document, {
+	allowInspect: import.meta.env.DEV,
+	os: platform.os,
+	desktop: platform.capabilities.supportsNativeWindows,
+});
 if (needsOverlayScrollbars(platform.os)) installScrollActivity(document);
 
 // biome-ignore lint/style/noNonNullAssertion: If this fails, we'll notice.

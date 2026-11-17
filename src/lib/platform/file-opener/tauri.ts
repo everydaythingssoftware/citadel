@@ -1,4 +1,4 @@
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { commands } from "@/bindings";
 import { none, some } from "@/lib/option";
 import { detectOperatingSystem } from "../os";
@@ -16,7 +16,8 @@ export const createTauriFileOpener = (): FileOpenerAdapter => {
 	return {
 		fileManagerName: fileManagerNameFor(os),
 		openPath: async (path) => {
-			await openPath(path);
+			if (/^https?:\/\//i.test(path)) await openUrl(path);
+			else await openPath(path);
 		},
 		revealInFileManager: async (path) => {
 			await revealItemInDir(path);
