@@ -13,6 +13,7 @@ import {
 	preloadEditBook,
 	useEditBookData,
 } from "@/lib/hooks/use-edit-book-data";
+import { forgetDeletedBooks } from "@/stores/book-selection/store";
 import { useGoBack } from "@/lib/hooks/use-go-back";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { BookDeletion } from "@/lib/services/library";
@@ -136,6 +137,7 @@ const EditBookRoute = () => {
 
 	const onDelete = useCallback(async () => {
 		const outcome = await actions.deleteBooks([bookId]);
+		forgetDeletedBooks([bookId]);
 		if (outcome.folder_failures.length > 0) {
 			setDeleteFailures(outcome.folder_failures);
 			return;

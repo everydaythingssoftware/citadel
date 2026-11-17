@@ -1,68 +1,108 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import type { LibraryAuthor, LibraryBook } from "@/bindings";
-import { BookPage } from "./EditBook";
+import {
+	createMemoryHistory,
+	createRootRoute,
+	createRouter,
+	RouterProvider,
+} from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { AddBookProvider } from "@/components/organisms/AddBook";
+import { emptySelection } from "@/lib/book-selection";
+import { PlatformProvider } from "@/lib/platform/context";
+import type { PlatformAdapter } from "@/lib/platform/types";
+import { useBookSelectionStore } from "@/stores/book-selection/store";
+import { LibraryState, useLibraryStore } from "@/stores/library/store";
+import { Books } from "./Books";
+import {
+	desktopStoryPlatform as desktopPlatform,
+	fakeStoryLibrary,
+	makeStoryBooks,
+	webStoryPlatform as webPlatform,
+} from "./books-story-fixtures";
 
-const meta: Meta<typeof BookPage> = {
-	component: BookPage,
+interface FrameProps {
+	platform: PlatformAdapter;
+	count: number;
+	readOnly?: boolean;
+}
+
+const Frame = ({ platform, count, readOnly = false }: FrameProps) => {
+	const [ready, setReady] = useState(false);
+	useEffect(() => {
+		const desktop = platform.capabilities.supportsNativeWindows;
+		document.documentElement.dataset.platform = platform.os;
+		document.documentElement.dataset.runtime = desktop ? "desktop" : "web";
+		const library = fakeStoryLibrary(makeStoryBooks(count, desktop), {
+			readOnly,
+		});
+		useBookSelectionStore.setState({
+			selection: emptySelection,
+			detailsOpen: false,
+		});
+		useLibraryStore.setState({
+			library,
+			libraryState: LibraryState.ready,
+			libraryTotal: count,
+			series: [],
+			authors: [],
+		});
+		setReady(true);
+	}, [platform, count, readOnly]);
+	const router = useMemo(
+		() =>
+			createRouter({
+				routeTree: createRootRoute({
+					component: () => (
+						<AddBookProvider>
+							<Books />
+						</AddBookProvider>
+					),
+				}),
+				history: createMemoryHistory(),
+			}),
+		[],
+	);
+	if (!ready) return null;
+	return (
+		<PlatformProvider value={platform}>
+			<div style={{ position: "fixed", inset: 0, display: "flex" }}>
+				<div style={{ flex: 1, minWidth: 0 }}>
+					<RouterProvider router={router} />
+				</div>
+			</div>
+		</PlatformProvider>
+	);
+};
+
+const meta: Meta<typeof Frame> = {
+	title: "Components/Pages/Books",
+	component: Frame,
+	parameters: { layout: "fullscreen" },
 };
 export default meta;
 
-type Story = StoryObj<typeof BookPage>;
+type Story = StoryObj<typeof Frame>;
 
-const Bugliacci: LibraryAuthor = {
-	id: "0000004JFG0DKZV4DGR66BKW9D",
-	name: "Bugliacci",
-	sortable_name: "Bugliacci",
-	book_count: 1,
-};
-const Gregor_Samsa: LibraryAuthor = {
-	id: "0000004JFGJFYH5BDPJSENX6C8",
-	name: "Gregor Samsa",
-	sortable_name: "Samsa, Gregor",
-	book_count: 1,
+/**
+ * A click shows the book's details, ⌘-click and ⇧-click select without
+ * them, a double-click opens the file, ⌘A selects all.
+ */
+export const MacDesktop: Story = {
+	args: { platform: desktopPlatform("macos"), count: 1204 },
 };
 
-const MOCK_BOOK: LibraryBook = {
-	id: "0000004JFGPMWM6WMEEFXRKXK8",
-	uuid: "01901f97-c2c5-7ce8-9546-36455c321691",
-	author_list: [Bugliacci],
-	tag_list: ["Classic", "Satire"],
-	description: "",
-	file_list: [
-		{
-			Local: {
-				path: "/tmp/this/path/does/not/exist",
-				mime_type: "EPUB",
-			},
-		},
-	],
-	cover_image: null,
-	title: "The Day I Bug'd",
-	sortable_title: "Day I Bug'd, The",
-	is_read: false,
-	series: "The Bug Chronicles",
-	series_index: 1.5,
-	language_list: ["eng"],
-	added_at: "2025-03-12T10:00:00Z",
-	identifier_list: [
-		{
-			id: 123,
-			label: "ISBN",
-			value: "987654321",
-		},
-	],
+export const WindowsDesktop: Story = {
+	args: { platform: desktopPlatform("windows"), count: 240 },
 };
 
-export const Primary: Story = {
-	args: {
-		book: MOCK_BOOK,
-		allAuthorList: [Bugliacci, Gregor_Samsa],
-		allTagList: ["Classic", "Satire", "Metafiction"],
-		onCreateAuthor: () => Promise.resolve(undefined),
-		onDeleteIdentifier: () => Promise.resolve(),
-		onReloadBooks: () => Promise.resolve(),
-		onUpsertIdentifier: () => Promise.resolve(),
-		onSave: (update) =>
-			new Promise(() => window.alert(`Saved: ${JSON.stringify(update)}`)),
-	},
+/**
+ * The same clicks; a double-click downloads the file, and right-click
+ * offers Download. Read-only, so nothing here can be marked finished.
+ */
+export const Web: Story = {
+	args: { platform: webPlatform("macos"), count: 1204, readOnly: true },
+};
+
+export const OneBook: Story = {
+	args: { platform: desktopPlatform("macos"), count: 1 },
 };

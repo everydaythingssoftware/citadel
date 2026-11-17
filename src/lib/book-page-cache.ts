@@ -260,3 +260,13 @@ export const compareBySeriesIndex = (
 	if (indexA !== indexB) return indexA - indexB;
 	return a.title.localeCompare(b.title);
 };
+
+/**
+ * The books the grid shows: the live cache once its query has resolved,
+ * the last resolved snapshot while a new one is on its way.
+ */
+export const shownBookItems = (
+	cache: PagedBookCache,
+	snapshot: BookSnapshot | null,
+): (LibraryBook | undefined)[] =>
+	cache.total !== null ? sparseBookItems(cache) : (snapshot?.items ?? []);

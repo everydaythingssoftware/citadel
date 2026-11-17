@@ -1,28 +1,37 @@
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LibraryBook } from "@/bindings";
 import {
+	AlertDialog,
 	Button,
 	Checkbox,
-	IconButton,
+	ContextMenu,
 	SearchField,
 	Select,
 	Sheet,
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
+import { bookCountStatus } from "@/lib/book-count";
 import {
 	BOOK_PAGE_SIZE,
 	type BookGridFilter,
 	serializeBookFilter,
-	sparseBookItems,
+	shownBookItems,
 } from "@/lib/book-page-cache";
+import { useBookGridInteraction } from "@/lib/hooks/use-book-grid-interaction";
+import {
+	useBookDetails,
+	useBookSelection,
+	useBookSelectionSync,
+} from "@/lib/hooks/use-book-selection";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { useDeleteBooksDialog } from "@/lib/hooks/use-delete-books-dialog";
 import { useEntryScroll } from "@/lib/hooks/use-entry-scroll";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
+import { useShownEntryKey } from "@/lib/hooks/use-shown-entry-key";
 import { SCROLL_REGION, scrollRegionAttributes } from "@/lib/navigation";
 import {
 	type BookRouteFilters,
@@ -30,6 +39,7 @@ import {
 	hasRouteFilters,
 	routeFiltersToShelf,
 } from "@/lib/shelves";
+import { closeBookDetails } from "@/stores/book-selection/store";
 import {
 	useAuthors,
 	useBookCache,
@@ -49,7 +59,7 @@ import {
 import { createSmartShelf } from "@/stores/settings/actions";
 import { useSettings } from "@/stores/settings/store";
 import { F7Bookmark } from "../icons/F7Bookmark";
-import { BookGrid, type ScrollToBookIndex } from "../molecules/BookGrid";
+import { BookGrid, type BookGridHandle } from "../molecules/BookGrid";
 import { EmptyLibrary, EmptyState } from "../molecules/EmptyState";
 import { BookDetailsDrawer } from "../organisms/BookDrawer";
 import styles from "./Books.module.css";
@@ -179,10 +189,10 @@ export const Books = ({
 	// (cache.total === null), show the previous snapshot so the grid never
 	// blanks. Once the new query resolves, live cache takes over.
 	const queryResolved = cache.total !== null;
-	const activeBooks = useMemo(() => sparseBookItems(cache), [cache]);
-	const books = queryResolved
-		? activeBooks
-		: (staleSnapshot?.items ?? activeBooks);
+	const books = useMemo(
+		() => shownBookItems(cache, staleSnapshot),
+		[cache, staleSnapshot],
+	);
 	const total = queryResolved ? cache.total : (staleSnapshot?.total ?? 0);
 
 	// True loading = no resolved data at all (fresh library open, no stale
@@ -227,27 +237,24 @@ export const Books = ({
 		}
 	}, [libraryReady, tag_id, publisher_id, tags, publishers, actions]);
 
-	const [isBookSidebarOpen, setIsBookSidebarOpen] = useState(false);
+	const details = useBookDetails(books);
 
-	const [selectedSidebarBook, setSelectedSidebarBook] =
-		useState<LibraryBook | null>(null);
-	const onBookOpen = useCallback(
-		(bookId: LibraryBook["id"]) => {
-			const book = books.find(
-				(candidate) => candidate !== undefined && candidate.id === bookId,
-			);
-			if (!book) return;
-			setSelectedSidebarBook(book);
-			setIsBookSidebarOpen(true);
-		},
-		[books],
-	);
+	// Coming Back to this entry finds the selection and details as left.
+	const entryKey = useShownEntryKey("/");
+	useBookSelectionSync({
+		books,
+		resetKey: cache.key,
+		viewKey: serializeBookFilter(filter),
+		entryKey,
+	});
+	const { selectedCount, isSelected } = useBookSelection();
+	const grid = useBookGridInteraction(books);
 
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const gridContainerRef = useRef<HTMLDivElement>(null);
 	// Filled in by the virtualized BookGrid; lets keyboard selection scroll
 	// rows into view even when their cards are not mounted.
-	const scrollToBookIndexRef = useRef<ScrollToBookIndex | null>(null);
+	const gridHandleRef = useRef<BookGridHandle | null>(null);
 
 	// Back returns the grid to where it was left; a new search, filter or
 	// sort starts at the top. Generation bumps from same-key invalidations
@@ -275,14 +282,12 @@ export const Books = ({
 		}, []),
 	);
 
-	const { selectedBookId } = useLibraryKeymap({
+	useLibraryKeymap({
 		books,
-		resetToken: cache.key,
-		drawerOpened: isBookSidebarOpen,
+		drawerOpened: details.open,
 		searchInputRef,
 		gridContainerRef,
-		scrollToBookIndexRef,
-		onBookOpen,
+		gridRef: gridHandleRef,
 		onClearSearch: () => setQuery(""),
 	});
 
@@ -294,6 +299,17 @@ export const Books = ({
 	// results — never transiently while a new search is still in flight.
 	const noMatches =
 		!loading && queryResolved && total === 0 && (libraryTotal ?? 0) > 0;
+	const showGrid = !emptyLibrary && !noMatches;
+	const regionProps = {
+		ref: gridContainerRef,
+		...scrollRegionAttributes(SCROLL_REGION.libraryGrid),
+		style: { outline: "none" },
+		className: clsx(
+			styles.gridArea,
+			"ctd-scroller",
+			isSearching && styles.gridAreaSearching,
+		),
+	};
 	const trimmedQuery = query.trim();
 
 	const searchTokens = [
@@ -339,62 +355,82 @@ export const Books = ({
 	return (
 		<div className={styles.page}>
 			{/*
-			 * Finder-style scope bar: pinned to the top of the scroll container
-			 * (the panel div wrapping <Outlet/> in __root), above the content.
+			 * Finder-style scope bar above the grid's scroll region. It is a
+			 * size container: the sidebar and window both change the panel's
+			 * width, so its controls reflow on the bar's own width.
 			 */}
 			<div className={styles.scopeBar}>
-				<span className={styles.searchWrap}>
-					<SearchField
-						ref={searchInputRef}
-						placeholder={searchTokens.length > 0 ? undefined : "Search"}
-						aria-label="Search book titles and authors"
-						value={query}
-						onChange={(event) => setQuery(event.currentTarget.value)}
-						className={styles.searchInput}
-						tokens={searchTokens.length > 0 ? searchTokens : undefined}
+				<div className={styles.scopeControls}>
+					<span className={styles.searchWrap}>
+						<SearchField
+							ref={searchInputRef}
+							placeholder={searchTokens.length > 0 ? undefined : "Search"}
+							aria-label="Search book titles and authors"
+							value={query}
+							onChange={(event) => setQuery(event.currentTarget.value)}
+							className={styles.searchInput}
+							tokens={searchTokens.length > 0 ? searchTokens : undefined}
+						/>
+					</span>
+					<Select
+						width={150}
+						aria-label="Sort order"
+						options={(
+							Object.keys(LibraryBookSortOrder) as LibraryBookSortOrderKey[]
+						).map((key) => ({
+							value: key,
+							label: SORT_LABELS[key],
+						}))}
+						value={sortOrder}
+						onChange={(value) => setSortOrder(value as LibraryBookSortOrderKey)}
+						disabled={series_id !== undefined}
 					/>
-				</span>
-				<Select
-					width={150}
-					aria-label="Sort order"
-					options={(
-						Object.keys(LibraryBookSortOrder) as LibraryBookSortOrderKey[]
-					).map((key) => ({
-						value: key,
-						label: SORT_LABELS[key],
-					}))}
-					value={sortOrder}
-					onChange={(value) => setSortOrder(value as LibraryBookSortOrderKey)}
-					disabled={series_id !== undefined}
-				/>
-				<span className={styles.unreadToggle}>
-					<Checkbox
-						label="Unread only"
-						checked={hideRead}
-						onCheckedChange={setHideRead}
+					<span className={styles.unreadToggle}>
+						<Checkbox
+							label="Unread only"
+							checked={hideRead}
+							onCheckedChange={setHideRead}
+						/>
+					</span>
+					<SaveAsShelfControl
+						query={query}
+						sortOrder={sortOrder}
+						hideRead={hideRead}
+						routeFilters={{ author_id, series_id, tag_id, publisher_id }}
 					/>
-				</span>
-				<SaveAsShelfControl
-					query={query}
-					sortOrder={sortOrder}
-					hideRead={hideRead}
-					routeFilters={{ author_id, series_id, tag_id, publisher_id }}
-				/>
+				</div>
 			</div>
-			<div
-				ref={gridContainerRef}
-				{...scrollRegionAttributes(SCROLL_REGION.libraryGrid)}
-				tabIndex={-1}
-				style={{ outline: "none" }}
-				className={clsx(
-					styles.gridArea,
-					isSearching && styles.gridAreaSearching,
-				)}
-			>
-				{emptyLibrary ? (
-					<EmptyLibrary />
-				) : noMatches ? (
-					trimmedQuery.length > 0 ? (
+			{showGrid ? (
+				// The scroll region is the listbox VoiceOver reads: it keeps focus
+				// while arrows move the cursor (aria-activedescendant), since the
+				// virtualized cards come and go. Its keys live in use-library-keymap.
+				<div
+					{...regionProps}
+					role="listbox"
+					aria-label="Books"
+					aria-multiselectable
+					aria-activedescendant={grid.activeDescendant}
+					tabIndex={0}
+					onClick={grid.onBackgroundClick}
+					onKeyDown={grid.onGridKeyDown}
+				>
+					<BookGrid
+						bookList={books}
+						loading={loading}
+						cardActions={grid.cardActions}
+						isSelected={isSelected}
+						scrollElementRef={gridContainerRef}
+						initialScrollOffset={gridStartOffset}
+						resultKey={`${cache.key}:${queryResolved}`}
+						handleRef={gridHandleRef}
+						onVisibleRangeChange={onVisibleRangeChange}
+					/>
+				</div>
+			) : (
+				<div {...regionProps} tabIndex={-1}>
+					{emptyLibrary ? (
+						<EmptyLibrary />
+					) : trimmedQuery.length > 0 ? (
 						<EmptyState
 							art="search"
 							title={`No books match “${trimmedQuery}”`}
@@ -419,38 +455,65 @@ export const Books = ({
 								Show all books
 							</Button>
 						</EmptyState>
-					)
-				) : (
-					<BookGrid
-						bookList={books}
-						loading={loading}
-						onBookOpen={onBookOpen}
-						selectedBookId={selectedBookId}
-						scrollElementRef={gridContainerRef}
-						initialScrollOffset={gridStartOffset}
-						resultKey={`${cache.key}:${queryResolved}`}
-						scrollToBookIndexRef={scrollToBookIndexRef}
-						onVisibleRangeChange={onVisibleRangeChange}
-					/>
-				)}
-			</div>
+					)}
+				</div>
+			)}
 			<div className={styles.footer}>
-				<span className={styles.footerText}>
-					{loading
-						? "Loading books…"
-						: libraryTotal === null || total === libraryTotal
-							? `${total} books`
-							: `${total} of ${libraryTotal} books`}
+				<span className={styles.footerText} aria-live="polite">
+					{bookCountStatus({
+						loading,
+						total,
+						libraryTotal,
+						selectedCount,
+					})}
 				</span>
 			</div>
 			<BookDetailsDrawer
-				book={selectedSidebarBook}
-				open={isBookSidebarOpen}
-				onClose={() => setIsBookSidebarOpen(false)}
+				book={details.book}
+				open={details.open}
+				onClose={closeBookDetails}
 				returnFocusRef={gridContainerRef}
 				className={styles.drawer}
 			/>
+			<ContextMenu
+				menu={grid.menu.menu}
+				returnFocusRef={gridContainerRef}
+				onClose={grid.menu.close}
+			/>
+			<DeleteBooksDialogs />
 		</div>
+	);
+};
+
+/** "Delete 2 books?" and, when files stayed behind, what to do about them. */
+const DeleteBooksDialogs = () => {
+	const dialog = useDeleteBooksDialog();
+	return (
+		<>
+			<AlertDialog
+				open={dialog.confirmOpen}
+				onOpenChange={(open) => {
+					if (!open) dialog.cancel();
+				}}
+				title={dialog.title}
+				textAlign="left"
+				description={dialog.copy.description}
+				confirmLabel={dialog.copy.confirmLabel}
+				destructive
+				onConfirm={dialog.confirm}
+			/>
+			<AlertDialog
+				open={dialog.problemOpen}
+				onOpenChange={(open) => {
+					if (!open) dialog.dismissProblem();
+				}}
+				title={dialog.problemTitle}
+				textAlign="left"
+				description={dialog.problemDescription}
+				confirmLabel="OK"
+				onConfirm={dialog.dismissProblem}
+			/>
+		</>
 	);
 };
 
@@ -510,15 +573,19 @@ const SaveAsShelfControl = ({
 
 	return (
 		<>
-			<Tooltip label="Save as shelf…">
-				<IconButton
+			<Tooltip label="Keep these filters as a shelf in the sidebar">
+				<Button
 					ref={bookmarkButtonRef}
+					variant="subtle"
 					className={styles.shelfButton}
-					aria-label="Save as shelf"
 					onClick={() => setIsOpen(true)}
 				>
-					<F7Bookmark style={{ fontSize: 15 }} />
-				</IconButton>
+					<F7Bookmark
+						aria-hidden="true"
+						style={{ fontSize: "var(--ctd-text-base)" }}
+					/>
+					<span className={styles.shelfLabel}>Save as shelf…</span>
+				</Button>
 			</Tooltip>
 			<Sheet
 				open={isOpen}
@@ -538,7 +605,6 @@ const SaveAsShelfControl = ({
 					<TextInput
 						placeholder="Shelf name"
 						aria-label="Shelf name"
-						// biome-ignore lint/a11y/noAutofocus: the sheet exists to name the shelf; focus must land in the field.
 						autoFocus
 						value={name}
 						error={error}
