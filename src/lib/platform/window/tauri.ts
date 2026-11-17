@@ -1,8 +1,18 @@
+import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands } from "@/bindings";
+import { dragOutGuard } from "@/lib/drag-out-guard";
+import { some } from "@/lib/option";
 import { localFile } from "../local-file";
 import type { WindowAdapter } from "../types";
+
+// The drag plugin needs an image; this one shows nothing.
+const BLANK_PNG =
+	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+const dragIconFor = async (path: string): Promise<string> =>
+	(await commands.clbQueryFileIcon(path)) ?? BLANK_PNG;
 
 export const createTauriWindow = (): WindowAdapter => ({
 	isMain: getCurrentWindow().label === "main",
@@ -35,4 +45,42 @@ export const createTauriWindow = (): WindowAdapter => ({
 					break;
 			}
 		}),
+	startDrag: some(async (files, iconPath) => {
+		const [first] = files;
+		if (first === undefined) return;
+		const icon = iconPath ?? (await dragIconFor(first));
+		dragOutGuard.begin();
+		try {
+			await startDrag({ item: files, icon, mode: "copy" }, () =>
+				dragOutGuard.end(),
+			);
+		} catch (error) {
+			dragOutGuard.end();
+			throw error;
+		}
+	}),
+	onActiveChange: async (handler) => {
+		const window = getCurrentWindow();
+		// The window starts hidden and is shown after first paint, so the
+		// first answer to isFocused() is often "no". If a focus event has
+		// arrived by the time that answer does, the event is newer: a late
+		// "no" must not leave the window greyed out while it is in front.
+		let heardEvent = false;
+		const unlisten = await window.onFocusChanged(({ payload }) => {
+			heardEvent = true;
+			handler(payload);
+		});
+		const focused = await window.isFocused();
+		if (!heardEvent) handler(focused);
+		return unlisten;
+	},
+	// macOS reports the end of a full-screen transition as a resize.
+	onFullscreenChange: async (handler) => {
+		const window = getCurrentWindow();
+		const unlisten = await window.onResized(async () =>
+			handler(await window.isFullscreen()),
+		);
+		handler(await window.isFullscreen());
+		return unlisten;
+	},
 });

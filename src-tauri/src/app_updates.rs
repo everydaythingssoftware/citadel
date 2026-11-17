@@ -189,6 +189,7 @@ impl SoftwareUpdates {
         if let Err(err) = SoftwareUpdateChanged(self.state()).emit(app) {
             log::error!("Failed to broadcast update state: {err}");
         }
+        crate::menu::follow_software_update(app);
     }
 
     /// Moves to the next status only if `allowed` holds, in one step under
@@ -325,6 +326,7 @@ impl SoftwareUpdates {
         if let Some(opds) = app.try_state::<OpdsService>() {
             opds.stop().await;
         }
+        crate::window::save_window_state(app);
         app.restart();
     }
 

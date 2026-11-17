@@ -543,6 +543,45 @@ async clbCmdOpenSettings() : Promise<void> {
 },
 async clbCmdOpenSoftwareUpdate() : Promise<void> {
     await TAURI_INVOKE("clb_cmd_open_software_update");
+},
+/**
+ * Replaces one group of what the menu bar shows.
+ */
+async clbCmdSetMenuState(update: MenuStateUpdate) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_menu_state", { update }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The app that opens this file when it is double-clicked in the file
+ * manager. None where the platform can't say (Windows, Linux) or when no
+ * app claims the file.
+ */
+async clbQueryDefaultApp(path: string) : Promise<DefaultApp | null> {
+    return await TAURI_INVOKE("clb_query_default_app", { path });
+},
+/**
+ * The file manager's icon for a file, as a PNG data URL: the image under
+ * the pointer while files are dragged out. None off macOS.
+ */
+async clbQueryFileIcon(path: string) : Promise<string | null> {
+    return await TAURI_INVOKE("clb_query_file_icon", { path });
+},
+/**
+ * Shows a file in the system Quick Look panel (macOS). Asked again for the
+ * file it is showing, it closes the panel; for another file, it switches.
+ * Where the panel fails, the file opens in its default app instead.
+ */
+async clbCmdQuickLook(path: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_quick_look", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -551,20 +590,26 @@ async clbCmdOpenSoftwareUpdate() : Promise<void> {
 
 export const events = __makeEvents__<{
 librariesChanged: LibrariesChanged,
+menuCommandChosen: MenuCommandChosen,
 showSoftwareUpdate: ShowSoftwareUpdate,
 softwareUpdateChanged: SoftwareUpdateChanged
 }>({
 librariesChanged: "libraries-changed",
+menuCommandChosen: "menu-command-chosen",
 showSoftwareUpdate: "show-software-update",
 softwareUpdateChanged: "software-update-changed"
 })
 
 /** user-defined constants **/
 
-
+export const MENU_ACCELERATORS = {"commands":[["add-book","CmdOrCtrl+N"],["undo","CmdOrCtrl+Z"],["redo","CmdOrCtrl+Shift+Z"],["find","CmdOrCtrl+F"],["book-show-details","CmdOrCtrl+I"],["book-open","CmdOrCtrl+O"],["book-edit","CmdOrCtrl+E"],["book-show-in-file-manager","CmdOrCtrl+Shift+R"],["book-delete","CmdOrCtrl+Backspace"],["toggle-sidebar","Ctrl+Cmd+S"],[{"go":"allBooks"},"CmdOrCtrl+1"],[{"go":"authors"},"CmdOrCtrl+2"],[{"go":"series"},"CmdOrCtrl+3"],[{"go":"tags"},"CmdOrCtrl+4"],[{"go":"publishers"},"CmdOrCtrl+5"],["go-back","CmdOrCtrl+["],["go-forward","CmdOrCtrl+]"]],"settings":"CmdOrCtrl+,"} as const;
 
 /** user-defined types **/
 
+/**
+ * "Undo Mark as Finished"; an absent label disables the item.
+ */
+export type AppUndo = { undoLabel: string | null; redoLabel: string | null }
 export type AuthorUpdate = { full_name: string | null; sortable_name: string | null; external_url: string | null }
 /**
  * One book's value for one custom column.
@@ -681,6 +726,10 @@ export type DatabaseProblem = { kind: DatabaseProblemKind; databasePath: string;
 steps: RecoveryStep[] }
 export type DatabaseProblemKind = "damaged" | "newerVersion" | "migrationFailed" | "migrationInterrupted" | "unreadable"
 /**
+ * The app a file opens in by default, with its icon as a PNG data URL.
+ */
+export type DefaultApp = { name: string; iconDataUrl: string }
+/**
  * Result of deleting books. The books are gone from the library either way;
  * `folder_failures` lists folders, relative to the library, that could not
  * be removed, each with its error.
@@ -713,6 +762,7 @@ source: string;
  * Provider vocabulary or thesaurus when one is declared.
  */
 vocabulary: string | null }
+export type GoDestination = "allBooks" | "authors" | "series" | "tags" | "publishers"
 /**
  * Book identifiers, such as ISBN, DOI, Google Books ID, etc.
  */
@@ -823,6 +873,30 @@ path: string;
 mime_type: string }
 export type LocalOrRemote = "Local" | "Remote"
 export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: string | null }
+/**
+ * A menu choice delivered to the library window.
+ */
+export type MenuCommand = "add-book" | "new-shelf" | "add-library" | "show-library-in-file-manager" | "find" | "undo" | "redo" | "book-show-details" | "book-open" | "book-edit" | "book-mark-finished" | "book-show-in-file-manager" | "book-copy-title" | "book-delete" | "toggle-sidebar" | "toggle-unread-only" | { sort: MenuSortOrder } | { go: GoDestination } | "go-back" | "go-forward" | { switchLibrary: string }
+/**
+ * A menu choice, sent to the library window.
+ */
+export type MenuCommandChosen = MenuCommand
+export type MenuLibrary = { id: string; name: string; active: boolean }
+/**
+ * The selected books: the Book menu's enabled items and plural labels.
+ */
+export type MenuSelection = { count: number; allFinished: boolean }
+export type MenuSortOrder = "nameAz" | "nameZa" | "authorAz" | "authorZa"
+/**
+ * One group of what the menu bar shows, replaced whole.
+ */
+export type MenuStateUpdate = { selection: MenuSelection } | { view: MenuViewOptions } | { libraries: MenuLibrary[] } | { undo: MenuUndo } | { updateReady: string | null }
+/**
+ * Who Edit > Undo and Redo act on: a focused text field, whose typing the
+ * native items undo, or the app's undo history.
+ */
+export type MenuUndo = { owner: "textField" } | ({ owner: "app" } & AppUndo)
+export type MenuViewOptions = { sidebarVisible: boolean; unreadOnly: boolean; sortOrder: MenuSortOrder }
 /**
  * The metadata sources Citadel can look books up against. The serialized
  * short form is the single id used across the Rust enum, the TS string union,

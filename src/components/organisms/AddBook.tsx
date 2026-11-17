@@ -44,11 +44,10 @@ export const AddBookProvider = ({ children }: { children: ReactNode }) => {
 		if (canAddBook) chooseBooks();
 	}, [canAddBook, chooseBooks]);
 
-	// File > Add Book… in the native menu emits this event to the main window
-	// (see src-tauri/src/menu.rs); it triggers the same flow as the button.
 	useEffect(() => {
-		const unlisten = platform.menu.onAddBook(() => {
-			startAddBook();
+		if (!platform.menu.isSome) return;
+		const unlisten = platform.menu.value.onCommand((command) => {
+			if (command === "add-book") startAddBook();
 		});
 		return () => {
 			void unlisten.then((dispose) => dispose());

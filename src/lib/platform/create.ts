@@ -1,6 +1,7 @@
+import { none, some } from "@/lib/option";
 import { isDesktop } from "./runtime";
 import { homeDirectory } from "./paths/tauri";
-import { onAddBook } from "./menu/tauri";
+import { tauriMenu } from "./menu/tauri";
 import { tauriUpdates } from "./updates/tauri";
 import { webUpdates } from "./updates/web";
 import { tauriRecovery } from "./recovery/tauri";
@@ -19,27 +20,30 @@ import type { PlatformAdapter } from "./types";
 import { createTauriWindow } from "./window/tauri";
 import { createWebWindow } from "./window/web";
 
-export const createTauriPlatform = (): PlatformAdapter => ({
-	os: detectOperatingSystem(),
-	capabilities: {
-		supportsNativeWindows: true,
-		canPickLocalFiles: true,
-		canRevealInFileManager: true,
-		canCopyToClipboard: true,
-		canOpenLocalPaths: true,
-		supportsAutoUpdates: true,
-		supportsLocalOpdsServer: true,
-	},
-	homeDirectory,
-	menu: { onAddBook },
-	updates: tauriUpdates,
-	recovery: tauriRecovery,
-	dialogs: createTauriDialogs(),
-	clipboard: createTauriClipboard(),
-	fileOpener: createTauriFileOpener(),
-	window: createTauriWindow(),
-	settings: createTauriSettingsManager(defaultSettings),
-});
+export const createTauriPlatform = (): PlatformAdapter => {
+	const os = detectOperatingSystem();
+	return {
+		os,
+		capabilities: {
+			supportsNativeWindows: true,
+			canPickLocalFiles: true,
+			canRevealInFileManager: true,
+			canCopyToClipboard: true,
+			canOpenLocalPaths: true,
+			supportsAutoUpdates: true,
+			supportsLocalOpdsServer: true,
+		},
+		homeDirectory,
+		menu: os === "macos" ? some(tauriMenu) : none(),
+		updates: tauriUpdates,
+		recovery: tauriRecovery,
+		dialogs: createTauriDialogs(),
+		clipboard: createTauriClipboard(),
+		fileOpener: createTauriFileOpener(),
+		window: createTauriWindow(),
+		settings: createTauriSettingsManager(defaultSettings),
+	};
+};
 
 export const createWebPlatform = (): PlatformAdapter => ({
 	os: detectOperatingSystem(),
@@ -53,7 +57,7 @@ export const createWebPlatform = (): PlatformAdapter => ({
 		supportsLocalOpdsServer: false,
 	},
 	homeDirectory: async () => null,
-	menu: { onAddBook: async () => () => {} },
+	menu: none(),
 	updates: webUpdates,
 	recovery: webRecovery,
 	dialogs: createWebDialogs(),

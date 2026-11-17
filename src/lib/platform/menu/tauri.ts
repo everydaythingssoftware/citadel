@@ -1,3 +1,11 @@
-import { listen } from "@tauri-apps/api/event";
-export const onAddBook = (handler: () => void): Promise<() => void> =>
-	listen("menu://add-book", handler);
+import { commands, events } from "@/bindings";
+import type { MenuAdapter } from "../types";
+
+export const tauriMenu: MenuAdapter = {
+	onCommand: (handler) =>
+		events.menuCommandChosen.listen((event) => handler(event.payload)),
+	setState: async (update) => {
+		const result = await commands.clbCmdSetMenuState(update);
+		if (result.status === "error") throw new Error(result.error);
+	},
+};

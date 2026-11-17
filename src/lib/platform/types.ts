@@ -1,9 +1,12 @@
 import type {
 	DatabaseBackup,
 	DatabaseProblem,
+	MenuCommand,
+	MenuStateUpdate,
 	RecoveryStep,
 	UpdateNowOutcome,
 } from "@/bindings";
+import type { Option } from "@/lib/option";
 import type { SoftwareUpdateState } from "@/lib/updates/software-update";
 import type { OperatingSystem } from "./os";
 import type { SettingsManager } from "./settings/types";
@@ -16,7 +19,7 @@ export interface PlatformAdapter {
 	readonly fileOpener: FileOpenerAdapter;
 	readonly window: WindowAdapter;
 	readonly homeDirectory: () => Promise<string | null>;
-	readonly menu: { onAddBook(handler: () => void): Promise<() => void> };
+	readonly menu: Option<MenuAdapter>;
 	readonly updates: UpdatesAdapter;
 	readonly recovery: RecoveryAdapter;
 	readonly settings: SettingsManager;
@@ -31,6 +34,14 @@ export interface PlatformCapabilities {
 	supportsAutoUpdates: boolean;
 	/** Only the desktop build can host the local OPDS server. */
 	supportsLocalOpdsServer: boolean;
+}
+
+export type { MenuCommand, MenuStateUpdate } from "@/bindings";
+
+/** The desktop menu bar (macOS). */
+export interface MenuAdapter {
+	onCommand(handler: (command: MenuCommand) => void): Promise<() => void>;
+	setState(update: MenuStateUpdate): Promise<void>;
 }
 
 /** A file on this computer, by path: what the desktop chooses and drops. */
@@ -70,6 +81,19 @@ export interface FileOpenerAdapter {
 	readonly fileManagerName: string;
 	openPath(path: string): Promise<void>;
 	revealInFileManager(path: string): Promise<void>;
+	/**
+	 * The app that opens this file by default, with its icon, cached per
+	 * file extension. None in a browser, off macOS, or when none claims it.
+	 */
+	defaultApp(path: string): Promise<Option<DefaultApp>>;
+	/** The macOS desktop app only; opens the default app if Quick Look fails. */
+	readonly quickLook: Option<(path: string) => Promise<void>>;
+}
+
+export interface DefaultApp {
+	name: string;
+	/** A PNG data URL. */
+	iconDataUrl: string;
 }
 
 export interface WindowAdapter {
@@ -86,6 +110,23 @@ export interface WindowAdapter {
 	 * path (the desktop). Browsers deliver drops to the page instead.
 	 */
 	onFileDrag(handler: (event: FileDragEvent) => void): Promise<() => void>;
+	/**
+	 * Drags files out of the window to other apps, from a pointer-down or
+	 * dragstart; the desktop only. Without an icon, the file manager's icon
+	 * for the first file is shown.
+	 */
+	readonly startDrag: Option<
+		(files: string[], iconPath?: string) => Promise<void>
+	>;
+	/**
+	 * Whether the window is in front; the handler is called at once with the
+	 * current value, then on every change.
+	 */
+	onActiveChange(handler: (active: boolean) => void): Promise<() => void>;
+	/** Full screen entered or left; called at once with the current value. */
+	onFullscreenChange(
+		handler: (fullscreen: boolean) => void,
+	): Promise<() => void>;
 }
 
 /**

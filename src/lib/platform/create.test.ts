@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/bindings", () => ({
 	commands: new Proxy(
 		{},
@@ -10,6 +10,10 @@ vi.mock("@/bindings", () => ({
 	),
 }));
 import { createPlatform, createWebPlatform } from "./create";
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
 
 describe("browser Platform", () => {
 	it("selects web capabilities and handles window/menu lifecycle without native calls", async () => {
@@ -23,10 +27,41 @@ describe("browser Platform", () => {
 		await platform.window.setBackgroundColor([0, 0, 0, 255]);
 		const close = await platform.window.hideOnClose();
 		close();
-		const add = await platform.menu.onAddBook(() => {
-			throw new Error("Unexpected native menu event");
+	});
+	it("has no menu bar, Quick Look, default apps or file drags", async () => {
+		const platform = createWebPlatform();
+		expect(platform.menu.isSome).toBe(false);
+		expect(platform.fileOpener.quickLook.isSome).toBe(false);
+		expect(platform.window.startDrag.isSome).toBe(false);
+		expect((await platform.fileOpener.defaultApp("/a/book.epub")).isSome).toBe(
+			false,
+		);
+	});
+	it("follows the page's focus and full screen", async () => {
+		const page = Object.assign(new EventTarget(), {
+			hasFocus: () => false,
+			fullscreenElement: null as object | null,
 		});
-		add();
+		vi.stubGlobal("window", new EventTarget());
+		vi.stubGlobal("document", page);
+		const platform = createWebPlatform();
+		const active: boolean[] = [];
+		const fullscreen: boolean[] = [];
+		const stopActive = await platform.window.onActiveChange((value) =>
+			active.push(value),
+		);
+		const stopFullscreen = await platform.window.onFullscreenChange((value) =>
+			fullscreen.push(value),
+		);
+		window.dispatchEvent(new Event("focus"));
+		window.dispatchEvent(new Event("focus"));
+		page.fullscreenElement = {};
+		page.dispatchEvent(new Event("fullscreenchange"));
+		stopActive();
+		stopFullscreen();
+		window.dispatchEvent(new Event("blur"));
+		expect(active).toEqual([false, true, true]);
+		expect(fullscreen).toEqual([false, true]);
 	});
 	it("offers no way to install updates from the browser", async () => {
 		const platform = createWebPlatform();
