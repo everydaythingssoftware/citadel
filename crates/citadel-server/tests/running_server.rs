@@ -212,7 +212,7 @@ async fn serves_the_catalog_and_books_to_signed_in_readers_and_follows_admin_cha
             publisher: None,
             publication_date: None,
             rating: None,
-            comments: None,
+            description: None,
             identifiers: HashMap::new(),
             language: Some("eng".to_string()),
             file_paths: vec![source],
