@@ -6,7 +6,7 @@ const setFlag = (name: "windowInactive" | "fullscreen", on: boolean) => {
 	else delete document.documentElement.dataset[name];
 };
 
-const listen = (
+export const listen = (
 	subscribe: Promise<() => void>,
 	label: string,
 ): (() => void) => {

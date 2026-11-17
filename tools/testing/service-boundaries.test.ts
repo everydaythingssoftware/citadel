@@ -57,6 +57,12 @@ describe("service import boundaries", () => {
 				'import {type LibraryBook} from "../bindings";',
 			),
 		).toEqual([]);
+		expect(
+			checkServiceBoundaries(
+				file,
+				'import {MENU_ACCELERATORS} from "@/bindings";',
+			),
+		).toEqual([]);
 		for (const source of [
 			'import {commands, type LibraryBook} from "@/bindings";',
 			'export {commands} from "../bindings";',

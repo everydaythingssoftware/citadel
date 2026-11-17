@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useAddBook } from "@/components/organisms/AddBook";
+import { useAddBook } from "@/lib/hooks/use-add-book";
 import { Button } from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
 import { abbreviateHomePath, useHomeDir } from "@/lib/hooks/use-home-dir";

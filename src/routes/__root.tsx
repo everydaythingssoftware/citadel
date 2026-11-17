@@ -8,11 +8,12 @@ import clsx from "clsx";
 import { type CSSProperties, useCallback, useState } from "react";
 import { NavigationProgress } from "@/components/atoms/NavigationProgress";
 import { F7SidebarLeft } from "@/components/icons/F7SidebarLeft";
-import { AddBookButton, AddBookProvider } from "@/components/organisms/AddBook";
+import { AddBookButton } from "@/components/organisms/AddBook";
 import {
 	BookUploads,
 	UploadToolbarStatus,
 } from "@/components/organisms/BookUploads";
+import { MenuCommandHost } from "@/components/organisms/MenuCommandHost";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton, Tooltip } from "@/components/ui";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
@@ -94,7 +95,7 @@ const Root = () => {
 	}
 
 	return (
-		<AddBookProvider>
+		<>
 			<div
 				className={classes.shell}
 				data-sidebar-open={desktopOpened || undefined}
@@ -151,7 +152,8 @@ const Root = () => {
 				</div>
 			</div>
 			<BookUploads />
-		</AddBookProvider>
+			<MenuCommandHost />
+		</>
 	);
 };
 
