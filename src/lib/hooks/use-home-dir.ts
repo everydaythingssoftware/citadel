@@ -47,5 +47,7 @@ export const abbreviateHomePath = (
 ): string => {
 	if (!home) return path;
 	if (path === home) return "~";
-	return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+	return path.startsWith(`${home}/`) || path.startsWith(`${home}\\`)
+		? `~${path.slice(home.length)}`
+		: path;
 };

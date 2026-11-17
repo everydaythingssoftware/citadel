@@ -2,6 +2,7 @@ import type { WindowAdapter } from "../types";
 import { none } from "@/lib/option";
 export const createWebWindow = (): WindowAdapter => ({
 	isMain: true,
+	toggleFullscreen: none(),
 	show: async () => {},
 	hide: async () => {},
 	openSettings: async () => {},

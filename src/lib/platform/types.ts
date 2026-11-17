@@ -101,6 +101,7 @@ export interface WindowAdapter {
 	readonly isMain: boolean;
 	show(): Promise<void>;
 	hide(): Promise<void>;
+	readonly toggleFullscreen: Option<() => Promise<void>>;
 	openSettings(): Promise<void>;
 	setTheme(theme: "dark" | "light" | null): Promise<void>;
 	setBackgroundColor(color: [number, number, number, number]): Promise<void>;

@@ -25,6 +25,7 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
+import { CITADEL_HELP_URL, useAppHelp } from "@/lib/hooks/use-app-help";
 import { useAddLibraryFlow } from "@/lib/hooks/use-add-library-flow";
 import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
@@ -256,6 +257,7 @@ const SettingsRow = ({
 };
 
 const GeneralTab = () => {
+	const openHelp = useAppHelp();
 	const theme = useSettings((state) => state.theme);
 	const setTheme = useSettings((state) => state.setTheme);
 	const autoUpdateCheckingEnabled = useSettings(
@@ -284,6 +286,21 @@ const GeneralTab = () => {
 	return (
 		<div className={classes.groups}>
 			{administrator && <ServerProblemsNotice />}
+			{platform.capabilities.supportsNativeWindows &&
+				platform.os !== "macos" && (
+					<p className={classes.inlineNote}>
+						Citadel {softwareUpdate?.state.currentVersion} ·{" "}
+						<InlineLink
+							href={CITADEL_HELP_URL}
+							onClick={(event) => {
+								event.preventDefault();
+								openHelp();
+							}}
+						>
+							Help
+						</InlineLink>
+					</p>
+				)}
 			<div className={classes.group}>
 				<SettingsRow
 					label="Appearance"

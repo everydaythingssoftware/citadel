@@ -16,6 +16,7 @@ import {
 import { MenuCommandHost } from "@/components/organisms/MenuCommandHost";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton, Tooltip } from "@/components/ui";
+import { useWindowShortcuts } from "@/lib/hooks/use-window-shortcuts";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
 import { SHELL_SIDEBAR_ATTRIBUTE } from "@/lib/hooks/use-book-grid-layout";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
@@ -82,6 +83,7 @@ const Root = () => {
 	useWindowChromeState();
 	// Self-disables in the settings window (/settings pathname check inside).
 	useAppKeymap();
+	useWindowShortcuts();
 
 	// The desktop settings window loads /settings in its own webview; it
 	// brings its own full-window layout and must not inherit the library

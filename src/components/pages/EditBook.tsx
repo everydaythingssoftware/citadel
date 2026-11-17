@@ -1,3 +1,4 @@
+import { usePlatform } from "@/lib/platform/context";
 import clsx from "clsx";
 import {
 	useCoverThumb,
@@ -205,8 +206,9 @@ const DeleteBookSection = ({
 	deletion: TBookDeletion;
 	onDelete: () => Promise<void>;
 }) => {
+	const platform = usePlatform();
 	const confirmation = useDeleteBookConfirmation(onDelete);
-	const copy = deleteBookCopy(deletion);
+	const copy = deleteBookCopy(deletion, platform.os);
 	return (
 		<section className={styles.deleteSection} aria-label="Delete book">
 			{confirmation.error && (

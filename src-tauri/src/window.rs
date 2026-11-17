@@ -131,7 +131,11 @@ pub fn handle_window_event<R: Runtime>(window: &tauri::Window<R>, event: &tauri:
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn handle_window_event<R: Runtime>(_window: &tauri::Window<R>, _event: &tauri::WindowEvent) {}
+pub fn handle_window_event<R: Runtime>(window: &tauri::Window<R>, event: &tauri::WindowEvent) {
+    if window.label() == MAIN_WINDOW && matches!(event, tauri::WindowEvent::Destroyed) {
+        window.app_handle().exit(0);
+    }
+}
 
 #[cfg(test)]
 mod tests {
