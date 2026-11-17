@@ -273,14 +273,15 @@ pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+// Keep these commands async: building the settings window in a sync command deadlocks on Windows.
 #[tauri::command]
 #[specta::specta]
-pub fn clb_cmd_open_settings(app: AppHandle) {
+pub async fn clb_cmd_open_settings(app: AppHandle) {
     open_settings_window(&app);
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn clb_cmd_open_software_update(app: AppHandle) {
+pub async fn clb_cmd_open_software_update(app: AppHandle) {
     open_software_update(&app);
 }
