@@ -8,8 +8,8 @@ import {
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { LibraryBook } from "@/bindings";
 import booksStyles from "@/components/pages/Books.module.css";
-import { fileTypeKey } from "@/lib/book-file-actions";
 import { none, some } from "@/lib/option";
+import { fileExtension } from "@/lib/platform/file-opener/default-app-cache";
 import type { OperatingSystem } from "@/lib/platform/os";
 import { createWebPlatform } from "@/lib/platform/create";
 import { PlatformProvider } from "@/lib/platform/context";
@@ -66,7 +66,7 @@ const desktopPlatform = (os: OperatingSystem): PlatformAdapter => {
 			revealInFileManager: log("reveal"),
 			quickLook: os === "macos" ? some(log("quick look")) : none(),
 			defaultApp: async (path) => {
-				const app = APP_ICONS[fileTypeKey(path)];
+				const app = APP_ICONS[fileExtension(path) ?? ""];
 				return os === "macos" && app !== undefined ? some(app) : none();
 			},
 		},
@@ -145,7 +145,7 @@ const fakeFetch =
 	async (input, init) => {
 		const url = typeof input === "string" ? input : input.toString();
 		if (!url.startsWith("https://books.example/")) return real(input, init);
-		const size = SIZES[fileTypeKey(new URL(url).pathname)] ?? 1_000_000;
+		const size = SIZES[fileExtension(new URL(url).pathname) ?? ""] ?? 1_000_000;
 		const headers = { "Content-Length": String(size) };
 		if (init?.method === "HEAD") return new Response(null, { headers });
 		if (behaviour === "fails") return new Response("", { status: 500 });

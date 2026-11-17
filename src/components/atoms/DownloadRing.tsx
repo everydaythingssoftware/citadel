@@ -1,14 +1,9 @@
 import clsx from "clsx";
+import { downloadFraction, type FileDownloadState } from "@/lib/file-download";
 import styles from "./DownloadRing.module.css";
 
-export type DownloadRingState =
-	| { status: "idle" }
-	/** `progress` is 0–1, or null when the size isn't known. */
-	| { status: "downloading"; progress: number | null }
-	| { status: "done" };
-
 interface DownloadRingProps {
-	state: DownloadRingState;
+	state: FileDownloadState;
 	/** Draw a stop square instead of the arrow while downloading. */
 	showStop?: boolean;
 	size?: number;
@@ -29,7 +24,7 @@ export const DownloadRing = ({
 	className,
 }: DownloadRingProps) => {
 	const downloading = state.status === "downloading";
-	const progress = downloading ? state.progress : null;
+	const progress = downloading ? downloadFraction(state) : null;
 	return (
 		<svg
 			className={clsx(styles.ring, className)}

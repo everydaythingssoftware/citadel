@@ -4,10 +4,8 @@ import DOMPurify from "dompurify";
 import {
 	type CSSProperties,
 	Fragment,
-	type KeyboardEvent,
 	type ReactNode,
 	type RefObject,
-	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -18,13 +16,7 @@ import { BookCover } from "@/components/atoms/BookCover";
 import { EditGlyph } from "@/components/icons/EditGlyph";
 import { TablerCopy } from "@/components/icons/TablerCopy";
 import { BookFileList } from "@/components/molecules/BookFileList";
-import {
-	Button,
-	ContextMenu,
-	Drawer,
-	DrawerPlacement,
-	Tooltip,
-} from "@/components/ui";
+import { Button, ContextMenu, Drawer, Tooltip } from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
 import {
 	identifierDisplayName,
@@ -33,8 +25,9 @@ import {
 } from "@/lib/book-identifiers";
 import { backdropColors } from "@/lib/cover-palette";
 import { useBookDrawerResize } from "@/lib/hooks/use-book-drawer-resize";
-import { useBookFiles } from "@/lib/hooks/use-book-files";
+import { type BookFiles, useBookFiles } from "@/lib/hooks/use-book-files";
 import { useCoverPalette } from "@/lib/hooks/use-cover-palette";
+import { useDetailsPanelFocus } from "@/lib/hooks/use-details-panel-focus";
 import { useScrolled } from "@/lib/hooks/use-scrolled";
 import { languageNameForCode } from "@/lib/languages";
 import { usePlatform } from "@/lib/platform/context";
@@ -74,52 +67,21 @@ export const BookDetailsDrawer = ({
 	returnFocusRef,
 	className,
 }: BookDetailsDrawerProps) => {
-	const contentRef = useRef<HTMLDivElement | null>(null);
 	const [content, setContent] = useState<HTMLDivElement | null>(null);
-	const attachContent = useCallback((element: HTMLDivElement | null) => {
-		contentRef.current = element;
-		setContent(element);
-	}, []);
 	const resize = useBookDrawerResize(content);
-	// Closed with focus inside, the grid takes the keyboard back at once,
-	// not after the slide-out, so the next Escape clears the selection.
-	useLayoutEffect(() => {
-		if (!open && contentRef.current?.contains(document.activeElement))
-			returnFocusRef.current?.focus();
-	}, [open, returnFocusRef]);
+	const focus = useDetailsPanelFocus(open, content, returnFocusRef);
 	return (
 		<Drawer
-			placement={DrawerPlacement.panel}
 			open={open}
 			onOpenChange={(next) => {
 				if (!next) onClose();
 			}}
 			width={resize.width}
-			bleed
 			className={className}
-			contentRef={attachContent}
+			contentRef={setContent}
 			resizeHandleProps={resize.handleProps}
-			onOpenAutoFocus={(event) => {
-				// Opened from the grid, the grid keeps focus so arrows move on
-				// through the books; from a menu, land on the primary action.
-				event.preventDefault();
-				if (returnFocusRef.current?.contains(document.activeElement)) return;
-				contentRef.current
-					?.querySelector<HTMLElement>("[data-drawer-initial-focus]")
-					?.focus();
-			}}
-			onCloseAutoFocus={(event) => {
-				// No Dialog.Trigger to return focus to: hand it to the grid,
-				// unless the user has already moved on (into the search field).
-				event.preventDefault();
-				const focused = document.activeElement;
-				if (
-					focused === null ||
-					focused === document.body ||
-					contentRef.current?.contains(focused)
-				)
-					returnFocusRef.current?.focus();
-			}}
+			onOpenAutoFocus={focus.onOpenAutoFocus}
+			onCloseAutoFocus={focus.onCloseAutoFocus}
 		>
 			{book && <BookDrawer book={book} onClose={onClose} />}
 		</Drawer>
@@ -162,7 +124,7 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 			className={styles.drawer}
 			style={washStyle}
 			data-scrolled={scrolled || undefined}
-			onKeyDown={(event: KeyboardEvent) => files.onKeyDown(event)}
+			onKeyDown={files.onKeyDown}
 		>
 			<header className={styles.hero}>
 				<div className={styles.backdrop} aria-hidden="true" />
@@ -410,7 +372,7 @@ const Tags = ({ book, onClose }: BookDrawerProps) => {
 	);
 };
 
-const Files = ({ files }: { files: ReturnType<typeof useBookFiles> }) => {
+const Files = ({ files }: { files: BookFiles }) => {
 	const platform = usePlatform();
 	if (files.rows.length === 0) return null;
 	return (
@@ -419,11 +381,10 @@ const Files = ({ files }: { files: ReturnType<typeof useBookFiles> }) => {
 			<BookFileList
 				rows={files.rows}
 				os={platform.os}
-				fileManagerName={platform.fileOpener.fileManagerName}
-				canReveal={platform.capabilities.canRevealInFileManager}
 				onCommand={files.onCommand}
 				onCancelDownload={files.onCancelDownload}
 				onContextMenu={files.onContextMenu}
+				onRowKeyDown={files.onRowKeyDown}
 			/>
 			<ContextMenu
 				menu={files.contextMenu.menu}

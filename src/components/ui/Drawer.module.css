@@ -1,54 +1,25 @@
-/* Subtler scrim than Sheet: the drawer reveals detail, it does not block
-   work. */
-.overlay {
-	position: fixed;
-	inset: 0;
-	background-color: oklch(0% 0 0 / 0.1);
-	z-index: 110;
-}
-
-.overlay[data-state="open"] {
-	animation: drawer-overlay-in 200ms ease-out;
-}
-
-.overlay[data-state="closed"] {
-	animation: drawer-overlay-out 150ms ease-in;
-}
-
-.content {
-	display: flex;
-	flex-direction: column;
-	background-color: var(--ctd-surface);
-	border-left: var(--ctd-control-border-width) solid var(--ctd-border);
-	box-shadow: var(--ctd-dialog-shadow);
-}
-
-.window {
-	position: fixed;
-	top: 0;
-	right: 0;
-	bottom: 0;
-	z-index: 111;
-}
-
 /* In its page, the drawer is one more layer of the content: the page sets
    where it sits; the shadow falls only to the left, over what it covers,
    never onto the bars above or below. */
-.panel {
+.content {
 	position: relative;
+	display: flex;
+	flex-direction: column;
 	box-sizing: border-box;
 	width: var(--drawer-width);
 	max-width: 100%;
 	min-height: 0;
+	background-color: var(--ctd-surface);
+	border-left: var(--ctd-control-border-width) solid var(--ctd-border);
+	box-shadow: var(--ctd-dialog-shadow);
 	clip-path: inset(0 0 0 -48px);
 }
 
-.panelBody {
+.body {
 	display: flex;
 	flex: 1;
 	flex-direction: column;
 	min-height: 0;
-	overflow-y: auto;
 }
 
 /* The drawer's leading edge: a thin grab area over the hairline, drawn
@@ -71,7 +42,7 @@
 
 /* Phones: the details take the whole screen, as a sheet would. */
 @media (max-width: 36em) {
-	.panel {
+	.content {
 		position: fixed;
 		inset: 0;
 		z-index: 111;
@@ -98,23 +69,37 @@
 	animation: drawer-out 150ms ease-in;
 }
 
+/* Over a book's colours: a larger close with only a translucent wash
+   behind it, not a solid control. */
 .header {
+	position: absolute;
+	top: 0;
+	right: 0;
+	z-index: 1;
 	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	flex-shrink: 0;
-	padding: 10px 16px;
-	border-bottom: 1px solid var(--ctd-border);
+	padding: 12px;
 }
 
-.title {
-	font-size: 13px;
-	font-weight: 600;
+.header button {
+	width: 30px;
+	height: 30px;
+	border: 0;
+	background-color: oklch(from var(--ctd-ink) l c h / 0.07);
 	color: var(--ctd-ink);
-	margin: 0;
+	opacity: 0.75;
 }
 
-/* Visually hidden but announced; keeps the close button right-aligned. */
+.header button:hover {
+	background-color: oklch(from var(--ctd-ink) l c h / 0.12);
+	opacity: 1;
+}
+
+.header button svg {
+	width: 11px;
+	height: 11px;
+}
+
+/* Visually hidden but announced. */
 .hiddenTitle {
 	position: absolute;
 	width: 1px;
@@ -125,69 +110,6 @@
 	clip: rect(0 0 0 0);
 	white-space: nowrap;
 	border: 0;
-}
-
-/* When the title is hidden the close button is the only header child. */
-.header:has(.hiddenTitle) {
-	justify-content: flex-end;
-}
-
-.body {
-	flex: 1;
-	overflow-y: auto;
-	padding: 16px;
-}
-
-.content[data-bleed] .header {
-	position: absolute;
-	top: 0;
-	right: 0;
-	z-index: 1;
-	padding: 12px;
-	border-bottom: 0;
-}
-
-.content[data-bleed] .body {
-	padding: 0;
-}
-
-/* Over a book's colours: a larger close with only a translucent wash
-   behind it, not a solid control. */
-.content[data-bleed] .header button {
-	width: 30px;
-	height: 30px;
-	border: 0;
-	background-color: oklch(from var(--ctd-ink) l c h / 0.07);
-	color: var(--ctd-ink);
-	opacity: 0.75;
-}
-
-.content[data-bleed] .header button:hover {
-	background-color: oklch(from var(--ctd-ink) l c h / 0.12);
-	opacity: 1;
-}
-
-.content[data-bleed] .header button svg {
-	width: 11px;
-	height: 11px;
-}
-
-@keyframes drawer-overlay-in {
-	from {
-		opacity: 0;
-	}
-	to {
-		opacity: 1;
-	}
-}
-
-@keyframes drawer-overlay-out {
-	from {
-		opacity: 1;
-	}
-	to {
-		opacity: 0;
-	}
 }
 
 @keyframes drawer-in {

@@ -11,7 +11,7 @@ export {
 	DialogCloseButton,
 	type DialogCloseButtonProps,
 } from "./DialogCloseButton";
-export { Drawer, DrawerPlacement, type DrawerProps } from "./Drawer";
+export { Drawer, type DrawerProps } from "./Drawer";
 export { FormField, type FormFieldProps } from "./FormField";
 export { HoldButton, type HoldButtonProps } from "./HoldButton";
 export { IconButton, type IconButtonProps } from "./IconButton";

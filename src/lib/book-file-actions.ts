@@ -1,27 +1,14 @@
 import type { BookFormatRow } from "@/lib/book-downloads";
-import type { FileDownloadState } from "@/lib/file-download";
-
-/** The user's default app for a file, as the desktop reports it. */
-export interface DefaultApp {
-	name: string;
-	iconDataUrl: string;
-}
-
-/** Everything one file row shows, worked out by `useBookFiles`. */
-export interface BookFileRowView {
-	key: string;
-	/** "EPUB", "PDF", … */
-	format: string;
-	fileName: string;
-	layout: FileRowLayout;
-	/** Desktop: the local path, for Quick Look on Space. */
-	path?: string;
-	/** Undefined while the desktop is still asking. */
-	defaultApp?: DefaultApp | null;
-	download: FileDownloadState;
-	/** Bytes, where the server told us. */
-	size: number | null;
-}
+import { type ContextMenuEntry, tidyEntries } from "@/lib/context-menu";
+import {
+	downloadFraction,
+	downloadProgressText,
+	type FileDownloadState,
+	formatByteSize,
+} from "@/lib/file-download";
+import { isEditableTarget } from "@/lib/keymap";
+import { none, type Option, some } from "@/lib/option";
+import type { DefaultApp } from "@/lib/platform/types";
 
 /**
  * How a file row behaves: the desktop opens and reveals local files; a
@@ -36,6 +23,33 @@ export const FILE_ROW_LAYOUT = {
 export type FileRowLayout =
 	(typeof FILE_ROW_LAYOUT)[keyof typeof FILE_ROW_LAYOUT];
 
+interface FileRowBase {
+	key: string;
+	/** "EPUB", "PDF", … */
+	format: string;
+	fileName: string;
+}
+
+/** Everything one file row shows, worked out by `useBookFiles`. */
+export type BookFileRowView =
+	| (FileRowBase & {
+			layout: typeof FILE_ROW_LAYOUT.desktop;
+			/** None while the desktop is still asking. */
+			defaultApp: Option<Option<DefaultApp>>;
+			/** "Show in Finder", where the platform can. */
+			reveal: Option<string>;
+	  })
+	| (FileRowBase & {
+			layout: typeof FILE_ROW_LAYOUT.web;
+			download: FileDownloadState;
+	  })
+	| (FileRowBase & {
+			layout: typeof FILE_ROW_LAYOUT.mobile;
+			download: FileDownloadState;
+			/** Bytes, where the server told us. */
+			size: Option<number>;
+	  });
+
 export const fileRowLayout = (
 	row: BookFormatRow,
 	{ compact }: { compact: boolean },
@@ -44,9 +58,9 @@ export const fileRowLayout = (
 	return compact ? FILE_ROW_LAYOUT.mobile : FILE_ROW_LAYOUT.web;
 };
 
-/** "Open in Kindle", or plain "Open" when nothing claims the file type. */
-export const openLabel = (app: DefaultApp | null | undefined): string =>
-	app ? `Open in ${app.name}` : "Open";
+/** "Open in Kindle", or plain "Open" until an app is known to claim it. */
+export const openLabel = (app: Option<Option<DefaultApp>>): string =>
+	app.isSome && app.value.isSome ? `Open in ${app.value.value.name}` : "Open";
 
 export const revealLabel = (fileManagerName: string): string =>
 	`Show in ${fileManagerName}`;
@@ -61,70 +75,40 @@ export const FILE_COMMAND = {
 } as const;
 export type FileCommand = (typeof FILE_COMMAND)[keyof typeof FILE_COMMAND];
 
-export type FileMenuEntry =
-	| { type: "item"; command: FileCommand; label: string }
-	| { type: "separator"; id: string };
-
-interface FileMenuOptions {
-	layout: FileRowLayout;
-	label: string;
-	defaultApp: DefaultApp | null | undefined;
-	fileManagerName: string;
-	canQuickLook: boolean;
-	canReveal: boolean;
-	canCopy: boolean;
+/** What the platform can do beyond what a row already says. */
+export interface FileMenuFeatures {
+	quickLook: Option<(path: string) => Promise<void>>;
+	copy: Option<(text: string) => Promise<void>>;
 }
-
-const item = (command: FileCommand, label: string): FileMenuEntry => ({
-	type: "item",
-	command,
-	label,
-});
 
 /**
  * A file row's right-click menu, with only the actions this platform has:
  * Open, Quick Look, Show in Finder, Copy Path on the desktop; Download and
  * Copy Link in a browser.
  */
-export const fileMenuEntries = ({
-	layout,
-	label,
-	defaultApp,
-	fileManagerName,
-	canQuickLook,
-	canReveal,
-	canCopy,
-}: FileMenuOptions): FileMenuEntry[] => {
-	if (layout !== FILE_ROW_LAYOUT.desktop) {
+export const fileMenuEntries = (
+	row: BookFileRowView,
+	{ quickLook, copy }: FileMenuFeatures,
+	run: (command: FileCommand) => void,
+): ContextMenuEntry[] => {
+	const entry = (command: FileCommand, label: string): ContextMenuEntry[] => [
+		{ id: command, label, onSelect: () => run(command) },
+	];
+	if (row.layout !== FILE_ROW_LAYOUT.desktop)
 		return [
-			item(FILE_COMMAND.download, `Download ${label}`),
-			...(canCopy ? [item(FILE_COMMAND.copyLink, "Copy Link")] : []),
+			...entry(FILE_COMMAND.download, `Download ${row.format}`),
+			...(copy.isSome ? entry(FILE_COMMAND.copyLink, "Copy Link") : []),
 		];
-	}
-	const first = [
-		item(FILE_COMMAND.open, openLabel(defaultApp)),
-		...(canQuickLook ? [item(FILE_COMMAND.quickLook, "Quick Look")] : []),
-	];
-	const second = [
-		...(canReveal
-			? [item(FILE_COMMAND.reveal, revealLabel(fileManagerName))]
-			: []),
-		...(canCopy ? [item(FILE_COMMAND.copyPath, "Copy Path")] : []),
-	];
-	return second.length > 0
-		? [...first, { type: "separator", id: "files" }, ...second]
-		: first;
+	return tidyEntries([
+		...entry(FILE_COMMAND.open, openLabel(row.defaultApp)),
+		...(quickLook.isSome ? entry(FILE_COMMAND.quickLook, "Quick Look") : []),
+		{ type: "separator", id: "files" },
+		...(row.reveal.isSome ? entry(FILE_COMMAND.reveal, row.reveal.value) : []),
+		...(copy.isSome ? entry(FILE_COMMAND.copyPath, "Copy Path") : []),
+	]);
 };
 
-/** Lower-cased extension, the key default apps are cached by. */
-export const fileTypeKey = (path: string): string => {
-	const name = path.split(/[\\/]/).at(-1) ?? "";
-	const dot = name.lastIndexOf(".");
-	return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
-};
-
-const TYPING_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
-const CONTROL_TAGS = new Set(["BUTTON", "A", "SUMMARY"]);
+const CONTROL_TAGS = new Set(["INPUT", "BUTTON", "A", "SUMMARY"]);
 const CONTROL_ROLES = new Set([
 	"button",
 	"link",
@@ -143,10 +127,61 @@ export const spaceMeansQuickLook = (target: {
 	isContentEditable: boolean;
 	role: string | null;
 }): boolean =>
-	!TYPING_TAGS.has(target.tagName) &&
+	!isEditableTarget(target) &&
 	!CONTROL_TAGS.has(target.tagName) &&
-	!target.isContentEditable &&
 	!(target.role !== null && CONTROL_ROLES.has(target.role));
+
+const percentOf = (download: FileDownloadState): string => {
+	const fraction = downloadFraction(download);
+	return fraction === null ? "" : `, ${Math.round(fraction * 100)}%`;
+};
+
+/** The download button's name: what pressing it does now. */
+export const downloadButtonLabel = (
+	format: string,
+	download: FileDownloadState,
+): string => {
+	switch (download.status) {
+		case "downloading":
+			return `Stop downloading ${format}`;
+		case "failed":
+			return `Try downloading ${format} again`;
+		case "done":
+			return `Download ${format} again`;
+		case "idle":
+			return `Download ${format}`;
+	}
+};
+
+/** The same, with how far a running download has got. */
+export const downloadButtonAccessibleLabel = (
+	format: string,
+	download: FileDownloadState,
+): string => `${downloadButtonLabel(format, download)}${percentOf(download)}`;
+
+/** A phone row is the button: its name says what it does and to what. */
+export const mobileRowLabel = (
+	row: Extract<BookFileRowView, { layout: "mobile" }>,
+): string =>
+	row.download.status === "downloading"
+		? downloadButtonAccessibleLabel(row.format, row.download)
+		: `Download ${row.format}, ${row.fileName}${row.size.isSome ? `, ${formatByteSize(row.size.value)}` : ""}`;
+
+/** "Downloading… 3.9 of 8.4 MB" or "… Tap to try again."; none otherwise. */
+export const mobileRowDetail = (
+	download: FileDownloadState,
+): Option<string> => {
+	switch (download.status) {
+		case "downloading":
+			return some(
+				`Downloading… ${downloadProgressText(download.received, download.total)}`,
+			);
+		case "failed":
+			return some(`${download.message}. Tap to try again.`);
+		default:
+			return none();
+	}
+};
 
 /** Colour family for a format's badge; Kindle formats share one. */
 export const FORMAT_TONE = {

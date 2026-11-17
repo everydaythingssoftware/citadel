@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { none, some } from "@/lib/option";
 import {
 	type DownloadProgress,
 	fetchContentLength,
@@ -85,17 +86,17 @@ describe("fetchContentLength", () => {
 			},
 		);
 		expect(method).toBe("HEAD");
-		expect(size).toBe(2_100_000);
+		expect(size).toEqual(some(2_100_000));
 	});
 
-	it("is null when the request fails or says nothing", async () => {
+	it("is none when the request fails or says nothing", async () => {
 		expect(
 			await fetchContentLength("/x", async () => {
 				throw new Error("offline");
 			}),
-		).toBeNull();
+		).toEqual(none());
 		expect(
 			await fetchContentLength("/x", async () => new Response(null)),
-		).toBeNull();
+		).toEqual(none());
 	});
 });

@@ -1,15 +1,10 @@
-/* Values follow the FileActions board, option A and Mobile 1. */
 .group {
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
 	border-radius: 10px;
-	background-color: oklch(from var(--ctd-ink) l c h / 0.045);
+	background-color: var(--ctd-group-bg);
 	list-style: none;
-}
-
-:global(:root[data-theme="dark"]) .group {
-	background-color: oklch(from var(--ctd-ink) l c h / 0.06);
 }
 
 .row {

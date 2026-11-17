@@ -1,10 +1,7 @@
 import { type RefObject, useLayoutEffect, useRef, useState } from "react";
 import { fitMiddleTruncated } from "@/lib/middle-truncate";
 
-let canvas: HTMLCanvasElement | null = null;
-
-const measurer = (element: HTMLElement) => {
-	canvas ??= document.createElement("canvas");
+const measurer = (canvas: HTMLCanvasElement, element: HTMLElement) => {
 	const context = canvas.getContext("2d");
 	if (!context) return null;
 	const style = getComputedStyle(element);
@@ -27,9 +24,12 @@ export const useMiddleTruncation = <TElement extends HTMLElement>(
 	useLayoutEffect(() => {
 		const element = ref.current;
 		if (!element) return;
+		let live = true;
+		const canvas = document.createElement("canvas");
 		const refit = () => {
+			if (!live) return;
 			const width = element.clientWidth;
-			const measure = measurer(element);
+			const measure = measurer(canvas, element);
 			if (width === 0 || !measure) {
 				setShown(text);
 				return;
@@ -42,7 +42,10 @@ export const useMiddleTruncation = <TElement extends HTMLElement>(
 		const observer = new ResizeObserver(refit);
 		observer.observe(element);
 		void document.fonts?.ready.then(refit);
-		return () => observer.disconnect();
+		return () => {
+			live = false;
+			observer.disconnect();
+		};
 	}, [text]);
 
 	return [ref, shown];

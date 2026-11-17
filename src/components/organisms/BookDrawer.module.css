@@ -330,12 +330,8 @@
 	margin: 0;
 	overflow: hidden;
 	border-radius: 10px;
-	background-color: oklch(from var(--ctd-ink) l c h / 0.045);
+	background-color: var(--ctd-group-bg);
 	font-size: var(--ctd-text-sm);
-}
-
-:global(:root[data-theme="dark"]) .details {
-	background-color: oklch(from var(--ctd-ink) l c h / 0.06);
 }
 
 .detail {
@@ -403,11 +399,8 @@
 }
 
 .external:hover {
-	color: var(--ctd-ink);
-}
-
-.external:hover {
 	background-color: var(--ctd-nav-hover-bg);
+	color: var(--ctd-ink);
 }
 
 .arrow {
@@ -451,11 +444,10 @@
 
 /* ---- Phones ---- */
 @media (max-width: 36em) {
+	/* The whole sheet scrolls, hero and all. */
 	.drawer {
 		container-type: normal;
-		flex: none;
-		min-height: 100%;
-		overflow: visible;
+		overflow-y: auto;
 	}
 
 	.hero::after {

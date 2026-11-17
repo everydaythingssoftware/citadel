@@ -61,6 +61,7 @@
 	--ctd-segmented-indicator-bg: oklch(from var(--pal-base) calc(l + 0.03) c h);
 	--ctd-segmented-label: var(--pal-text);
 	--ctd-nav-hover-bg: oklch(from var(--pal-text) l c h / 0.09);
+	--ctd-group-bg: oklch(from var(--pal-text) l c h / 0.045);
 	--ctd-nav-active-bg: oklch(from var(--pal-accent) l c h / 0.14);
 	--ctd-nav-active-text: oklch(from var(--pal-accent) calc(l - 0.1) c h);
 	--ctd-control-disabled-bg: oklch(from var(--pal-mantle) l c h / 0.9);
@@ -218,6 +219,7 @@
 	);
 	--ctd-segmented-label: var(--pal-text);
 	--ctd-nav-hover-bg: oklch(from var(--pal-text) l c h / 0.07);
+	--ctd-group-bg: oklch(from var(--pal-text) l c h / 0.06);
 	--ctd-nav-active-bg: oklch(from var(--pal-accent) l c h / 0.22);
 	--ctd-nav-active-text: oklch(
 		from var(--pal-accent) calc(l + 0.06) calc(c - 0.04) h

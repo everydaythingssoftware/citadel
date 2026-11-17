@@ -1,14 +1,10 @@
-const isClientSide = typeof window !== "undefined";
+import { none, type Option, some } from "@/lib/option";
 
 /** Download a file from a URL.
  * Requires a browser environment.
  * @param url The URL to download from.
  */
 export const downloadFile = (url: string) => {
-	if (!isClientSide) {
-		return;
-	}
-
 	const a = document.createElement("a");
 	a.href = url;
 	document.body.appendChild(a);
@@ -56,7 +52,7 @@ export const fetchWithProgress = async (
 		return blob;
 	}
 	const reader = response.body.getReader();
-	const chunks: Uint8Array[] = [];
+	const chunks: BlobPart[] = [];
 	let received = 0;
 	onProgress({ received, total });
 	for (;;) {
@@ -66,12 +62,11 @@ export const fetchWithProgress = async (
 		received += value.byteLength;
 		onProgress({ received, total });
 	}
-	return new Blob(chunks as BlobPart[], { type });
+	return new Blob(chunks, { type });
 };
 
 /** Hands a Blob to the browser as a download named `filename`. */
 export const saveBlob = (blob: Blob, filename: string) => {
-	if (!isClientSide) return;
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement("a");
 	a.href = url;
@@ -83,18 +78,19 @@ export const saveBlob = (blob: Blob, filename: string) => {
 	setTimeout(() => URL.revokeObjectURL(url), 30_000);
 };
 
-/** The file's size from a HEAD request, or null when it can't be told. */
+/** The file's size from a HEAD request, where it can be told. */
 export const fetchContentLength = async (
 	url: string,
 	fetcher: Fetcher = globalThis.fetch,
-): Promise<number | null> => {
+): Promise<Option<number>> => {
 	try {
 		const response = await fetcher(url, {
 			method: "HEAD",
 			credentials: "same-origin",
 		});
-		return response.ok ? contentLength(response) : null;
+		const length = response.ok ? contentLength(response) : null;
+		return length === null ? none() : some(length);
 	} catch {
-		return null;
+		return none();
 	}
 };

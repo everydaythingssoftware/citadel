@@ -1,14 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { none, some } from "@/lib/option";
 import { type BookFormatRow, bookFileName } from "./book-downloads";
 import {
+	type BookFileRowView,
+	downloadButtonAccessibleLabel,
+	downloadButtonLabel,
+	FILE_COMMAND,
 	FILE_ROW_LAYOUT,
 	fileMenuEntries,
 	fileRowLayout,
-	fileTypeKey,
 	formatTone,
+	mobileRowDetail,
 	openLabel,
 	spaceMeansQuickLook,
 } from "./book-file-actions";
+
+const books = { name: "Books", iconDataUrl: "data:" };
 
 const local: BookFormatRow = {
 	kind: "open",
@@ -49,31 +56,36 @@ describe("fileRowLayout", () => {
 });
 
 describe("openLabel", () => {
-	it("names the default app when there is one", () => {
-		expect(openLabel({ name: "Kindle", iconDataUrl: "data:" })).toBe(
-			"Open in Kindle",
-		);
-		expect(openLabel(null)).toBe("Open");
-		expect(openLabel(undefined)).toBe("Open");
+	it("names the default app once one is known", () => {
+		expect(openLabel(some(some(books)))).toBe("Open in Books");
+		expect(openLabel(some(none()))).toBe("Open");
+		expect(openLabel(none())).toBe("Open");
 	});
 });
 
 describe("fileMenuEntries", () => {
-	const base = {
-		label: "EPUB",
-		defaultApp: { name: "Books", iconDataUrl: "data:" },
-		fileManagerName: "Finder",
-		canQuickLook: true,
-		canReveal: true,
-		canCopy: true,
+	const desktop: BookFileRowView = {
+		key: "k",
+		format: "EPUB",
+		fileName: "Walden.epub",
+		layout: FILE_ROW_LAYOUT.desktop,
+		defaultApp: some(some(books)),
+		reveal: some("Show in Finder"),
 	};
+	const web: BookFileRowView = {
+		key: "k",
+		format: "EPUB",
+		fileName: "Walden.epub",
+		layout: FILE_ROW_LAYOUT.web,
+		download: { status: "idle" },
+	};
+	const task = async () => {};
+	const everything = { quickLook: some(task), copy: some(task) };
 	const labels = (entries: ReturnType<typeof fileMenuEntries>) =>
-		entries.map((entry) => (entry.type === "item" ? entry.label : "—"));
+		entries.map((entry) => (entry.type === "separator" ? "—" : entry.label));
 
 	it("offers everything on a Mac", () => {
-		expect(
-			labels(fileMenuEntries({ ...base, layout: FILE_ROW_LAYOUT.desktop })),
-		).toEqual([
+		expect(labels(fileMenuEntries(desktop, everything, () => {}))).toEqual([
 			"Open in Books",
 			"Quick Look",
 			"—",
@@ -85,40 +97,63 @@ describe("fileMenuEntries", () => {
 	it("leaves out what the platform can't do", () => {
 		expect(
 			labels(
-				fileMenuEntries({
-					...base,
-					layout: FILE_ROW_LAYOUT.desktop,
-					defaultApp: null,
-					fileManagerName: "File Explorer",
-					canQuickLook: false,
-				}),
+				fileMenuEntries(
+					{
+						...desktop,
+						defaultApp: some(none()),
+						reveal: some("Show in File Explorer"),
+					},
+					{ ...everything, quickLook: none() },
+					() => {},
+				),
 			),
 		).toEqual(["Open", "—", "Show in File Explorer", "Copy Path"]);
 		expect(
 			labels(
-				fileMenuEntries({
-					...base,
-					layout: FILE_ROW_LAYOUT.desktop,
-					canReveal: false,
-					canCopy: false,
-				}),
+				fileMenuEntries(
+					{ ...desktop, reveal: none() },
+					{ ...everything, copy: none() },
+					() => {},
+				),
 			),
 		).toEqual(["Open in Books", "Quick Look"]);
 	});
 
 	it("downloads in a browser", () => {
-		expect(
-			labels(fileMenuEntries({ ...base, layout: FILE_ROW_LAYOUT.web })),
-		).toEqual(["Download EPUB", "Copy Link"]);
+		expect(labels(fileMenuEntries(web, everything, () => {}))).toEqual([
+			"Download EPUB",
+			"Copy Link",
+		]);
+	});
+
+	it("runs the chosen command", () => {
+		const run = vi.fn();
+		const [first] = fileMenuEntries(web, everything, run);
+		if (first?.type !== "separator") first?.onSelect();
+		expect(run).toHaveBeenCalledWith(FILE_COMMAND.download);
 	});
 });
 
-describe("fileTypeKey", () => {
-	it("is the lower-cased extension", () => {
-		expect(fileTypeKey("/a/b/Walden.EPUB")).toBe("epub");
-		expect(fileTypeKey("C:\\x\\y.azw3")).toBe("azw3");
-		expect(fileTypeKey("/a/.hidden")).toBe("");
-		expect(fileTypeKey("/a/noext")).toBe("");
+describe("download labels", () => {
+	it("say what pressing the button does now", () => {
+		expect(downloadButtonLabel("PDF", { status: "idle" })).toBe("Download PDF");
+		expect(downloadButtonLabel("PDF", { status: "done" })).toBe(
+			"Download PDF again",
+		);
+		expect(
+			downloadButtonAccessibleLabel("PDF", {
+				status: "downloading",
+				received: 1,
+				total: 4,
+			}),
+		).toBe("Stop downloading PDF, 25%");
+	});
+
+	it("give a phone row its detail line only while it has news", () => {
+		expect(mobileRowDetail({ status: "idle" })).toEqual(none());
+		expect(
+			mobileRowDetail({ status: "failed", message: "Couldn't download" }),
+		).toEqual(some("Couldn't download. Tap to try again."));
 	});
 });
 

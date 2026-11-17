@@ -1,42 +1,55 @@
-import {
-	type KeyboardEvent,
-	type MouseEvent,
-	useCallback,
-	useMemo,
-} from "react";
+import { type KeyboardEvent, type MouseEvent, useMemo } from "react";
 import type { BookFile } from "@/bindings";
 import { safeAsyncEventHandler } from "@/lib/async";
-import {
-	type BookFileRowView,
-	FILE_COMMAND,
-	type FileCommand,
-	fileMenuEntries,
-	fileRowLayout,
-	spaceMeansQuickLook,
-} from "@/lib/book-file-actions";
 import {
 	type BookFormatRow,
 	bookFileName,
 	bookFormatRows,
 } from "@/lib/book-downloads";
-import type { ContextMenuEntry } from "@/lib/context-menu";
-import { useMediaQuery } from "@/lib/hooks/use-breakpoint";
-import { useContextMenu } from "@/lib/hooks/use-context-menu";
-import { useDefaultApps } from "@/lib/hooks/use-default-apps";
+import {
+	type BookFileRowView,
+	FILE_COMMAND,
+	FILE_ROW_LAYOUT,
+	type FileCommand,
+	type FileMenuFeatures,
+	fileMenuEntries,
+	fileRowLayout,
+	revealLabel,
+	spaceMeansQuickLook,
+} from "@/lib/book-file-actions";
+import { fetchContentLength } from "@/lib/download";
+import { PHONE_QUERY, useMediaQuery } from "@/lib/hooks/use-breakpoint";
+import {
+	type ContextMenuController,
+	useContextMenu,
+} from "@/lib/hooks/use-context-menu";
 import { useFileDownloads } from "@/lib/hooks/use-file-download";
-import { useRemoteFileSizes } from "@/lib/hooks/use-remote-file-sizes";
+import { useLookups } from "@/lib/hooks/use-lookups";
+import { none, some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
 
 /** Phones and tablets: no hover, so the whole row is the download button. */
-export const COMPACT_FILE_ROWS_QUERY = "(pointer: coarse), (max-width: 36em)";
+const COMPACT_FILE_ROWS_QUERY = `(pointer: coarse), ${PHONE_QUERY}`;
+
+export interface BookFiles {
+	rows: BookFileRowView[];
+	onCommand: (key: string, command: FileCommand) => void;
+	onCancelDownload: (key: string) => void;
+	onContextMenu: (event: MouseEvent, key: string) => void;
+	/** Space on a file row shows that file in Quick Look. */
+	onRowKeyDown: (event: KeyboardEvent, key: string) => void;
+	/** Space elsewhere in the drawer shows its first file. */
+	onKeyDown: (event: KeyboardEvent) => void;
+	contextMenu: ContextMenuController;
+}
 
 /**
  * Everything the drawer's Files section does: the rows to show, what each
  * action runs on this platform, the right-click menu, and Quick Look on
  * Space (desktop macOS).
  */
-export const useBookFiles = (files: BookFile[]) => {
-	const platform = usePlatform();
+export const useBookFiles = (files: BookFile[]): BookFiles => {
+	const { capabilities, fileOpener, clipboard } = usePlatform();
 	const compact = useMediaQuery(COMPACT_FILE_ROWS_QUERY);
 	const formatRows = useMemo(() => bookFormatRows(files), [files]);
 	const localPaths = useMemo(
@@ -52,140 +65,108 @@ export const useBookFiles = (files: BookFile[]) => {
 				: [],
 		[formatRows, compact],
 	);
-	const defaultApps = useDefaultApps(localPaths);
-	const sizes = useRemoteFileSizes(remoteUrls);
+	const defaultApp = useLookups(localPaths, fileOpener.defaultApp);
+	const size = useLookups(remoteUrls, fetchContentLength);
 	const downloads = useFileDownloads();
 	const contextMenu = useContextMenu();
-	const { capabilities, fileOpener, clipboard } = platform;
-	const { quickLook } = fileOpener;
+	const reveal = capabilities.canRevealInFileManager
+		? some(revealLabel(fileOpener.fileManagerName))
+		: none<string>();
+	const features: FileMenuFeatures = {
+		quickLook: fileOpener.quickLook,
+		copy: capabilities.canCopyToClipboard
+			? some((text: string) => clipboard.writeText(text))
+			: none(),
+	};
 
-	const rows = useMemo(
-		(): BookFileRowView[] =>
-			formatRows.map((row) => ({
-				key: row.key,
-				format: row.label,
-				fileName: bookFileName(row),
-				layout: fileRowLayout(row, { compact }),
-				path: row.kind === "open" ? row.path : undefined,
-				defaultApp: row.kind === "open" ? defaultApps[row.path] : undefined,
-				download: downloads.stateOf(row.key),
-				size: row.kind === "download" ? (sizes[row.url] ?? null) : null,
-			})),
-		[formatRows, compact, defaultApps, downloads, sizes],
-	);
+	const viewOf = (row: BookFormatRow): BookFileRowView => {
+		const base = {
+			key: row.key,
+			format: row.label,
+			fileName: bookFileName(row),
+		};
+		if (row.kind === "open")
+			return {
+				...base,
+				layout: FILE_ROW_LAYOUT.desktop,
+				defaultApp: defaultApp(row.path),
+				reveal,
+			};
+		const download = downloads.stateOf(row.key);
+		if (fileRowLayout(row, { compact }) === FILE_ROW_LAYOUT.web)
+			return { ...base, layout: FILE_ROW_LAYOUT.web, download };
+		const known = size(row.url);
+		return {
+			...base,
+			layout: FILE_ROW_LAYOUT.mobile,
+			download,
+			size: known.isSome ? known.value : none(),
+		};
+	};
 
-	const run = useCallback(
-		(row: BookFormatRow, command: FileCommand) => {
-			const act = (action: () => Promise<unknown>) =>
-				safeAsyncEventHandler(action)();
-			switch (command) {
-				case FILE_COMMAND.open:
-					if (row.kind === "open") act(() => fileOpener.openPath(row.path));
-					return;
-				case FILE_COMMAND.quickLook:
-					if (row.kind === "open" && quickLook.isSome)
-						act(() => quickLook.value(row.path));
-					return;
-				case FILE_COMMAND.reveal:
-					if (row.kind === "open")
-						act(() => fileOpener.revealInFileManager(row.path));
-					return;
-				case FILE_COMMAND.copyPath:
-					if (row.kind === "open") act(() => clipboard.writeText(row.path));
-					return;
-				case FILE_COMMAND.copyLink:
-					if (row.kind === "download") act(() => clipboard.writeText(row.url));
-					return;
-				case FILE_COMMAND.download:
-					if (row.kind === "download")
-						downloads.start(row.key, row.url, bookFileName(row));
-					return;
-			}
-		},
-		[fileOpener, quickLook, clipboard, downloads],
-	);
+	const run = (row: BookFormatRow, command: FileCommand) => {
+		const act = (action: () => Promise<unknown>) =>
+			safeAsyncEventHandler(action)();
+		const { quickLook, copy } = features;
+		if (row.kind === "open") {
+			if (command === FILE_COMMAND.open)
+				act(() => fileOpener.openPath(row.path));
+			if (command === FILE_COMMAND.quickLook && quickLook.isSome)
+				act(() => quickLook.value(row.path));
+			if (command === FILE_COMMAND.reveal)
+				act(() => fileOpener.revealInFileManager(row.path));
+			if (command === FILE_COMMAND.copyPath && copy.isSome)
+				act(() => copy.value(row.path));
+			return;
+		}
+		if (command === FILE_COMMAND.download)
+			downloads.start(row.key, row.url, bookFileName(row));
+		if (command === FILE_COMMAND.copyLink && copy.isSome)
+			act(() => copy.value(row.url));
+	};
 
-	const rowFor = useCallback(
-		(key: string) => formatRows.find((row) => row.key === key),
-		[formatRows],
-	);
+	const rowFor = (key: string) => formatRows.find((row) => row.key === key);
 
-	const onCommand = useCallback(
-		(key: string, command: FileCommand) => {
+	const quickLookOnSpace = (event: KeyboardEvent, path: string | undefined) => {
+		const { quickLook } = features;
+		if (event.key !== " " || event.repeat || !quickLook.isSome) return;
+		if (event.metaKey || event.ctrlKey || event.altKey) return;
+		if (event.defaultPrevented || path === undefined) return;
+		const target = event.target;
+		if (
+			!(target instanceof HTMLElement) ||
+			!spaceMeansQuickLook({
+				tagName: target.tagName,
+				isContentEditable: target.isContentEditable,
+				role: target.getAttribute("role"),
+			})
+		)
+			return;
+		event.preventDefault();
+		safeAsyncEventHandler(() => quickLook.value(path))();
+	};
+
+	return {
+		rows: formatRows.map(viewOf),
+		onCommand: (key, command) => {
 			const row = rowFor(key);
 			if (row) run(row, command);
 		},
-		[rowFor, run],
-	);
-
-	const onContextMenu = useCallback(
-		(event: MouseEvent, key: string) => {
+		onCancelDownload: downloads.cancel,
+		onContextMenu: (event, key) => {
 			const row = rowFor(key);
 			if (!row) return;
-			const layout = fileRowLayout(row, { compact });
-			const items = fileMenuEntries({
-				layout,
-				label: row.label,
-				defaultApp: row.kind === "open" ? defaultApps[row.path] : null,
-				fileManagerName: fileOpener.fileManagerName,
-				canQuickLook: quickLook.isSome,
-				canReveal: capabilities.canRevealInFileManager,
-				canCopy: capabilities.canCopyToClipboard,
-			}).map(
-				(entry): ContextMenuEntry =>
-					entry.type === "separator"
-						? entry
-						: {
-								id: entry.command,
-								label: entry.label,
-								onSelect: () => run(row, entry.command),
-							},
+			contextMenu.openAt(
+				event,
+				fileMenuEntries(viewOf(row), features, (command) => run(row, command)),
+				`${row.label} file actions`,
 			);
-			contextMenu.openAt(event, items, `${row.label} file actions`);
 		},
-		[
-			rowFor,
-			compact,
-			defaultApps,
-			fileOpener,
-			quickLook,
-			capabilities,
-			run,
-			contextMenu,
-		],
-	);
-
-	/** Space on a file row, or on the drawer itself, shows it in Quick Look. */
-	const onKeyDown = useCallback(
-		(event: KeyboardEvent) => {
-			if (event.key !== " " || event.repeat || !quickLook.isSome) return;
-			if (event.metaKey || event.ctrlKey || event.altKey) return;
-			const target = event.target;
-			if (!(target instanceof HTMLElement)) return;
-			if (
-				!spaceMeansQuickLook({
-					tagName: target.tagName,
-					isContentEditable: target.isContentEditable,
-					role: target.getAttribute("role"),
-				})
-			)
-				return;
-			const path =
-				target.closest<HTMLElement>("[data-file-path]")?.dataset.filePath ??
-				localPaths[0];
-			if (path === undefined) return;
-			event.preventDefault();
-			safeAsyncEventHandler(() => quickLook.value(path))();
+		onRowKeyDown: (event, key) => {
+			const row = rowFor(key);
+			quickLookOnSpace(event, row?.kind === "open" ? row.path : undefined);
 		},
-		[quickLook, localPaths],
-	);
-
-	return {
-		rows,
-		onCommand,
-		onCancelDownload: downloads.cancel,
-		onContextMenu,
-		onKeyDown,
+		onKeyDown: (event) => quickLookOnSpace(event, localPaths[0]),
 		contextMenu,
 	};
 };

@@ -13,7 +13,6 @@ const useParentWidth = (child: HTMLElement | null): Option<number> => {
 		const element = child?.parentElement;
 		if (!element) return;
 		setWidth(some(element.clientWidth));
-		if (typeof ResizeObserver === "undefined") return;
 		const observer = new ResizeObserver(() =>
 			setWidth(some(element.clientWidth)),
 		);
