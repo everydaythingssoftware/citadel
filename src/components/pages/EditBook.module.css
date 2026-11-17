@@ -354,6 +354,12 @@
 	}
 }
 
+.sectionLabel {
+	font-size: var(--ctd-text-sm);
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
 .sectionHeader {
 	display: flex;
 	align-items: center;

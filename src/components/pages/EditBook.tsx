@@ -1135,7 +1135,7 @@ const EditBookForm = ({
 						</FormRow>
 					</section>
 					<section className={styles.section}>
-						<div className="ctd-section-title">Identifiers</div>
+						<div className={styles.sectionLabel}>Identifiers</div>
 						<div className={styles.sectionBody}>
 							{values.identifierList.map(({ label, id, value }, index) => (
 								<FormRow
@@ -1243,7 +1243,7 @@ const EditBookForm = ({
 					</section>
 					{(customColumns.length > 0 || customColumnError) && (
 						<section className={styles.section}>
-							<div className="ctd-section-title">Custom columns</div>
+							<div className={styles.sectionLabel}>Custom columns</div>
 							<div className={styles.sectionBody}>
 								{customColumnError && (
 									<div
@@ -1306,7 +1306,7 @@ const EditBookForm = ({
 					)}
 					<section className={styles.section}>
 						<div className={styles.sectionHeader}>
-							<div className="ctd-section-title">Description</div>
+							<div className={styles.sectionLabel}>Description</div>
 							<Button
 								variant="default"
 								onClick={() => setIsEditingDescription(!isEditingDescription)}

@@ -52,7 +52,6 @@ export const Sheet = ({
 				onOpenAutoFocus={onOpenAutoFocus}
 				onCloseAutoFocus={onCloseAutoFocus}
 				onEscapeKeyDown={dismissible ? undefined : preventClosing}
-				// A sheet is modal: nothing outside it dismisses it.
 				onInteractOutside={preventClosing}
 			>
 				<div className={styles.header}>

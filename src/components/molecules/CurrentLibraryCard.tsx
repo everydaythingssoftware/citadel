@@ -1,4 +1,3 @@
-import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { Button, TextInput } from "@/components/ui";
 import {
@@ -66,9 +65,7 @@ export const CurrentLibraryCard = ({
 
 	return (
 		<div>
-			<h4 className={clsx(styles.cardTitle, "ctd-section-title")}>
-				Current Library
-			</h4>
+			<h4 className={styles.cardTitle}>Current Library</h4>
 			<div className={styles.card}>
 				<div className={styles.row}>
 					<span className={styles.rowLabel}>Name</span>

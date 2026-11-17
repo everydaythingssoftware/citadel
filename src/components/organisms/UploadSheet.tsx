@@ -79,7 +79,6 @@ export const UploadSheet = ({
 				<Dialog.Content
 					className={styles.content}
 					aria-describedby={undefined}
-					// A sheet is modal: nothing outside it dismisses it.
 					onInteractOutside={(event) => event.preventDefault()}
 				>
 					{/* Phones get an iOS navigation bar: Done, the title, and +. */}

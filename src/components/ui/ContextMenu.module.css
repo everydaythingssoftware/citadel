@@ -56,7 +56,6 @@
 	}
 }
 
-/* Items are buttons, reset to plain rows. */
 .item {
 	appearance: none;
 	display: flex;

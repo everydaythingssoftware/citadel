@@ -108,7 +108,6 @@
 	--ctd-content-bg: var(--pal-base);
 	--ctd-radius-panel: 10px;
 	--ctd-focus-ring: oklch(from var(--pal-accent) l c h / 0.3);
-	/* A focused field's border, beside the ring. */
 	--ctd-focus-border: var(--ctd-accent);
 	--ctd-scrollbar-thumb: oklch(from var(--pal-text) l c h / 0.4);
 	--ctd-control-shadow: 0 0.5px 1.5px oklch(0% 0 0 / 0.12);
@@ -321,14 +320,6 @@
 	--ctd-text-lg: calc(17rem / 14); /* 17px */
 	--ctd-text-xl: calc(22rem / 14); /* 22px */
 	--ctd-text-2xl: calc(24rem / 14); /* 24px */
-}
-
-/* A group's title over its card or rows (the library cards, Edit Book's
-   sections): restyle the role here. */
-.ctd-section-title {
-	font-size: var(--ctd-text-sm);
-	font-weight: 600;
-	color: var(--ctd-ink);
 }
 
 /*
