@@ -3,19 +3,19 @@
 //! Only macOS has a menu bar to show them; the tests run everywhere.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// A menu choice delivered to the library window.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum MenuCommand {
+    AddBook,
     NewShelf,
     AddLibrary,
     ShowLibraryInFileManager,
     Find,
     Undo,
     Redo,
-    SelectAll,
     BookShowDetails,
     BookOpen,
     BookEdit,
@@ -25,107 +25,34 @@ pub enum MenuCommand {
     BookDelete,
     ToggleSidebar,
     ToggleUnreadOnly,
-    SortNameAz,
-    SortNameZa,
-    SortAuthorAz,
-    SortAuthorZa,
-    GoAllBooks,
-    GoAuthors,
-    GoSeries,
-    GoTags,
-    GoPublishers,
+    Sort(MenuSortOrder),
+    Go(GoDestination),
     GoBack,
     GoForward,
-    RestartToUpdate,
     #[serde(rename = "switchLibrary")]
     SwitchLibrary(String),
 }
 
-const SWITCH_LIBRARY_PREFIX: &str = "switch-library:";
-
-const SIMPLE_COMMANDS: [MenuCommand; 28] = [
-    MenuCommand::NewShelf,
-    MenuCommand::AddLibrary,
-    MenuCommand::ShowLibraryInFileManager,
-    MenuCommand::Find,
-    MenuCommand::Undo,
-    MenuCommand::Redo,
-    MenuCommand::SelectAll,
-    MenuCommand::BookShowDetails,
-    MenuCommand::BookOpen,
-    MenuCommand::BookEdit,
-    MenuCommand::BookMarkFinished,
-    MenuCommand::BookShowInFileManager,
-    MenuCommand::BookCopyTitle,
-    MenuCommand::BookDelete,
-    MenuCommand::ToggleSidebar,
-    MenuCommand::ToggleUnreadOnly,
-    MenuCommand::SortNameAz,
-    MenuCommand::SortNameZa,
-    MenuCommand::SortAuthorAz,
-    MenuCommand::SortAuthorZa,
-    MenuCommand::GoAllBooks,
-    MenuCommand::GoAuthors,
-    MenuCommand::GoSeries,
-    MenuCommand::GoTags,
-    MenuCommand::GoPublishers,
-    MenuCommand::GoBack,
-    MenuCommand::GoForward,
-    MenuCommand::RestartToUpdate,
-];
-
 impl MenuCommand {
-    /// The menu item id, which is also the command's wire name.
+    /// The menu item id: the command's wire form, so ids that are not
+    /// commands ("settings", "help") never parse as one.
     pub fn menu_id(&self) -> String {
-        match self {
-            Self::SwitchLibrary(library_id) => format!("{SWITCH_LIBRARY_PREFIX}{library_id}"),
-            simple => simple.simple_id().to_string(),
-        }
-    }
-
-    fn simple_id(&self) -> &'static str {
-        match self {
-            Self::NewShelf => "new-shelf",
-            Self::AddLibrary => "add-library",
-            Self::ShowLibraryInFileManager => "show-library-in-file-manager",
-            Self::Find => "find",
-            Self::Undo => "undo",
-            Self::Redo => "redo",
-            Self::SelectAll => "select-all",
-            Self::BookShowDetails => "book-show-details",
-            Self::BookOpen => "book-open",
-            Self::BookEdit => "book-edit",
-            Self::BookMarkFinished => "book-mark-finished",
-            Self::BookShowInFileManager => "book-show-in-file-manager",
-            Self::BookCopyTitle => "book-copy-title",
-            Self::BookDelete => "book-delete",
-            Self::ToggleSidebar => "toggle-sidebar",
-            Self::ToggleUnreadOnly => "toggle-unread-only",
-            Self::SortNameAz => "sort-name-az",
-            Self::SortNameZa => "sort-name-za",
-            Self::SortAuthorAz => "sort-author-az",
-            Self::SortAuthorZa => "sort-author-za",
-            Self::GoAllBooks => "go-all-books",
-            Self::GoAuthors => "go-authors",
-            Self::GoSeries => "go-series",
-            Self::GoTags => "go-tags",
-            Self::GoPublishers => "go-publishers",
-            Self::GoBack => "go-back",
-            Self::GoForward => "go-forward",
-            Self::RestartToUpdate => "restart-to-update",
-            Self::SwitchLibrary(_) => SWITCH_LIBRARY_PREFIX,
-        }
+        serde_json::to_string(self).unwrap_or_default()
     }
 
     pub fn from_menu_id(id: &str) -> Option<Self> {
-        if let Some(library_id) = id.strip_prefix(SWITCH_LIBRARY_PREFIX) {
-            return Some(Self::SwitchLibrary(library_id.to_string()));
-        }
-        SIMPLE_COMMANDS
-            .iter()
-            .find(|command| command.simple_id() == id)
-            .cloned()
+        serde_json::from_str(id).ok()
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum GoDestination {
+    AllBooks,
+    Authors,
+    Series,
+    Tags,
+    Publishers,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -154,15 +81,6 @@ impl MenuSortOrder {
             Self::AuthorZa => "Author (Z–A)",
         }
     }
-
-    pub fn command(self) -> MenuCommand {
-        match self {
-            Self::NameAz => MenuCommand::SortNameAz,
-            Self::NameZa => MenuCommand::SortNameZa,
-            Self::AuthorAz => MenuCommand::SortAuthorAz,
-            Self::AuthorZa => MenuCommand::SortAuthorZa,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -172,106 +90,79 @@ pub struct MenuLibrary {
     pub active: bool,
 }
 
-/// Everything the menu bar shows that only the frontend knows.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MenuState {
-    pub selected_book_count: u32,
-    pub selection_all_finished: bool,
+/// The selected books: the Book menu's enabled items and plural labels.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuSelection {
+    pub count: u32,
+    pub all_finished: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuViewOptions {
     pub sidebar_visible: bool,
     pub unread_only: bool,
     pub sort_order: MenuSortOrder,
-    pub libraries: Vec<MenuLibrary>,
-    pub update_ready_version: Option<String>,
-    /// Undo and Redo act on the app's undo history (no text field has the
-    /// keyboard), rather than being the native text-editing items.
-    pub app_undo: bool,
-    /// "Undo Mark as Finished"; `None` when there is nothing to undo.
-    pub undo_label: Option<String>,
-    pub redo_label: Option<String>,
 }
 
-impl Default for MenuState {
+impl Default for MenuViewOptions {
     fn default() -> Self {
         Self {
-            selected_book_count: 0,
-            selection_all_finished: false,
             sidebar_visible: true,
             unread_only: false,
             sort_order: MenuSortOrder::NameAz,
-            libraries: Vec::new(),
-            update_ready_version: None,
-            app_undo: false,
-            undo_label: None,
-            redo_label: None,
         }
     }
 }
 
-/// Keeps "absent" (leave as is) apart from `null` (no update ready).
-fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    T::deserialize(deserializer).map(Some)
+/// Who Edit > Undo and Redo act on: a focused text field, whose typing the
+/// native items undo, or the app's undo history.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "owner", rename_all = "camelCase")]
+pub enum MenuUndo {
+    #[default]
+    TextField,
+    App(AppUndo),
 }
 
-/// The fields of [`MenuState`] that changed; absent fields stay as they were.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase", default)]
-pub struct MenuStatePatch {
-    #[specta(optional)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_book_count: Option<u32>,
-    #[specta(optional)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selection_all_finished: Option<bool>,
-    #[specta(optional)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sidebar_visible: Option<bool>,
-    #[specta(optional)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unread_only: Option<bool>,
-    #[specta(optional)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sort_order: Option<MenuSortOrder>,
-    #[specta(optional)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub libraries: Option<Vec<MenuLibrary>>,
-    #[specta(optional)]
-    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-    pub update_ready_version: Option<Option<String>>,
-    #[specta(optional)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub app_undo: Option<bool>,
-    #[specta(optional)]
-    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-    pub undo_label: Option<Option<String>>,
-    #[specta(optional)]
-    #[serde(deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-    pub redo_label: Option<Option<String>>,
+/// "Undo Mark as Finished"; an absent label disables the item.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUndo {
+    pub undo_label: Option<String>,
+    pub redo_label: Option<String>,
+}
+
+/// One group of what the menu bar shows, replaced whole.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum MenuStateUpdate {
+    Selection(MenuSelection),
+    View(MenuViewOptions),
+    Libraries(Vec<MenuLibrary>),
+    Undo(MenuUndo),
+    UpdateReady(Option<String>),
+}
+
+/// Everything the menu bar shows that only the frontend knows.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MenuState {
+    pub selection: MenuSelection,
+    pub view: MenuViewOptions,
+    pub libraries: Vec<MenuLibrary>,
+    pub undo: MenuUndo,
+    pub update_ready_version: Option<String>,
 }
 
 impl MenuState {
-    pub fn with(&self, patch: MenuStatePatch) -> Self {
-        let current = self.clone();
-        Self {
-            selected_book_count: patch
-                .selected_book_count
-                .unwrap_or(current.selected_book_count),
-            selection_all_finished: patch
-                .selection_all_finished
-                .unwrap_or(current.selection_all_finished),
-            sidebar_visible: patch.sidebar_visible.unwrap_or(current.sidebar_visible),
-            unread_only: patch.unread_only.unwrap_or(current.unread_only),
-            sort_order: patch.sort_order.unwrap_or(current.sort_order),
-            libraries: patch.libraries.unwrap_or(current.libraries),
-            update_ready_version: patch
-                .update_ready_version
-                .unwrap_or(current.update_ready_version),
-            app_undo: patch.app_undo.unwrap_or(current.app_undo),
-            undo_label: patch.undo_label.unwrap_or(current.undo_label),
-            redo_label: patch.redo_label.unwrap_or(current.redo_label),
+    pub fn apply(&mut self, update: MenuStateUpdate) {
+        match update {
+            MenuStateUpdate::Selection(selection) => self.selection = selection,
+            MenuStateUpdate::View(view) => self.view = view,
+            MenuStateUpdate::Libraries(libraries) => self.libraries = libraries,
+            MenuStateUpdate::Undo(undo) => self.undo = undo,
+            MenuStateUpdate::UpdateReady(version) => self.update_ready_version = version,
         }
     }
 }
@@ -383,22 +274,26 @@ pub fn book_menu_view(selected: u32, all_finished: bool, file_manager_name: &str
 pub fn menu_view(state: &MenuState, file_manager_name: &str) -> MenuView {
     MenuView {
         book: book_menu_view(
-            state.selected_book_count,
-            state.selection_all_finished,
+            state.selection.count,
+            state.selection.all_finished,
             file_manager_name,
         ),
-        sidebar_label: if state.sidebar_visible {
+        sidebar_label: if state.view.sidebar_visible {
             "Hide Sidebar"
         } else {
             "Show Sidebar"
         },
-        unread_only: state.unread_only,
-        sort_order: state.sort_order,
+        unread_only: state.view.unread_only,
+        sort_order: state.view.sort_order,
         libraries: state.libraries.clone(),
         restart_to_update: state.update_ready_version.is_some(),
-        undo: state
-            .app_undo
-            .then(|| undo_menu_view(state.undo_label.as_deref(), state.redo_label.as_deref())),
+        undo: match &state.undo {
+            MenuUndo::TextField => None,
+            MenuUndo::App(app) => Some(undo_menu_view(
+                app.undo_label.as_deref(),
+                app.redo_label.as_deref(),
+            )),
+        },
     }
 }
 
@@ -456,79 +351,84 @@ mod tests {
     use super::*;
 
     #[test]
-    fn menu_ids_are_the_wire_names() {
-        for command in SIMPLE_COMMANDS {
-            let wire = serde_json::to_value(&command).unwrap();
-            assert_eq!(wire, serde_json::json!(command.menu_id()));
+    fn menu_ids_round_trip_every_command_shape() {
+        for command in [
+            MenuCommand::AddBook,
+            MenuCommand::Sort(MenuSortOrder::AuthorZa),
+            MenuCommand::Go(GoDestination::AllBooks),
+            MenuCommand::SwitchLibrary("a:b".into()),
+        ] {
             assert_eq!(MenuCommand::from_menu_id(&command.menu_id()), Some(command));
         }
     }
 
     #[test]
-    fn library_switches_carry_the_library_id() {
-        let command = MenuCommand::SwitchLibrary("a:b".into());
-        assert_eq!(command.menu_id(), "switch-library:a:b");
+    fn commands_have_the_frontend_shape() {
+        let wire = |command: MenuCommand| serde_json::to_value(command).unwrap();
+        assert_eq!(wire(MenuCommand::AddBook), serde_json::json!("add-book"));
         assert_eq!(
-            MenuCommand::from_menu_id("switch-library:a:b"),
-            Some(command.clone())
+            wire(MenuCommand::Sort(MenuSortOrder::NameZa)),
+            serde_json::json!({ "sort": "nameZa" })
         );
         assert_eq!(
-            serde_json::to_value(&command).unwrap(),
-            serde_json::json!({ "switchLibrary": "a:b" })
+            wire(MenuCommand::Go(GoDestination::AllBooks)),
+            serde_json::json!({ "go": "allBooks" })
+        );
+        assert_eq!(
+            wire(MenuCommand::SwitchLibrary("l1".into())),
+            serde_json::json!({ "switchLibrary": "l1" })
         );
     }
 
     #[test]
-    fn unknown_ids_are_not_commands() {
+    fn other_menu_ids_are_not_commands() {
         assert_eq!(MenuCommand::from_menu_id("settings"), None);
-        assert_eq!(MenuCommand::from_menu_id("add-book"), None);
+        assert_eq!(MenuCommand::from_menu_id("restart-to-update"), None);
     }
 
     #[test]
-    fn patches_change_only_what_they_name() {
-        let patch: MenuStatePatch =
-            serde_json::from_value(serde_json::json!({ "selectedBookCount": 3 })).unwrap();
-        let state = MenuState {
-            update_ready_version: Some("1.4".into()),
-            ..MenuState::default()
-        }
-        .with(patch);
-        assert_eq!(state.selected_book_count, 3);
-        assert_eq!(state.update_ready_version.as_deref(), Some("1.4"));
-        assert!(state.sidebar_visible);
-    }
-
-    #[test]
-    fn a_null_update_version_clears_it_and_an_absent_one_keeps_it() {
-        let ready = MenuState {
+    fn an_update_replaces_only_its_group() {
+        let mut state = MenuState {
             update_ready_version: Some("1.4".into()),
             ..MenuState::default()
         };
-        let cleared: MenuStatePatch =
-            serde_json::from_value(serde_json::json!({ "updateReadyVersion": null })).unwrap();
-        assert_eq!(ready.with(cleared).update_ready_version, None);
-        let untouched: MenuStatePatch = serde_json::from_value(serde_json::json!({})).unwrap();
-        assert_eq!(
-            ready.with(untouched).update_ready_version.as_deref(),
-            Some("1.4")
+        state.apply(
+            serde_json::from_value(serde_json::json!({
+                "selection": { "count": 3, "allFinished": true }
+            }))
+            .unwrap(),
         );
+        assert_eq!(
+            state.selection,
+            MenuSelection {
+                count: 3,
+                all_finished: true
+            }
+        );
+        assert_eq!(state.update_ready_version.as_deref(), Some("1.4"));
+        assert!(state.view.sidebar_visible);
     }
 
     #[test]
-    fn patches_read_the_frontend_shape() {
-        let patch: MenuStatePatch = serde_json::from_value(serde_json::json!({
-            "sortOrder": "authorZa",
-            "libraries": [{ "id": "l1", "name": "Books", "active": true }],
-            "appUndo": true,
-            "undoLabel": "Undo Mark as Finished",
-        }))
-        .unwrap();
-        let state = MenuState::default().with(patch);
-        assert_eq!(state.sort_order, MenuSortOrder::AuthorZa);
+    fn updates_read_the_frontend_shape() {
+        let mut state = MenuState::default();
+        for update in [
+            serde_json::json!({ "view": { "sidebarVisible": false, "unreadOnly": true, "sortOrder": "authorZa" } }),
+            serde_json::json!({ "libraries": [{ "id": "l1", "name": "Books", "active": true }] }),
+            serde_json::json!({ "undo": { "owner": "app", "undoLabel": "Undo Mark as Finished", "redoLabel": null } }),
+            serde_json::json!({ "updateReady": null }),
+        ] {
+            state.apply(serde_json::from_value(update).unwrap());
+        }
+        assert_eq!(state.view.sort_order, MenuSortOrder::AuthorZa);
         assert_eq!(state.libraries.len(), 1);
-        assert!(state.app_undo);
-        assert_eq!(state.undo_label.as_deref(), Some("Undo Mark as Finished"));
-        assert_eq!(state.redo_label, None);
+        assert_eq!(
+            state.undo,
+            MenuUndo::App(AppUndo {
+                undo_label: Some("Undo Mark as Finished".into()),
+                redo_label: None,
+            })
+        );
     }
 
     #[test]
@@ -587,7 +487,10 @@ mod tests {
         assert_eq!(shown.sidebar_label, "Hide Sidebar");
         let hidden = menu_view(
             &MenuState {
-                sidebar_visible: false,
+                view: MenuViewOptions {
+                    sidebar_visible: false,
+                    ..MenuViewOptions::default()
+                },
                 ..MenuState::default()
             },
             "Finder",
@@ -609,7 +512,10 @@ mod tests {
 
         let after = menu_view(
             &MenuState {
-                selected_book_count: 1,
+                selection: MenuSelection {
+                    count: 1,
+                    all_finished: false,
+                },
                 update_ready_version: Some("1.4".into()),
                 ..MenuState::default()
             },
@@ -638,30 +544,17 @@ mod tests {
 
     #[test]
     fn a_focused_text_field_keeps_the_native_undo_items() {
-        let typing = MenuState {
-            app_undo: false,
-            undo_label: Some("Undo Mark as Finished".into()),
-            ..MenuState::default()
-        };
-        assert_eq!(menu_view(&typing, "Finder").undo, None);
+        assert_eq!(menu_view(&MenuState::default(), "Finder").undo, None);
         let app = MenuState {
-            app_undo: true,
-            ..typing
+            undo: MenuUndo::App(AppUndo {
+                undo_label: Some("Undo Mark as Finished".into()),
+                redo_label: None,
+            }),
+            ..MenuState::default()
         };
         assert_eq!(
             menu_view(&app, "Finder").undo.map(|view| view.undo.label),
             Some("Undo Mark as Finished".to_string())
         );
-    }
-
-    #[test]
-    fn a_null_undo_label_clears_it() {
-        let state = MenuState {
-            undo_label: Some("Undo Mark as Finished".into()),
-            ..MenuState::default()
-        };
-        let patch: MenuStatePatch =
-            serde_json::from_value(serde_json::json!({ "undoLabel": null })).unwrap();
-        assert_eq!(state.with(patch).undo_label, None);
     }
 }

@@ -545,11 +545,11 @@ async clbCmdOpenSoftwareUpdate() : Promise<void> {
     await TAURI_INVOKE("clb_cmd_open_software_update");
 },
 /**
- * Updates what the menu bar shows. Fields left out keep their value.
+ * Replaces one group of what the menu bar shows.
  */
-async clbCmdSetMenuState(state: MenuStatePatch) : Promise<Result<null, string>> {
+async clbCmdSetMenuState(update: MenuStateUpdate) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_menu_state", { state }) };
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_set_menu_state", { update }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -573,6 +573,7 @@ async clbQueryFileIcon(path: string) : Promise<string | null> {
 /**
  * Shows a file in the system Quick Look panel (macOS). Asked again for the
  * file it is showing, it closes the panel; for another file, it switches.
+ * Where the panel fails, the file opens in its default app instead.
  */
 async clbCmdQuickLook(path: string) : Promise<Result<null, string>> {
     try {
@@ -605,6 +606,10 @@ softwareUpdateChanged: "software-update-changed"
 
 /** user-defined types **/
 
+/**
+ * "Undo Mark as Finished"; an absent label disables the item.
+ */
+export type AppUndo = { undoLabel: string | null; redoLabel: string | null }
 export type AuthorUpdate = { full_name: string | null; sortable_name: string | null; external_url: string | null }
 /**
  * One book's value for one custom column.
@@ -757,6 +762,7 @@ source: string;
  * Provider vocabulary or thesaurus when one is declared.
  */
 vocabulary: string | null }
+export type GoDestination = "allBooks" | "authors" | "series" | "tags" | "publishers"
 /**
  * Book identifiers, such as ISBN, DOI, Google Books ID, etc.
  */
@@ -870,17 +876,27 @@ export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: s
 /**
  * A menu choice delivered to the library window.
  */
-export type MenuCommand = "new-shelf" | "add-library" | "show-library-in-file-manager" | "find" | "undo" | "redo" | "select-all" | "book-show-details" | "book-open" | "book-edit" | "book-mark-finished" | "book-show-in-file-manager" | "book-copy-title" | "book-delete" | "toggle-sidebar" | "toggle-unread-only" | "sort-name-az" | "sort-name-za" | "sort-author-az" | "sort-author-za" | "go-all-books" | "go-authors" | "go-series" | "go-tags" | "go-publishers" | "go-back" | "go-forward" | "restart-to-update" | { switchLibrary: string }
+export type MenuCommand = "add-book" | "new-shelf" | "add-library" | "show-library-in-file-manager" | "find" | "undo" | "redo" | "book-show-details" | "book-open" | "book-edit" | "book-mark-finished" | "book-show-in-file-manager" | "book-copy-title" | "book-delete" | "toggle-sidebar" | "toggle-unread-only" | { sort: MenuSortOrder } | { go: GoDestination } | "go-back" | "go-forward" | { switchLibrary: string }
 /**
  * A menu choice, sent to the library window.
  */
 export type MenuCommandChosen = MenuCommand
 export type MenuLibrary = { id: string; name: string; active: boolean }
+/**
+ * The selected books: the Book menu's enabled items and plural labels.
+ */
+export type MenuSelection = { count: number; allFinished: boolean }
 export type MenuSortOrder = "nameAz" | "nameZa" | "authorAz" | "authorZa"
 /**
- * The fields of [`MenuState`] that changed; absent fields stay as they were.
+ * One group of what the menu bar shows, replaced whole.
  */
-export type MenuStatePatch = { selectedBookCount?: number | null; selectionAllFinished?: boolean | null; sidebarVisible?: boolean | null; unreadOnly?: boolean | null; sortOrder?: MenuSortOrder | null; libraries?: MenuLibrary[] | null; updateReadyVersion?: string | null; appUndo?: boolean | null; undoLabel?: string | null; redoLabel?: string | null }
+export type MenuStateUpdate = { selection: MenuSelection } | { view: MenuViewOptions } | { libraries: MenuLibrary[] } | { undo: MenuUndo } | { updateReady: string | null }
+/**
+ * Who Edit > Undo and Redo act on: a focused text field, whose typing the
+ * native items undo, or the app's undo history.
+ */
+export type MenuUndo = { owner: "textField" } | ({ owner: "app" } & AppUndo)
+export type MenuViewOptions = { sidebarVisible: boolean; unreadOnly: boolean; sortOrder: MenuSortOrder }
 /**
  * The metadata sources Citadel can look books up against. The serialized
  * short form is the single id used across the Rust enum, the TS string union,

@@ -1,3 +1,4 @@
+import { none } from "@/lib/option";
 import { detectOperatingSystem } from "../os";
 import type { FileOpenerAdapter } from "../types";
 import { fileManagerNameFor } from "./file-manager-name";
@@ -9,6 +10,6 @@ export const createWebFileOpener = (): FileOpenerAdapter => ({
 		return Promise.resolve();
 	},
 	revealInFileManager: () => Promise.resolve(),
-	defaultApp: async () => null,
-	quickLook: async () => {},
+	defaultApp: async () => none(),
+	quickLook: none(),
 });

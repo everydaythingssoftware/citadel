@@ -1,7 +1,7 @@
+import { none, some } from "@/lib/option";
 import { isDesktop } from "./runtime";
 import { homeDirectory } from "./paths/tauri";
 import { tauriMenu } from "./menu/tauri";
-import { webMenu } from "./menu/web";
 import { tauriUpdates } from "./updates/tauri";
 import { webUpdates } from "./updates/web";
 import { tauriRecovery } from "./recovery/tauri";
@@ -10,7 +10,7 @@ import { createTauriClipboard } from "./clipboard/tauri";
 import { createWebClipboard } from "./clipboard/web";
 import { createTauriDialogs } from "./dialogs/tauri";
 import { createWebDialogs } from "./dialogs/web";
-import { createTauriFileOpener, quickLookAvailable } from "./file-opener/tauri";
+import { createTauriFileOpener } from "./file-opener/tauri";
 import { createWebFileOpener } from "./file-opener/web";
 import { detectOperatingSystem } from "./os";
 import { createTauriSettingsManager } from "./settings/tauri";
@@ -32,14 +32,9 @@ export const createTauriPlatform = (): PlatformAdapter => {
 			canOpenLocalPaths: true,
 			supportsAutoUpdates: true,
 			supportsLocalOpdsServer: true,
-			/** Read when a menu opens: off once Quick Look has failed. */
-			get canQuickLook() {
-				return os === "macos" && quickLookAvailable();
-			},
-			canDragFilesOut: true,
 		},
 		homeDirectory,
-		menu: tauriMenu,
+		menu: os === "macos" ? some(tauriMenu) : none(),
 		updates: tauriUpdates,
 		recovery: tauriRecovery,
 		dialogs: createTauriDialogs(),
@@ -60,11 +55,9 @@ export const createWebPlatform = (): PlatformAdapter => ({
 		canOpenLocalPaths: false,
 		supportsAutoUpdates: false,
 		supportsLocalOpdsServer: false,
-		canQuickLook: false,
-		canDragFilesOut: false,
 	},
 	homeDirectory: async () => null,
-	menu: webMenu,
+	menu: none(),
 	updates: webUpdates,
 	recovery: webRecovery,
 	dialogs: createWebDialogs(),

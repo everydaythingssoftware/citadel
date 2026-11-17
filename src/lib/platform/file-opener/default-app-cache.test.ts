@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { none, type Option, some } from "@/lib/option";
+import type { DefaultApp } from "../types";
 import { cacheByExtension, fileExtension } from "./default-app-cache";
 
-const kindle = { name: "Kindle", iconDataUrl: "data:image/png;base64,AA==" };
+const kindle: Option<DefaultApp> = some({
+	name: "Kindle",
+	iconDataUrl: "data:image/png;base64,AA==",
+});
 
 describe("fileExtension", () => {
 	it("reads the lowercased extension of the file name", () => {
@@ -27,7 +32,7 @@ describe("cacheByExtension", () => {
 	});
 
 	it("looks files without an extension up every time", async () => {
-		const lookup = vi.fn(async () => null);
+		const lookup = vi.fn(async () => none<DefaultApp>());
 		const defaultApp = cacheByExtension(lookup);
 		await defaultApp("/a/one");
 		await defaultApp("/a/one");
@@ -36,11 +41,11 @@ describe("cacheByExtension", () => {
 
 	it("reads a failure as no app and tries again", async () => {
 		const lookup = vi
-			.fn<(path: string) => Promise<typeof kindle | null>>()
+			.fn<(path: string) => Promise<Option<DefaultApp>>>()
 			.mockRejectedValueOnce(new Error("busy"))
 			.mockResolvedValue(kindle);
 		const defaultApp = cacheByExtension(lookup);
-		await expect(defaultApp("/a/one.epub")).resolves.toBeNull();
+		await expect(defaultApp("/a/one.epub")).resolves.toEqual(none());
 		await expect(defaultApp("/a/one.epub")).resolves.toEqual(kindle);
 	});
 });

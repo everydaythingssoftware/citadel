@@ -3,9 +3,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands } from "@/bindings";
 import { dragOutGuard } from "@/lib/drag-out-guard";
+import { some } from "@/lib/option";
 import { localFile } from "../local-file";
 import type { WindowAdapter } from "../types";
-import { distinct } from "./distinct";
 
 // The drag plugin needs an image; this one shows nothing.
 const BLANK_PNG =
@@ -45,7 +45,7 @@ export const createTauriWindow = (): WindowAdapter => ({
 					break;
 			}
 		}),
-	startDrag: async (files, iconPath) => {
+	startDrag: some(async (files, iconPath) => {
 		const [first] = files;
 		if (first === undefined) return;
 		const icon = iconPath ?? (await dragIconFor(first));
@@ -58,10 +58,9 @@ export const createTauriWindow = (): WindowAdapter => ({
 			dragOutGuard.end();
 			throw error;
 		}
-	},
+	}),
 	onActiveChange: async (handler) => {
 		const window = getCurrentWindow();
-		const report = distinct(handler);
 		// The window starts hidden and is shown after first paint, so the
 		// first answer to isFocused() is often "no". If a focus event has
 		// arrived by the time that answer does, the event is newer: a late
@@ -69,20 +68,19 @@ export const createTauriWindow = (): WindowAdapter => ({
 		let heardEvent = false;
 		const unlisten = await window.onFocusChanged(({ payload }) => {
 			heardEvent = true;
-			report(payload);
+			handler(payload);
 		});
 		const focused = await window.isFocused();
-		if (!heardEvent) report(focused);
+		if (!heardEvent) handler(focused);
 		return unlisten;
 	},
 	// macOS reports the end of a full-screen transition as a resize.
 	onFullscreenChange: async (handler) => {
 		const window = getCurrentWindow();
-		const report = distinct(handler);
 		const unlisten = await window.onResized(async () =>
-			report(await window.isFullscreen()),
+			handler(await window.isFullscreen()),
 		);
-		report(await window.isFullscreen());
+		handler(await window.isFullscreen());
 		return unlisten;
 	},
 });

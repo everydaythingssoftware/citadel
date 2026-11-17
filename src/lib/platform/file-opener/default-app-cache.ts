@@ -1,3 +1,4 @@
+import { none, type Option } from "@/lib/option";
 import type { DefaultApp } from "../types";
 
 /** "epub" for "/books/A Title.EPUB"; null without an extension. */
@@ -15,10 +16,10 @@ export const fileExtension = (path: string): string | null => {
  * no default app and is tried again next time.
  */
 export const cacheByExtension = (
-	lookup: (path: string) => Promise<DefaultApp | null>,
-): ((path: string) => Promise<DefaultApp | null>) => {
-	const cache = new Map<string, Promise<DefaultApp | null>>();
-	const safely = (path: string) => lookup(path).catch(() => null);
+	lookup: (path: string) => Promise<Option<DefaultApp>>,
+): ((path: string) => Promise<Option<DefaultApp>>) => {
+	const cache = new Map<string, Promise<Option<DefaultApp>>>();
+	const safely = (path: string) => lookup(path).catch(() => none<DefaultApp>());
 	return (path) => {
 		const extension = fileExtension(path);
 		if (extension === null) return safely(path);
@@ -26,7 +27,7 @@ export const cacheByExtension = (
 		if (cached !== undefined) return cached;
 		const pending = lookup(path).catch(() => {
 			cache.delete(extension);
-			return null;
+			return none<DefaultApp>();
 		});
 		cache.set(extension, pending);
 		return pending;

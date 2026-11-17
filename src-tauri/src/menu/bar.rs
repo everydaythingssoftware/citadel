@@ -8,11 +8,12 @@ use tauri::{
 };
 
 use super::model::{
-    menu_changes, ItemView, MenuCommand, MenuSortOrder, MenuView, RESTART_TO_UPDATE_LABEL,
+    menu_changes, GoDestination, ItemView, MenuCommand, MenuSortOrder, MenuView,
+    RESTART_TO_UPDATE_LABEL,
 };
 
 pub const MENU_ID_SETTINGS: &str = "settings";
-pub const MENU_ID_ADD_BOOK: &str = "add-book";
+pub const MENU_ID_RESTART_TO_UPDATE: &str = "restart-to-update";
 pub const MENU_ID_CHECK_FOR_UPDATES: &str = "check-for-updates";
 pub const MENU_ID_HELP: &str = "help";
 pub const FILE_MANAGER_NAME: &str = "Finder";
@@ -55,6 +56,15 @@ fn command_item<R: Runtime>(
     MenuItem::with_id(app, command.menu_id(), label, true, accelerator)
 }
 
+fn go_item<R: Runtime>(
+    app: &AppHandle<R>,
+    destination: GoDestination,
+    label: &str,
+    accelerator: &str,
+) -> tauri::Result<MenuItem<R>> {
+    command_item(app, MenuCommand::Go(destination), label, Some(accelerator))
+}
+
 fn set_item<R: Runtime>(item: &MenuItem<R>, view: &ItemView) -> tauri::Result<()> {
     item.set_text(&view.label)?;
     item.set_enabled(view.enabled)
@@ -68,11 +78,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
         .name(Some(app_name.clone()))
         .version(Some(app.package_info().version.to_string()))
         .build();
-    let restart = command_item(
+    let restart = MenuItem::with_id(
         app,
-        MenuCommand::RestartToUpdate,
+        MENU_ID_RESTART_TO_UPDATE,
         RESTART_TO_UPDATE_LABEL,
-        None,
+        true,
+        None::<&str>,
     )?;
     let app_menu = Submenu::with_items(
         app,
@@ -116,13 +127,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
         "Library",
         true,
         &[
-            &MenuItem::with_id(
-                app,
-                MENU_ID_ADD_BOOK,
-                "Add Book…",
-                true,
-                Some("CmdOrCtrl+N"),
-            )?,
+            &command_item(app, MenuCommand::AddBook, "Add Book…", Some("CmdOrCtrl+N"))?,
             &command_item(app, MenuCommand::NewShelf, "New Shelf…", None)?,
             &command_item(app, MenuCommand::AddLibrary, "Add Library…", None)?,
             &separator()?,
@@ -216,7 +221,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
         .map(|order| {
             CheckMenuItem::with_id(
                 app,
-                order.command().menu_id(),
+                MenuCommand::Sort(*order).menu_id(),
                 order.label(),
                 true,
                 false,
@@ -256,21 +261,11 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
         "Go",
         true,
         &[
-            &command_item(
-                app,
-                MenuCommand::GoAllBooks,
-                "All Books",
-                Some("CmdOrCtrl+1"),
-            )?,
-            &command_item(app, MenuCommand::GoAuthors, "Authors", Some("CmdOrCtrl+2"))?,
-            &command_item(app, MenuCommand::GoSeries, "Series", Some("CmdOrCtrl+3"))?,
-            &command_item(app, MenuCommand::GoTags, "Tags", Some("CmdOrCtrl+4"))?,
-            &command_item(
-                app,
-                MenuCommand::GoPublishers,
-                "Publishers",
-                Some("CmdOrCtrl+5"),
-            )?,
+            &go_item(app, GoDestination::AllBooks, "All Books", "CmdOrCtrl+1")?,
+            &go_item(app, GoDestination::Authors, "Authors", "CmdOrCtrl+2")?,
+            &go_item(app, GoDestination::Series, "Series", "CmdOrCtrl+3")?,
+            &go_item(app, GoDestination::Tags, "Tags", "CmdOrCtrl+4")?,
+            &go_item(app, GoDestination::Publishers, "Publishers", "CmdOrCtrl+5")?,
             &separator()?,
             &command_item(app, MenuCommand::GoBack, "Back", Some("CmdOrCtrl+["))?,
             &command_item(app, MenuCommand::GoForward, "Forward", Some("CmdOrCtrl+]"))?,

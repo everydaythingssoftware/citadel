@@ -14,16 +14,11 @@ mod bar;
 mod model;
 
 use model::{menu_view, MenuState, MenuView};
-pub use model::{MenuCommand, MenuStatePatch};
+pub use model::{MenuCommand, MenuStateUpdate};
 
 /// A menu choice, sent to the library window.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
 pub struct MenuCommandChosen(pub MenuCommand);
-
-/// Emitted to the main window when Library > Add Book… is chosen; the
-/// frontend starts the same flow as the toolbar + button.
-#[cfg(target_os = "macos")]
-const EVENT_MENU_ADD_BOOK: &str = "menu://add-book";
 
 #[cfg(target_os = "macos")]
 const HELP_URL: &str = "https://github.com/everydaythingssoftware/citadel#readme";
@@ -59,9 +54,9 @@ impl MenuController {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn update(&self, patch: MenuStatePatch) -> tauri::Result<()> {
+    fn update(&self, update: MenuStateUpdate) -> tauri::Result<()> {
         let mut shown = self.lock();
-        shown.state = shown.state.with(patch);
+        shown.state.apply(update);
         #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
         let next = menu_view(&shown.state, FILE_MANAGER_NAME);
         #[cfg(target_os = "macos")]
@@ -91,12 +86,9 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     app.on_menu_event(handle_menu_event);
     let controller = app.state::<MenuController>();
     controller.lock().bar = Some(menu_bar);
-    controller.update(MenuStatePatch {
-        update_ready_version: Some(ready_version(
-            &app.state::<SoftwareUpdates>().state().status,
-        )),
-        ..MenuStatePatch::default()
-    })
+    controller.update(MenuStateUpdate::UpdateReady(ready_version(
+        &app.state::<SoftwareUpdates>().state().status,
+    )))
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -123,11 +115,8 @@ pub fn follow_software_update<R: Runtime>(app: &AppHandle<R>) {
         ) else {
             return;
         };
-        let patch = MenuStatePatch {
-            update_ready_version: Some(ready_version(&updates.state().status)),
-            ..MenuStatePatch::default()
-        };
-        if let Err(err) = controller.update(patch) {
+        let update = MenuStateUpdate::UpdateReady(ready_version(&updates.state().status));
+        if let Err(err) = controller.update(update) {
             log::error!("Failed to update the menu bar: {err}");
         }
     });
@@ -149,12 +138,7 @@ fn deliver(app: &AppHandle, command: MenuCommand) {
 fn is_check_item(command: &MenuCommand) -> bool {
     matches!(
         command,
-        MenuCommand::ToggleUnreadOnly
-            | MenuCommand::SortNameAz
-            | MenuCommand::SortNameZa
-            | MenuCommand::SortAuthorAz
-            | MenuCommand::SortAuthorZa
-            | MenuCommand::SwitchLibrary(_)
+        MenuCommand::ToggleUnreadOnly | MenuCommand::Sort(_) | MenuCommand::SwitchLibrary(_)
     )
 }
 
@@ -169,53 +153,47 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 app.state::<SoftwareUpdates>().check(&app).await;
             });
         }
-        bar::MENU_ID_ADD_BOOK => {
-            use tauri::Emitter;
-            crate::window::show_main_window(app);
-            let _ = app.emit_to(crate::window::MAIN_WINDOW, EVENT_MENU_ADD_BOOK, ());
-        }
         bar::MENU_ID_HELP => {
             use tauri_plugin_opener::OpenerExt;
             if let Err(err) = app.opener().open_url(HELP_URL, None::<&str>) {
                 log::error!("Failed to open Citadel Help: {err}");
             }
         }
-        id => match MenuCommand::from_menu_id(id) {
-            // Installs and relaunches at once; the menu item is the
-            // confirmation.
-            Some(MenuCommand::RestartToUpdate) => {
+        // Installs and relaunches at once; the menu item is the confirmation.
+        bar::MENU_ID_RESTART_TO_UPDATE => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = app.state::<SoftwareUpdates>().update_now(&app).await {
+                    log::error!("Restart to Update failed: {err}");
+                }
+            });
+        }
+        id => {
+            let Some(command) = MenuCommand::from_menu_id(id) else {
+                return;
+            };
+            let reassert = is_check_item(&command);
+            deliver(app, command);
+            if reassert {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(err) = app.state::<SoftwareUpdates>().update_now(&app).await {
-                        log::error!("Restart to Update failed: {err}");
+                    if let Err(err) = app.state::<MenuController>().reassert_checks() {
+                        log::error!("Failed to update the menu bar: {err}");
                     }
                 });
             }
-            Some(command) => {
-                let reassert = is_check_item(&command);
-                deliver(app, command);
-                if reassert {
-                    let app = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Err(err) = app.state::<MenuController>().reassert_checks() {
-                            log::error!("Failed to update the menu bar: {err}");
-                        }
-                    });
-                }
-            }
-            None => {}
-        },
+        }
     }
 }
 
-/// Updates what the menu bar shows. Fields left out keep their value.
+/// Replaces one group of what the menu bar shows.
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_cmd_set_menu_state(
     controller: tauri::State<'_, MenuController>,
-    state: MenuStatePatch,
+    update: MenuStateUpdate,
 ) -> Result<(), String> {
-    controller.update(state).map_err(|err| err.to_string())
+    controller.update(update).map_err(|err| err.to_string())
 }
 
 /// Opens Settings on General → Software Update. A new window starts there;

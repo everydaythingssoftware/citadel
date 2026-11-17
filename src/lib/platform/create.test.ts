@@ -27,23 +27,15 @@ describe("browser Platform", () => {
 		await platform.window.setBackgroundColor([0, 0, 0, 255]);
 		const close = await platform.window.hideOnClose();
 		close();
-		const add = await platform.menu.onAddBook(() => {
-			throw new Error("Unexpected native menu event");
-		});
-		add();
 	});
 	it("has no menu bar, Quick Look, default apps or file drags", async () => {
 		const platform = createWebPlatform();
-		expect(platform.capabilities.canQuickLook).toBe(false);
-		expect(platform.capabilities.canDragFilesOut).toBe(false);
-		const stop = await platform.menu.onCommand(() => {
-			throw new Error("Unexpected native menu command");
-		});
-		stop();
-		await platform.menu.setState({ selectedBookCount: 2 });
-		expect(await platform.fileOpener.defaultApp("/a/book.epub")).toBeNull();
-		await platform.fileOpener.quickLook("/a/book.epub");
-		await platform.window.startDrag(["/a/book.epub"]);
+		expect(platform.menu.isSome).toBe(false);
+		expect(platform.fileOpener.quickLook.isSome).toBe(false);
+		expect(platform.window.startDrag.isSome).toBe(false);
+		expect((await platform.fileOpener.defaultApp("/a/book.epub")).isSome).toBe(
+			false,
+		);
 	});
 	it("follows the page's focus and full screen", async () => {
 		const page = Object.assign(new EventTarget(), {
@@ -68,7 +60,7 @@ describe("browser Platform", () => {
 		stopActive();
 		stopFullscreen();
 		window.dispatchEvent(new Event("blur"));
-		expect(active).toEqual([false, true]);
+		expect(active).toEqual([false, true, true]);
 		expect(fullscreen).toEqual([false, true]);
 	});
 	it("offers no way to install updates from the browser", async () => {

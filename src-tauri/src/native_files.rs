@@ -151,17 +151,15 @@ pub async fn clb_query_file_icon(app: AppHandle, path: String) -> Option<String>
 ///
 /// AppKit logs that driving the panel without a controller "will raise
 /// soon". Every call on the panel therefore runs inside an Objective-C
-/// `@try`: the first exception switches Quick Look off for the rest of the
-/// process and the command answers with an error, which the frontend reads
-/// as "Quick Look unavailable". This is deliberately not gated on the macOS
-/// version: an allow-list would switch Quick Look off on every new release
-/// until someone bumped it, while catching the exception guards against
-/// exactly this failure on any release.
+/// `@try`, and a raised exception becomes an error, on which the command
+/// opens the file in its default app instead. This is deliberately not
+/// gated on the macOS version: an allow-list would switch Quick Look off on
+/// every new release until someone bumped it, while catching the exception
+/// guards against exactly this failure on any release.
 #[cfg(target_os = "macos")]
 mod quick_look {
     use std::cell::RefCell;
     use std::panic::{catch_unwind, AssertUnwindSafe};
-    use std::sync::atomic::{AtomicBool, Ordering};
 
     use objc2::exception::Exception;
     use objc2::rc::Retained;
@@ -178,25 +176,13 @@ mod quick_look {
     const KEY_SPACE: u16 = 49;
     const KEY_ESCAPE: u16 = 53;
 
-    /// Set by the first Objective-C exception from the panel; the panel is
-    /// never touched again after that.
-    static PANEL_FAILED: AtomicBool = AtomicBool::new(false);
-
     /// Runs calls on the panel, turning an Objective-C exception into an
-    /// error and switching Quick Look off for good.
+    /// error.
     fn guarded<R>(work: impl FnOnce() -> R) -> Result<R, String> {
-        if PANEL_FAILED.load(Ordering::Relaxed) {
-            return Err(UNAVAILABLE.to_string());
-        }
-        // AssertUnwindSafe: after an exception nothing `work` left half
-        // done is used again, since the panel is switched off.
+        // AssertUnwindSafe: `work` leaves nothing half done that is read
+        // again; `toggle` keeps the panel's previous source alive.
         objc2::exception::catch(AssertUnwindSafe(work)).map_err(|exception| {
-            if !PANEL_FAILED.swap(true, Ordering::Relaxed) {
-                log::warn!(
-                    "Quick Look is off until Citadel restarts: the panel raised {}",
-                    describe(exception.as_deref())
-                );
-            }
+            log::warn!("Quick Look raised {}", describe(exception.as_deref()));
             UNAVAILABLE.to_string()
         })
     }
@@ -304,8 +290,8 @@ mod quick_look {
 
     /// Shows `path` in the Quick Look panel; closes the panel if it is
     /// already showing that file (Space toggles, as in Finder), and switches
-    /// to `path` if it is showing another. Errs, without touching the panel,
-    /// once the panel has raised an Objective-C exception.
+    /// to `path` if it is showing another. Errs if the panel raises an
+    /// Objective-C exception.
     pub fn toggle(mtm: MainThreadMarker, path: &str) -> Result<(), String> {
         let mut replaced: Option<Shown> = None;
         let result = guarded(|| show(mtm, path, &mut replaced)).and_then(|shown| shown);
@@ -367,31 +353,41 @@ mod quick_look {
     }
 }
 
+#[cfg(target_os = "macos")]
+async fn preview(app: &AppHandle, path: String) -> Result<(), String> {
+    on_main_thread(app, move || {
+        Some(
+            objc2::MainThreadMarker::new()
+                .ok_or_else(|| quick_look::UNAVAILABLE.to_string())
+                .and_then(|mtm| quick_look::toggle(mtm, &path)),
+        )
+    })
+    .await
+    .unwrap_or_else(|| Err(quick_look::UNAVAILABLE.to_string()))
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn preview(_app: &AppHandle, _path: String) -> Result<(), String> {
+    Err("Quick Look is only available on macOS.".to_string())
+}
+
 /// Shows a file in the system Quick Look panel (macOS). Asked again for the
 /// file it is showing, it closes the panel; for another file, it switches.
+/// Where the panel fails, the file opens in its default app instead.
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_cmd_quick_look(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
     if !std::path::Path::new(&path).exists() {
         return Err(format!("{path} does not exist."));
     }
-    #[cfg(target_os = "macos")]
-    {
-        on_main_thread(&app, move || {
-            Some(
-                objc2::MainThreadMarker::new()
-                    .ok_or_else(|| quick_look::UNAVAILABLE.to_string())
-                    .and_then(|mtm| quick_look::toggle(mtm, &path)),
-            )
-        })
-        .await
-        .unwrap_or_else(|| Err(quick_look::UNAVAILABLE.to_string()))
+    if let Err(err) = preview(&app, path.clone()).await {
+        log::warn!("Opening {path} in its default app: {err}");
+        app.opener()
+            .open_path(&path, None::<&str>)
+            .map_err(|err| err.to_string())?;
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = app;
-        Err("Quick Look is only available on macOS.".to_string())
-    }
+    Ok(())
 }
 
 #[cfg(test)]
