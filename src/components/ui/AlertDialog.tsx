@@ -39,6 +39,9 @@ export const AlertDialog = ({
 	onConfirm,
 }: AlertDialogProps) => {
 	const defaultButtonRef = useRef<HTMLButtonElement>(null);
+	// Kept through the closing animation, so the text never empties.
+	const shown = useRef({ title, description });
+	if (open) shown.current = { title, description };
 
 	const cancel = (
 		<RadixAlertDialog.Cancel asChild>
@@ -84,11 +87,11 @@ export const AlertDialog = ({
 					}}
 				>
 					<RadixAlertDialog.Title className={styles.title}>
-						{title}
+						{shown.current.title}
 					</RadixAlertDialog.Title>
-					{description ? (
+					{shown.current.description ? (
 						<RadixAlertDialog.Description className={styles.description}>
-							{description}
+							{shown.current.description}
 						</RadixAlertDialog.Description>
 					) : null}
 					<div className={styles.buttons}>

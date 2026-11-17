@@ -1,11 +1,11 @@
-/* As tall as the library window's toolbar (root.module.css .header). Explicit
-   pointer-events, so Radix's modal lock on <body> doesn't switch it off. */
+/* Explicit pointer-events, so Radix's modal lock on <body> doesn't switch
+   it off. */
 .strip {
 	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
-	height: 46px;
+	height: var(--ctd-toolbar-height);
 	z-index: 5000;
 	pointer-events: auto;
 	cursor: default;

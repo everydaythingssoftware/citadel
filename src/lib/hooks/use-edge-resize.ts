@@ -1,4 +1,9 @@
 import { useCallback, useRef, useState } from "react";
+import { none, type Option, some } from "@/lib/option";
+import { maxWidthWithin, type PanelWidthStore } from "@/stores/panel-width";
+
+/** Arrow keys move the edge this far; Shift moves it five times as far. */
+const KEY_STEP = 10;
 
 export interface EdgeResizeHandleProps {
 	role: "separator";
@@ -32,18 +37,6 @@ export const ResizeEdge = {
 
 export type ResizeEdge = (typeof ResizeEdge)[keyof typeof ResizeEdge];
 
-export interface EdgeResizeOptions {
-	width: number;
-	min: number;
-	max: number;
-	/** Arrow keys move the edge this far; Shift moves it five times as far. */
-	step: number;
-	edge: ResizeEdge;
-	label: string;
-	setWidth: (width: number) => void;
-	resetWidth: () => void;
-}
-
 /** How far a pointer at `x` puts the edge from where the drag began. */
 export const draggedWidth = (
 	start: { x: number; width: number },
@@ -54,64 +47,93 @@ export const draggedWidth = (
 		? start.width + x - start.x
 		: start.width - (x - start.x);
 
-/** The width an arrow, Home or End key asks for, or null for other keys. */
+/** The width an arrow, Home or End key asks for. */
 export const keyedWidth = (
 	key: string,
 	shiftKey: boolean,
-	{ width, min, max, step, edge }: EdgeResizeOptions,
-): number | null => {
+	{
+		width,
+		min,
+		max,
+		edge,
+	}: { width: number; min: number; max: number; edge: ResizeEdge },
+): Option<number> => {
 	const grow = edge === ResizeEdge.right ? "ArrowRight" : "ArrowLeft";
 	const shrink = edge === ResizeEdge.right ? "ArrowLeft" : "ArrowRight";
-	const delta = shiftKey ? step * 5 : step;
-	if (key === grow) return width + delta;
-	if (key === shrink) return width - delta;
-	if (key === "Home") return min;
-	if (key === "End") return max;
-	return null;
+	const delta = shiftKey ? KEY_STEP * 5 : KEY_STEP;
+	if (key === grow) return some(width + delta);
+	if (key === shrink) return some(width - delta);
+	if (key === "Home") return some(min);
+	if (key === "End") return some(max);
+	return none();
 };
+
+export interface EdgeResizeOptions {
+	edge: ResizeEdge;
+	label: string;
+	/** What the panel's `maxShare` is a share of, once known. */
+	containerWidth: Option<number>;
+}
 
 /**
  * A panel's resizable edge: drag to resize, double-click to reset, and
- * arrow keys (Home/End for the limits) when the handle has focus.
+ * arrow keys (Home/End for the limits) when the handle has focus. The width
+ * shown never exceeds the panel's share of its container; a drag past that
+ * stops there, so the stored width is always one the user saw.
  */
-export const useEdgeResize = (options: EdgeResizeOptions): EdgeResize => {
-	const { width, min, max, edge, label, setWidth, resetWidth } = options;
+export const useEdgeResize = (
+	store: PanelWidthStore,
+	{ edge, label, containerWidth }: EdgeResizeOptions,
+): EdgeResize => {
+	const stored = store((s) => s.width);
+	const { setWidth: setStored, saveWidth, resetWidth } = store.getState();
+	const { min } = store.limits;
+	const max = containerWidth.isSome
+		? maxWidthWithin(store.limits, containerWidth.value)
+		: store.limits.max;
+	const width = Math.min(stored, max);
+	const setWidth = (next: number) => setStored(Math.min(next, max));
+
 	const [resizing, setResizing] = useState(false);
 	const start = useRef<{ x: number; width: number } | null>(null);
 
-	const onPointerDown = useCallback(
-		(event: React.PointerEvent<HTMLElement>) => {
-			if (event.button !== 0) return;
-			event.preventDefault();
-			event.currentTarget.setPointerCapture(event.pointerId);
-			start.current = { x: event.clientX, width };
-			setResizing(true);
-		},
-		[width],
-	);
+	const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
+		if (event.button !== 0) return;
+		event.preventDefault();
+		event.currentTarget.setPointerCapture(event.pointerId);
+		start.current = { x: event.clientX, width };
+		setResizing(true);
+	};
 
-	const onPointerMove = useCallback(
+	const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+		if (!start.current) return;
+		setWidth(draggedWidth(start.current, event.clientX, edge));
+	};
+
+	const end = useCallback(
 		(event: React.PointerEvent<HTMLElement>) => {
 			if (!start.current) return;
-			setWidth(draggedWidth(start.current, event.clientX, edge));
+			start.current = null;
+			setResizing(false);
+			saveWidth();
+			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			}
 		},
-		[setWidth, edge],
+		[saveWidth],
 	);
 
-	const end = useCallback((event: React.PointerEvent<HTMLElement>) => {
-		if (!start.current) return;
-		start.current = null;
-		setResizing(false);
-		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-			event.currentTarget.releasePointerCapture(event.pointerId);
-		}
-	}, []);
-
 	const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
-		const next = keyedWidth(event.key, event.shiftKey, options);
-		if (next === null) return;
+		const next = keyedWidth(event.key, event.shiftKey, {
+			width,
+			min,
+			max,
+			edge,
+		});
+		if (!next.isSome) return;
 		event.preventDefault();
-		setWidth(next);
+		setWidth(next.value);
+		saveWidth();
 	};
 
 	return {

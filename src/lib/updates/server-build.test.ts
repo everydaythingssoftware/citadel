@@ -1,17 +1,16 @@
-import { describe, expect, it } from "vitest";
-import {
-	INITIAL_SERVER_BUILD_WATCH,
-	observeServerBuild,
-	type ServerBuildWatch,
-} from "./server-build";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/components/ui", () => ({ toast: { show: vi.fn() } }));
+
+import { observeServerBuild, type ServerBuildWatch } from "./server-build";
 
 const run = (builds: (string | null)[]) => {
-	let watch: ServerBuildWatch = INITIAL_SERVER_BUILD_WATCH;
-	const announced: string[] = [];
+	let watch: ServerBuildWatch = { loaded: null, announced: null };
+	const announced: (string | null)[] = [];
 	for (const build of builds) {
 		const next = observeServerBuild(watch, build);
 		watch = next.watch;
-		if (next.announce) announced.push(next.announce);
+		if (next.announce) announced.push(build);
 	}
 	return announced;
 };

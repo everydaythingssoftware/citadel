@@ -15,7 +15,7 @@
 	align-items: center;
 	justify-content: space-between;
 	flex-shrink: 0;
-	height: 46px;
+	height: var(--ctd-toolbar-height);
 	padding: 0 16px;
 	background-color: var(--ctd-header-bg);
 	z-index: 100;
@@ -59,7 +59,7 @@
 .nav {
 	position: relative;
 	flex-shrink: 0;
-	width: var(--sidebar-width, 220px);
+	width: var(--sidebar-width);
 	background-color: var(--ctd-nav-bg);
 	overflow: hidden;
 	z-index: 100;
@@ -69,12 +69,12 @@
 }
 
 .navInner {
-	width: var(--sidebar-width, 220px);
+	width: var(--sidebar-width);
 	height: 100%;
 	transition: transform 200ms ease-out;
 }
 
-.nav[data-closed] {
+.shell:not([data-sidebar-open]) .nav {
 	width: 0;
 	visibility: hidden;
 	transition:
@@ -82,7 +82,7 @@
 		visibility 0s linear 200ms;
 }
 
-.nav[data-closed] .navInner {
+.shell:not([data-sidebar-open]) .navInner {
 	transform: translateX(-24px);
 }
 
@@ -98,7 +98,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.nav,
-	.nav[data-closed],
+	.shell:not([data-sidebar-open]) .nav,
 	.navInner {
 		transition: none;
 	}
@@ -208,8 +208,7 @@
 		display: inline-flex;
 	}
 
-	.nav,
-	.nav[data-closed] {
+	.nav {
 		display: none;
 	}
 
@@ -221,7 +220,7 @@
 		display: block;
 		visibility: visible;
 		position: fixed;
-		top: 46px;
+		top: var(--ctd-toolbar-height);
 		left: 0;
 		bottom: 0;
 		width: 260px;
@@ -246,7 +245,7 @@
 	.scrim {
 		display: block;
 		position: fixed;
-		inset: 46px 0 0;
+		inset: var(--ctd-toolbar-height) 0 0;
 		z-index: 104;
 		padding: 0;
 		border: 0;

@@ -8,7 +8,6 @@ import clsx from "clsx";
 import { type CSSProperties, useCallback, useState } from "react";
 import { NavigationProgress } from "@/components/atoms/NavigationProgress";
 import { F7SidebarLeft } from "@/components/icons/F7SidebarLeft";
-import { ServerUpdatedBanner } from "@/components/molecules/ServerUpdatedBanner";
 import { AddBookButton, AddBookProvider } from "@/components/organisms/AddBook";
 import {
 	BookUploads,
@@ -20,12 +19,13 @@ import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
 import { useNavigationPending } from "@/lib/hooks/use-navigation-pending";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-reduced-motion";
-import { useServerUpdatedNotice } from "@/lib/hooks/use-server-updated-notice";
-import { useSidebarResize } from "@/lib/hooks/use-sidebar-resize";
+import { ResizeEdge, useEdgeResize } from "@/lib/hooks/use-edge-resize";
 import { useSwipeToClose } from "@/lib/hooks/use-swipe-to-close";
 import { useWindowChromeState } from "@/lib/hooks/use-window-chrome-state";
+import { useWindowWidth } from "@/lib/hooks/use-window-width";
+import { some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
-import { useSidebar } from "@/stores/sidebar/store";
+import { useSidebar, useSidebarWidth } from "@/stores/sidebar/store";
 import classes from "./root.module.css";
 
 interface SidebarToggleProps {
@@ -59,11 +59,13 @@ const Root = () => {
 	);
 	const desktopOpened = useSidebar((s) => s.visible);
 	const toggleSidebar = useSidebar((s) => s.toggleSidebar);
-	const resize = useSidebarResize();
+	const resize = useEdgeResize(useSidebarWidth, {
+		edge: ResizeEdge.right,
+		label: "Resize sidebar",
+		containerWidth: some(useWindowWidth()),
+	});
 	const { location } = useRouterState();
 	const platform = usePlatform();
-	const isDesktop = platform.capabilities.supportsNativeWindows;
-	const serverUpdated = useServerUpdatedNotice(!isDesktop);
 	const mobileOpened = mobileOpenedOn === location;
 	const closeMobile = useCallback(() => setMobileOpenedOn(null), []);
 	const sidebarSwipe = useSwipeToClose({
@@ -83,7 +85,10 @@ const Root = () => {
 	// brings its own full-window layout and must not inherit the library
 	// chrome (toolbar, sidebar, Add Book). On the web, Settings is a page of
 	// the app like any other.
-	if (isDesktop && location.pathname.startsWith("/settings")) {
+	if (
+		platform.capabilities.supportsNativeWindows &&
+		location.pathname.startsWith("/settings")
+	) {
 		return <Outlet />;
 	}
 
@@ -118,7 +123,6 @@ const Root = () => {
 						ref={sidebarSwipe.panelRef}
 						className={classes.nav}
 						aria-label="Sidebar"
-						data-closed={!desktopOpened || undefined}
 					>
 						<div className={classes.navInner}>
 							<Sidebar />
@@ -145,12 +149,6 @@ const Root = () => {
 				</div>
 			</div>
 			<BookUploads />
-			{serverUpdated.build && (
-				<ServerUpdatedBanner
-					onReload={serverUpdated.reload}
-					onDismiss={serverUpdated.dismiss}
-				/>
-			)}
 		</AddBookProvider>
 	);
 };

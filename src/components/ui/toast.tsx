@@ -9,8 +9,14 @@ export interface ToastOptions {
 	message?: string;
 	/** Shows a spinner and disables auto-dismiss until updated. */
 	loading?: boolean;
-	/** Auto-dismiss delay in ms. Defaults to 5000. Ignored while loading. */
+	/** Auto-dismiss delay in ms (Infinity: until dismissed). Defaults to 5000. Ignored while loading. */
 	duration?: number;
+	action?: ToastAction;
+}
+
+export interface ToastAction {
+	label: string;
+	onSelect: () => void;
 }
 
 export type ToastUpdate = Partial<Omit<ToastOptions, "id">>;
@@ -19,6 +25,7 @@ interface ToastItem {
 	id: string;
 	title: string;
 	message?: string;
+	action?: ToastAction;
 	loading: boolean;
 	duration: number;
 	exiting: boolean;
@@ -63,6 +70,7 @@ const clearTimer = (id: string) => {
 
 const scheduleDismiss = (id: string, ms: number) => {
 	clearTimer(id);
+	if (!Number.isFinite(ms)) return;
 	timers.set(id, {
 		handle: setTimeout(() => hide(id), ms),
 		expiresAt: Date.now() + ms,
@@ -95,6 +103,7 @@ const show = (options: ToastOptions): string => {
 		id,
 		title: options.title,
 		message: options.message,
+		action: options.action,
 		loading: options.loading ?? false,
 		duration: options.duration ?? DEFAULT_DURATION,
 		exiting: false,
@@ -182,6 +191,18 @@ export const Toaster = () => {
 							<div className={styles.message} data-selectable>
 								{item.message}
 							</div>
+						)}
+						{item.action && (
+							<button
+								type="button"
+								className={styles.action}
+								onClick={() => {
+									item.action?.onSelect();
+									hide(item.id);
+								}}
+							>
+								{item.action.label}
+							</button>
 						)}
 					</div>
 					{!item.loading && (

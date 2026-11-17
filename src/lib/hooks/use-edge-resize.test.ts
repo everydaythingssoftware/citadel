@@ -1,21 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-	draggedWidth,
-	type EdgeResizeOptions,
-	keyedWidth,
-	ResizeEdge,
-} from "./use-edge-resize";
+import { some } from "@/lib/option";
+import { draggedWidth, keyedWidth, ResizeEdge } from "./use-edge-resize";
 
-const options = (edge: EdgeResizeOptions["edge"]): EdgeResizeOptions => ({
-	width: 400,
-	min: 300,
-	max: 600,
-	step: 10,
-	edge,
-	label: "Resize",
-	setWidth: () => {},
-	resetWidth: () => {},
-});
+const panel = (edge: ResizeEdge) => ({ width: 400, min: 300, max: 600, edge });
 
 describe("draggedWidth", () => {
 	it("widens a right edge as the pointer moves right", () => {
@@ -36,23 +23,31 @@ describe("draggedWidth", () => {
 
 describe("keyedWidth", () => {
 	it("grows toward the outside of the panel", () => {
-		expect(keyedWidth("ArrowRight", false, options(ResizeEdge.right))).toBe(
-			410,
+		expect(keyedWidth("ArrowRight", false, panel(ResizeEdge.right))).toEqual(
+			some(410),
 		);
-		expect(keyedWidth("ArrowLeft", false, options(ResizeEdge.left))).toBe(410);
-		expect(keyedWidth("ArrowRight", false, options(ResizeEdge.left))).toBe(390);
+		expect(keyedWidth("ArrowLeft", false, panel(ResizeEdge.left))).toEqual(
+			some(410),
+		);
+		expect(keyedWidth("ArrowRight", false, panel(ResizeEdge.left))).toEqual(
+			some(390),
+		);
 	});
 
 	it("moves five steps with Shift", () => {
-		expect(keyedWidth("ArrowLeft", true, options(ResizeEdge.left))).toBe(450);
+		expect(keyedWidth("ArrowLeft", true, panel(ResizeEdge.left))).toEqual(
+			some(450),
+		);
 	});
 
 	it("jumps to the limits with Home and End", () => {
-		expect(keyedWidth("Home", false, options(ResizeEdge.left))).toBe(300);
-		expect(keyedWidth("End", false, options(ResizeEdge.left))).toBe(600);
+		expect(keyedWidth("Home", false, panel(ResizeEdge.left))).toEqual(
+			some(300),
+		);
+		expect(keyedWidth("End", false, panel(ResizeEdge.left))).toEqual(some(600));
 	});
 
 	it("ignores other keys", () => {
-		expect(keyedWidth("a", false, options(ResizeEdge.left))).toBeNull();
+		expect(keyedWidth("a", false, panel(ResizeEdge.left)).isSome).toBe(false);
 	});
 });

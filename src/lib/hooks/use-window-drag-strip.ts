@@ -11,6 +11,7 @@ export const useWindowDragStrip = () => {
 	const ref = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
+		if (!ref.current) return;
 		const onPointerMove = (event: PointerEvent) => {
 			const strip = ref.current;
 			if (!strip) return;

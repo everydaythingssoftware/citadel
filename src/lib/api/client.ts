@@ -27,7 +27,7 @@ const reportingUnreachable =
 	async (input: Request): Promise<Response> => {
 		try {
 			const response = await (fetcher ?? globalThis.fetch)(input);
-			reportServerBuild(response.headers?.get(SERVER_BUILD_HEADER) ?? null);
+			reportServerBuild(response.headers.get(SERVER_BUILD_HEADER));
 			return response;
 		} catch (error) {
 			if (isAbort(error)) throw error;

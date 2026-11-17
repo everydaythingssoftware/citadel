@@ -5,11 +5,12 @@ import {
 	type RemoveLibrary,
 	useRemoveLibrary,
 } from "@/lib/hooks/use-remove-library";
+import { none, type Option, some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
 
 export interface LibraryActionsMenu {
-	/** Null where the library isn't a folder on this computer (the web). */
-	items: ContextMenuEntry[] | null;
+	/** None where the library isn't a folder on this computer (the web). */
+	items: Option<ContextMenuEntry[]>;
 	remove: RemoveLibrary;
 }
 
@@ -23,9 +24,9 @@ export const useLibraryActionsMenu = (): LibraryActionsMenu => {
 	const remove = useRemoveLibrary();
 	const { request } = remove;
 
-	const items = useMemo((): ContextMenuEntry[] | null => {
+	const items = useMemo((): Option<ContextMenuEntry[]> => {
 		if (!platform.capabilities.supportsNativeWindows || !activeLibrary) {
-			return null;
+			return none();
 		}
 		const reveal: ContextMenuEntry[] = platform.capabilities
 			.canRevealInFileManager
@@ -44,14 +45,14 @@ export const useLibraryActionsMenu = (): LibraryActionsMenu => {
 					{ type: "separator", id: "reveal-separator" },
 				]
 			: [];
-		return [
+		return some([
 			...reveal,
 			{
 				id: "forget",
 				label: "Forget…",
 				onSelect: () => request(activeLibrary),
 			},
-		];
+		]);
 	}, [platform, activeLibrary, request]);
 
 	return { items, remove };

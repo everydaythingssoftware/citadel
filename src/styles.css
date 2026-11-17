@@ -123,6 +123,7 @@
 		Helvetica, Arial, sans-serif;
 	--ctd-radius-control: 6px;
 	--ctd-radius-capsule: 9999px;
+	--ctd-toolbar-height: 46px;
 	--ctd-control-border-width: 1px;
 	--ctd-control-pad-y: 0px;
 	--ctd-control-pad-x: 12px;
@@ -646,8 +647,3 @@ textarea {
 	--ctd-chrome-control-bg: oklch(from var(--pal-text) l c h / 0.06);
 	--ctd-chrome-control-border: oklch(from var(--pal-text) l c h / 0.08);
 }
-
-/* The glass itself goes flat on its own (the window effect follows the
-   window's active state), so the shell's tint stays the faint one it has
-   while active: no opaque wash that could hide the desktop if this flag
-   were ever wrong. */

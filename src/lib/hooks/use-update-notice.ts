@@ -1,56 +1,32 @@
-import { useEffect, useRef } from "react";
-import { IS_DEV } from "@/lib/env";
-import type { SoftwareUpdate } from "@/lib/hooks/use-software-update";
+import { safeAsyncEventHandler } from "@/lib/async";
+import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
+import { none, type Option, some } from "@/lib/option";
 import {
-	backgroundDownloadVersion,
 	updateNoticeTitle,
 	updateNoticeVersion,
 } from "@/lib/updates/update-notice";
 import { useSettings } from "@/stores/settings/store";
-import { useSidebar } from "@/stores/sidebar/store";
 
 export interface UpdateNotice {
-	version: string;
 	title: string;
 	/** Installs and relaunches at once, without asking. */
 	restart: () => void;
-	/** "Hide Until Next Update". */
 	hide: () => void;
 }
 
 /**
- * The sidebar footer's "Citadel 1.4 is ready / Restart to update" row. An
- * update the automatic check finds downloads in the background, so the row
- * appears only once there is nothing left to wait for; ignored, it installs
- * when Citadel quits.
+ * The sidebar footer's "Citadel 1.4 is ready / Restart to update" row,
+ * once an update has downloaded; ignored, it installs when Citadel quits.
  */
-export const useUpdateNotice = (
-	update: SoftwareUpdate | null,
-): UpdateNotice | null => {
-	const hiddenVersion = useSidebar((s) => s.hiddenUpdateVersion);
-	const hideUpdateUntilNext = useSidebar((s) => s.hideUpdateUntilNext);
-	const automaticChecks = useSettings((s) => s.autoUpdateCheckingEnabled);
-	const requested = useRef<string | null>(null);
-	const state = update?.state ?? null;
-	const later = update?.later;
-
-	useEffect(() => {
-		if (IS_DEV || !later) return;
-		const version = backgroundDownloadVersion(state, {
-			automaticChecks,
-			alreadyRequested: requested.current,
-		});
-		if (version === null) return;
-		requested.current = version;
-		later();
-	}, [state, automaticChecks, later]);
-
-	const version = updateNoticeVersion(state, hiddenVersion);
-	if (!update || version === null) return null;
-	return {
-		version,
-		title: updateNoticeTitle(version),
+export const useUpdateNotice = (): Option<UpdateNotice> => {
+	const update = useSoftwareUpdate();
+	const hiddenVersion = useSettings((s) => s.hiddenUpdateVersion);
+	const setHiddenUpdateVersion = useSettings((s) => s.setHiddenUpdateVersion);
+	const version = updateNoticeVersion(update?.state ?? null, hiddenVersion);
+	if (!update || !version.isSome) return none();
+	return some({
+		title: updateNoticeTitle(version.value),
 		restart: update.updateNow,
-		hide: () => hideUpdateUntilNext(version),
-	};
+		hide: safeAsyncEventHandler(() => setHiddenUpdateVersion(version.value)),
+	});
 };

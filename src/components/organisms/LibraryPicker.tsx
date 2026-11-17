@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import { AddLibraryDialog } from "@/components/organisms/AddLibraryDialog";
 import { POPOVER_ATTRIBUTE } from "@/components/ui/popover-interop";
 import { useAddLibraryFlow } from "@/lib/hooks/use-add-library-flow";
+import type { ContextMenuTarget } from "@/lib/hooks/use-context-menu";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
+import type { Option } from "@/lib/option";
 import styles from "./LibraryPicker.module.css";
 
 interface MenuRect {
@@ -63,6 +65,11 @@ const PlusIcon = () => (
 	</svg>
 );
 
+export interface LibraryPickerProps {
+	/** The open library's own menu (Show in Finder, Forget…). */
+	libraryMenu: Option<ContextMenuTarget>;
+}
+
 /**
  * Sidebar-top library picker (replaces the "Library" section label when two
  * or more libraries exist). Apple-style menu: library names with a checkmark
@@ -71,16 +78,7 @@ const PlusIcon = () => (
  * committing; the resulting curtain is driven by the store-watching machine,
  * not by this component.
  */
-export interface LibraryPickerProps {
-	/** The open library's own menu (Show in Finder, Forget…). */
-	onContextMenu?: (event: React.MouseEvent<HTMLElement>) => void;
-	onKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void;
-}
-
-export const LibraryPicker = ({
-	onContextMenu,
-	onKeyDown,
-}: LibraryPickerProps) => {
+export const LibraryPicker = ({ libraryMenu }: LibraryPickerProps) => {
 	const { libraries, activeLibrary, switchTo } = useLibrarySelection();
 	const addLibrary = useAddLibraryFlow();
 
@@ -264,8 +262,9 @@ export const LibraryPicker = ({
 				aria-label={`Library: ${activeLibrary.displayName}`}
 				onClick={() => setOpen((prev) => !prev)}
 				onContextMenu={(event) => {
+					if (!libraryMenu.isSome) return;
 					setOpen(false);
-					onContextMenu?.(event);
+					libraryMenu.value.onContextMenu(event);
 				}}
 				onKeyDown={(event) => {
 					if (event.key === "ArrowDown" && !open) {
@@ -273,7 +272,7 @@ export const LibraryPicker = ({
 						setOpen(true);
 						return;
 					}
-					onKeyDown?.(event);
+					if (libraryMenu.isSome) libraryMenu.value.onKeyDown(event);
 				}}
 			>
 				<span className={styles.triggerName}>{activeLibrary.displayName}</span>

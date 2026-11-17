@@ -1,14 +1,14 @@
+import type { ContextMenuTarget } from "@/lib/hooks/use-context-menu";
 import styles from "./UpdateNoticeRow.module.css";
 
 export interface UpdateNoticeRowProps {
 	/** "Citadel 1.4 is ready". */
 	title: string;
 	onRestart: () => void;
-	onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void;
-	onKeyDown?: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+	/** Hide Until Next Update. */
+	menu: ContextMenuTarget;
 }
 
-/** An arrow rising out of a soft ink disc: quiet, in the sidebar's own ink. */
 const UpdateReadyGlyph = () => (
 	<svg
 		className={styles.glyph}
@@ -37,16 +37,9 @@ const UpdateReadyGlyph = () => (
 export const UpdateNoticeRow = ({
 	title,
 	onRestart,
-	onContextMenu,
-	onKeyDown,
+	menu,
 }: UpdateNoticeRowProps) => (
-	<button
-		type="button"
-		className={styles.row}
-		onClick={onRestart}
-		onContextMenu={onContextMenu}
-		onKeyDown={onKeyDown}
-	>
+	<button type="button" className={styles.row} onClick={onRestart} {...menu}>
 		<UpdateReadyGlyph />
 		<span className={styles.text}>
 			<span className={styles.title}>{title}</span>

@@ -15,7 +15,6 @@
 	   (styles.css), which step down while the window is in the background. */
 	--ctd-ink: var(--ctd-chrome-ink);
 	--ctd-ink-soft: var(--ctd-chrome-ink-soft);
-	--ctd-nav-active-text: var(--ctd-chrome-active-ink);
 	/* Links inherit their colour, so the scope sets it as well. */
 	color: var(--ctd-ink);
 }
@@ -45,9 +44,18 @@
 	color: var(--ctd-ink-soft);
 }
 
-.sectionLabel:focus-visible {
+.headingButton {
+	padding: 0;
+	border: none;
+	border-radius: var(--ctd-radius-control);
+	background: none;
+	font: inherit;
+	color: inherit;
+}
+
+.headingButton:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
+	box-shadow: 0 0 0 2px var(--ctd-focus-ring);
 }
 
 .navLink {
@@ -67,7 +75,7 @@
 
 .navLink[data-active] {
 	background-color: var(--ctd-nav-active-bg);
-	color: var(--ctd-nav-active-text);
+	color: var(--ctd-chrome-active-ink);
 	font-weight: 500;
 }
 

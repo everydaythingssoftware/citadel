@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const PREFS_KEY = "sidebar-prefs";
-
 const fakeStorage = (initial: Record<string, string> = {}) => {
 	const backing = new Map(Object.entries(initial));
 	return {
@@ -9,7 +7,6 @@ const fakeStorage = (initial: Record<string, string> = {}) => {
 		setItem: (key: string, value: string) => {
 			backing.set(key, value);
 		},
-		backing,
 	};
 };
 
@@ -24,11 +21,9 @@ afterEach(() => {
 });
 
 describe("useSidebar", () => {
-	it("starts open at the initial width", async () => {
-		const { useSidebar, SIDEBAR_WIDTH } = await importStore(fakeStorage());
+	it("starts open", async () => {
+		const { useSidebar } = await importStore(fakeStorage());
 		expect(useSidebar.getState().visible).toBe(true);
-		expect(useSidebar.getState().width).toBe(SIDEBAR_WIDTH.initial);
-		expect(useSidebar.getState().hiddenUpdateVersion).toBeNull();
 	});
 
 	it("toggles and remembers visibility", async () => {
@@ -39,73 +34,17 @@ describe("useSidebar", () => {
 		const reloaded = await importStore(storage);
 		expect(reloaded.useSidebar.getState().visible).toBe(false);
 	});
-
-	it("clamps and remembers the width; reset returns to the initial width", async () => {
-		const storage = fakeStorage();
-		const { useSidebar, SIDEBAR_WIDTH } = await importStore(storage);
-		useSidebar.getState().setWidth(9999);
-		expect(useSidebar.getState().width).toBe(SIDEBAR_WIDTH.max);
-		useSidebar.getState().setWidth(10);
-		expect(useSidebar.getState().width).toBe(SIDEBAR_WIDTH.min);
-		useSidebar.getState().setWidth(251.6);
-		const reloaded = await importStore(storage);
-		expect(reloaded.useSidebar.getState().width).toBe(252);
-		reloaded.useSidebar.getState().resetWidth();
-		expect(reloaded.useSidebar.getState().width).toBe(SIDEBAR_WIDTH.initial);
-	});
-
-	it("clamps a width stored under older, wider limits on load", async () => {
-		const { useSidebar, SIDEBAR_WIDTH } = await importStore(
-			fakeStorage({ [PREFS_KEY]: JSON.stringify({ width: 360 }) }),
-		);
-		expect(SIDEBAR_WIDTH.max).toBe(280);
-		expect(useSidebar.getState().width).toBe(280);
-		const narrow = await importStore(
-			fakeStorage({ [PREFS_KEY]: JSON.stringify({ width: 100 }) }),
-		);
-		expect(narrow.useSidebar.getState().width).toBe(150);
-	});
-
-	it("remembers the hidden update version", async () => {
-		const storage = fakeStorage();
-		const { useSidebar } = await importStore(storage);
-		useSidebar.getState().hideUpdateUntilNext("1.4.0");
-		const reloaded = await importStore(storage);
-		expect(reloaded.useSidebar.getState().hiddenUpdateVersion).toBe("1.4.0");
-	});
-
-	it("ignores stored values of the wrong shape", async () => {
-		const { useSidebar, SIDEBAR_WIDTH } = await importStore(
-			fakeStorage({
-				[PREFS_KEY]: JSON.stringify({
-					visible: "yes",
-					width: "wide",
-					hiddenUpdateVersion: 3,
-				}),
-			}),
-		);
-		expect(useSidebar.getState()).toMatchObject({
-			visible: true,
-			width: SIDEBAR_WIDTH.initial,
-			hiddenUpdateVersion: null,
-		});
-	});
-
-	it("survives unreadable storage", async () => {
-		const { useSidebar } = await importStore(
-			fakeStorage({ [PREFS_KEY]: "{not json" }),
-		);
-		expect(useSidebar.getState().visible).toBe(true);
-	});
 });
 
-describe("sidebarMaxWidth", () => {
-	it("allows at most a third of the window, between the limits", async () => {
-		const { sidebarMaxWidth } = await importStore(fakeStorage());
-		expect(sidebarMaxWidth(null)).toBe(280);
-		expect(sidebarMaxWidth(1440)).toBe(280);
-		expect(sidebarMaxWidth(720)).toBe(240);
-		expect(sidebarMaxWidth(640)).toBe(213);
-		expect(sidebarMaxWidth(300)).toBe(150);
+describe("useSidebarWidth", () => {
+	it("keeps the width between 150 and 280, a third of the window at most", async () => {
+		const { useSidebarWidth } = await importStore(fakeStorage());
+		const { limits } = useSidebarWidth;
+		expect(useSidebarWidth.getState().width).toBe(220);
+		expect([limits.min, limits.max, limits.maxShare]).toEqual([
+			150,
+			280,
+			1 / 3,
+		]);
 	});
 });

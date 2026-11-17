@@ -44,7 +44,7 @@ interface SettingsStore extends SettingsSchema {
 	) => Promise<void>;
 	setProviderEnabled: (id: MetadataProvider, enabled: boolean) => Promise<void>;
 	setAutoLookupOnImport: (enabled: boolean) => Promise<void>;
-	setLastNotifiedUpdateVersion: (version: string | null) => Promise<void>;
+	setHiddenUpdateVersion: (version: string) => Promise<void>;
 	createSmartShelf: (
 		name: string,
 		filter: SmartShelfFilter,
@@ -270,8 +270,8 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 		});
 	},
 
-	setLastNotifiedUpdateVersion: async (version) => {
-		await persistSetting(set, get, "lastNotifiedUpdateVersion", version);
+	setHiddenUpdateVersion: async (version) => {
+		await persistSetting(set, get, "hiddenUpdateVersion", version);
 	},
 
 	setSharing: async (sharing) => {

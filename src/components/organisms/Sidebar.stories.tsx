@@ -5,17 +5,15 @@ import {
 	createRouter,
 	RouterProvider,
 } from "@tanstack/react-router";
-import { type CSSProperties, createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { ContextMenu, type ContextMenuState } from "@/components/ui";
+import type { SidebarShelf } from "@/lib/hooks/use-sidebar-model";
+import { none, some } from "@/lib/option";
 import { createWebPlatform } from "@/lib/platform/create";
 import { PlatformProvider } from "@/lib/platform/context";
 import type { SmartShelf } from "@/lib/platform/settings/types";
 import { updateNoticeTitle } from "@/lib/updates/update-notice";
-import {
-	type SidebarShelf,
-	SidebarView,
-	type SidebarViewProps,
-} from "./Sidebar";
+import { SidebarView, type SidebarViewProps } from "./Sidebar";
 import styles from "./Sidebar.module.css";
 
 const shelf = (id: string, name: string): SmartShelf => ({
@@ -24,16 +22,18 @@ const shelf = (id: string, name: string): SmartShelf => ({
 	filter: { query: "", sortOrder: "authorAz", hideRead: true },
 });
 
+const noop = () => {};
+const keys = { onContextMenu: noop, onKeyDown: noop };
+
 const SHELVES: SidebarShelf[] = [
-	{ shelf: shelf("unread", "Unread"), active: false },
-	{ shelf: shelf("reading", "Reading Now"), active: true },
+	{ shelf: shelf("unread", "Unread"), active: false, keys },
+	{ shelf: shelf("reading", "Reading Now"), active: true, keys },
 	{
 		shelf: shelf("long", "Science Fiction Written Before the Moon Landing"),
 		active: false,
+		keys,
 	},
 ];
-
-const noop = () => {};
 
 const BASE: SidebarViewProps = {
 	libraryHeader: <h2 className={styles.sectionLabel}>Library</h2>,
@@ -42,16 +42,14 @@ const BASE: SidebarViewProps = {
 	onAllBooks: noop,
 	shelves: [],
 	onOpenShelf: noop,
-	shelfMenu: () => ({}),
-	shelfActions: {
-		rename: null,
+	rename: {
+		editing: none(),
 		startRename: noop,
 		editRename: noop,
 		commitRename: async () => {},
 		cancelRename: noop,
 	},
-	updateNotice: null,
-	updateMenu: {},
+	updateNotice: none(),
 	showSettingsButton: false,
 	settingsShowing: false,
 	onOpenSettings: noop,
@@ -94,15 +92,13 @@ const Window = () => {
 					{menu && <ContextMenu menu={menu} onClose={noop} />}
 				</div>
 				<div
-					style={
-						{
-							flex: 1,
-							background: "var(--ctd-content-bg)",
-							borderTop: "1px solid var(--ctd-border)",
-							borderLeft: "1px solid var(--ctd-border)",
-							borderTopLeftRadius: "var(--ctd-radius-panel)",
-						} as CSSProperties
-					}
+					style={{
+						flex: 1,
+						background: "var(--ctd-content-bg)",
+						borderTop: "1px solid var(--ctd-border)",
+						borderLeft: "1px solid var(--ctd-border)",
+						borderTopLeftRadius: "var(--ctd-radius-panel)",
+					}}
 				/>
 			</div>
 		</div>
@@ -150,12 +146,11 @@ export const WithUpdate: Story = {
 	args: {
 		shelves: SHELVES,
 		currentPathname: "/",
-		updateNotice: {
-			version: "1.4.0",
+		updateNotice: some({
 			title: updateNoticeTitle("1.4.0"),
-			restart: noop,
-			hide: noop,
-		},
+			onRestart: noop,
+			menu: keys,
+		}),
 	},
 };
 
@@ -186,9 +181,9 @@ export const Renaming: Story = {
 	args: {
 		shelves: SHELVES,
 		currentPathname: "/",
-		shelfActions: {
-			...BASE.shelfActions,
-			rename: { shelfId: "unread", draft: "Unread", error: null },
+		rename: {
+			...BASE.rename,
+			editing: some({ shelfId: "unread", draft: "Unread", error: null }),
 		},
 	},
 };
