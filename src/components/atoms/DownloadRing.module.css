@@ -1,0 +1,61 @@
+.ring {
+	flex: none;
+	overflow: visible;
+	color: inherit;
+}
+
+.track {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.3;
+}
+
+/* While a file arrives the ring dims to a track and the progress draws over
+   it in the same grey, so nothing changes colour until it's done. */
+.ring[data-status="downloading"] .track {
+	opacity: 0.25;
+}
+
+.arc {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linecap: round;
+	transition: stroke-dasharray 160ms linear;
+}
+
+.ring[data-indeterminate] .arc {
+	transform-origin: 9px 9px;
+	animation: download-spin 1s linear infinite;
+}
+
+.mark {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.3;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.stop {
+	fill: currentColor;
+}
+
+@keyframes download-spin {
+	from {
+		transform: rotate(-90deg);
+	}
+	to {
+		transform: rotate(270deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.arc {
+		transition: none;
+	}
+
+	.ring[data-indeterminate] .arc {
+		animation-duration: 3s;
+	}
+}

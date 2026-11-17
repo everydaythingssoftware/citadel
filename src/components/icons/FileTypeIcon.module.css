@@ -1,0 +1,77 @@
+.icon {
+	--file-label: oklch(52% 0.012 270);
+	flex: none;
+	overflow: visible;
+	filter: drop-shadow(0 0.5px 0.75px oklch(0% 0 0 / 0.14));
+}
+
+.icon[data-tone="epub"] {
+	--file-label: oklch(66% 0.15 55);
+}
+
+.icon[data-tone="pdf"] {
+	--file-label: oklch(56% 0.19 27);
+}
+
+.icon[data-tone="kindle"] {
+	--file-label: oklch(48% 0.07 245);
+}
+
+.icon[data-tone="comic"] {
+	--file-label: oklch(55% 0.14 310);
+}
+
+.icon[data-tone="text"] {
+	--file-label: oklch(46% 0.01 270);
+}
+
+.paper {
+	fill: oklch(99.5% 0.002 90);
+	stroke: oklch(0% 0 0 / 0.2);
+	stroke-width: 1;
+}
+
+.fold {
+	fill: oklch(94% 0.004 90);
+	stroke: oklch(0% 0 0 / 0.2);
+	stroke-width: 1;
+	stroke-linejoin: round;
+}
+
+.lines {
+	fill: none;
+	stroke: oklch(0% 0 0 / 0.12);
+	stroke-width: 1;
+	stroke-linecap: round;
+}
+
+.label {
+	fill: var(--file-label);
+}
+
+.text {
+	fill: white;
+	font-family:
+		-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+}
+
+/* Paper stays light in dark mode, as Finder's document icons do, but sits
+   back a little so it doesn't glare. */
+:global(:root[data-theme="dark"]) .paper {
+	fill: oklch(90% 0.004 90);
+	stroke: oklch(0% 0 0 / 0.5);
+}
+
+:global(:root[data-theme="dark"]) .fold {
+	fill: oklch(80% 0.004 90);
+	stroke: oklch(0% 0 0 / 0.5);
+}
+
+/* Window in the background: the coloured badge goes quiet with the rest of
+   the chrome, as Finder's icons do. */
+:global(:root[data-runtime="desktop"][data-window-inactive]) .icon {
+	filter: saturate(0.2) opacity(0.8)
+		drop-shadow(0 0.5px 0.75px oklch(0% 0 0 / 0.1));
+}

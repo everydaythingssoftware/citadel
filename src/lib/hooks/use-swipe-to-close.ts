@@ -6,6 +6,11 @@ interface SwipeToCloseOptions {
 	enabled: boolean;
 	onClose: () => void;
 	reducedMotion: boolean;
+	/**
+	 * A media query the layout must match for a swipe to start, for a panel
+	 * that is an edge panel only in some layouts (a phone's full-screen sheet).
+	 */
+	media?: string;
 }
 
 interface SwipeToClose {
@@ -61,6 +66,7 @@ export const useSwipeToClose = ({
 	enabled,
 	onClose,
 	reducedMotion,
+	media,
 }: SwipeToCloseOptions): SwipeToClose => {
 	// Elements, not ref objects: a panel that mounts after `enabled` turns on
 	// (a portal, a dialog) still gets the gesture.
@@ -79,6 +85,9 @@ export const useSwipeToClose = ({
 			const intoPanel = edge === "left" ? right - x : x - left;
 			return intoPanel > GRAB_ZONE_PX;
 		};
+		const layoutMatches = () =>
+			media === undefined ||
+			(typeof matchMedia !== "undefined" && matchMedia(media).matches);
 
 		let startX = 0;
 		let startY = 0;
@@ -119,6 +128,7 @@ export const useSwipeToClose = ({
 			startY = touch.clientY;
 			lastTime = startTime = event.timeStamp;
 			axis =
+				!layoutMatches() ||
 				outsideGrabZone(event.target, touch.clientX) ||
 				startsInHorizontalScroller(event.target, panel)
 					? "vertical"
@@ -193,7 +203,7 @@ export const useSwipeToClose = ({
 			}
 			reset();
 		};
-	}, [enabled, panel, scrim, edge, reducedMotion]);
+	}, [enabled, panel, scrim, edge, reducedMotion, media]);
 
 	return { panelRef, scrimRef };
 };

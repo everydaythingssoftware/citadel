@@ -5,7 +5,6 @@ import type { LibraryBook } from "@/bindings";
 import {
 	Button,
 	Checkbox,
-	Drawer,
 	IconButton,
 	SearchField,
 	Select,
@@ -52,7 +51,7 @@ import { useSettings } from "@/stores/settings/store";
 import { F7Bookmark } from "../icons/F7Bookmark";
 import { BookGrid, type ScrollToBookIndex } from "../molecules/BookGrid";
 import { EmptyLibrary, EmptyState } from "../molecules/EmptyState";
-import { BookDrawer } from "../organisms/BookDrawer";
+import { BookDetailsDrawer } from "../organisms/BookDrawer";
 import styles from "./Books.module.css";
 
 interface BookSearchOptions {
@@ -444,35 +443,13 @@ export const Books = ({
 							: `${total} of ${libraryTotal} books`}
 				</span>
 			</div>
-			<Drawer
+			<BookDetailsDrawer
+				book={selectedSidebarBook}
 				open={isBookSidebarOpen}
-				onOpenChange={(open) => {
-					if (!open) setIsBookSidebarOpen(false);
-				}}
-				width={500}
-				bleed
-				onCloseAutoFocus={(event) => {
-					// No Dialog.Trigger to return focus to; hand it to the grid so
-					// arrow keys keep working after the drawer closes.
-					event.preventDefault();
-					gridContainerRef.current?.focus();
-				}}
-				onOpenAutoFocus={(event) => {
-					// Land on the primary action instead of the header close button.
-					const target = document.querySelector("[data-drawer-initial-focus]");
-					if (target instanceof HTMLElement) {
-						event.preventDefault();
-						target.focus();
-					}
-				}}
-			>
-				{selectedSidebarBook && (
-					<BookDrawer
-						book={selectedSidebarBook}
-						onClose={() => setIsBookSidebarOpen(false)}
-					/>
-				)}
-			</Drawer>
+				onClose={() => setIsBookSidebarOpen(false)}
+				returnFocusRef={gridContainerRef}
+				className={styles.drawer}
+			/>
 		</div>
 	);
 };

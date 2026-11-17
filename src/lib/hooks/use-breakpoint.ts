@@ -9,6 +9,9 @@ const BREAKPOINTS: Record<string, string> = {
 	xl: "88em",
 };
 
+/** Phones: where panels become full-screen sheets (the `xs` breakpoint). */
+export const PHONE_QUERY = "(max-width: 36em)";
+
 export function useMediaQuery(query: string): boolean {
 	const subscribe = useCallback(
 		(onChange: () => void) => {

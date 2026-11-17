@@ -13,6 +13,7 @@ export interface EditableTargetLike {
 	isContentEditable?: boolean;
 	/** An `<input>`'s type: checkboxes and buttons take no typing. */
 	type?: string;
+	value?: unknown;
 }
 
 export interface KeymapDispatchEventLike extends KeymapEventLike {
@@ -106,6 +107,24 @@ export const isEditableTarget = (
 		return !UNTYPED_INPUT_TYPES.has(target.type.toLowerCase());
 	return tagName !== undefined && EDITABLE_TAG_NAMES.has(tagName);
 };
+
+/**
+ * Whether an Escape closes an open inspector panel: on the first press
+ * wherever focus is (the grid beside it, the panel, the page), unless a
+ * menu, pop-up, sheet or alert is on top (`layerAbove`), or focus is in a
+ * field with text for Escape to clear first.
+ */
+export const panelTakesEscape = (
+	target: EditableTargetLike | null | undefined,
+	layerAbove: boolean,
+): boolean =>
+	!layerAbove &&
+	!(
+		isEditableTarget(target) &&
+		!target?.isContentEditable &&
+		typeof target?.value === "string" &&
+		target.value !== ""
+	);
 
 export interface KeyBinding {
 	chord: string;

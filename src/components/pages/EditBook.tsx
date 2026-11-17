@@ -32,6 +32,7 @@ import {
 	Tooltip,
 } from "@/components/ui";
 import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
+import { identifierDisplayName } from "@/lib/book-identifiers";
 import type {
 	CoverSize,
 	PreloadedCustomFields,
@@ -1140,7 +1141,7 @@ const EditBookForm = ({
 							{values.identifierList.map(({ label, id, value }, index) => (
 								<FormRow
 									key={id}
-									label={label.toUpperCase()}
+									label={identifierDisplayName(label)}
 									htmlFor={`edit-book-identifier-${id}`}
 								>
 									<div className={styles.inlineControls}>

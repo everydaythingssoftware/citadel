@@ -65,3 +65,14 @@ export const bookFormatRows = (files: BookFile[]): BookFormatRow[] =>
 			}),
 		),
 	].sort((a, b) => a.label.localeCompare(b.label));
+
+/** The file's own name, as Finder or the download would show it. */
+export const bookFileName = (row: BookFormatRow): string => {
+	if (row.kind === "open") return row.path.split(/[\\/]/).at(-1) ?? row.path;
+	try {
+		const segment = new URL(row.url).pathname.split("/").at(-1) ?? "";
+		return decodeURIComponent(segment) || row.label;
+	} catch {
+		return row.label;
+	}
+};
