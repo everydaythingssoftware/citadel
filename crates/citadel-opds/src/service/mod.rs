@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeSet,
     io,
-    net::{SocketAddr, TcpListener as StdTcpListener},
+    net::SocketAddr,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
@@ -15,10 +15,8 @@ use tokio::{sync::oneshot, task::JoinHandle};
 use super::{
     auth::OpdsBasicAuth,
     credential_store::OpdsCredentialStore,
-    network::{
-        advertised_url, plan_bindings, BindPolicy, InterfaceProvider, InterfaceSnapshot,
-        NetdevInterfaceProvider, WaitingReason,
-    },
+    host::{ListenSocket, OpdsHost},
+    network::{advertised_url, plan_bindings, BindPolicy, InterfaceSnapshot, WaitingReason},
     router, CatalogSource,
 };
 
@@ -87,79 +85,6 @@ impl Default for OpdsServiceStatus {
             error: None,
             config: None,
         }
-    }
-}
-
-trait InterfaceSnapshots: Send + Sync {
-    fn snapshot(&self) -> io::Result<Vec<InterfaceSnapshot>>;
-}
-
-struct NetdevInterfaceSnapshots;
-
-impl InterfaceSnapshots for NetdevInterfaceSnapshots {
-    fn snapshot(&self) -> io::Result<Vec<InterfaceSnapshot>> {
-        let mut provider = NetdevInterfaceProvider;
-        provider.snapshot()
-    }
-}
-
-trait ListenerFactory: Send + Sync {
-    fn start(
-        &self,
-        address: SocketAddr,
-        source: Arc<dyn CatalogSource>,
-        auth: OpdsBasicAuth,
-    ) -> io::Result<ServerTask>;
-}
-
-struct TcpListenerFactory;
-
-impl ListenerFactory for TcpListenerFactory {
-    fn start(
-        &self,
-        address: SocketAddr,
-        source: Arc<dyn CatalogSource>,
-        auth: OpdsBasicAuth,
-    ) -> io::Result<ServerTask> {
-        let listener = bind_socket(address)?;
-        listener.set_nonblocking(true)?;
-        let listener = tokio::net::TcpListener::from_std(listener)?;
-        let (shutdown, shutdown_receiver) = oneshot::channel();
-        let app = router(source, auth);
-        let task = tokio::spawn(async move {
-            let _ = tokio::spawn(async move {
-                let _ = axum::serve(listener, app)
-                    .with_graceful_shutdown(async move {
-                        let _ = shutdown_receiver.await;
-                    })
-                    .await;
-            })
-            .await;
-        });
-        Ok(ServerTask {
-            address,
-            shutdown: Some(shutdown),
-            task: Some(task),
-        })
-    }
-}
-
-fn bind_socket(address: SocketAddr) -> io::Result<StdTcpListener> {
-    if let SocketAddr::V6(v6) = address {
-        let socket = socket2::Socket::new(
-            socket2::Domain::IPV6,
-            socket2::Type::STREAM,
-            Some(socket2::Protocol::TCP),
-        )?;
-        // IPv4 and IPv6 wildcard binds must not overlap: keep the v6 socket
-        // IPv6-only on every platform (Linux defaults to dual-stack).
-        socket.set_only_v6(true)?;
-        socket.set_nonblocking(true)?;
-        socket.bind(&socket2::SockAddr::from(v6))?;
-        socket.listen(1024)?;
-        Ok(StdTcpListener::from(socket))
-    } else {
-        Ok(StdTcpListener::bind(address)?)
     }
 }
 
@@ -427,18 +352,18 @@ impl From<&SharingState> for OpdsServiceStatus {
 }
 
 struct ServiceDependencies {
-    interfaces: Arc<dyn InterfaceSnapshots>,
-    listeners: Arc<dyn ListenerFactory>,
+    host: Arc<dyn OpdsHost>,
     wait_retry_interval: Duration,
 }
 
-impl Default for ServiceDependencies {
-    fn default() -> Self {
-        Self {
-            interfaces: Arc::new(NetdevInterfaceSnapshots),
-            listeners: Arc::new(TcpListenerFactory),
-            wait_retry_interval: WAIT_RETRY_INTERVAL,
-        }
+impl ServiceDependencies {
+    fn snapshot(&self) -> io::Result<Vec<InterfaceSnapshot>> {
+        Ok(self
+            .host
+            .interfaces()?
+            .into_iter()
+            .map(InterfaceSnapshot::from)
+            .collect())
     }
 }
 
@@ -587,15 +512,20 @@ impl OpdsService {
     }
 
     /// Credentials are supplied by the host and held in memory; the host owns
-    /// persistence and calls `replace_credentials` when they change.
+    /// persistence and calls `replace_credentials` when they change. `host`
+    /// is the operating system's networking, such as `citadel_host::SystemHost`.
     pub fn with_ephemeral_credentials(
         source: Arc<dyn CatalogSource>,
         verifiers: Vec<citadel_core::store::DeviceKeyVerifier>,
+        host: Arc<dyn OpdsHost>,
     ) -> Self {
         let service = Self::with_dependencies_and_credentials(
             source,
             OpdsCredentialStore::new(verifiers),
-            ServiceDependencies::default(),
+            ServiceDependencies {
+                host,
+                wait_retry_interval: WAIT_RETRY_INTERVAL,
+            },
         );
         service.swap_auth_from_store();
         service
@@ -907,55 +837,42 @@ async fn attempt_bind(
     policy: BindPolicy,
     auth: OpdsBasicAuth,
 ) -> BindOutcome {
-    let desired = match target {
-        OpdsBindTarget::Addresses { .. } => match plan_bindings(&[], target, port, policy) {
-            super::network::BindPlan::Listen(sockets) => sockets,
-            super::network::BindPlan::Wait(reason) => return BindOutcome::Waiting(reason),
-        },
-        OpdsBindTarget::AllInterfaces => {
-            let mut sockets = BTreeSet::new();
-            sockets.insert(SocketAddr::new(
-                std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
-                port,
-            ));
-            sockets.insert(SocketAddr::new(
-                std::net::IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED),
-                port,
-            ));
-            sockets
+    let snapshot = if matches!(target, OpdsBindTarget::LocalNetworks) {
+        match dependencies.snapshot() {
+            Ok(snapshot) => snapshot,
+            // A hiccup while inspecting interfaces is indistinguishable
+            // from "no network yet": wait and retry.
+            Err(_) => return BindOutcome::Waiting(WaitingReason::NoLocalInterface),
         }
-        OpdsBindTarget::LocalNetworks => {
-            let snapshot = match dependencies.interfaces.snapshot() {
-                Ok(snapshot) => snapshot,
-                // A hiccup while inspecting interfaces is indistinguishable
-                // from "no network yet": wait and retry.
-                Err(_) => return BindOutcome::Waiting(WaitingReason::NoLocalInterface),
-            };
-            match plan_bindings(&snapshot, target, port, policy) {
-                super::network::BindPlan::Listen(sockets) => sockets,
-                super::network::BindPlan::Wait(reason) => return BindOutcome::Waiting(reason),
-            }
-        }
+    } else {
+        Vec::new()
+    };
+    let ipv6 = dependencies.host.supports_ipv6();
+    let desired = match plan_bindings(&snapshot, target, port, policy, ipv6) {
+        super::network::BindPlan::Listen(sockets) => sockets,
+        super::network::BindPlan::Wait(reason) => return BindOutcome::Waiting(reason),
     };
 
     let (death_sender, death_receiver) = tokio::sync::mpsc::unbounded_channel();
     let mut listeners = Listeners::new();
     let mut first_failure = None;
     for address in desired {
-        match dependencies
-            .listeners
-            .start(address, source.clone(), auth.clone())
-        {
-            Ok(mut task) => {
-                task.address = address;
-                let completion = task.task.take().expect("fresh listener has a task");
+        match dependencies.host.listen(
+            ListenSocket::for_address(address),
+            router(source.clone(), auth.clone()),
+        ) {
+            Ok(listening) => {
                 let notify = death_sender.clone();
+                let completion = listening.stopped;
                 let watched = tokio::spawn(async move {
                     let _ = completion.await;
                     let _ = notify.send(address);
                 });
-                task.task = Some(watched);
-                listeners.push(task);
+                listeners.push(ServerTask {
+                    address,
+                    shutdown: Some(listening.shutdown),
+                    task: Some(watched),
+                });
             }
             Err(error) => {
                 if first_failure.is_none() {
@@ -981,27 +898,30 @@ async fn attempt_bind(
 #[cfg(test)]
 mod tests {
     use std::{
-        net::{IpAddr, Ipv4Addr},
+        net::Ipv4Addr,
         sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     };
 
     use super::*;
-    use crate::network::{AddressScope, InterfaceAddress, OpdsInterfaceKind, OpdsInterfaceState};
+    use crate::{
+        host::{HostInterface, HostInterfaceType, Listening},
+        network::OpdsInterfaceState,
+    };
 
     struct FakeInterfaces {
-        current: Mutex<Result<Vec<InterfaceSnapshot>, io::ErrorKind>>,
+        current: Mutex<Result<Vec<HostInterface>, io::ErrorKind>>,
         calls: AtomicUsize,
     }
 
     impl FakeInterfaces {
-        fn new(snapshot: Vec<InterfaceSnapshot>) -> Self {
+        fn new(snapshot: Vec<HostInterface>) -> Self {
             Self {
                 current: Mutex::new(Ok(snapshot)),
                 calls: AtomicUsize::new(0),
             }
         }
 
-        fn set(&self, snapshot: Vec<InterfaceSnapshot>) {
+        fn set(&self, snapshot: Vec<HostInterface>) {
             *self.current.lock().unwrap() = Ok(snapshot);
         }
 
@@ -1010,8 +930,8 @@ mod tests {
         }
     }
 
-    impl InterfaceSnapshots for FakeInterfaces {
-        fn snapshot(&self) -> io::Result<Vec<InterfaceSnapshot>> {
+    impl FakeInterfaces {
+        fn snapshot(&self) -> io::Result<Vec<HostInterface>> {
             self.calls.fetch_add(1, Ordering::AcqRel);
             match &*self.current.lock().unwrap() {
                 Ok(snapshot) => Ok(snapshot.clone()),
@@ -1030,18 +950,10 @@ mod tests {
         no_ipv6: AtomicBool,
     }
 
-    impl ListenerFactory for FakeListeners {
-        fn start(
-            &self,
-            address: SocketAddr,
-            _source: Arc<dyn CatalogSource>,
-            _auth: OpdsBasicAuth,
-        ) -> io::Result<ServerTask> {
+    impl FakeListeners {
+        fn start(&self, address: SocketAddr) -> io::Result<Listening> {
             if let Some(kind) = *self.fail_every.lock().unwrap() {
                 return Err(io::Error::from(kind));
-            }
-            if address.is_ipv6() && self.no_ipv6.load(Ordering::Acquire) {
-                return Err(io::Error::from(io::ErrorKind::Unsupported));
             }
             if self.fail_bind.swap(false, Ordering::AcqRel) {
                 return Err(io::Error::from(io::ErrorKind::AddrInUse));
@@ -1061,11 +973,31 @@ mod tests {
                     tokio::time::sleep(Duration::from_millis(1)).await;
                 }
             });
-            Ok(ServerTask {
-                address,
-                shutdown: Some(shutdown),
-                task: Some(task),
+            Ok(Listening {
+                shutdown,
+                stopped: task,
             })
+        }
+    }
+
+    /// Stands in for the operating system: its interfaces, whether it has
+    /// IPv6, and the sockets it opens.
+    struct FakeHost {
+        interfaces: Arc<FakeInterfaces>,
+        listeners: Arc<FakeListeners>,
+    }
+
+    impl OpdsHost for FakeHost {
+        fn interfaces(&self) -> io::Result<Vec<HostInterface>> {
+            self.interfaces.snapshot()
+        }
+
+        fn supports_ipv6(&self) -> bool {
+            !self.listeners.no_ipv6.load(Ordering::Acquire)
+        }
+
+        fn listen(&self, socket: ListenSocket, _app: axum::Router) -> io::Result<Listening> {
+            self.listeners.start(socket.address)
         }
     }
 
@@ -1084,8 +1016,14 @@ mod tests {
     fn host_supplied_users_can_be_replaced() {
         use citadel_core::store::DeviceKeyVerifier;
         let reader = |name: &str| DeviceKeyVerifier::new(name, name, "secret");
-        let service =
-            OpdsService::with_ephemeral_credentials(missing_source(), vec![reader("one")]);
+        let service = OpdsService::with_ephemeral_credentials(
+            missing_source(),
+            vec![reader("one")],
+            Arc::new(FakeHost {
+                interfaces: Arc::new(FakeInterfaces::new(Vec::new())),
+                listeners: Arc::new(FakeListeners::default()),
+            }),
+        );
         service.replace_credentials(vec![reader("two"), reader("three")]);
         let names: Vec<_> = service
             .inner
@@ -1164,20 +1102,18 @@ mod tests {
         Arc::new(TestSource { library_id: None })
     }
 
-    fn lan(state: OpdsInterfaceState, address: [u8; 4]) -> InterfaceSnapshot {
-        InterfaceSnapshot {
-            id: "en0".to_string(),
-            label: "Ethernet".to_string(),
+    fn lan(state: OpdsInterfaceState, address: [u8; 4]) -> HostInterface {
+        HostInterface {
+            name: "en0".to_string(),
+            friendly_name: Some("Ethernet".to_string()),
             description: None,
-            state,
-            kind: OpdsInterfaceKind::Lan,
-            addresses: vec![InterfaceAddress {
-                address: IpAddr::V4(Ipv4Addr::from(address)),
-                scope: AddressScope::Private,
-                deprecated: false,
-                tentative: false,
-                duplicated: false,
-            }],
+            interface_type: HostInterfaceType::Ethernet,
+            up: state == OpdsInterfaceState::Up,
+            loopback: false,
+            point_to_point: false,
+            physical: true,
+            ipv4: vec![Ipv4Addr::from(address)],
+            ipv6: Vec::new(),
         }
     }
 
@@ -1191,15 +1127,17 @@ mod tests {
 
     fn service_with(
         source: Arc<dyn CatalogSource>,
-        interfaces: Arc<dyn InterfaceSnapshots>,
-        listeners: Arc<dyn ListenerFactory>,
+        interfaces: Arc<FakeInterfaces>,
+        listeners: Arc<FakeListeners>,
         wait_retry_interval: Duration,
     ) -> OpdsService {
         OpdsService::with_dependencies(
             source,
             ServiceDependencies {
-                interfaces,
-                listeners,
+                host: Arc::new(FakeHost {
+                    interfaces,
+                    listeners,
+                }),
                 wait_retry_interval,
             },
         )
@@ -1526,42 +1464,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn real_factory_binds_dual_wildcards_on_one_port() {
-        if StdTcpListener::bind((std::net::Ipv6Addr::UNSPECIFIED, 0)).is_err() {
-            // No IPv6 on this host, so nothing to observe. This guards the
-            // IPV6_V6ONLY in `bind_socket`: without it Linux's dual-stack
-            // default makes the second bind fail, and the fallback below
-            // would hide that by serving IPv4 alone.
-            return;
-        }
-        let probe = StdTcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let port = probe.local_addr().unwrap().port();
-        drop(probe);
-
-        let factory = TcpListenerFactory;
-        let v4 = factory
-            .start(
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
-                missing_source(),
-                OpdsBasicAuth::new(),
-            )
-            .expect("v4 wildcard bind");
-        let v6 = factory
-            .start(
-                SocketAddr::new(IpAddr::V6("::".parse().unwrap()), port),
-                missing_source(),
-                OpdsBasicAuth::new(),
-            )
-            .expect("v6 wildcard bind (V6ONLY must be set)");
-
-        // Both sockets answer; then both shut down cleanly.
-        let _ = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
-        Listeners(vec![v4, v6]).drain().await;
-        let probe2 = StdTcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
-        drop(probe2);
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
     async fn all_interfaces_requires_credentials_until_auth_allows_it() {
         let source = test_source();
         let interfaces = Arc::new(FakeInterfaces::new(Vec::new()));
@@ -1780,31 +1682,5 @@ mod tests {
         assert_eq!(service.status().await.state, OpdsLifecycleState::Running);
         assert!(!listeners.active.lock().unwrap().is_empty());
         service.stop().await;
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn restarting_after_a_client_connection_releases_the_port() {
-        let probe = StdTcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let port = probe.local_addr().unwrap().port();
-        drop(probe);
-
-        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
-        let factory = TcpListenerFactory;
-        let source = missing_source();
-        let mut first = factory
-            .start(address, source.clone(), OpdsBasicAuth::new())
-            .unwrap();
-        // A client connects and the SERVER closes first: this port now has a
-        // TIME_WAIT-eligible connection on the server side.
-        let client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
-        let _ = first.shutdown.take().unwrap().send(());
-        let _ = first.task.take().unwrap().await;
-        drop(client);
-
-        // Immediate rebind must succeed (SO_REUSEADDR on the socket2 path).
-        let second = factory
-            .start(address, source, OpdsBasicAuth::new())
-            .expect("rebind after server-side close must not hit TIME_WAIT");
-        drop(second);
     }
 }

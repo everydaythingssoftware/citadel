@@ -687,7 +687,11 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         move || served.library_id()
     })?;
     let readers = Arc::new(readers);
-    let service = OpdsService::with_ephemeral_credentials(source.clone(), users.clone());
+    let service = OpdsService::with_ephemeral_credentials(
+        source.clone(),
+        users.clone(),
+        Arc::new(citadel_host::SystemHost),
+    );
     let mut status_changes = service.subscribe();
     service.refresh_credentials_with({
         let readers = readers.clone();
