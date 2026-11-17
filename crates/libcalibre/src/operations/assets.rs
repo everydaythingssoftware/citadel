@@ -120,7 +120,6 @@ mod tests {
     }
 }
 
-
 /// A book file or cover found on disk and confirmed to be inside the
 /// library folder. Returned by [`Library::resolve_book_file`] and
 /// [`Library::resolve_book_cover`].
