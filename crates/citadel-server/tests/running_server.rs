@@ -223,7 +223,7 @@ async fn serves_the_catalog_and_books_to_signed_in_readers_and_follows_admin_cha
     let config = config_file(
         directory.path(),
         &format!(
-            r#"stateDirectory = "{}"
+            r#"stateDirectory = '{}'
 
 [api]
 listen = "127.0.0.1:8081"
