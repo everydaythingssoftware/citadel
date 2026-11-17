@@ -101,18 +101,28 @@ pub struct MetadataClient {
 }
 
 impl MetadataClient {
-    pub fn new(options: ClientOptions) -> Result<Self, MetadataError> {
-        Self::with_endpoints(options, Endpoints::default())
+    /// `http` makes the requests, such as `citadel_host::ReqwestHttp`.
+    pub fn new(
+        options: ClientOptions,
+        http: std::sync::Arc<dyn citadel_core::http::HttpClient>,
+    ) -> Result<Self, MetadataError> {
+        Self::with_endpoints(options, Endpoints::default(), http)
     }
 
     pub fn with_endpoints(
         options: ClientOptions,
         endpoints: Endpoints,
+        http: std::sync::Arc<dyn citadel_core::http::HttpClient>,
     ) -> Result<Self, MetadataError> {
         let user_agent = user_agent(&options);
         Ok(Self {
-            http: http::Http::new(&user_agent)?,
-            covers: covers::Covers::new(&user_agent, endpoints.covers.clone(), options.covers)?,
+            http: http::Http::new(http.clone(), &user_agent),
+            covers: covers::Covers::new(
+                http,
+                &user_agent,
+                endpoints.covers.clone(),
+                options.covers,
+            ),
             guards: guard::Guards::new(),
             endpoints,
             misses: Mutex::default(),
@@ -371,6 +381,7 @@ mod tests {
                 openlibrary,
                 ..Endpoints::default()
             },
+            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
         )
         .unwrap()
     }
@@ -559,6 +570,7 @@ mod tests {
                 covers: policy,
                 ..Endpoints::default()
             },
+            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
         )
         .unwrap()
     }
@@ -652,6 +664,7 @@ mod tests {
                 covers: loopback_policy(),
                 ..Endpoints::default()
             },
+            std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
         )
         .unwrap();
         let books = client

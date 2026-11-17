@@ -11,10 +11,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use citadel_core::http::{HttpClient, HttpRequest};
 use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, ImageReader, Limits};
-use reqwest::Url;
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
+use url::Url;
 
 use crate::{
     error::{MetadataError, MetadataErrorKind},
@@ -128,7 +129,8 @@ impl CoverPolicy {
 }
 
 pub(crate) struct Covers {
-    http: reqwest::Client,
+    http: Arc<dyn HttpClient>,
+    user_agent: String,
     policy: CoverPolicy,
     options: CoverOptions,
     slots: Semaphore,
@@ -138,25 +140,20 @@ pub(crate) struct Covers {
 
 impl Covers {
     pub fn new(
+        http: Arc<dyn HttpClient>,
         user_agent: &str,
         policy: CoverPolicy,
         options: CoverOptions,
-    ) -> Result<Self, MetadataError> {
-        // Redirects are followed by hand so every hop is checked.
-        let http = reqwest::Client::builder()
-            .user_agent(user_agent)
-            .connect_timeout(Duration::from_secs(5))
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|e| MetadataError::upstream(format!("Failed to build HTTP client: {e}")))?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             http,
+            user_agent: user_agent.to_string(),
             slots: Semaphore::new(options.max_concurrent_fetches.max(1)),
             policy,
             options,
             registry: Mutex::default(),
             cache: Mutex::default(),
-        })
+        }
     }
 
     /// Give each result with an allowed image a cover ID. Run on every
@@ -253,33 +250,34 @@ impl Covers {
                     "The provider sent the cover from a host Citadel doesn't fetch from.",
                 ));
             }
+            // Redirects are followed here, not by the client, so every hop
+            // is checked.
             let mut response = self
                 .http
-                .get(url.clone())
-                .send()
+                .send(
+                    HttpRequest::get(url.as_str())
+                        .header("user-agent", self.user_agent.clone())
+                        .follow_redirects(0),
+                )
                 .await
                 .map_err(|_| MetadataError::upstream("Failed to download the cover."))?;
-            let status = response.status();
-            if status.is_redirection() {
+            let status = response.status;
+            if response.is_redirect() {
                 let location = response
-                    .headers()
-                    .get(reqwest::header::LOCATION)
-                    .and_then(|value| value.to_str().ok())
+                    .header("location")
                     .ok_or_else(|| MetadataError::upstream("The cover redirect had no target."))?;
                 url = url
                     .join(location)
                     .map_err(|_| MetadataError::upstream("The cover redirect was invalid."))?;
                 continue;
             }
-            if !status.is_success() {
+            if !response.is_success() {
                 return Err(MetadataError::upstream(format!(
                     "The cover request returned status {status}"
                 )));
             }
             let is_image = response
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
+                .header("content-type")
                 .is_none_or(|value| value.trim().to_ascii_lowercase().starts_with("image/"));
             if !is_image {
                 return Err(MetadataError::upstream(

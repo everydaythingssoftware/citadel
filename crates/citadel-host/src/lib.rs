@@ -1,6 +1,7 @@
-//! The operating system's side of [`OpdsHost`]. It reports what the computer
-//! has and opens what it is asked to; every decision about what to listen on
-//! is made in `citadel-opds`, where it can be tested without a network.
+//! The operating system's side of Citadel's seams: [`SystemHost`] for
+//! [`OpdsHost`] and [`ReqwestHttp`] for `citadel_core::http::HttpClient`. They
+//! report what the computer has and do what they are asked; every decision is
+//! made in the core crates, where it can be tested without a network.
 use std::{
     io,
     net::{SocketAddr, TcpListener},
@@ -11,6 +12,11 @@ use citadel_opds::host::{
 };
 use netdev::interface::types::InterfaceType;
 use tokio::sync::oneshot;
+
+mod http;
+mod in_process;
+pub use http::ReqwestHttp;
+pub use in_process::{InProcessHost, RouterHttp};
 
 pub struct SystemHost;
 

@@ -13,10 +13,13 @@ use tauri::{
 pub const COVER_SCHEME: &str = "citadel-cover";
 
 pub fn client() -> citadel_metadata::MetadataClient {
-    citadel_metadata::MetadataClient::new(citadel_metadata::ClientOptions {
-        version: env!("CARGO_PKG_VERSION").into(),
-        ..Default::default()
-    })
+    citadel_metadata::MetadataClient::new(
+        citadel_metadata::ClientOptions {
+            version: env!("CARGO_PKG_VERSION").into(),
+            ..Default::default()
+        },
+        std::sync::Arc::new(citadel_host::ReqwestHttp::new()),
+    )
     .expect("metadata HTTP client builds")
 }
 

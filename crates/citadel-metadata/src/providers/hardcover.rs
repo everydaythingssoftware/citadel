@@ -118,23 +118,20 @@ async fn execute_graphql(
     api_key: &str,
     body: serde_json::Value,
 ) -> Result<serde_json::Value, MetadataError> {
-    let response = http::send(
-        http.post(api_url, TIMEOUT)
-            .header("authorization", make_auth_header(api_key))
-            .json(&body),
-    )
-    .await
-    .map_err(|error| match error.kind {
-        crate::MetadataErrorKind::Upstream => {
-            MetadataError::upstream(format!("Hardcover: {}", error.message))
-        }
-        _ => error,
-    })?;
-
-    let body = response
-        .text()
+    let response = http
+        .send(
+            http.post_json(api_url, TIMEOUT, &body)
+                .header("authorization", make_auth_header(api_key)),
+        )
         .await
-        .map_err(|e| MetadataError::upstream(format!("Failed to read response: {}", e)))?;
+        .map_err(|error| match error.kind {
+            crate::MetadataErrorKind::Upstream => {
+                MetadataError::upstream(format!("Hardcover: {}", error.message))
+            }
+            _ => error,
+        })?;
+
+    let body = http::text(response).await?;
     log::debug!("Hardcover API: body_len={}", body.len());
 
     let json: serde_json::Value = serde_json::from_str(&body)

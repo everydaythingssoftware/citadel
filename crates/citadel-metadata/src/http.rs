@@ -1,4 +1,6 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
+
+use citadel_core::http::{HttpClient, HttpErrorKind, HttpRequest, HttpResponse};
 
 use crate::error::MetadataError;
 
@@ -6,41 +8,47 @@ use crate::error::MetadataError;
 /// provider for hours.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(10 * 60);
 const DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(30);
+const MAX_REDIRECTS: u8 = 3;
 
-/// One pooled client for every provider. Credentials are attached per
-/// request, never stored on the client, so users' keys can't leak into each
-/// other's requests.
+/// One client for every provider. Credentials are attached per request,
+/// never stored on the client, so users' keys can't leak into each other's
+/// requests.
 #[derive(Clone)]
 pub(crate) struct Http {
-    client: reqwest::Client,
+    client: Arc<dyn HttpClient>,
+    user_agent: String,
 }
 
 impl Http {
-    pub fn new(user_agent: &str) -> Result<Self, MetadataError> {
-        let client = reqwest::Client::builder()
-            .user_agent(user_agent)
-            .connect_timeout(Duration::from_secs(5))
-            .redirect(reqwest::redirect::Policy::limited(3))
-            .build()
-            .map_err(|e| MetadataError::upstream(format!("Failed to build HTTP client: {e}")))?;
-        Ok(Self { client })
+    pub fn new(client: Arc<dyn HttpClient>, user_agent: &str) -> Self {
+        Self {
+            client,
+            user_agent: user_agent.to_string(),
+        }
     }
 
-    pub fn get(&self, url: &str, timeout: Duration) -> reqwest::RequestBuilder {
-        self.client.get(url).timeout(timeout)
+    pub fn get(&self, url: &str, timeout: Duration) -> HttpRequest {
+        self.identified(HttpRequest::get(url), timeout)
     }
 
-    pub fn post(&self, url: &str, timeout: Duration) -> reqwest::RequestBuilder {
-        self.client.post(url).timeout(timeout)
+    pub fn post_json(&self, url: &str, timeout: Duration, body: &serde_json::Value) -> HttpRequest {
+        self.identified(
+            HttpRequest::post(url, body.to_string().into_bytes()),
+            timeout,
+        )
+        .header("content-type", "application/json")
+    }
+
+    fn identified(&self, request: HttpRequest, timeout: Duration) -> HttpRequest {
+        request
+            .header("user-agent", self.user_agent.clone())
+            .timeout(timeout)
+            .follow_redirects(MAX_REDIRECTS)
     }
 
     /// GET a URL and return its body as text.
     pub async fn get_text(&self, url: &str, timeout: Duration) -> Result<String, MetadataError> {
-        let response = send(self.get(url, timeout)).await?;
-        response
-            .text()
-            .await
-            .map_err(|e| MetadataError::upstream(format!("Failed to read response: {e}")))
+        text(self.send(self.get(url, timeout)).await?).await
     }
 
     /// GET a URL and decode its body as JSON into `T`.
@@ -49,59 +57,55 @@ impl Http {
         url: &str,
         timeout: Duration,
     ) -> Result<T, MetadataError> {
-        let response = send(self.get(url, timeout)).await?;
-        response
-            .json::<T>()
+        let response = self.send(self.get(url, timeout)).await?;
+        let bytes = response
+            .bytes()
             .await
+            .map_err(|e| MetadataError::upstream(format!("Failed to read response: {e}")))?;
+        serde_json::from_slice(&bytes)
             .map_err(|e| MetadataError::upstream(format!("Failed to parse response: {e}")))
     }
-}
 
-/// Send a request, mapping transport, timeout, rate-limit and non-2xx
-/// responses to a descriptive error. Timeouts get a distinct message so the
-/// UI can suggest trying another source.
-pub(crate) async fn send(
-    request: reqwest::RequestBuilder,
-) -> Result<reqwest::Response, MetadataError> {
-    let response = request.send().await.map_err(|e| {
-        if e.is_timeout() {
-            MetadataError::upstream("The source timed out — try another source.")
-        } else {
-            MetadataError::upstream(format!("Failed to reach source: {}", without_url(&e)))
+    /// Send a request, mapping transport, timeout, rate-limit and non-2xx
+    /// responses to a descriptive error. Timeouts get a distinct message so
+    /// the UI can suggest trying another source.
+    pub async fn send(&self, request: HttpRequest) -> Result<HttpResponse, MetadataError> {
+        let response = self.client.send(request).await.map_err(|e| {
+            if e.kind == HttpErrorKind::Timeout {
+                MetadataError::upstream("The source timed out — try another source.")
+            } else {
+                MetadataError::upstream(format!("Failed to reach source: {e}"))
+            }
+        })?;
+
+        let status = response.status;
+        if status == 429 {
+            return Err(MetadataError::rate_limited(retry_after(&response)));
         }
-    })?;
-
-    let status = response.status();
-    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        return Err(MetadataError::rate_limited(retry_after(&response)));
+        if status == 401 || status == 403 {
+            return Err(MetadataError::unauthorized(
+                "The source rejected the API key — check it in settings.",
+            ));
+        }
+        if !response.is_success() {
+            return Err(MetadataError::upstream(format!(
+                "Source returned status {status}"
+            )));
+        }
+        Ok(response)
     }
-    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return Err(MetadataError::unauthorized(
-            "The source rejected the API key — check it in settings.",
-        ));
-    }
-    if !status.is_success() {
-        return Err(MetadataError::upstream(format!(
-            "Source returned status {status}"
-        )));
-    }
-    Ok(response)
 }
 
-/// Request URLs can carry a user's query; keep them out of error messages.
-fn without_url(error: &reqwest::Error) -> String {
-    let mut message = error.to_string();
-    if let Some(url) = error.url() {
-        message = message.replace(&format!(" for url ({url})"), "");
-    }
-    message
-}
-
-fn retry_after(response: &reqwest::Response) -> Duration {
+pub(crate) async fn text(response: HttpResponse) -> Result<String, MetadataError> {
     response
-        .headers()
-        .get(reqwest::header::RETRY_AFTER)
-        .and_then(|value| value.to_str().ok())
+        .text()
+        .await
+        .map_err(|e| MetadataError::upstream(format!("Failed to read response: {e}")))
+}
+
+fn retry_after(response: &HttpResponse) -> Duration {
+    response
+        .header("retry-after")
         .and_then(|value| value.trim().parse::<u64>().ok())
         .map(Duration::from_secs)
         .unwrap_or(DEFAULT_RETRY_AFTER)

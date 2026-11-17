@@ -27,6 +27,7 @@ pub use url::{path_to_asset_url, AssetUrlBuilder, BookUrlBuilder, HttpUrlBuilder
 pub mod contracts;
 pub mod error;
 pub mod genres;
+pub mod http;
 pub mod library;
 pub mod password;
 pub mod staging;
