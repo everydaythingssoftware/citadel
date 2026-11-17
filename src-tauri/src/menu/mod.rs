@@ -254,6 +254,7 @@ pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) {
         .title("Settings")
         .inner_size(680.0, 520.0)
         .resizable(false)
+        .maximizable(false)
         .minimizable(false)
         .visible(false)
         .background_color(background)

@@ -67,11 +67,9 @@ const IN_BROWSER: readonly TNamedCommand[] = [
 	"book-delete",
 ];
 
-/** Only the macOS menu bar has these. */
-const MENU_ONLY: readonly TNamedCommand[] = ["toggle-sidebar"];
-
 /** Off Apple keyboards: Windows and Linux's own chord instead of the Mac's. */
 const OFF_MAC_CHORD: Partial<Record<TNamedCommand, string>> = {
+	"toggle-sidebar": "mod+shift+l",
 	"go-back": "alt+arrowleft",
 	"go-forward": "alt+arrowright",
 	"book-delete": "delete",
@@ -92,8 +90,7 @@ const named = (
 ): boolean => typeof command === "string" && list.includes(command);
 
 const boundHere = (command: TShortcutCommand, env: ShortcutEnvironment) =>
-	menuBarOwnsChords(env) ||
-	(!named(command, MENU_ONLY) && (env.desktop || named(command, IN_BROWSER)));
+	menuBarOwnsChords(env) || env.desktop || named(command, IN_BROWSER);
 
 const chordHere = ({ command, chord }: Shortcut, os: OperatingSystem) =>
 	(!usesCommandKey(os) && typeof command === "string"
@@ -238,3 +235,18 @@ export const bookShortcutHint = (
 			})
 		: none();
 };
+
+interface WindowShortcut {
+	command: "toggle-fullscreen" | "close-settings";
+	chord: string;
+}
+
+export const windowShortcuts = (
+	env: ShortcutEnvironment,
+	isMain: boolean,
+): WindowShortcut[] =>
+	!env.desktop || env.os === "macos"
+		? []
+		: isMain
+			? [{ command: "toggle-fullscreen", chord: "f11" }]
+			: [{ command: "close-settings", chord: "mod+w" }];
