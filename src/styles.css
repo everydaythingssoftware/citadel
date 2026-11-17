@@ -341,6 +341,39 @@ a:any-link {
 	color: inherit;
 }
 
+/*
+ * Chrome is not text: drag-selecting or Select All never highlights
+ * labels, buttons or toolbars. Fields, editable text and real content (a
+ * book's description, metadata values, anything a person would copy) opt
+ * back in with .ctd-selectable or data-selectable.
+ */
+:root {
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable]:not([contenteditable="false"]),
+.ctd-selectable,
+[data-selectable] {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+/* Selectable text gets the I-beam over its glyphs, as an NSTextField does. */
+:is(.ctd-selectable, [data-selectable]),
+:is(.ctd-selectable, [data-selectable]) :not(a, button, [role="button"]) {
+	cursor: auto;
+}
+
+/* Links and images don't drag out as web content; anything that should
+   drag says so with draggable="true". */
+:is(a, img):not([draggable="true"]) {
+	-webkit-user-drag: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
@@ -355,45 +388,56 @@ a:any-link {
 }
 
 /*
- * macOS overlay scrollbars: the thumb floats inset from the container edge
- * (transparent border + padding-box clip), instead of a web scrollbar
- * touching the panel's rounded corner.
+ * Scrollbars float over content and show only while it scrolls.
+ * - macOS and mobile: the system's own overlay scrollbars, untouched, so
+ *   macOS's "Show scroll bars" setting decides (no ::-webkit-scrollbar
+ *   styling here: it would force classic, always-visible bars).
+ * - Elsewhere: a thin bar whose thumb is transparent until the scroller is
+ *   hovered or scrolling (data-scrolling, set by overlay-scrollbars.ts), so
+ *   it never paints over a still page. Scrollers that can grow into overflow
+ *   mark themselves .ctd-scroller to reserve the thin gutter up front, so
+ *   content never shifts when the bar arrives.
  */
-::-webkit-scrollbar {
-	width: 14px;
-	height: 14px;
-	background: transparent;
+:root:is(
+		[data-platform="windows"],
+		[data-platform="linux"],
+		[data-platform="other"]
+	)
+	* {
+	scrollbar-width: thin;
+	scrollbar-color: transparent transparent;
 }
 
-::-webkit-scrollbar-track {
-	background: transparent;
+:root:is(
+		[data-platform="windows"],
+		[data-platform="linux"],
+		[data-platform="other"]
+	)
+	:is(:hover, [data-scrolling]) {
+	scrollbar-color: var(--ctd-scrollbar-thumb) transparent;
 }
 
-::-webkit-scrollbar-thumb {
-	background-color: var(--ctd-scrollbar-thumb);
-	background-clip: padding-box;
-	border: 4px solid transparent;
-	border-radius: 8px;
-	min-height: 40px;
-}
-
-::-webkit-scrollbar-corner {
-	background: transparent;
+:root:is(
+		[data-platform="windows"],
+		[data-platform="linux"],
+		[data-platform="other"]
+	)
+	.ctd-scroller {
+	scrollbar-gutter: stable;
 }
 
 /* ==========================================================================
  * Interactivity polish (additive block; keep at the end of this file).
  * Hover backgrounds and larger touch targets; cursors are governed by the
- * AppKit-style policy at the top of this file. Token blocks above are off
+ * AppKit-style policy just below. Token blocks above are off
  * limits.
  * ========================================================================== */
 
 /*
- * Cursor policy: a deliberate departure from strict AppKit (which keeps the
- * arrow cursor on controls; interactivity is signaled by hover states and
- * static design instead. Text fields keep the text beam.
- * These rules must stay AFTER the `* { cursor: default }` reset earlier in
- * this file so they win on source order / specificity.
+ * Cursor policy, as in AppKit: the arrow everywhere, buttons and links
+ * included (no pointing hand); hover states and the design itself show what
+ * is interactive. Text fields keep the I-beam. These rules must stay after
+ * the `* { cursor: default }` reset above so they win on source order.
  */
 input[type="text"],
 input[type="search"],

@@ -69,7 +69,9 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 					)}
 				</div>
 				<div className={styles.heading}>
-					<h2 className={styles.title}>{book.title}</h2>
+					<h2 className={styles.title} data-selectable="">
+						{book.title}
+					</h2>
 					<Byline book={book} onClose={onClose} />
 					<Actions book={book} className={styles.actions} />
 				</div>
@@ -255,6 +257,7 @@ const Description = ({ html }: { html: string | null }) => {
 			<div
 				ref={textRef}
 				className={clsx("description-html", styles.descriptionText)}
+				data-selectable=""
 				data-clamped={(!expanded && overflows) || undefined}
 				data-expanded={expanded || undefined}
 				// biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized with DOMPurify
@@ -419,7 +422,9 @@ const IdentifierRow = ({ identifier }: { identifier: Identifier }) => {
 						rel="noreferrer"
 						title={`Open on ${name}`}
 					>
-						<span className={styles.value}>{identifier.value}</span>
+						<span className={styles.value} data-selectable="">
+							{identifier.value}
+						</span>
 						<svg
 							className={styles.arrow}
 							viewBox="0 0 12 12"
@@ -434,7 +439,9 @@ const IdentifierRow = ({ identifier }: { identifier: Identifier }) => {
 						</svg>
 					</a>
 				) : (
-					<span className={styles.value}>{identifier.value}</span>
+					<span className={styles.value} data-selectable="">
+						{identifier.value}
+					</span>
 				)}
 				{!url && platform.capabilities.canCopyToClipboard && (
 					<Tooltip label={copied ? "Copied" : `Copy ${name}`} openDelay={200}>

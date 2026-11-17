@@ -5,9 +5,11 @@ import type {
 	UpdateNowOutcome,
 } from "@/bindings";
 import type { SoftwareUpdateState } from "@/lib/updates/software-update";
+import type { OperatingSystem } from "./os";
 import type { SettingsManager } from "./settings/types";
 
 export interface PlatformAdapter {
+	readonly os: OperatingSystem;
 	readonly capabilities: PlatformCapabilities;
 	readonly dialogs: DialogAdapter;
 	readonly clipboard: ClipboardAdapter;

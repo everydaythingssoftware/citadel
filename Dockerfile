@@ -16,7 +16,10 @@ FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION} AS web
 WORKDIR /src
 COPY package.json bun.lockb ./
 RUN bun install --frozen-lockfile
-COPY . .
+# Only what the web build reads, so a Rust change doesn't rebuild the web app.
+COPY index.html vite.config.ts tsconfig.json tsconfig.node.json postcss.config.cjs ./
+COPY tools/testing tools/testing
+COPY src src
 RUN bun run build:web
 
 # The full image already has SQLite's and OpenSSL's headers and pkg-config.
@@ -26,7 +29,11 @@ ARG RUST_VERSION
 # clippy and rustfmt, which a release build doesn't need.
 ENV RUSTUP_TOOLCHAIN=${RUST_VERSION}
 WORKDIR /src
-COPY . .
+# Only the Cargo workspace, so a web change doesn't touch the server build.
+# src-tauri is a workspace member and must be present, though it isn't built.
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates crates
+COPY src-tauri src-tauri
 ARG CITADEL_VERSION=
 ARG CITADEL_BUILD_COMMIT=
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \

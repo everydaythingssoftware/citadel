@@ -1,6 +1,15 @@
+import type { OperatingSystem } from "../os";
+
 /** What the system's file manager is called, for "Show in …" labels. */
-export const fileManagerNameFor = (userAgent: string): string => {
-	if (/Macintosh|Mac OS X/.test(userAgent)) return "Finder";
-	if (/Windows/.test(userAgent)) return "File Explorer";
-	return "File Manager";
+export const fileManagerNameFor = (os: OperatingSystem): string => {
+	switch (os) {
+		case "macos":
+			return "Finder";
+		case "windows":
+			return "File Explorer";
+		case "ios":
+			return "Files";
+		default:
+			return "File Manager";
+	}
 };

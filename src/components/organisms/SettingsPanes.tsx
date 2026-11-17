@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
@@ -186,7 +187,7 @@ export const SettingsPanes = () => {
 				role="tabpanel"
 				id={panelId(activeTab)}
 				aria-labelledby={tabId(activeTab)}
-				className={classes.panel}
+				className={clsx(classes.panel, "ctd-scroller")}
 			>
 				<div className={classes.panelInner}>
 					{activeTab === "general" && <GeneralTab />}
@@ -441,7 +442,9 @@ const PublicUrlLine = ({
 }: PublicUrlLineProps) => (
 	<li className={classes.urlLine} data-always={always || undefined}>
 		<GlobeGlyph />
-		<span className={classes.urlText}>{url}</span>
+		<span className={classes.urlText} data-selectable>
+			{url}
+		</span>
 		{current && <span className={classes.currentPill}>current</span>}
 		{always && (
 			<Tooltip label="Always included" openDelay={150}>

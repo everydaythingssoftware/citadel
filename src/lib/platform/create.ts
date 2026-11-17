@@ -11,6 +11,7 @@ import { createTauriDialogs } from "./dialogs/tauri";
 import { createWebDialogs } from "./dialogs/web";
 import { createTauriFileOpener } from "./file-opener/tauri";
 import { createWebFileOpener } from "./file-opener/web";
+import { detectOperatingSystem } from "./os";
 import { createTauriSettingsManager } from "./settings/tauri";
 import { defaultSettings } from "./settings/types";
 import { createWebSettingsManager } from "./settings/web";
@@ -19,6 +20,7 @@ import { createTauriWindow } from "./window/tauri";
 import { createWebWindow } from "./window/web";
 
 export const createTauriPlatform = (): PlatformAdapter => ({
+	os: detectOperatingSystem(),
 	capabilities: {
 		supportsNativeWindows: true,
 		canPickLocalFiles: true,
@@ -40,6 +42,7 @@ export const createTauriPlatform = (): PlatformAdapter => ({
 });
 
 export const createWebPlatform = (): PlatformAdapter => ({
+	os: detectOperatingSystem(),
 	capabilities: {
 		supportsNativeWindows: false,
 		canPickLocalFiles: false,

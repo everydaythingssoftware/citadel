@@ -87,12 +87,9 @@
 .panel {
 	flex: 1;
 	min-height: 0;
-	/* Always lay out the scrollbar track (not `auto`) so the centered content
-	   never shifts sideways when overflow appears, e.g. when a provider row
-	   expands. `scrollbar-gutter: stable` is recognised but not effective in
-	   this WebView, so we force the track instead. */
-	overflow-y: scroll;
-	scrollbar-gutter: stable;
+	/* Overlay scrollbars on macOS; .ctd-scroller keeps a stable gutter
+	   elsewhere, so content never shifts when a provider row expands. */
+	overflow-y: auto;
 	padding: 1.25rem;
 }
 

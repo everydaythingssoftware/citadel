@@ -402,7 +402,7 @@ export const TagsInput = ({
 			)}
 			{control}
 			{hasError && (
-				<div id={errorId} className={styles.error}>
+				<div id={errorId} className={styles.error} data-selectable>
 					{error}
 				</div>
 			)}
