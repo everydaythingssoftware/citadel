@@ -782,7 +782,7 @@ async fn claim_chunk_when_free(
     id: &str,
     owner: &Owner,
     offset: u64,
-) -> Result<(u64, MIMETYPE, String, String), ApiFailure> {
+) -> Result<(u64, MimeType, String, String), ApiFailure> {
     let waiting_until = tokio::time::Instant::now() + IDLE_TIMEOUT;
     loop {
         let released = staging.released.notified();
@@ -813,7 +813,7 @@ async fn claim_chunk_when_free(
 fn claim_chunk(
     upload: &mut Upload,
     offset: u64,
-) -> Result<(u64, MIMETYPE, String, String), ApiFailure> {
+) -> Result<(u64, MimeType, String, String), ApiFailure> {
     if upload.received == upload.size {
         return Err(failure(
             LibraryErrorCode::Conflict,
