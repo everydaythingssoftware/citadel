@@ -5,7 +5,7 @@
 }
 
 .label {
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	color: var(--ctd-ink-soft);
 }
 
@@ -47,7 +47,7 @@
 }
 
 .glyph {
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	line-height: 1;
 }
 
@@ -69,7 +69,7 @@
 	max-height: 360px;
 	overflow-y: auto;
 	padding: 10px 12px;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.45;
 	color: var(--ctd-control-text);
 	cursor: text;

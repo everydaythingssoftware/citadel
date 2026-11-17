@@ -66,9 +66,10 @@ Calibre's cluttered chrome, generic web-app SaaS.
 - **Type scale**: font sizes come from the `--ctd-text-*` steps in
   `src/styles.css`, in rem: `2xs` 11px, `xs` 12px, `sm` 13px, `base` 14px,
   `md` 15px, `lg` 17px, `xl` 22px, `2xl` 24px (at the default). Controls,
-  menus and dialog text are `sm` (menus are `md` on touch screens). New CSS
+  menus and dialog text are `sm` (menus are `md` on touch screens). CSS
   uses a step, never a raw px or ad-hoc rem size; a size between steps moves
-  to the nearest one.
+  to the nearest one. An icon is sized by its width and height, not by a
+  font size.
 - **No ALL CAPS anywhere**: no `text-transform: uppercase`, no small caps, no
   wide-tracked eyebrow labels. Text is written the way it shows ("Current"
   in a pill, not "current" uppercased by CSS). Acronyms (ISBN, EPUB) stay as

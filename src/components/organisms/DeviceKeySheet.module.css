@@ -12,7 +12,7 @@
 
 .note {
 	margin: 0.125rem 0 0.5rem;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
 }
@@ -27,7 +27,7 @@
 .password {
 	overflow-wrap: anywhere;
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: 1.5rem;
+	font-size: var(--ctd-text-2xl);
 	font-weight: 500;
 	line-height: 1.25;
 	letter-spacing: 0.02em;
@@ -100,7 +100,7 @@
 	grid-template-columns: 5rem minmax(0, 1fr);
 	gap: 0.375rem 0.75rem;
 	margin: 0;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.4;
 }
 

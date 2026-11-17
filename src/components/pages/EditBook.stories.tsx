@@ -1,10 +1,22 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { LibraryAuthor, LibraryBook } from "@/bindings";
+import { PlatformProvider } from "@/lib/platform/context";
+import { createWebPlatform } from "@/lib/platform/create";
+import type { PlatformAdapter } from "@/lib/platform/types";
 import { BookPage } from "./EditBook";
+
+const MOCK_PLATFORM: PlatformAdapter = createWebPlatform();
 
 const meta: Meta<typeof BookPage> = {
 	title: "Components/Pages/EditBook",
 	component: BookPage,
+	decorators: [
+		(Story) => (
+			<PlatformProvider value={MOCK_PLATFORM}>
+				<Story />
+			</PlatformProvider>
+		),
+	],
 };
 export default meta;
 

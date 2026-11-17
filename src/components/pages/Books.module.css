@@ -157,7 +157,7 @@
 }
 
 .shelfFormHint {
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 }
 
@@ -181,6 +181,6 @@
 }
 
 .footerText {
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 }

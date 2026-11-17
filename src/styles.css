@@ -299,10 +299,9 @@
 }
 
 /*
- * Type scale: font sizes come from these steps (some older rules still
- * use raw values), in rem so they follow the root size above. 1rem is the
- * root, 14px at the usual 16px browser default, so each step is its size
- * at that default over 14.
+ * Type scale: every font size comes from these steps, in rem so they
+ * follow the root size above. 1rem is the root, 14px at the usual 16px
+ * browser default, so each step is its size at that default over 14.
  *   2xs  11px  pills, tags, sidebar section headings
  *   xs   12px  secondary lines, small controls
  *   sm   13px  controls, menus, rows, group titles

@@ -50,12 +50,12 @@
 .title {
 	flex: 1;
 	margin: 0;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	font-weight: 600;
 }
 
 .status {
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 	font-variant-numeric: tabular-nums;
 }
@@ -95,7 +95,7 @@
 
 .paused {
 	margin: 8px 0 0;
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 }
 
@@ -111,7 +111,7 @@
 	border-radius: 8px;
 	background: transparent;
 	font: inherit;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	color: var(--ctd-ink-soft);
 	transition:
 		background-color 180ms ease,
@@ -130,7 +130,7 @@
 }
 
 .plus {
-	font-size: 14px;
+	font-size: var(--ctd-text-base);
 }
 
 .link {
@@ -153,19 +153,20 @@
 }
 
 .emptyGlyph {
-	font-size: 28px;
+	width: 28px;
+	height: 28px;
 	color: var(--ctd-ink-soft);
 }
 
 .emptyTitle {
 	margin: 6px 0 0;
-	font-size: 14px;
+	font-size: var(--ctd-text-base);
 	font-weight: 600;
 }
 
 .emptyHint {
 	margin: 0 0 10px;
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 }
 
@@ -240,7 +241,7 @@
 		max-height: none;
 		border: 0;
 		border-radius: 0;
-		font-size: 17px;
+		font-size: var(--ctd-text-lg);
 	}
 
 	.content[data-state="open"] {
@@ -276,14 +277,14 @@
 		border-radius: var(--ctd-radius-control);
 		background: transparent;
 		font: inherit;
-		font-size: 17px;
+		font-size: var(--ctd-text-lg);
 		font-weight: 600;
 		color: var(--ctd-link);
 	}
 
 	.title {
 		grid-column: 2;
-		font-size: 17px;
+		font-size: var(--ctd-text-lg);
 		text-align: center;
 	}
 
@@ -298,7 +299,7 @@
 		grid-column: 3;
 		min-width: 44px;
 		min-height: 44px;
-		font-size: 22px;
+		font-size: var(--ctd-text-xl);
 		color: var(--ctd-link);
 	}
 
@@ -322,13 +323,13 @@
 	.cancelRow {
 		display: flex;
 		margin-top: 12px;
-		font-size: 17px;
+		font-size: var(--ctd-text-lg);
 	}
 
 	.cancelRow button {
 		min-height: 48px;
 		border-radius: 14px;
-		font-size: 17px;
+		font-size: var(--ctd-text-lg);
 	}
 
 	.empty {
@@ -340,15 +341,16 @@
 	}
 
 	.emptyGlyph {
-		font-size: 44px;
+		width: 44px;
+		height: 44px;
 	}
 
 	.emptyTitle {
-		font-size: 20px;
+		font-size: var(--ctd-text-xl);
 	}
 
 	.emptyHint {
-		font-size: 15px;
+		font-size: var(--ctd-text-md);
 		margin-bottom: 16px;
 	}
 
@@ -364,7 +366,7 @@
 		min-width: 220px;
 		min-height: 50px;
 		border-radius: 14px;
-		font-size: 17px;
+		font-size: var(--ctd-text-lg);
 		font-weight: 600;
 	}
 
@@ -386,7 +388,7 @@
 	.footer :global(button) {
 		min-height: 50px;
 		border-radius: 14px;
-		font-size: 17px;
+		font-size: var(--ctd-text-lg);
 		font-weight: 600;
 	}
 

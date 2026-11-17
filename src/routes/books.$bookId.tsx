@@ -186,7 +186,12 @@ const EditBookRoute = () => {
 	if (!book) {
 		return (
 			<div style={centeredFill}>
-				<span style={{ fontSize: 13, color: "var(--ctd-ink-soft)" }}>
+				<span
+					style={{
+						fontSize: "var(--ctd-text-sm)",
+						color: "var(--ctd-ink-soft)",
+					}}
+				>
 					{error ?? "Book not found."}
 				</span>
 			</div>

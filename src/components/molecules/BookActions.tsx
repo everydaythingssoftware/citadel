@@ -124,8 +124,17 @@ export const FileTiles = ({ rows }: { rows: BookFormatRow[] }) => {
 										className={styles.fold}
 										d="M26.5 2.5v7a2 2 0 0 0 2 2h7"
 									/>
+									<text
+										className={styles.format}
+										x="20"
+										y="37.5"
+										textAnchor="middle"
+										dominantBaseline="central"
+										fontSize="9.5"
+									>
+										{row.label}
+									</text>
 								</svg>
-								<span className={styles.format}>{row.label}</span>
 								<span className={styles.badge} aria-hidden="true">
 									{row.kind === "download" ? (
 										<GlyphDownload />

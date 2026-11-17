@@ -60,14 +60,14 @@
 .title {
 	margin: 0;
 	text-wrap: balance;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
 
 .description {
 	margin: 0;
-	font-size: 11px;
+	font-size: var(--ctd-text-2xs);
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
 }
@@ -89,14 +89,14 @@
 	border-radius: var(--ctd-radius-control);
 	background-color: var(--ctd-surface-muted);
 	font-family: ui-monospace, "SF Mono", Menlo, monospace;
-	font-size: 11px;
+	font-size: var(--ctd-text-2xs);
 	color: var(--ctd-ink-soft);
 	text-wrap: balance;
 }
 
 .error {
 	margin: 4px 0 0;
-	font-size: 11px;
+	font-size: var(--ctd-text-2xs);
 	line-height: 1.45;
 	color: var(--ctd-danger-ink);
 }

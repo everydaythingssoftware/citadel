@@ -17,7 +17,7 @@
 
 .rowLabel {
 	text-align: right;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
 	user-select: none;
@@ -46,7 +46,7 @@
 .filePath {
 	display: flex;
 	min-width: 0;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
 	padding-top: 5px;
@@ -72,7 +72,7 @@
 
 .formTitle {
 	margin: 0 0 12px;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
@@ -92,7 +92,7 @@
 	display: flex;
 	align-items: flex-start;
 	gap: 4px;
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
 }

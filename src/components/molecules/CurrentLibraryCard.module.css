@@ -54,7 +54,7 @@
 	border-radius: 0 0 0.5rem 0.5rem;
 	background: none;
 	font-family: inherit;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.35;
 	text-align: left;
 	color: var(--ctd-danger-ink);
@@ -67,13 +67,13 @@
 }
 
 .rowLabel {
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.35;
 	color: var(--ctd-ink);
 }
 
 .rowValue {
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.35;
 	color: var(--ctd-ink-soft);
 }

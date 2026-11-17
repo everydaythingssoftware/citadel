@@ -51,7 +51,7 @@
 }
 
 .columnLabel {
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	line-height: 1.4;
 	font-weight: 600;
 	color: var(--ctd-ink-soft);
@@ -80,7 +80,7 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: 14px;
+	font-size: var(--ctd-text-base);
 	line-height: 1.45;
 	color: var(--ctd-ink);
 }
@@ -109,7 +109,7 @@
 	justify-self: end;
 	position: relative;
 	z-index: 1;
-	font-size: 14px;
+	font-size: var(--ctd-text-base);
 	line-height: 1.45;
 	color: var(--ctd-link);
 	text-decoration: none;
@@ -134,7 +134,11 @@
 .actionIcon {
 	width: 28px;
 	height: 28px;
-	font-size: 16px;
+}
+
+.actionIcon svg {
+	width: 16px;
+	height: 16px;
 }
 
 .dangerIcon {
@@ -162,7 +166,7 @@
 	max-width: 880px;
 	margin-inline: 12px;
 	text-align: center;
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
 }
@@ -225,19 +229,23 @@
 	border-radius: 8px;
 	background-color: color-mix(in oklch, var(--ctd-danger-bg) 12%, transparent);
 	color: var(--ctd-ink);
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 }
 
 .sheetFailure {
 	margin: 12px 0 0;
 	color: var(--ctd-danger-ink);
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 }
 
 @media (pointer: coarse) {
 	.actionIcon {
 		width: 36px;
 		height: 36px;
-		font-size: 18px;
+	}
+
+	.actionIcon svg {
+		width: 18px;
+		height: 18px;
 	}
 }

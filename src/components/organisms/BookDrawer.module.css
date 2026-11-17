@@ -119,7 +119,7 @@
 	-webkit-line-clamp: 2;
 	line-clamp: 2;
 	font-family: var(--ctd-font-serif);
-	font-size: 28px;
+	font-size: var(--ctd-text-2xl);
 	font-weight: 600;
 	line-height: 1.17;
 	letter-spacing: -0.012em;
@@ -130,14 +130,14 @@
 
 .authors {
 	margin: 8px 0 0;
-	font-size: 13.5px;
+	font-size: var(--ctd-text-base);
 	color: var(--ctd-ink);
 }
 
 .series {
 	margin: 2px 0 0;
 	overflow: hidden;
-	font-size: 12.5px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -224,10 +224,6 @@
 		padding-inline: 20px;
 	}
 
-	.title {
-		font-size: var(--ctd-text-2xl);
-	}
-
 	.body {
 		padding-inline: 20px;
 	}
@@ -250,7 +246,7 @@
 /* Sentence case over a rounded group, the way macOS lists group rows. */
 .sectionTitle {
 	margin: 0 2px 7px;
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	font-weight: 600;
 	color: var(--ctd-ink-soft);
 }
@@ -262,7 +258,7 @@
 }
 
 .descriptionText {
-	font-size: 13.5px;
+	font-size: var(--ctd-text-base);
 	line-height: 1.6;
 	color: var(--ctd-ink);
 }
@@ -310,7 +306,7 @@
 	padding: 0 11px;
 	border: 1px solid var(--ctd-border);
 	border-radius: 13px;
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink);
 	white-space: nowrap;
 }
@@ -460,15 +456,15 @@
 	}
 
 	.title {
-		font-size: 25px;
+		font-size: var(--ctd-text-2xl);
 	}
 
 	.authors {
-		font-size: 14.5px;
+		font-size: var(--ctd-text-md);
 	}
 
 	.series {
-		font-size: 13.5px;
+		font-size: var(--ctd-text-sm);
 		white-space: normal;
 	}
 
@@ -497,11 +493,11 @@
 
 	.sectionTitle {
 		margin-inline: 4px;
-		font-size: 13px;
+		font-size: var(--ctd-text-sm);
 	}
 
 	.descriptionText {
-		font-size: 15px;
+		font-size: var(--ctd-text-md);
 		line-height: 1.55;
 	}
 
@@ -525,7 +521,7 @@
 		height: 30px;
 		padding: 0 13px;
 		border-radius: 15px;
-		font-size: 13.5px;
+		font-size: var(--ctd-text-sm);
 	}
 
 	.details {

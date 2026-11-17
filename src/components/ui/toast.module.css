@@ -41,7 +41,7 @@
 }
 
 .title {
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	font-weight: 600;
 	color: var(--ctd-ink);
 	overflow-wrap: break-word;
@@ -49,7 +49,7 @@
 
 .message {
 	margin-top: 1px;
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
 	overflow-wrap: break-word;

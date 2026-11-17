@@ -7,7 +7,7 @@
 	gap: 6px;
 	white-space: nowrap;
 	font-family: inherit;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	font-weight: var(--ctd-control-font-weight);
 	border-radius: var(--ctd-radius-control);
 	transition:

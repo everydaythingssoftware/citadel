@@ -23,7 +23,7 @@ export const plural = (n: number, word: string) =>
 /* ------------------------------- icons -------------------------------- */
 
 export const ShelfMark = () => (
-	<FluentLibraryFilled fontSize={28} aria-hidden="true" />
+	<FluentLibraryFilled width={28} height={28} aria-hidden="true" />
 );
 
 export const GlobeGlyph = () => (

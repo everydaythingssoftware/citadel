@@ -29,7 +29,7 @@
 
 .title {
 	margin: 0 0 8px;
-	font-size: 17px;
+	font-size: var(--ctd-text-lg);
 	font-weight: 600;
 	letter-spacing: -0.01em;
 	text-align: center;
@@ -41,5 +41,5 @@
 	line-height: 16px;
 	padding-inline-start: 2px;
 	color: var(--ctd-danger-ink);
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 }

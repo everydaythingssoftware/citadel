@@ -74,7 +74,7 @@
 }
 
 .tabLabel {
-	font-size: 0.6875rem;
+	font-size: var(--ctd-text-2xs);
 	font-weight: 500;
 	line-height: 1.2;
 }
@@ -160,13 +160,13 @@
 }
 
 .rowLabel {
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.35;
 	color: var(--ctd-ink);
 }
 
 .rowDescription {
-	font-size: 0.75rem;
+	font-size: var(--ctd-text-xs);
 	line-height: 1.35;
 	color: var(--ctd-ink-soft);
 }
@@ -190,7 +190,7 @@
 /* Quiet status note under a group (e.g. connection test feedback). */
 .inlineNote {
 	margin: 0.5rem 0.125rem 0;
-	font-size: 0.75rem;
+	font-size: var(--ctd-text-xs);
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
 }
@@ -202,7 +202,7 @@
 
 .sectionTitle {
 	margin: 0 0.125rem 0.25rem;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
@@ -236,7 +236,7 @@
 	min-width: 0;
 	overflow-wrap: break-word;
 	font-family: var(--ctd-font-mono, ui-monospace, "SF Mono", Menlo, monospace);
-	font-size: 0.78125rem;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink);
 }
 
@@ -281,7 +281,7 @@
 .paneNote {
 	margin: 0 0.125rem 0.625rem;
 	line-height: 1.45;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	color: var(--ctd-ink-soft);
 }
 
@@ -321,7 +321,7 @@
 
 .providerChevron {
 	display: inline-block;
-	font-size: 1rem;
+	font-size: var(--ctd-text-base);
 	line-height: 1;
 	transition: transform 150ms ease;
 }
@@ -378,7 +378,7 @@
 
 .problemsTitle {
 	margin: 0;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
@@ -399,12 +399,12 @@
 }
 
 .problemName {
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-sm);
 	color: var(--ctd-ink);
 }
 
 .problemDetail {
-	font-size: 0.75rem;
+	font-size: var(--ctd-text-xs);
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
 	overflow-wrap: anywhere;

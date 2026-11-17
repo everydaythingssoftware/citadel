@@ -19,7 +19,7 @@
 
 .errorNote {
 	margin: 0;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.4;
 	color: var(--ctd-danger-text);
 }
@@ -39,7 +39,7 @@
 	align-items: center;
 	justify-content: center;
 	padding: 16px 0;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	color: var(--ctd-ink-soft);
 	text-align: center;
 }
@@ -124,7 +124,7 @@
 }
 
 .searchResultTitle {
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
@@ -136,7 +136,7 @@
 	display: inline-block;
 	margin-left: 8px;
 	padding: 1px 7px;
-	font-size: 10.5px;
+	font-size: var(--ctd-text-2xs);
 	font-weight: 600;
 	line-height: 1.5;
 	color: var(--ctd-accent-text);
@@ -147,13 +147,13 @@
 }
 
 .searchResultDetail {
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 }
 
 /* Where a result came from; the winner first, then any other providers. */
 .searchResultProvenance {
-	font-size: 11px;
+	font-size: var(--ctd-text-2xs);
 	color: var(--ctd-ink-soft);
 	opacity: 0.8;
 }
@@ -168,6 +168,6 @@
 
 .trickleText {
 	flex: 1;
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 }

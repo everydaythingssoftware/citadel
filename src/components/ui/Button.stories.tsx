@@ -14,7 +14,7 @@ type Story = StoryObj;
 const row = { display: "flex", gap: 12, alignItems: "center" } as const;
 const label = {
 	width: 88,
-	fontSize: 12,
+	fontSize: "var(--ctd-text-xs)",
 	color: "var(--ctd-ink-soft)",
 } as const;
 

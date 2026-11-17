@@ -169,7 +169,7 @@
 		opacity 160ms ease-out,
 		transform 160ms ease-out;
 	font-family: var(--ctd-font-serif);
-	font-size: 16px;
+	font-size: var(--ctd-text-lg);
 	font-weight: 600;
 	letter-spacing: 0.01em;
 	overflow: hidden;
@@ -185,7 +185,7 @@
 	margin: 14px 24px 0;
 	padding: 8px 8px 8px 12px;
 	border-radius: 8px;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	border: 1px solid transparent;
 }
 
@@ -207,7 +207,7 @@
 
 .noticeClose {
 	flex-shrink: 0;
-	font-size: 14px;
+	font-size: var(--ctd-text-base);
 }
 
 /* Margin, not padding, so the slot can collapse to nothing. A message that
@@ -314,7 +314,7 @@
 
 .rowLabel {
 	text-align: right;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
 	user-select: none;
@@ -390,7 +390,7 @@
 }
 
 .removeIdentifier {
-	font-size: 15px;
+	font-size: var(--ctd-text-md);
 }
 
 /* Series name and its number share a row; the # belongs to the number, so
@@ -414,7 +414,7 @@
 
 .emptyText {
 	margin: 0;
-	font-size: 13px;
+	font-size: var(--ctd-text-sm);
 	color: var(--ctd-ink-soft);
 }
 
@@ -466,7 +466,7 @@
 }
 
 .subjectStripLabel {
-	font-size: 12px;
+	font-size: var(--ctd-text-xs);
 	color: var(--ctd-ink-soft);
 	margin-right: 2px;
 }
