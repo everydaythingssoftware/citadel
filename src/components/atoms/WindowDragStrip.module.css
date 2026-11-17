@@ -1,0 +1,16 @@
+/* Explicit pointer-events, so Radix's modal lock on <body> doesn't switch
+   it off. */
+.strip {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: var(--ctd-toolbar-height);
+	z-index: 5000;
+	pointer-events: auto;
+	cursor: default;
+}
+
+.strip[data-pass-through] {
+	pointer-events: none;
+}

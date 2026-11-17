@@ -55,6 +55,27 @@
 	overflow-wrap: break-word;
 }
 
+.action {
+	margin: 6px 0 0;
+	padding: 0;
+	border: none;
+	background: none;
+	font: inherit;
+	font-size: var(--ctd-text-xs);
+	font-weight: 600;
+	color: var(--ctd-text-link);
+}
+
+.action:hover {
+	text-decoration: underline;
+}
+
+.action:focus-visible {
+	outline: none;
+	border-radius: 3px;
+	box-shadow: 0 0 0 2px var(--ctd-focus-ring);
+}
+
 .dismiss {
 	display: inline-flex;
 	align-items: center;

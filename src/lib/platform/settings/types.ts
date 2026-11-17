@@ -80,7 +80,8 @@ export interface SettingsSchema {
 	hardcoverApiKey: string;
 	/** @deprecated Read once at migration into `metadataProviders`; not written. */
 	hardcoverAutoLookup: boolean;
-	lastNotifiedUpdateVersion: string | null;
+	/** "Hide Until Next Update" was chosen for this version. */
+	hiddenUpdateVersion: string | null;
 	smartShelves: SmartShelf[];
 	/** Bumped when the settings shape changes; gates one-time migrations. */
 	settingsSchemaVersion: number;
@@ -97,7 +98,7 @@ export const defaultSettings: SettingsSchema = {
 	libraryPaths: [],
 	hardcoverApiKey: "",
 	hardcoverAutoLookup: false,
-	lastNotifiedUpdateVersion: null,
+	hiddenUpdateVersion: null,
 	smartShelves: [
 		{
 			id: "builtin-unread",

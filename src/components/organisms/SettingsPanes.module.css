@@ -409,3 +409,8 @@
 	color: var(--ctd-ink-soft);
 	overflow-wrap: anywhere;
 }
+
+/* Full screen hides the traffic lights, so the strip needs no room for them. */
+:root[data-fullscreen] .tabStrip {
+	padding-inline: 0.75rem;
+}

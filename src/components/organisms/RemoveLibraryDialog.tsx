@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { AlertDialog, NoBreak } from "@/components/ui";
 import type { RemoveLibrary } from "@/lib/hooks/use-remove-library";
 
@@ -9,12 +8,8 @@ interface RemoveLibraryDialogProps {
 /** "Forget…": says that forgetting leaves the library's files alone. */
 export const RemoveLibraryDialog = ({ remove }: RemoveLibraryDialogProps) => {
 	const { step } = remove;
-	// Kept through the closing animation, so the text never empties.
-	const shown = useRef({ name: "", isLast: false });
-	if (step.id === "confirm") {
-		shown.current = { name: step.library.displayName, isLast: step.isLast };
-	}
-	const { name, isLast } = shown.current;
+	const name = step.id === "confirm" ? step.library.displayName : "";
+	const isLast = step.id === "confirm" && step.isLast;
 
 	return (
 		<AlertDialog

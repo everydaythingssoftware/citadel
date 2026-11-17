@@ -1,319 +1,255 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useEffect, useMemo, useState } from "react";
-import { EditGlyph } from "@/components/icons/EditGlyph";
-import { TrashGlyph } from "@/components/icons/TrashGlyph";
+import type { ReactNode } from "react";
 import { TablerLogout } from "@/components/icons/TablerLogout";
 import { SettingsButton } from "@/components/molecules/SettingsButton";
-import { IconButton, TextInput, Tooltip } from "@/components/ui";
+import { UpdateNoticeRow } from "@/components/molecules/UpdateNoticeRow";
+import { RemoveLibraryDialog } from "@/components/organisms/RemoveLibraryDialog";
+import {
+	AlertDialog,
+	ContextMenu,
+	NoBreak,
+	TextInput,
+	Tooltip,
+} from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
-import { usePlatform } from "@/lib/platform/context";
-import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
+import type { ContextMenuTarget } from "@/lib/hooks/use-context-menu";
+import type { ShelfDelete } from "@/lib/hooks/use-shelf-actions";
 import {
-	type BrowserSessionControls,
-	useBrowserSessionControls,
-} from "@/lib/hooks/use-browser-session";
-import {
-	useOpenSettings,
-	useOpenSoftwareUpdate,
-} from "@/lib/hooks/use-open-settings";
-import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
-import {
-	type BookRouteFilters,
-	routeFiltersFromSearch,
-	shelfInLibrary,
-	shelfLeftRoute,
-	shelfMatchesRoute,
-	shelfRouteFilters,
-} from "@/lib/shelves";
-import type { SmartShelf } from "@/lib/platform/settings/types";
-import { pendingUpdateVersion } from "@/lib/updates/software-update";
-import { LibraryState, useLibraryState } from "@/stores/library/store";
-import { useLibraryView } from "@/stores/library-view/store";
-import { deleteSmartShelf, renameSmartShelf } from "@/stores/settings/actions";
-import { useSettings } from "@/stores/settings/store";
+	type SidebarShelf,
+	type SidebarViewModel,
+	useSidebarModel,
+} from "@/lib/hooks/use-sidebar-model";
+import type { Option } from "@/lib/option";
 import { LibraryPicker } from "./LibraryPicker";
 import styles from "./Sidebar.module.css";
 
-export const Sidebar = () => {
-	const state = useLibraryState();
-	const { location } = useRouterState();
-	const openSettings = useOpenSettings();
-	const openSoftwareUpdate = useOpenSoftwareUpdate();
-	const session = useBrowserSessionControls();
-	const softwareUpdate = useSoftwareUpdate();
-	const updateVersion = softwareUpdate
-		? pendingUpdateVersion(softwareUpdate.state.status)
-		: null;
+const NAV_ITEMS = [
+	{ to: "/authors", label: "Authors" },
+	{ to: "/series", label: "Series" },
+	{ to: "/tags", label: "Tags" },
+	{ to: "/publishers", label: "Publishers" },
+] as const;
 
-	if (state !== LibraryState.ready) {
-		return null;
-	}
+export const Sidebar = () => {
+	const model = useSidebarModel();
+	if (!model.isSome) return null;
+	const {
+		view,
+		libraryPicker,
+		libraryMenu,
+		contextMenu,
+		shelfDelete,
+		removeLibrary,
+	} = model.value;
 
 	return (
-		<SidebarPure
-			currentPathname={location.pathname}
-			routeFilters={routeFiltersFromSearch(location.search)}
-			openSettings={updateVersion ? openSoftwareUpdate : openSettings}
-			updateVersion={updateVersion}
-			session={session}
-			settingsShowing={location.pathname === "/settings"}
-		/>
+		<>
+			<SidebarView
+				{...view}
+				libraryHeader={
+					libraryPicker ? (
+						<LibraryPicker libraryMenu={libraryMenu} />
+					) : (
+						<LibraryHeading libraryMenu={libraryMenu} />
+					)
+				}
+			/>
+			<ContextMenu
+				menu={contextMenu.menu}
+				returnFocusRef={contextMenu.returnFocusRef}
+				onClose={contextMenu.close}
+			/>
+			<DeleteShelfDialog shelfDelete={shelfDelete} />
+			<RemoveLibraryDialog remove={removeLibrary} />
+		</>
 	);
 };
 
-interface SidebarPureProps {
-	currentPathname: string;
-	/** The Books route's deep-link filters, to tell which shelf is showing. */
-	routeFilters: BookRouteFilters;
-	openSettings: () => void;
-	/** Version of a waiting Citadel update; badges the gear. */
-	updateVersion: string | null;
-	/** The signed-in browser user; null on desktop. */
-	session: BrowserSessionControls | null;
-	/** The web app is showing its Settings page. */
-	settingsShowing: boolean;
+/** With one library, its menu opens from the "Library" header itself. */
+const LibraryHeading = ({
+	libraryMenu,
+}: {
+	libraryMenu: Option<ContextMenuTarget>;
+}) => (
+	<h2 className={styles.sectionLabel}>
+		{libraryMenu.isSome ? (
+			<button
+				type="button"
+				className={styles.headingButton}
+				aria-haspopup="menu"
+				onClick={libraryMenu.value.onContextMenu}
+				{...libraryMenu.value}
+			>
+				Library
+			</button>
+		) : (
+			"Library"
+		)}
+	</h2>
+);
+
+export interface SidebarViewProps extends SidebarViewModel {
+	/** The library picker, or the plain "Library" header. */
+	libraryHeader: ReactNode;
 }
 
-const SidebarPure = ({
+export const SidebarView = ({
+	libraryHeader,
 	currentPathname,
-	routeFilters,
-	openSettings,
-	updateVersion,
-	session,
+	isAllBooksActive,
+	onAllBooks,
+	shelves,
+	onOpenShelf,
+	rename,
+	updateNotice,
+	showSettingsButton,
 	settingsShowing,
-}: SidebarPureProps) => {
-	const platform = usePlatform();
-	const allShelves = useSettings((s) => s.smartShelves);
-	const libraryId = useLibrarySelection().activeLibrary?.id;
-	const smartShelves = useMemo(
-		() => allShelves.filter((shelf) => shelfInLibrary(shelf.filter, libraryId)),
-		[allShelves, libraryId],
-	);
-	const libraryCount = useSettings((s) => s.libraryPaths.length);
-	const hydrated = useSettings((s) => s.hydrated);
-	const activeShelfId = useLibraryView((s) => s.activeShelfId);
-	const resetToAllBooks = useLibraryView((s) => s.resetToAllBooks);
-	const clearMissingActiveShelf = useLibraryView(
-		(s) => s.clearMissingActiveShelf,
-	);
-	const detachShelf = useLibraryView((s) => s.detachShelf);
-	const { author_id, series_id, tag_id, publisher_id } = routeFilters;
-
-	// activeShelfId comes from localStorage, shelves from settings.json; drop a
-	// shelf id that no longer exists once settings have hydrated.
-	useEffect(() => {
-		if (hydrated) {
-			clearMissingActiveShelf(smartShelves.map((shelf) => shelf.id));
-		}
-	}, [hydrated, smartShelves, clearMissingActiveShelf]);
-
-	// A shelf is only "showing" while the route carries its tag/author/series/
-	// publisher filter. When the route stops matching (the filter token was
-	// removed, or the app relaunched on a bare route), release the shelf
-	// rather than label a different view with its name.
-	useEffect(() => {
-		if (!hydrated || currentPathname !== "/") return;
-		const { activeShelfId: currentId } = useLibraryView.getState();
-		const active = smartShelves.find((shelf) => shelf.id === currentId);
-		if (
-			shelfLeftRoute(
-				{ author_id, series_id, tag_id, publisher_id },
-				active?.filter,
-			)
-		) {
-			detachShelf();
-		}
-	}, [
-		hydrated,
-		currentPathname,
-		smartShelves,
-		author_id,
-		series_id,
-		tag_id,
-		publisher_id,
-		detachShelf,
-	]);
-
-	// A book opened from the grid still belongs to All Books.
-	const isAllBooksActive =
-		(currentPathname === "/" || currentPathname.startsWith("/books/")) &&
-		activeShelfId === null;
-
+	onOpenSettings,
+	session,
+}: SidebarViewProps) => {
+	const footerBar = session !== null || showSettingsButton;
 	return (
 		<div className={styles.root}>
-			<div className={styles.sections}>
+			<div className={clsx(styles.sections, "ctd-scroller")}>
 				<div className={styles.section}>
-					{platform.capabilities.canPickLocalFiles && libraryCount >= 2 ? (
-						<LibraryPicker />
-					) : (
-						<h2 className={styles.sectionLabel}>Library</h2>
-					)}
+					{libraryHeader}
 					<Link
 						to="/"
-						className={clsx("ctd-nav-link", styles.navLink)}
+						className={styles.navLink}
 						data-active={isAllBooksActive || undefined}
-						onClick={() => resetToAllBooks()}
+						onClick={onAllBooks}
 					>
 						All Books
 					</Link>
-					<Link
-						to="/authors"
-						className={clsx("ctd-nav-link", styles.navLink)}
-						data-active={currentPathname === "/authors" || undefined}
-					>
-						Authors
-					</Link>
-					<Link
-						to="/series"
-						className={clsx("ctd-nav-link", styles.navLink)}
-						data-active={currentPathname === "/series" || undefined}
-					>
-						Series
-					</Link>
-					<Link
-						to="/tags"
-						className={clsx("ctd-nav-link", styles.navLink)}
-						data-active={currentPathname === "/tags" || undefined}
-					>
-						Tags
-					</Link>
-					<Link
-						to="/publishers"
-						className={clsx("ctd-nav-link", styles.navLink)}
-						data-active={currentPathname === "/publishers" || undefined}
-					>
-						Publishers
-					</Link>
+					{NAV_ITEMS.map(({ to, label }) => (
+						<Link
+							key={to}
+							to={to}
+							className={styles.navLink}
+							data-active={currentPathname === to || undefined}
+						>
+							{label}
+						</Link>
+					))}
 				</div>
-				{smartShelves.length > 0 && (
+				{shelves.length > 0 && (
 					<div className={styles.section}>
 						<h2 className={styles.sectionLabel}>Shelves</h2>
-						{smartShelves.map((shelf) => (
+						{shelves.map((row) => (
 							<ShelfRow
-								key={shelf.id}
-								shelf={shelf}
-								isActive={
-									currentPathname === "/" &&
-									activeShelfId === shelf.id &&
-									shelfMatchesRoute(shelf.filter, routeFilters)
-								}
+								key={row.shelf.id}
+								row={row}
+								onOpen={() => onOpenShelf(row.shelf)}
+								rename={rename}
 							/>
 						))}
 					</div>
 				)}
 			</div>
-			<div className={clsx(styles.section, session && styles.footer)}>
-				{session && (
-					<Tooltip label={`Signed in as ${session.username} · Sign out`}>
-						<IconButton
-							aria-label={`Sign out ${session.username}`}
-							className={clsx("ctd-settings-button", styles.settingsButton)}
-							onClick={safeAsyncEventHandler(session.signOut)}
-						>
-							<TablerLogout width={16} height={16} />
-						</IconButton>
-					</Tooltip>
-				)}
-				<SettingsButton
-					updateVersion={updateVersion}
-					active={settingsShowing}
-					onClick={openSettings}
-					className={clsx("ctd-settings-button", styles.settingsButton)}
-				/>
-			</div>
+			{(updateNotice.isSome || footerBar) && (
+				<div className={styles.footer}>
+					{updateNotice.isSome && (
+						<UpdateNoticeRow
+							title={updateNotice.value.title}
+							onRestart={updateNotice.value.onRestart}
+							menu={updateNotice.value.menu}
+						/>
+					)}
+					{footerBar && (
+						<div className={styles.footerBar}>
+							{session && (
+								<Tooltip label={`Signed in as ${session.username}`}>
+									<button
+										type="button"
+										className={styles.signOut}
+										onClick={safeAsyncEventHandler(session.signOut)}
+									>
+										<TablerLogout width={15} height={15} aria-hidden="true" />
+										Sign out
+									</button>
+								</Tooltip>
+							)}
+							{showSettingsButton && (
+								<SettingsButton
+									active={settingsShowing}
+									onClick={onOpenSettings}
+									className={styles.settingsButton}
+								/>
+							)}
+						</div>
+					)}
+				</div>
+			)}
 		</div>
 	);
 };
 
 interface ShelfRowProps {
-	shelf: SmartShelf;
-	isActive: boolean;
+	row: SidebarShelf;
+	onOpen: () => void;
+	rename: SidebarViewModel["rename"];
 }
 
-const ShelfRow = ({ shelf, isActive }: ShelfRowProps) => {
-	const navigate = useNavigate();
-	const applyShelf = useLibraryView((s) => s.applyShelf);
-	const activeShelfId = useLibraryView((s) => s.activeShelfId);
-	const resetToAllBooks = useLibraryView((s) => s.resetToAllBooks);
-
-	const [isRenaming, setIsRenaming] = useState(false);
-	const [draftName, setDraftName] = useState(shelf.name);
-	const [renameError, setRenameError] = useState<string | null>(null);
-
-	// Finder-style inline rename: Enter and blur both commit, Escape cancels.
-	const commitRename = async () => {
-		try {
-			await renameSmartShelf(shelf.id, draftName);
-			setIsRenaming(false);
-		} catch (e) {
-			setRenameError(e instanceof Error ? e.message : String(e));
-		}
-	};
-
-	if (isRenaming) {
+const ShelfRow = ({
+	row: { shelf, active, keys },
+	onOpen,
+	rename,
+}: ShelfRowProps) => {
+	const { editing } = rename;
+	if (editing.isSome && editing.value.shelfId === shelf.id) {
 		return (
 			<TextInput
-				value={draftName}
-				error={renameError}
+				value={editing.value.draft}
+				error={editing.value.error}
 				aria-label={`Shelf name for ${shelf.name}`}
-				// biome-ignore lint/a11y/noAutofocus: inline rename replaces the row the user just clicked; focus must land in the input.
 				autoFocus
+				onFocus={(event) => event.currentTarget.select()}
 				className={styles.renameInput}
-				onChange={(event) => {
-					setDraftName(event.currentTarget.value);
-					setRenameError(null);
-				}}
+				onChange={(event) => rename.editRename(event.currentTarget.value)}
 				onKeyDown={(event) => {
 					if (event.key === "Enter") {
-						void commitRename();
+						void rename.commitRename();
 					} else if (event.key === "Escape") {
-						setIsRenaming(false);
+						rename.cancelRename();
 					}
 				}}
-				onBlur={() => void commitRename()}
+				onBlur={() => void rename.commitRename()}
 			/>
 		);
 	}
 
 	return (
-		<div className={styles.shelfRow}>
-			<button
-				type="button"
-				className={clsx("ctd-nav-link", styles.navLink, styles.shelfNavLink)}
-				data-active={isActive || undefined}
-				onClick={() => {
-					applyShelf(shelf);
-					void navigate({ to: "/", search: shelfRouteFilters(shelf.filter) });
-				}}
-			>
-				<span className={styles.shelfName}>{shelf.name}</span>
-			</button>
-			<span className={styles.shelfControls}>
-				<IconButton
-					aria-label={`Rename shelf ${shelf.name}`}
-					className={styles.shelfControlButton}
-					onClick={() => {
-						setDraftName(shelf.name);
-						setRenameError(null);
-						setIsRenaming(true);
-					}}
-				>
-					<EditGlyph />
-				</IconButton>
-				<IconButton
-					aria-label={`Delete shelf ${shelf.name}`}
-					className={styles.shelfControlButton}
-					onClick={safeAsyncEventHandler(async () => {
-						await deleteSmartShelf(shelf.id);
-						if (activeShelfId === shelf.id) {
-							resetToAllBooks();
-						}
-					})}
-				>
-					<TrashGlyph />
-				</IconButton>
-			</span>
-		</div>
+		<button
+			type="button"
+			className={clsx(styles.navLink, styles.shelfNavLink)}
+			data-active={active || undefined}
+			onClick={onOpen}
+			{...keys}
+		>
+			<span className={styles.shelfName}>{shelf.name}</span>
+		</button>
+	);
+};
+
+const DeleteShelfDialog = ({ shelfDelete }: { shelfDelete: ShelfDelete }) => {
+	const { confirming } = shelfDelete;
+	return (
+		<AlertDialog
+			open={confirming.isSome}
+			onOpenChange={(open) => {
+				if (!open) shelfDelete.cancelDelete();
+			}}
+			title={
+				<>
+					Delete shelf{" "}
+					<NoBreak>“{confirming.isSome ? confirming.value.name : ""}”</NoBreak>?
+				</>
+			}
+			description="Your books stay in the library."
+			confirmLabel="Delete"
+			destructive
+			onConfirm={shelfDelete.confirmDelete}
+		/>
 	);
 };

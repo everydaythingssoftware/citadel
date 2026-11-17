@@ -3,7 +3,7 @@ import { SettingsButton } from "./SettingsButton";
 
 const meta = {
 	component: SettingsButton,
-	args: { updateVersion: null, onClick: () => {} },
+	args: { onClick: () => {} },
 	decorators: [
 		// The sidebar footer the gear lives in.
 		(Story) => (
@@ -24,8 +24,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const NoUpdate: Story = {};
+export const Default: Story = {};
 
-export const UpdateAvailable: Story = {
-	args: { updateVersion: "0.7.2" },
+/** The web app showing its Settings page. */
+export const Active: Story = {
+	args: { active: true },
 };
