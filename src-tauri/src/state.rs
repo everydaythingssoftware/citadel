@@ -393,49 +393,49 @@ mod tests {
             .init_library(first.path().to_string_lossy().into_owned())
             .unwrap();
         let first_id = state.active_library_id().unwrap();
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-            .await
-            .unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let server_state = state.clone();
-        let server = tokio::spawn(async move {
-            axum::serve(
-                listener,
-                citadel_opds::router(
-                    Arc::new(server_state),
-                    citadel_opds::auth::OpdsBasicAuth::new(),
-                ),
-            )
-            .await
-            .unwrap();
-        });
-        let client = reqwest::Client::new();
+        let app = citadel_opds::router(
+            Arc::new(state.clone()),
+            citadel_opds::auth::OpdsBasicAuth::new(),
+        );
+        // Requests go straight to the router; a response's body is read only
+        // when the test reads it, as a slow reader would.
+        let get = |path: String| {
+            let app = app.clone();
+            async move {
+                use tower::ServiceExt;
+                app.oneshot(
+                    axum::http::Request::get(path)
+                        .body(axum::body::Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+            }
+        };
+        let read = |response: axum::response::Response| async move {
+            axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+        };
 
-        let first_response = client.get(format!("{base}/opds")).send().await.unwrap();
+        let first_response = get("/opds".into()).await;
         assert_eq!(first_response.status(), StatusCode::OK);
-        let first_feed_id = feed_id(&first_response.text().await.unwrap());
+        let first_feed_id = feed_id(std::str::from_utf8(&read(first_response).await).unwrap());
         assert!(!first_feed_id.is_empty());
 
-        let asset_url = format!(
-            "{base}/opds/books/{}/files/EPUB/book.epub",
-            first_book.as_i32()
-        );
-        let old_download = client.get(&asset_url).send().await.unwrap();
+        let asset_path = format!("/opds/books/{}/files/EPUB/book.epub", first_book.as_i32());
+        let old_download = get(asset_path.clone()).await;
         assert_eq!(old_download.status(), StatusCode::OK);
-        let responsive_feed = tokio::time::timeout(
-            Duration::from_secs(1),
-            client.get(format!("{base}/opds")).send(),
-        )
-        .await
-        .expect("a stalled large download must not block feed requests")
-        .unwrap();
+        let responsive_feed = tokio::time::timeout(Duration::from_secs(1), get("/opds".into()))
+            .await
+            .expect("a stalled large download must not block feed requests");
         assert_eq!(responsive_feed.status(), StatusCode::OK);
 
         state
             .inner
             .library_transitioning
             .store(true, Ordering::Release);
-        let transition_response = reqwest::get(format!("{base}/opds")).await.unwrap();
+        let transition_response = get("/opds".into()).await;
         assert_eq!(
             transition_response.status(),
             StatusCode::SERVICE_UNAVAILABLE
@@ -448,23 +448,15 @@ mod tests {
         state.init_library(second_path).unwrap();
         let second_id = state.active_library_id().unwrap();
         assert_ne!(first_id, second_id);
-        let second_response = client.get(format!("{base}/opds")).send().await.unwrap();
+        let second_response = get("/opds".into()).await;
         assert_eq!(second_response.status(), StatusCode::OK);
-        let second_feed_id = feed_id(&second_response.text().await.unwrap());
+        let second_feed_id = feed_id(std::str::from_utf8(&read(second_response).await).unwrap());
         assert_ne!(first_feed_id, second_feed_id);
-        let new_bytes = client
-            .get(&asset_url)
-            .send()
-            .await
-            .unwrap()
-            .bytes()
-            .await
-            .unwrap();
+        let new_bytes = read(get(asset_path).await).await;
         assert_eq!(new_bytes.len(), 2 * 1024 * 1024);
         assert!(new_bytes.iter().all(|byte| *byte == b'B'));
-        let old_bytes = old_download.bytes().await.unwrap();
+        let old_bytes = read(old_download).await;
         assert_eq!(old_bytes.len(), 2 * 1024 * 1024);
         assert!(old_bytes.iter().all(|byte| *byte == b'A'));
-        server.abort();
     }
 }

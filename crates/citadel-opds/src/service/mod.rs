@@ -948,6 +948,8 @@ mod tests {
         hold_shutdown: Arc<AtomicBool>,
         fail_every: Mutex<Option<io::ErrorKind>>,
         no_ipv6: AtomicBool,
+        /// Every socket asked for, with its options.
+        opened: Mutex<Vec<ListenSocket>>,
     }
 
     impl FakeListeners {
@@ -997,6 +999,7 @@ mod tests {
         }
 
         fn listen(&self, socket: ListenSocket, _app: axum::Router) -> io::Result<Listening> {
+            self.listeners.opened.lock().unwrap().push(socket);
             self.listeners.start(socket.address)
         }
     }
@@ -1436,6 +1439,42 @@ mod tests {
         assert_eq!(failed.state, OpdsLifecycleState::Error);
         assert_eq!(failed.error.unwrap().code, OpdsErrorCode::PortUnavailable);
         assert!(listeners.active.lock().unwrap().is_empty());
+        service.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn all_interfaces_listens_on_ipv6_only_alongside_ipv4_when_the_host_has_ipv6() {
+        let listeners = Arc::new(FakeListeners::default());
+        let service = service_with(
+            test_source(),
+            Arc::new(FakeInterfaces::new(Vec::new())),
+            listeners.clone(),
+            Duration::from_millis(10),
+        );
+        let started = service
+            .start(OpdsStartConfig {
+                target: OpdsBindTarget::AllInterfaces,
+                port: 8080,
+                authentication_enabled: true,
+            })
+            .await
+            .unwrap();
+        assert_eq!(started.state, OpdsLifecycleState::Running, "{started:?}");
+        // IPv6-only, or the IPv6 wildcard would also take IPv4 (Linux's
+        // default) and collide with the IPv4 one on the same port.
+        assert_eq!(
+            *listeners.opened.lock().unwrap(),
+            [
+                ListenSocket {
+                    address: "0.0.0.0:8080".parse().unwrap(),
+                    only_v6: false,
+                },
+                ListenSocket {
+                    address: "[::]:8080".parse().unwrap(),
+                    only_v6: true,
+                },
+            ]
+        );
         service.stop().await;
     }
 

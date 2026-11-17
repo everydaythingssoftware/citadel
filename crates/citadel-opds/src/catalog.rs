@@ -1006,6 +1006,7 @@ mod tests {
     use quick_xml::{events::Event, name::ResolveResult, NsReader};
     use std::{collections::HashMap, path::PathBuf, sync::Mutex};
     use tempfile::TempDir;
+    use tower::ServiceExt;
 
     fn book(title: &str, uuid: &str, id: i32) -> Book {
         Book {
@@ -1303,15 +1304,97 @@ mod tests {
         (directory, library)
     }
 
-    async fn loopback(source: Arc<dyn CatalogSource>) -> (String, tokio::task::JoinHandle<()>) {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let task = tokio::spawn(async move {
-            axum::serve(listener, router(source, OpdsBasicAuth::new()))
+    const BASE: &str = "http://127.0.0.1:8080";
+
+    /// The catalog's router for `source`, with a client that sends it
+    /// requests directly, as a reader would over HTTP at [`BASE`].
+    async fn loopback(source: Arc<dyn CatalogSource>) -> (String, CatalogClient) {
+        (
+            BASE.to_string(),
+            CatalogClient(router(source, OpdsBasicAuth::new())),
+        )
+    }
+
+    #[derive(Clone)]
+    struct CatalogClient(Router);
+
+    impl CatalogClient {
+        async fn fetch(&self, url: String) -> Result<CatalogResponse, std::convert::Infallible> {
+            self.get(url).send().await
+        }
+
+        fn get(&self, url: impl AsRef<str>) -> CatalogRequest {
+            self.request(axum::http::Method::GET, url.as_ref())
+        }
+
+        fn head(&self, url: impl AsRef<str>) -> CatalogRequest {
+            self.request(axum::http::Method::HEAD, url.as_ref())
+        }
+
+        fn request(&self, method: axum::http::Method, url: &str) -> CatalogRequest {
+            let path = url.strip_prefix(BASE).expect("a catalog URL");
+            CatalogRequest {
+                router: self.0.clone(),
+                request: axum::http::Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .header(header::HOST, "127.0.0.1:8080"),
+            }
+        }
+    }
+
+    struct CatalogRequest {
+        router: Router,
+        request: axum::http::request::Builder,
+    }
+
+    impl CatalogRequest {
+        fn header(mut self, name: header::HeaderName, value: &str) -> Self {
+            self.request = self.request.header(name, value);
+            self
+        }
+
+        async fn send(self) -> Result<CatalogResponse, std::convert::Infallible> {
+            let response = self
+                .router
+                .oneshot(self.request.body(Body::empty()).unwrap())
                 .await
                 .unwrap();
-        });
-        (format!("http://{address}"), task)
+            let status = response.status();
+            let headers = response.headers().clone();
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            Ok(CatalogResponse {
+                status,
+                headers,
+                body,
+            })
+        }
+    }
+
+    struct CatalogResponse {
+        status: StatusCode,
+        headers: axum::http::HeaderMap,
+        body: bytes::Bytes,
+    }
+
+    impl CatalogResponse {
+        fn status(&self) -> StatusCode {
+            self.status
+        }
+
+        fn headers(&self) -> &axum::http::HeaderMap {
+            &self.headers
+        }
+
+        async fn bytes(self) -> Result<bytes::Bytes, std::convert::Infallible> {
+            Ok(self.body)
+        }
+
+        async fn text(self) -> Result<String, std::convert::Infallible> {
+            Ok(String::from_utf8(self.body.to_vec()).unwrap())
+        }
     }
 
     #[derive(Default)]
@@ -1575,8 +1658,8 @@ mod tests {
 
     #[tokio::test]
     async fn root_exposes_v1_navigation_and_opensearch() {
-        let (base, server) = loopback(Arc::new(MemorySource { books: Vec::new() })).await;
-        let response = reqwest::get(format!("{base}/opds")).await.unwrap();
+        let (base, catalog) = loopback(Arc::new(MemorySource { books: Vec::new() })).await;
+        let response = catalog.fetch(format!("{base}/opds")).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
             response.headers()[header::CONTENT_TYPE],
@@ -1612,7 +1695,8 @@ mod tests {
         assert!(xml.contains("rel=\"search\""));
         assert!(xml.contains("/opds/opensearch.xml"));
 
-        let search = reqwest::get(format!("{base}/opds/opensearch.xml"))
+        let search = catalog
+            .fetch(format!("{base}/opds/opensearch.xml"))
             .await
             .unwrap();
         assert_eq!(search.status(), StatusCode::OK);
@@ -1620,7 +1704,6 @@ mod tests {
         let search = search.text().await.unwrap();
         assert!(search.contains("{searchTerms}"));
         assert!(search.contains("/opds/search?q="));
-        server.abort();
     }
 
     #[tokio::test]
@@ -1632,8 +1715,8 @@ mod tests {
                 book_count: Some(i64::from(id)),
             })
             .collect();
-        let (base, server) = loopback(Arc::new(FacetSource { facets })).await;
-        let client = reqwest::Client::new();
+        let (base, catalog) = loopback(Arc::new(FacetSource { facets })).await;
+        let client = catalog.clone();
 
         let mut identities = std::collections::HashSet::new();
         for route in [
@@ -1686,8 +1769,6 @@ mod tests {
                 .unwrap();
             assert_eq!(missing.status(), StatusCode::NOT_FOUND, "{route} page 4");
         }
-
-        server.abort();
     }
 
     #[tokio::test]
@@ -1695,8 +1776,9 @@ mod tests {
         let books = (0..51)
             .map(|id| book(&format!("Result {id}"), &format!("uuid-{id}"), id + 1))
             .collect();
-        let (base, server) = loopback(Arc::new(MemorySource { books })).await;
-        let response = reqwest::get(format!("{base}/opds/search?q=space%20%25%20_"))
+        let (base, catalog) = loopback(Arc::new(MemorySource { books })).await;
+        let response = catalog
+            .fetch(format!("{base}/opds/search?q=space%20%25%20_"))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -1707,15 +1789,15 @@ mod tests {
         );
 
         for query in [String::new(), "x".repeat(MAX_SEARCH_LENGTH + 1)] {
-            let response = reqwest::get(format!(
-                "{base}/opds/search?q={}",
-                urlencoding::encode(&query)
-            ))
-            .await
-            .unwrap();
+            let response = catalog
+                .fetch(format!(
+                    "{base}/opds/search?q={}",
+                    urlencoding::encode(&query)
+                ))
+                .await
+                .unwrap();
             assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         }
-        server.abort();
     }
 
     #[test]
@@ -1741,8 +1823,8 @@ mod tests {
                 )
             })
             .collect();
-        let (base, server) = loopback(Arc::new(MemorySource { books })).await;
-        let client = reqwest::Client::new();
+        let (base, catalog) = loopback(Arc::new(MemorySource { books })).await;
+        let client = catalog.clone();
         let mut path = "/opds/all".to_string();
         let mut ids = Vec::new();
         let mut page_number = 1;
@@ -1768,7 +1850,6 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), 101);
         assert_eq!(page_number, 3);
-        server.abort();
     }
 
     #[tokio::test]
@@ -1873,11 +1954,11 @@ mod tests {
                 > library.get_book(added.id).unwrap().updated_at
         );
 
-        let (base, server) = loopback(Arc::new(LibrarySource {
+        let (base, catalog) = loopback(Arc::new(LibrarySource {
             library: Mutex::new(library),
         }))
         .await;
-        let client = reqwest::Client::new();
+        let client = catalog.clone();
         let feed_head = client
             .head(format!("{base}/opds/all"))
             .send()
@@ -1941,7 +2022,6 @@ mod tests {
             .unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
         assert_eq!(missing.text().await.unwrap(), "Asset not found");
-        server.abort();
     }
 
     #[tokio::test]
@@ -1969,11 +2049,11 @@ mod tests {
                 .unwrap();
         }
 
-        let (base, server) = loopback(Arc::new(LibrarySource {
+        let (base, catalog) = loopback(Arc::new(LibrarySource {
             library: Mutex::new(library),
         }))
         .await;
-        let client = reqwest::Client::new();
+        let client = catalog.clone();
         let first = client.get(format!("{base}/opds/all")).send().await.unwrap();
         assert_eq!(first.status(), StatusCode::OK);
         let first = parsed_feed(&first.bytes().await.unwrap());
@@ -1995,7 +2075,6 @@ mod tests {
         ids.sort();
         ids.dedup();
         assert_eq!(ids.len(), 51);
-        server.abort();
     }
 
     #[tokio::test]
@@ -2042,29 +2121,29 @@ mod tests {
         )
         .unwrap();
 
-        let (base, server) = loopback(Arc::new(LibrarySource {
+        let (base, catalog) = loopback(Arc::new(LibrarySource {
             library: Mutex::new(library),
         }))
         .await;
-        let navigation = reqwest::get(format!("{base}/opds/genres")).await.unwrap();
+        let navigation = catalog.fetch(format!("{base}/opds/genres")).await.unwrap();
         assert_eq!(navigation.status(), StatusCode::OK);
         let navigation = parsed_feed(&navigation.bytes().await.unwrap());
         assert_eq!(navigation.titles, ["Fantasy"]);
         assert_eq!(navigation.subsection_hrefs.len(), 1);
 
-        let books = reqwest::get(format!("{base}{}", navigation.subsection_hrefs[0]))
+        let books = catalog
+            .fetch(format!("{base}{}", navigation.subsection_hrefs[0]))
             .await
             .unwrap();
         assert_eq!(books.status(), StatusCode::OK);
         let books = parsed_feed(&books.bytes().await.unwrap());
         assert_eq!(books.titles, ["Genre Match"]);
-        server.abort();
     }
 
     #[tokio::test]
     async fn empty_and_unavailable_catalogs_return_valid_non_sensitive_responses() {
-        let (base, server) = loopback(Arc::new(MemorySource { books: Vec::new() })).await;
-        let response = reqwest::get(format!("{base}/opds/all")).await.unwrap();
+        let (base, catalog) = loopback(Arc::new(MemorySource { books: Vec::new() })).await;
+        let response = catalog.fetch(format!("{base}/opds/all")).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()[header::CONTENT_TYPE], ATOM_CONTENT_TYPE);
         let feed = parsed_feed(&response.bytes().await.unwrap());
@@ -2078,19 +2157,17 @@ mod tests {
         DateTime::parse_from_rfc3339(&feed_updated).expect("feed updated is valid RFC 3339");
         assert!(feed.next.is_none());
         assert!(feed.previous.is_none());
-        server.abort();
 
-        let (base, server) = loopback(Arc::new(NoLibrary)).await;
-        let response = reqwest::get(format!("{base}/opds")).await.unwrap();
+        let (base, catalog) = loopback(Arc::new(NoLibrary)).await;
+        let response = catalog.fetch(format!("{base}/opds")).await.unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(response.text().await.unwrap(), "No active library");
-        server.abort();
     }
 
     #[tokio::test]
     async fn invalid_pages_and_library_failures_are_bounded_and_redacted() {
-        let client = reqwest::Client::new();
-        let (base, server) = loopback(Arc::new(MemorySource { books: Vec::new() })).await;
+        let (base, catalog) = loopback(Arc::new(MemorySource { books: Vec::new() })).await;
+        let client = catalog.clone();
         for page in ["0", "18446744073709551615"] {
             let response = client
                 .get(format!("{base}/opds/all?page={page}"))
@@ -2111,45 +2188,42 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        server.abort();
 
-        let (base, server) = loopback(Arc::new(FailureSource(|| {
+        let (base, catalog) = loopback(Arc::new(FailureSource(|| {
             CalibreError::Database("database is locked at /private/library/metadata.db".to_string())
         })))
         .await;
-        let response = client.get(format!("{base}/opds")).send().await.unwrap();
+        let response = catalog.get(format!("{base}/opds")).send().await.unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(response.text().await.unwrap(), "Library busy");
-        server.abort();
 
-        let (base, server) = loopback(Arc::new(FailureSource(|| {
+        let (base, catalog) = loopback(Arc::new(FailureSource(|| {
             CalibreError::DatabaseIntegrity("broken /private/library/metadata.db".to_string())
         })))
         .await;
-        let response = client.get(format!("{base}/opds")).send().await.unwrap();
+        let response = catalog.get(format!("{base}/opds")).send().await.unwrap();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(response.text().await.unwrap(), "Catalog unavailable");
-        server.abort();
     }
 
     #[tokio::test]
     async fn empty_facets_are_valid_navigation_feeds() {
-        let (base, server) = loopback(Arc::new(FacetSource { facets: Vec::new() })).await;
+        let (base, catalog) = loopback(Arc::new(FacetSource { facets: Vec::new() })).await;
         for route in ["authors", "series", "tags", "genres"] {
-            let response = reqwest::get(format!("{base}/opds/{route}")).await.unwrap();
+            let response = catalog.fetch(format!("{base}/opds/{route}")).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK);
             assert!(parsed_feed(&response.bytes().await.unwrap())
                 .titles
                 .is_empty());
             assert_eq!(
-                reqwest::get(format!("{base}/opds/{route}?page=2"))
+                catalog
+                    .fetch(format!("{base}/opds/{route}?page=2"))
                     .await
                     .unwrap()
                     .status(),
                 StatusCode::NOT_FOUND
             );
         }
-        server.abort();
     }
     #[test]
     fn filtered_feed_ids_are_distinct_and_stable_across_pages() {
@@ -2194,11 +2268,11 @@ mod tests {
                 file_paths: vec![source_path],
             })
             .unwrap();
-        let (base, server) = loopback(Arc::new(LibrarySource {
+        let (base, catalog) = loopback(Arc::new(LibrarySource {
             library: Mutex::new(library),
         }))
         .await;
-        let client = reqwest::Client::new();
+        let client = catalog.clone();
         for format in ["..%2f", "%2e%2e%2f%2e%2e%2fmetadata.db"] {
             let response = client
                 .get(format!(
@@ -2215,7 +2289,6 @@ mod tests {
             );
             assert_eq!(response.text().await.unwrap(), "Invalid asset request");
         }
-        server.abort();
         drop(directory);
     }
 }

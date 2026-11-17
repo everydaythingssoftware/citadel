@@ -1,11 +1,15 @@
 #!/bin/sh
 # Starts the image the way the docs say to and checks that a fresh server is
 # ready for setup: healthy, serving the web app and API, printing its setup
-# code, and keeping its state as PUID. usage: docker/smoke-test.sh <image>
+# code, and keeping its state as PUID. Then it checks what only the real
+# process can show: an e-reader reads the catalog with a device key, a key
+# changed with the CLI applies to the running server, and stopping the
+# container exits cleanly. usage: docker/smoke-test.sh <image>
 set -eu
 image=$1
 name=citadel-smoke-$$
 port=${SMOKE_PORT:-18081}
+opds_port=${SMOKE_OPDS_PORT:-18080}
 cleanup() {
 	status=$?
 	if [ "$status" != 0 ]; then docker logs "$name" 2>&1 | tail -40 || true; fi
@@ -16,7 +20,8 @@ cleanup() {
 trap cleanup EXIT
 fail() { echo "smoke test: $*" >&2; exit 1; }
 
-docker run -d --name "$name" -p "127.0.0.1:$port:8081" -v "$name:/var/lib/citadel" \
+docker run -d --name "$name" -p "127.0.0.1:$port:8081" -p "127.0.0.1:$opds_port:8080" \
+	-v "$name:/var/lib/citadel" \
 	-e CITADEL_UPDATE_CHECK=false "$image" >/dev/null
 
 health=starting
@@ -44,3 +49,41 @@ owner=$(docker exec "$name" stat -c %u:%g /var/lib/citadel/citadel.db)
 [ "$owner" = 1000:1000 ] || fail "docker exec left citadel.db owned by $owner"
 docker exec "$name" citadel-server users list | grep -q smoke || fail "the CLI didn't see the new user"
 echo "CLI works through docker exec as PUID"
+
+# The administrator sets up a library in the browser.
+api="http://127.0.0.1:$port"
+cookies=$(mktemp)
+trap 'rm -f "$cookies"; cleanup' EXIT
+curl -fsS -c "$cookies" -H "Origin: $api" -H 'content-type: application/json' \
+	-d '{"username":"smoke","password":"a long password"}' "$api/api/session" >/dev/null \
+	|| fail "the administrator couldn't sign in"
+curl -fsS -b "$cookies" -H "Origin: $api" -H 'content-type: application/json' \
+	-d '{"mode":"create","path":"/var/lib/citadel/Books"}' "$api/api/setup/library" >/dev/null \
+	|| fail "the browser couldn't create a library"
+echo "library created in the browser"
+
+# A device key added with the CLI, another process, lets an e-reader in once
+# the running server's periodic check sees it.
+key=$(docker exec "$name" citadel-server users keys smoke add Kobo | sed -n 's/^OPDS device key: //p')
+[ -n "$key" ] || fail "the CLI printed no device key"
+opds="http://127.0.0.1:$opds_port/opds"
+for _ in $(seq 1 30); do
+	curl -fsS -u "smoke:$key" "$opds" 2>/dev/null | grep -q 'All Books' && break
+	sleep 1
+done
+curl -fsS -u "smoke:$key" "$opds" | grep -q 'All Books' || fail "OPDS didn't serve the catalog"
+echo "OPDS serves the catalog to a device key"
+
+# Rotating the key applies to the very next request.
+rotated=$(docker exec "$name" citadel-server users keys smoke rotate Kobo | sed -n 's/^OPDS device key: //p')
+[ "$(curl -s -o /dev/null -w '%{http_code}' -u "smoke:$key" "$opds")" = 401 ] \
+	|| fail "the old key still works after rotating it"
+curl -fsS -u "smoke:$rotated" "$opds" >/dev/null || fail "the rotated key doesn't work"
+echo "a rotated key applies at once"
+
+# Stopping is clean: exit code 0, OPDS reported stopped.
+docker stop "$name" >/dev/null
+[ "$(docker inspect --format '{{.State.ExitCode}}' "$name")" = 0 ] \
+	|| fail "the server didn't exit cleanly"
+docker logs "$name" 2>&1 | grep -q 'state=Stopped' || fail "no stop in the log"
+echo "stops cleanly"

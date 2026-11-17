@@ -12,14 +12,15 @@ async fn latest(State(answer): State<Answer>) -> impl IntoResponse {
     (status, Json(body))
 }
 
-async fn stand_in(answer: Answer) -> String {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
+/// The feed's address, and a client whose requests the stand-in answers.
+fn stand_in(answer: Answer) -> (&'static str, citadel_host::RouterHttp) {
     let app = Router::new()
         .route("/releases/latest", get(latest))
         .with_state(answer);
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    format!("http://{address}/releases/latest")
+    (
+        "https://api.github.test/releases/latest",
+        citadel_host::RouterHttp::new(app),
+    )
 }
 
 fn release(tag: &str) -> Value {
@@ -35,9 +36,8 @@ fn release(tag: &str) -> Value {
 #[tokio::test]
 async fn a_newer_release_is_offered_and_kept_through_a_failed_check() {
     let answer: Answer = Arc::new(Mutex::new((StatusCode::OK, release("v0.7.1"))));
-    let feed = stand_in(answer.clone()).await;
-    let updates = Updates::with_feed("0.7.1", UpdateChecks::On, &feed);
-    let client = citadel_host::ReqwestHttp::new();
+    let (feed, client) = stand_in(answer.clone());
+    let updates = Updates::with_feed("0.7.1", UpdateChecks::On, feed);
 
     updates.check_now(&client).await.unwrap();
     let status = updates.details();
@@ -68,9 +68,8 @@ async fn a_newer_release_is_offered_and_kept_through_a_failed_check() {
 #[tokio::test]
 async fn drafts_prereleases_and_odd_tags_are_not_offered() {
     let answer: Answer = Arc::new(Mutex::new((StatusCode::OK, Value::Null)));
-    let feed = stand_in(answer.clone()).await;
-    let updates = Updates::with_feed("0.7.1", UpdateChecks::On, &feed);
-    let client = citadel_host::ReqwestHttp::new();
+    let (feed, client) = stand_in(answer.clone());
+    let updates = Updates::with_feed("0.7.1", UpdateChecks::On, feed);
     for body in [
         json!({"tag_name": "v9.0.0", "html_url": "x", "published_at": null, "draft": true, "prerelease": false}),
         json!({"tag_name": "v9.0.0-nightly.1", "html_url": "x", "published_at": null, "draft": false, "prerelease": true}),
