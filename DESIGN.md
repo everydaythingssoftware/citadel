@@ -70,8 +70,8 @@ Calibre's cluttered chrome, generic web-app SaaS.
 
   | Token | macOS | iOS | For |
   |---|---|---|---|
-  | `large-title` | 26 | 34 | a display line or number |
-  | `title-1` | 22 | 28 | a book title |
+  | `large-title` | 26 | 34 | a book title, a display line or number |
+  | `title-1` | 22 | 28 | a book title where room is short |
   | `title-2` | 17 | 22 | a page or sheet heading |
   | `title-3` | 15 | 20 | a small heading |
   | `headline` | 13 | 17 | body's size, with a bold weight |

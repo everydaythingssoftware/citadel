@@ -310,8 +310,8 @@
  * 16px browser default, so each step is its size at that default over 14.
  *
  *                macOS  iOS
- *   large-title    26    34   a display line or number
- *   title-1        22    28   a book title
+ *   large-title    26    34   a book title, a display line or number
+ *   title-1        22    28   a book title where room is short
  *   title-2        17    22   a page or sheet heading
  *   title-3        15    20   a small heading
  *   headline       13    17   body's size; pair it with a bold weight

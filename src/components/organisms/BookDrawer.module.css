@@ -119,7 +119,7 @@
 	-webkit-line-clamp: 2;
 	line-clamp: 2;
 	font-family: var(--ctd-font-serif);
-	font-size: var(--ctd-text-title-1);
+	font-size: var(--ctd-text-large-title);
 	font-weight: 600;
 	line-height: 1.17;
 	letter-spacing: -0.012em;
@@ -192,7 +192,7 @@
 	}
 
 	.title {
-		font-size: var(--ctd-text-title-2);
+		font-size: var(--ctd-text-title-1);
 	}
 
 	.authors {
@@ -235,7 +235,7 @@
 	}
 
 	.title {
-		font-size: var(--ctd-text-title-2);
+		font-size: var(--ctd-text-title-1);
 	}
 }
 
@@ -453,6 +453,11 @@
 	.hero {
 		gap: 16px;
 		padding: 52px 20px 20px;
+	}
+
+	/* Beside the cover a large title leaves two words to a line. */
+	.title {
+		font-size: var(--ctd-text-title-1);
 	}
 
 	.series {
