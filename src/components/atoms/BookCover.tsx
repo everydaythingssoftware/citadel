@@ -12,14 +12,11 @@ import img3Url from "../../assets/3.jpg";
 import img4Url from "../../assets/4.jpg";
 import img5Url from "../../assets/5.jpg";
 import styles from "./BookCover.module.css";
+import { CoverSpine } from "./CoverSpine";
 
 type LibraryBookWithCoverImage = LibraryBook & {
 	cover_image: NonNullable<LibraryBook["cover_image"]>;
 };
-
-const spineBackground = `
-  var(--ctd-cover-spine-bg)
-`;
 
 interface CoverSizeHint {
 	width: number;
@@ -109,7 +106,7 @@ const BookCoverUsingImage = ({
 				className={styles.art}
 				style={{
 					position: "relative",
-					borderRadius: "4px",
+					borderRadius: "2px",
 					overflow: "hidden",
 					boxShadow: "var(--ctd-cover-shadow)",
 				}}
@@ -149,15 +146,7 @@ const BookCoverUsingImage = ({
 						display: "block",
 					}}
 				/>
-				<div
-					style={{
-						position: "absolute",
-						inset: 0,
-						background: spineBackground,
-						pointerEvents: "none",
-						zIndex: 1,
-					}}
-				/>
+				<CoverSpine />
 				<ReadOverlay visible={book.is_read && !disableFade} />
 			</div>
 		</div>
@@ -205,7 +194,7 @@ const BookCoverWithPlaceholder = ({
 					height: fluid ? "100%" : "200px",
 					display: "grid",
 					gridTemplateAreas: "overlap",
-					borderRadius: "4px",
+					borderRadius: "2px",
 					overflow: "hidden",
 					boxShadow: "var(--ctd-cover-shadow)",
 					position: "relative",
@@ -259,16 +248,7 @@ const BookCoverWithPlaceholder = ({
 						{formatAuthorList(book.author_list)}
 					</div>
 				</div>
-				<div
-					style={{
-						gridArea: "overlap",
-						width: fluid ? "100%" : "133px",
-						height: fluid ? "100%" : "200px",
-						background: spineBackground,
-						pointerEvents: "none",
-						zIndex: 2,
-					}}
-				/>
+				<CoverSpine />
 				<ReadOverlay visible={book.is_read && !disableFade} />
 			</div>
 		</div>

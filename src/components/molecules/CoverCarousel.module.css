@@ -50,7 +50,7 @@
 	border: 0;
 	background: none;
 	scroll-snap-align: center;
-	border-radius: 4px;
+	border-radius: 2px;
 	transform-origin: 50% 100%;
 	transition: transform 220ms ease;
 }
@@ -73,7 +73,7 @@
 	display: block;
 	width: 100%;
 	aspect-ratio: 2 / 3;
-	border-radius: 4px;
+	border-radius: 2px;
 	object-fit: cover;
 	box-shadow: var(--ctd-cover-shadow);
 	user-select: none;

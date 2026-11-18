@@ -1,4 +1,7 @@
 .cover {
+	border-radius: 2px;
+	box-shadow: var(--ctd-cover-shadow);
+	isolation: isolate;
 	position: relative;
 	display: block;
 	overflow: hidden;
