@@ -103,14 +103,18 @@ pub enum MenuSortOrder {
     NameZa,
     AuthorAz,
     AuthorZa,
+    AddedNewest,
+    AddedOldest,
 }
 
 impl MenuSortOrder {
-    pub const ALL: [MenuSortOrder; 4] = [
+    pub const ALL: [MenuSortOrder; 6] = [
         MenuSortOrder::NameAz,
         MenuSortOrder::NameZa,
         MenuSortOrder::AuthorAz,
         MenuSortOrder::AuthorZa,
+        MenuSortOrder::AddedNewest,
+        MenuSortOrder::AddedOldest,
     ];
 
     pub fn label(self) -> &'static str {
@@ -119,6 +123,8 @@ impl MenuSortOrder {
             Self::NameZa => "Name (Z–A)",
             Self::AuthorAz => "Author (A–Z)",
             Self::AuthorZa => "Author (Z–A)",
+            Self::AddedNewest => "Recently added",
+            Self::AddedOldest => "Oldest added",
         }
     }
 }

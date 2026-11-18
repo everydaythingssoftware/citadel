@@ -44,6 +44,8 @@ const SORT_ORDER_TO_BACKEND: Record<LibraryBookSortOrderKey, BookSortOrder> = {
 	nameZa: "TitleDesc",
 	authorAz: "AuthorAsc",
 	authorZa: "AuthorDesc",
+	addedNewest: "AddedDesc",
+	addedOldest: "AddedAsc",
 };
 
 const normalizedText = (filter: BookGridFilter): string | null => {

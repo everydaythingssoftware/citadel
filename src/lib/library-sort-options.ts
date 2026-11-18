@@ -8,6 +8,8 @@ const SORT_LABELS: Record<LibraryBookSortOrderKey, string> = {
 	nameZa: "Name (Z–A)",
 	authorAz: "Author (A–Z)",
 	authorZa: "Author (Z–A)",
+	addedNewest: "Recently added",
+	addedOldest: "Oldest added",
 };
 
 export const librarySortOptions: {
