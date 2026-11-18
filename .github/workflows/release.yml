@@ -253,7 +253,8 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         with:
           tauriScript: bun tauri
-          args: --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          # The RPM is packaged in the next step: its version can't hold a "-".
+          args: --config '{"bundle":{"createUpdaterArtifacts":true}}' ${{ matrix.platform == 'ubuntu-22.04' && '--bundles deb,appimage' || '' }}
           tagName: v${{ needs.version.outputs.version }}
           releaseName: Citadel v${{ needs.version.outputs.version }}
           releaseBody: |
@@ -262,6 +263,33 @@ jobs:
             Includes updater metadata (`latest.json`) for Tauri updater clients.
           prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
           generateReleaseNotes: true
+
+      # RPM versions can't contain "-", so a SemVer pre-release such as
+      # 0.7.2-nightly.20261118.273 fails Tauri's RPM bundler. The RPM is
+      # packaged from the same build instead, with the pre-release moved into
+      # the RPM release tag: version 0.7.2, release 0.nightly.20261118.273.
+      # The leading 0 sorts it below 0.7.2's own release, 1. Stable versions
+      # keep release 1, as before.
+      - name: (Ubuntu only) Package and publish the RPM
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CITADEL_RELEASE_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$VERSION" == *-* ]]; then
+            RPM_VERSION="${VERSION%%-*}"
+            PRERELEASE="${VERSION#*-}"
+            RPM_RELEASE="0.${PRERELEASE//-/.}"
+          else
+            RPM_VERSION="$VERSION"
+            RPM_RELEASE="1"
+          fi
+          CONFIG=$(jq -cn --arg version "$RPM_VERSION" --arg release "$RPM_RELEASE" \
+            '{version: $version, bundle: {createUpdaterArtifacts: false, linux: {rpm: {release: $release}}}}')
+          bun tauri bundle --bundles rpm --config "$CONFIG"
+          gh release upload "v$VERSION" target/release/bundle/rpm/*.rpm --clobber
 
       # Must run after the build: create-pull-request resets the working tree
       # to the base branch, which would strip the applied version bump and
