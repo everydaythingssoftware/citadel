@@ -860,6 +860,47 @@ fn tag_id_by_name(lib: &mut Library, name: &str) -> i32 {
 }
 
 #[test]
+fn test_sort_added_uses_timestamp_with_id_tiebreaker() {
+    let (_temp, mut lib) = setup_with_library();
+    let middle_a = lib.add_book(book("Middle A", &[])).unwrap();
+    let middle_b = lib.add_book(book("Middle B", &[])).unwrap();
+    let oldest = lib.add_book(book("Oldest", &[])).unwrap();
+    let newest = lib.add_book(book("Newest", &[])).unwrap();
+
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path()).unwrap();
+    for (id, ts) in [
+        (oldest.id.as_i32(), "2020-01-01 00:00:00"),
+        (middle_a.id.as_i32(), "2022-01-01 00:00:00"),
+        (middle_b.id.as_i32(), "2022-01-01 00:00:00"),
+        (newest.id.as_i32(), "2024-01-01 00:00:00"),
+    ] {
+        sql_query("UPDATE books SET timestamp = ? WHERE id = ?")
+            .bind::<Text, _>(ts)
+            .bind::<Integer, _>(id)
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    let desc = query(
+        &mut lib,
+        BookQuery {
+            sort: BookSortOrder::AddedDesc,
+            ..BookQuery::default()
+        },
+    );
+    assert_eq!(titles(&desc), ["Newest", "Middle B", "Middle A", "Oldest"]);
+
+    let asc = query(
+        &mut lib,
+        BookQuery {
+            sort: BookSortOrder::AddedAsc,
+            ..BookQuery::default()
+        },
+    );
+    assert_eq!(titles(&asc), ["Oldest", "Middle A", "Middle B", "Newest"]);
+}
+
+#[test]
 fn test_sort_updated_desc_uses_id_as_stable_tiebreaker() {
     let (_temp, mut lib) = setup_with_library();
     let older = lib.add_book(book("Older", &[])).unwrap();

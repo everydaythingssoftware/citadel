@@ -649,7 +649,7 @@ language_code: string | null;
  * Hardcover deep-link slug; `None` for other providers.
  */
 slug: string | null }
-export type BookSortOrder = "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc"
+export type BookSortOrder = "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc" | "AddedDesc" | "AddedAsc"
 export type BookUpdate = { author_id_list: string[] | null; tag_list: string[] | null; title: string | null; timestamp: string | null; publication_date: string | null; is_read: boolean | null; description: string | null; 
 /**
  * An empty (or whitespace) name unlinks the book from its series;
@@ -886,7 +886,7 @@ export type MenuLibrary = { id: string; name: string; active: boolean }
  * The selected books: the Book menu's enabled items and plural labels.
  */
 export type MenuSelection = { count: number; allFinished: boolean }
-export type MenuSortOrder = "nameAz" | "nameZa" | "authorAz" | "authorZa"
+export type MenuSortOrder = "nameAz" | "nameZa" | "authorAz" | "authorZa" | "addedNewest" | "addedOldest"
 /**
  * One group of what the menu bar shows, replaced whole.
  */

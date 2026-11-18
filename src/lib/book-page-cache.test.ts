@@ -95,6 +95,12 @@ describe("toBookQuery", () => {
 		expect(toBookQuery(filter({ sortOrder: "authorZa" }), 0).sort).toBe(
 			"AuthorDesc",
 		);
+		expect(toBookQuery(filter({ sortOrder: "addedNewest" }), 0).sort).toBe(
+			"AddedDesc",
+		);
+		expect(toBookQuery(filter({ sortOrder: "addedOldest" }), 0).sort).toBe(
+			"AddedAsc",
+		);
 	});
 
 	it("nullifies blank text and passes trimmed text through", () => {

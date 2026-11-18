@@ -6,7 +6,9 @@ export type LibraryBookSortOrderKey =
 	| "nameAz"
 	| "nameZa"
 	| "authorAz"
-	| "authorZa";
+	| "authorZa"
+	| "addedNewest"
+	| "addedOldest";
 
 export interface LibraryPath {
 	id: string;
