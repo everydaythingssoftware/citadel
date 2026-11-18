@@ -70,7 +70,7 @@
 	border-radius: var(--ctd-menu-item-radius);
 	background: transparent;
 	font: inherit;
-	line-height: 1.2;
+	line-height: var(--ctd-leading-body, 1.2);
 	color: inherit;
 	text-align: start;
 	white-space: nowrap;

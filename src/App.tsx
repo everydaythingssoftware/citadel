@@ -12,6 +12,7 @@ import { useLibrarySwitch } from "@/lib/hooks/use-library-switch";
 import { useRestoredDatabaseNotice } from "@/lib/hooks/use-restored-database-notice";
 import { scrollRestorationOptions } from "@/lib/navigation";
 import { usePlatform } from "@/lib/platform/context";
+import { useApplyTextMetrics } from "@/lib/text-metrics";
 import { useApplyColorScheme } from "@/lib/theme-manager";
 import { safeAsyncEventHandler } from "$lib/async";
 import { BrowserLibraryGate } from "./components/organisms/BrowserLibraryGate";
@@ -61,6 +62,7 @@ export const App = () => {
 	const theme = useSettings((state) => state.theme);
 	const platform = usePlatform();
 	useApplyColorScheme(theme);
+	useApplyTextMetrics(useSettings((state) => state.appleTextMetrics));
 	const { stage: switchStage } = useLibrarySwitch();
 	useRestoredDatabaseNotice(hydrated);
 

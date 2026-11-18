@@ -265,6 +265,9 @@ const GeneralTab = () => {
 		(state) => state.setAutoUpdateCheckingEnabled,
 	);
 	const autoUpdateSwitchId = useId();
+	const appleTextMetrics = useSettings((state) => state.appleTextMetrics);
+	const setAppleTextMetrics = useSettings((state) => state.setAppleTextMetrics);
+	const textMetricsSwitchId = useId();
 
 	const platform = usePlatform();
 	const supportsAutoUpdates = platform.capabilities.supportsAutoUpdates;
@@ -297,6 +300,18 @@ const GeneralTab = () => {
 								{ value: "light", label: "Light" },
 								{ value: "dark", label: "Dark" },
 							]}
+						/>
+					}
+				/>
+				<SettingsRow
+					label="Apple line heights and title weights"
+					description="Tighter lines and bolder titles, as macOS and iOS set them."
+					htmlFor={textMetricsSwitchId}
+					control={
+						<Switch
+							id={textMetricsSwitchId}
+							checked={appleTextMetrics}
+							onCheckedChange={(checked) => void setAppleTextMetrics(checked)}
 						/>
 					}
 				/>

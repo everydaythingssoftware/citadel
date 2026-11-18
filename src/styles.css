@@ -120,8 +120,8 @@
 	   padding, press motion, focus halo, popover depth) without touching
 	   the color stones or any component CSS. */
 	--ctd-font-ui:
-		-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
-		Helvetica, Arial, sans-serif;
+		-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable",
+		"Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 	--ctd-radius-control: 6px;
 	--ctd-radius-capsule: 9999px;
 	--ctd-toolbar-height: 46px;
@@ -157,7 +157,7 @@
 	/* A share of the reader's default size, so a larger browser or system
 	   text setting scales the whole UI: 14px at the usual 16px. */
 	font-size: 87.5%;
-	line-height: 1.45;
+	line-height: var(--ctd-leading-body, 1.45);
 	font-weight: 400;
 
 	font-synthesis: none;
@@ -373,6 +373,49 @@
 		--ctd-text-footnote: var(--ctd-type-ios-footnote);
 		--ctd-text-caption-1: var(--ctd-type-ios-caption-1);
 		--ctd-text-caption-2: var(--ctd-type-ios-caption-2);
+	}
+}
+
+/*
+ * Apple's line heights and emphasized weights for the same styles, behind
+ * the "Apple line heights and title weights" setting (data-text-metrics on
+ * <html>, see src/lib/text-metrics.ts). The tokens exist only while it is
+ * on: a rule writes line-height: var(--ctd-leading-body, 1.45), so with it
+ * off the rule keeps its own value. Each leading is Apple's line height
+ * over its size. Only the three large titles have an emphasized weight
+ * that differs from Citadel's 600.
+ */
+:root[data-text-metrics="apple"] {
+	--ctd-leading-large-title: calc(32 / 26);
+	--ctd-leading-title-1: calc(26 / 22);
+	--ctd-leading-title-2: calc(22 / 17);
+	--ctd-leading-title-3: calc(20 / 15);
+	--ctd-leading-headline: calc(16 / 13);
+	--ctd-leading-body: calc(16 / 13);
+	--ctd-leading-callout: calc(15 / 12);
+	--ctd-leading-subheadline: calc(14 / 11);
+	--ctd-leading-footnote: calc(13 / 10);
+	--ctd-leading-caption-1: calc(13 / 10);
+	--ctd-leading-caption-2: calc(13 / 10);
+
+	--ctd-emphasis-large-title: 700;
+	--ctd-emphasis-title-1: 700;
+	--ctd-emphasis-title-2: 700;
+}
+
+@media (pointer: coarse) {
+	:root[data-text-metrics="apple"] {
+		--ctd-leading-large-title: calc(41 / 34);
+		--ctd-leading-title-1: calc(34 / 28);
+		--ctd-leading-title-2: calc(28 / 22);
+		--ctd-leading-title-3: calc(25 / 20);
+		--ctd-leading-headline: calc(22 / 17);
+		--ctd-leading-body: calc(22 / 17);
+		--ctd-leading-callout: calc(21 / 16);
+		--ctd-leading-subheadline: calc(20 / 15);
+		--ctd-leading-footnote: calc(18 / 13);
+		--ctd-leading-caption-1: calc(16 / 12);
+		--ctd-leading-caption-2: calc(13 / 11);
 	}
 }
 

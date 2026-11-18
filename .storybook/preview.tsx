@@ -5,6 +5,7 @@ import { DARK_MODE_EVENT_NAME } from "storybook-dark-mode";
 
 import { TooltipProvider } from "../src/components/ui";
 import { setChordPlatform } from "../src/lib/keymap";
+import { applyTextMetrics } from "../src/lib/text-metrics";
 import type { OperatingSystem } from "../src/lib/platform/os";
 import "../src/styles.css";
 
@@ -36,14 +37,16 @@ function ColorSchemeWrapper({ children }: PropsWithChildren<unknown>) {
  */
 function PlatformAttributes({
 	platform,
+	textMetrics,
 	children,
-}: PropsWithChildren<{ platform: string }>) {
+}: PropsWithChildren<{ platform: string; textMetrics: string }>) {
 	useEffect(() => {
 		const html = document.documentElement;
 		html.dataset.platform = platform;
 		html.dataset.runtime = "web";
+		applyTextMetrics(textMetrics === "apple");
 		setChordPlatform(platform as OperatingSystem);
-	}, [platform]);
+	}, [platform, textMetrics]);
 	return <>{children}</>;
 }
 
@@ -58,8 +61,17 @@ const preview: Preview = {
 				dynamicTitle: true,
 			},
 		},
+		textMetrics: {
+			description: "data-text-metrics on <html>",
+			toolbar: {
+				title: "Text metrics",
+				icon: "paragraph",
+				items: ["citadel", "apple"],
+				dynamicTitle: true,
+			},
+		},
 	},
-	initialGlobals: { platform: "macos" },
+	initialGlobals: { platform: "macos", textMetrics: "citadel" },
 	parameters: {
 		controls: {
 			matchers: {
@@ -70,7 +82,10 @@ const preview: Preview = {
 	},
 	decorators: [
 		(Story, context) => (
-			<PlatformAttributes platform={String(context.globals.platform ?? "macos")}>
+			<PlatformAttributes
+				platform={String(context.globals.platform ?? "macos")}
+				textMetrics={String(context.globals.textMetrics ?? "citadel")}
+			>
 				<Story />
 			</PlatformAttributes>
 		),

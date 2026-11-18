@@ -68,7 +68,7 @@
 .description {
 	margin: 0;
 	font-size: var(--ctd-text-subheadline);
-	line-height: 1.45;
+	line-height: var(--ctd-leading-subheadline, 1.45);
 	color: var(--ctd-ink-soft);
 }
 
@@ -97,7 +97,7 @@
 .error {
 	margin: 4px 0 0;
 	font-size: var(--ctd-text-subheadline);
-	line-height: 1.45;
+	line-height: var(--ctd-leading-subheadline, 1.45);
 	color: var(--ctd-danger-ink);
 }
 

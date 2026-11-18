@@ -59,21 +59,22 @@
 .description {
 	margin: 6px 0 0;
 	font-size: var(--ctd-text-subheadline);
-	line-height: 1.45;
+	line-height: var(--ctd-leading-subheadline, 1.45);
 	color: var(--ctd-ink-soft);
 	text-wrap: balance;
 }
 
-/* Side by side while both fit; at touch sizes long labels stack. */
 .buttons {
 	display: flex;
-	flex-wrap: wrap;
 	gap: 8px;
 	margin-top: 16px;
 }
 
-.buttons > * {
-	flex: 1 1 auto;
+/* Touch-sized labels don't fit side by side, so they stack as iOS's do. */
+@media (pointer: coarse) {
+	.buttons {
+		flex-direction: column;
+	}
 }
 
 @keyframes alert-overlay-in {

@@ -18,7 +18,7 @@
 .rowLabel {
 	text-align: right;
 	font-size: var(--ctd-text-body);
-	line-height: 1.45;
+	line-height: var(--ctd-leading-body, 1.45);
 	color: var(--ctd-ink-soft);
 	user-select: none;
 	white-space: nowrap;
@@ -47,7 +47,7 @@
 	display: flex;
 	min-width: 0;
 	font-size: var(--ctd-text-body);
-	line-height: 1.45;
+	line-height: var(--ctd-leading-body, 1.45);
 	color: var(--ctd-ink-soft);
 	padding-top: 5px;
 	padding-bottom: 5px;
@@ -93,7 +93,7 @@
 	align-items: flex-start;
 	gap: 4px;
 	font-size: var(--ctd-text-callout);
-	line-height: 1.45;
+	line-height: var(--ctd-leading-callout, 1.45);
 	color: var(--ctd-ink-soft);
 }
 

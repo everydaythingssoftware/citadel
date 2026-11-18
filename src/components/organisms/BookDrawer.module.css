@@ -116,12 +116,12 @@
 	margin: 0;
 	overflow: hidden;
 	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
+	-webkit-line-clamp: 3;
+	line-clamp: 3;
 	font-family: var(--ctd-font-serif);
 	font-size: var(--ctd-text-large-title);
-	font-weight: 600;
-	line-height: 1.17;
+	font-weight: var(--ctd-emphasis-large-title, 600);
+	line-height: var(--ctd-leading-large-title, 1.17);
 	letter-spacing: -0.012em;
 	color: var(--ctd-ink);
 	text-wrap: pretty;
@@ -259,7 +259,9 @@
 
 .descriptionText {
 	font-size: var(--ctd-text-body);
-	line-height: 1.6;
+	/* One line's height in em, which the four-line clamp below measures. */
+	--description-leading: var(--ctd-leading-body, 1.6);
+	line-height: var(--description-leading);
 	color: var(--ctd-ink);
 }
 
@@ -273,12 +275,16 @@
 
 /* Four lines, the last fading out. */
 .descriptionText:not([data-expanded]) {
-	max-height: calc(1.6em * 4);
+	max-height: calc(var(--description-leading) * 4em);
 	overflow: hidden;
 }
 
 .descriptionText[data-clamped] {
-	mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), transparent);
+	mask-image: linear-gradient(
+		to bottom,
+		#000 calc(100% - var(--description-leading) * 1em),
+		transparent
+	);
 }
 
 .more {
@@ -492,19 +498,7 @@
 	}
 
 	.descriptionText {
-		line-height: 1.55;
-	}
-
-	.descriptionText:not([data-expanded]) {
-		max-height: calc(1.55em * 4);
-	}
-
-	.descriptionText[data-clamped] {
-		mask-image: linear-gradient(
-			to bottom,
-			#000 calc(100% - 1.55em),
-			transparent
-		);
+		--description-leading: var(--ctd-leading-body, 1.55);
 	}
 
 	.more {

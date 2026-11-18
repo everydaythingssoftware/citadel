@@ -118,7 +118,7 @@
 .rowName {
 	overflow: hidden;
 	font-size: var(--ctd-text-body);
-	line-height: 1.35;
+	line-height: var(--ctd-leading-body, 1.35);
 	color: var(--ctd-ink);
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -126,7 +126,7 @@
 
 .rowSubtitle {
 	font-size: var(--ctd-text-callout);
-	line-height: 1.35;
+	line-height: var(--ctd-leading-callout, 1.35);
 	color: var(--ctd-ink-soft);
 }
 

@@ -20,7 +20,7 @@
 .errorNote {
 	margin: 0;
 	font-size: var(--ctd-text-body);
-	line-height: 1.4;
+	line-height: var(--ctd-leading-body, 1.4);
 	color: var(--ctd-danger-text);
 }
 
@@ -138,7 +138,7 @@
 	padding: 1px 7px;
 	font-size: var(--ctd-text-subheadline);
 	font-weight: 600;
-	line-height: 1.5;
+	line-height: var(--ctd-leading-subheadline, 1.5);
 	color: var(--ctd-accent-text);
 	background-color: var(--ctd-accent);
 	border-radius: 99px;

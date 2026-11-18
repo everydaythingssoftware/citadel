@@ -17,7 +17,7 @@
 	resize: vertical;
 	font-family: inherit;
 	font-size: var(--ctd-text-body);
-	line-height: 1.45;
+	line-height: var(--ctd-leading-body, 1.45);
 	border-radius: var(--ctd-radius-control);
 	background-color: var(--ctd-control-bg);
 	border: var(--ctd-control-border-width) solid var(--ctd-border);

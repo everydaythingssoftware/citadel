@@ -28,6 +28,7 @@ interface SettingsStore extends SettingsSchema {
 
 	// Domain-specific actions
 	setTheme: (theme: "dark" | "light" | "auto") => Promise<void>;
+	setAppleTextMetrics: (enabled: boolean) => Promise<void>;
 	setStartFullscreen: (enabled: boolean) => Promise<void>;
 	setAutoUpdateCheckingEnabled: (enabled: boolean) => Promise<void>;
 	setHasCompletedFirstLaunch: (enabled: boolean) => Promise<void>;
@@ -188,6 +189,10 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 
 	setTheme: async (theme) => {
 		await persistSetting(set, get, "theme", theme);
+	},
+
+	setAppleTextMetrics: async (enabled) => {
+		await persistSetting(set, get, "appleTextMetrics", enabled);
 	},
 
 	setStartFullscreen: async (enabled) => {

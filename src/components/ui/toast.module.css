@@ -50,7 +50,7 @@
 .message {
 	margin-top: 1px;
 	font-size: var(--ctd-text-callout);
-	line-height: 1.4;
+	line-height: var(--ctd-leading-callout, 1.4);
 	color: var(--ctd-ink-soft);
 	overflow-wrap: break-word;
 }

@@ -70,7 +70,7 @@
 	overflow-y: auto;
 	padding: 10px 12px;
 	font-size: var(--ctd-text-body);
-	line-height: 1.45;
+	line-height: var(--ctd-leading-body, 1.45);
 	color: var(--ctd-control-text);
 	cursor: text;
 	outline: none;

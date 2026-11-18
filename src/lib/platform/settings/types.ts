@@ -67,6 +67,8 @@ export interface SharingSettings {
 
 export interface SettingsSchema {
 	theme: "dark" | "light" | "auto";
+	/** Apple's line heights and title weights in place of Citadel's own. */
+	appleTextMetrics: boolean;
 	startFullscreen: boolean;
 	autoUpdateCheckingEnabled: boolean;
 	hasCompletedFirstLaunch: boolean;
@@ -91,6 +93,7 @@ export interface SettingsSchema {
 
 export const defaultSettings: SettingsSchema = {
 	theme: "auto",
+	appleTextMetrics: false,
 	startFullscreen: false,
 	autoUpdateCheckingEnabled: true,
 	hasCompletedFirstLaunch: false,

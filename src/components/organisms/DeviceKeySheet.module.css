@@ -13,7 +13,7 @@
 .note {
 	margin: 0.125rem 0 0.5rem;
 	font-size: var(--ctd-text-body);
-	line-height: 1.4;
+	line-height: var(--ctd-leading-body, 1.4);
 	color: var(--ctd-ink-soft);
 }
 
@@ -29,7 +29,7 @@
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 	font-size: var(--ctd-text-title-1);
 	font-weight: 500;
-	line-height: 1.25;
+	line-height: var(--ctd-leading-title-1, 1.25);
 	letter-spacing: 0.02em;
 	font-variant-ligatures: none;
 	color: var(--ctd-ink);
@@ -101,7 +101,7 @@
 	gap: 0.375rem 0.75rem;
 	margin: 0;
 	font-size: var(--ctd-text-body);
-	line-height: 1.4;
+	line-height: var(--ctd-leading-body, 1.4);
 }
 
 .details dt {
