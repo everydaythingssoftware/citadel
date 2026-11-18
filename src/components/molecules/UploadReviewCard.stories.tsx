@@ -101,7 +101,7 @@ const Editable = (args: ComponentProps<typeof UploadReviewCard>) => {
 			/>
 			<pre
 				style={{
-					fontSize: "var(--ctd-text-2xs)",
+					fontSize: "var(--ctd-text-subheadline)",
 					color: "var(--ctd-ink-soft)",
 					margin: 0,
 				}}

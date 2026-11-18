@@ -57,7 +57,7 @@ const Running = (args: UploadProgressRingProps) => {
 				progress={progress}
 				onStop={() => setStopped((value) => !value)}
 			/>
-			<span style={{ fontSize: "var(--ctd-text-sm)" }}>
+			<span style={{ fontSize: "var(--ctd-text-body)" }}>
 				{stopped ? "Stopped (click to resume)" : "Uploading…"}
 			</span>
 		</div>

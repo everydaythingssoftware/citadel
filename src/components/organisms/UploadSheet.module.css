@@ -50,12 +50,12 @@
 .title {
 	flex: 1;
 	margin: 0;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 }
 
 .status {
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 	font-variant-numeric: tabular-nums;
 }
@@ -95,7 +95,7 @@
 
 .paused {
 	margin: 8px 0 0;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 }
 
@@ -111,7 +111,7 @@
 	border-radius: 8px;
 	background: transparent;
 	font: inherit;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink-soft);
 	transition:
 		background-color 180ms ease,
@@ -130,7 +130,7 @@
 }
 
 .plus {
-	font-size: var(--ctd-text-base);
+	font-size: var(--ctd-text-body);
 }
 
 .link {
@@ -160,13 +160,13 @@
 
 .emptyTitle {
 	margin: 6px 0 0;
-	font-size: var(--ctd-text-base);
+	font-size: var(--ctd-text-title-3);
 	font-weight: 600;
 }
 
 .emptyHint {
 	margin: 0 0 10px;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 }
 
@@ -241,7 +241,6 @@
 		max-height: none;
 		border: 0;
 		border-radius: 0;
-		font-size: var(--ctd-text-lg);
 	}
 
 	.content[data-state="open"] {
@@ -277,14 +276,12 @@
 		border-radius: var(--ctd-radius-control);
 		background: transparent;
 		font: inherit;
-		font-size: var(--ctd-text-lg);
 		font-weight: 600;
 		color: var(--ctd-link);
 	}
 
 	.title {
 		grid-column: 2;
-		font-size: var(--ctd-text-lg);
 		text-align: center;
 	}
 
@@ -299,7 +296,7 @@
 		grid-column: 3;
 		min-width: 44px;
 		min-height: 44px;
-		font-size: var(--ctd-text-xl);
+		font-size: var(--ctd-text-title-2);
 		color: var(--ctd-link);
 	}
 
@@ -323,13 +320,11 @@
 	.cancelRow {
 		display: flex;
 		margin-top: 12px;
-		font-size: var(--ctd-text-lg);
 	}
 
 	.cancelRow button {
 		min-height: 48px;
 		border-radius: 14px;
-		font-size: var(--ctd-text-lg);
 	}
 
 	.empty {
@@ -345,12 +340,7 @@
 		height: 44px;
 	}
 
-	.emptyTitle {
-		font-size: var(--ctd-text-xl);
-	}
-
 	.emptyHint {
-		font-size: var(--ctd-text-md);
 		margin-bottom: 16px;
 	}
 
@@ -366,7 +356,6 @@
 		min-width: 220px;
 		min-height: 50px;
 		border-radius: 14px;
-		font-size: var(--ctd-text-lg);
 		font-weight: 600;
 	}
 
@@ -388,7 +377,6 @@
 	.footer :global(button) {
 		min-height: 50px;
 		border-radius: 14px;
-		font-size: var(--ctd-text-lg);
 		font-weight: 600;
 	}
 

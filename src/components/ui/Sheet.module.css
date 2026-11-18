@@ -94,7 +94,7 @@
 }
 
 .title {
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	color: var(--ctd-ink);
 	margin: 0;

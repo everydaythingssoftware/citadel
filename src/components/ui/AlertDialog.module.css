@@ -51,23 +51,29 @@
 	margin: 0;
 	overflow-wrap: anywhere;
 	text-wrap: balance;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
 
 .description {
 	margin: 6px 0 0;
-	font-size: var(--ctd-text-2xs);
+	font-size: var(--ctd-text-subheadline);
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
 	text-wrap: balance;
 }
 
+/* Side by side while both fit; at touch sizes long labels stack. */
 .buttons {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 8px;
 	margin-top: 16px;
+}
+
+.buttons > * {
+	flex: 1 1 auto;
 }
 
 @keyframes alert-overlay-in {

@@ -236,7 +236,7 @@ const BookCoverWithPlaceholder = ({
 				>
 					<div
 						style={{
-							fontSize: "var(--ctd-text-md)",
+							fontSize: "var(--ctd-type-mac-title-3)",
 							fontWeight: "bolder",
 							color: "var(--ctd-cover-title)",
 							fontFamily:
@@ -250,7 +250,7 @@ const BookCoverWithPlaceholder = ({
 					</div>
 					<div
 						style={{
-							fontSize: "var(--ctd-text-xs)",
+							fontSize: "var(--ctd-type-mac-callout)",
 							color: "var(--ctd-cover-author)",
 							textShadow: "var(--ctd-cover-author-shadow)",
 							lineHeight: 1.2,

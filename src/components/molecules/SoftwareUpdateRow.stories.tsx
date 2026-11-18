@@ -156,7 +156,7 @@ export const AllStates: Story = {
 				<div key={title} style={{ display: "grid", gap: 4 }}>
 					<span
 						style={{
-							fontSize: "var(--ctd-text-2xs)",
+							fontSize: "var(--ctd-text-subheadline)",
 							color: "var(--ctd-ink-soft)",
 						}}
 					>

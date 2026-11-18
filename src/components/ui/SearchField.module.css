@@ -50,7 +50,7 @@
 	height: calc(var(--ctd-control-height) - 2px);
 	padding: 0;
 	font-family: inherit;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	background: none;
 	border: none;
 	color: var(--ctd-control-text);
@@ -86,7 +86,7 @@
 	border-radius: 999px;
 	background-color: var(--ctd-nav-active-bg);
 	color: var(--ctd-nav-active-text);
-	font-size: var(--ctd-text-2xs);
+	font-size: var(--ctd-text-subheadline);
 	font-weight: 600;
 	line-height: 1.5;
 	white-space: nowrap;

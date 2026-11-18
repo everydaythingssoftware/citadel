@@ -80,7 +80,7 @@ const Deck = () => {
 			</button>
 			<ul
 				style={{
-					fontSize: "var(--ctd-text-xs)",
+					fontSize: "var(--ctd-text-callout)",
 					color: "var(--ctd-ink-soft)",
 					margin: 0,
 				}}

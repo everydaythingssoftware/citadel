@@ -51,7 +51,7 @@
 }
 
 .columnLabel {
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	line-height: 1.4;
 	font-weight: 600;
 	color: var(--ctd-ink-soft);
@@ -80,7 +80,7 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: var(--ctd-text-base);
+	font-size: var(--ctd-text-body);
 	line-height: 1.45;
 	color: var(--ctd-ink);
 }
@@ -96,7 +96,7 @@
 	padding: 0 8px;
 	/* Capsule clamps to half the 16px height, matching the old 8px. */
 	border-radius: var(--ctd-radius-capsule);
-	font-size: var(--ctd-text-2xs);
+	font-size: var(--ctd-text-subheadline);
 	line-height: 16px;
 	font-weight: 600;
 	white-space: nowrap;
@@ -109,7 +109,7 @@
 	justify-self: end;
 	position: relative;
 	z-index: 1;
-	font-size: var(--ctd-text-base);
+	font-size: var(--ctd-text-body);
 	line-height: 1.45;
 	color: var(--ctd-link);
 	text-decoration: none;
@@ -166,7 +166,7 @@
 	max-width: 880px;
 	margin-inline: 12px;
 	text-align: center;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
 }
@@ -229,13 +229,13 @@
 	border-radius: 8px;
 	background-color: color-mix(in oklch, var(--ctd-danger-bg) 12%, transparent);
 	color: var(--ctd-ink);
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 }
 
 .sheetFailure {
 	margin: 12px 0 0;
 	color: var(--ctd-danger-ink);
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 }
 
 @media (pointer: coarse) {

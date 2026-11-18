@@ -8,7 +8,7 @@
 
 .glyph {
 	flex: none;
-	font-size: var(--ctd-text-base);
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink-soft);
 }
 

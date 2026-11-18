@@ -47,7 +47,7 @@
 
 .title {
 	margin: 0;
-	font-size: var(--ctd-text-lg);
+	font-size: var(--ctd-text-title-2);
 	font-weight: 650;
 	letter-spacing: -0.01em;
 	color: var(--ctd-ink);

@@ -104,7 +104,7 @@
 
 .title {
 	margin: 0;
-	font-size: var(--ctd-text-lg);
+	font-size: var(--ctd-text-title-2);
 	font-weight: 600;
 	letter-spacing: -0.01em;
 	line-height: 1.3;
@@ -113,12 +113,12 @@
 }
 
 .titleSm {
-	font-size: var(--ctd-text-md);
+	font-size: var(--ctd-text-title-3);
 }
 
 .lede {
 	margin: 6px auto 0;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink-soft);
 	text-align: center;
 	max-width: 100%;
@@ -133,7 +133,7 @@
 	align-items: center;
 	gap: 2px;
 	font: inherit;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 500;
 	color: var(--ctd-ink-soft);
 	background: none;
@@ -166,7 +166,7 @@
 	background: var(--ctd-bg);
 	border: 1px solid var(--ctd-border);
 	border-radius: var(--ctd-radius-control);
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	text-align: left;
 	transition: border-color 160ms ease-out;
 }
@@ -195,7 +195,7 @@
 
 .src {
 	margin: 8px 2px 0;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 	text-align: center;
 }
@@ -209,7 +209,7 @@
 
 .helper {
 	margin: 8px 2px 0;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	line-height: 1.45;
 	color: var(--ctd-ink-soft);
 	text-align: left;
@@ -220,7 +220,7 @@
 	align-items: flex-start;
 	gap: 7px;
 	margin: 10px 2px 0;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	line-height: 1.45;
 	color: var(--ctd-danger-ink);
 	text-align: left;
@@ -249,7 +249,7 @@
 /* Prototype .btn.sm metrics: the paired escapes must share one quiet row. */
 .escapeBtn {
 	height: 24px;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	padding: 0 9px;
 }
 
@@ -317,7 +317,7 @@
 
 .choicesLabel {
 	margin: 6px 0 -2px;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 	text-align: center;
 }
@@ -336,13 +336,13 @@
 }
 
 .choiceTitle {
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	line-height: 1.3;
 }
 
 .choiceDesc {
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 	margin-top: 1px;
 	line-height: 1.4;
@@ -369,7 +369,7 @@
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink-soft);
 	transition: color 160ms ease-out;
 }
@@ -398,7 +398,7 @@
 /* Reveal count-up. */
 .count {
 	margin-top: 12px;
-	font-size: var(--ctd-text-2xl);
+	font-size: var(--ctd-text-large-title);
 	font-weight: 600;
 	letter-spacing: -0.02em;
 	line-height: 1.15;
@@ -409,7 +409,7 @@
 
 .countSub {
 	text-align: center;
-	font-size: var(--ctd-text-base);
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink-soft);
 	margin-top: 1px;
 	font-variant-numeric: tabular-nums;
@@ -421,7 +421,7 @@
 
 .retryNote {
 	margin: 10px 2px 0;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-danger-ink);
 	text-align: center;
 }

@@ -119,7 +119,7 @@
 	-webkit-line-clamp: 2;
 	line-clamp: 2;
 	font-family: var(--ctd-font-serif);
-	font-size: var(--ctd-text-2xl);
+	font-size: var(--ctd-text-title-1);
 	font-weight: 600;
 	line-height: 1.17;
 	letter-spacing: -0.012em;
@@ -130,14 +130,14 @@
 
 .authors {
 	margin: 8px 0 0;
-	font-size: var(--ctd-text-base);
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink);
 }
 
 .series {
 	margin: 2px 0 0;
 	overflow: hidden;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -192,7 +192,7 @@
 	}
 
 	.title {
-		font-size: var(--ctd-text-xl);
+		font-size: var(--ctd-text-title-2);
 	}
 
 	.authors {
@@ -235,7 +235,7 @@
 	}
 
 	.title {
-		font-size: var(--ctd-text-xl);
+		font-size: var(--ctd-text-title-2);
 	}
 }
 
@@ -246,7 +246,7 @@
 /* Sentence case over a rounded group, the way macOS lists group rows. */
 .sectionTitle {
 	margin: 0 2px 7px;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	font-weight: 600;
 	color: var(--ctd-ink-soft);
 }
@@ -258,7 +258,7 @@
 }
 
 .descriptionText {
-	font-size: var(--ctd-text-base);
+	font-size: var(--ctd-text-body);
 	line-height: 1.6;
 	color: var(--ctd-ink);
 }
@@ -306,7 +306,7 @@
 	padding: 0 11px;
 	border: 1px solid var(--ctd-border);
 	border-radius: 13px;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink);
 	white-space: nowrap;
 }
@@ -327,7 +327,7 @@
 	overflow: hidden;
 	border-radius: 10px;
 	background-color: var(--ctd-group-bg);
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 }
 
 .detail {
@@ -455,16 +455,7 @@
 		padding: 52px 20px 20px;
 	}
 
-	.title {
-		font-size: var(--ctd-text-2xl);
-	}
-
-	.authors {
-		font-size: var(--ctd-text-md);
-	}
-
 	.series {
-		font-size: var(--ctd-text-sm);
 		white-space: normal;
 	}
 
@@ -493,11 +484,9 @@
 
 	.sectionTitle {
 		margin-inline: 4px;
-		font-size: var(--ctd-text-sm);
 	}
 
 	.descriptionText {
-		font-size: var(--ctd-text-md);
 		line-height: 1.55;
 	}
 
@@ -521,11 +510,6 @@
 		height: 30px;
 		padding: 0 13px;
 		border-radius: 15px;
-		font-size: var(--ctd-text-sm);
-	}
-
-	.details {
-		font-size: var(--ctd-text-md);
 	}
 
 	.detail {

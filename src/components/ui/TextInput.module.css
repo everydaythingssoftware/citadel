@@ -9,7 +9,7 @@
 /* A tight line box keeps the label nearer its own field than the one above. */
 .label {
 	padding-inline-start: var(--text-input-inset);
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	line-height: 1;
 	color: var(--ctd-ink-soft);
 }
@@ -22,7 +22,7 @@
 	height: var(--ctd-control-height);
 	padding: 0 8px;
 	font-family: inherit;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	border-radius: var(--ctd-radius-control);
 	background-color: var(--ctd-control-bg);
 	border: var(--ctd-control-border-width) solid var(--ctd-border);
@@ -59,7 +59,7 @@
 
 .hint {
 	padding-inline-start: var(--text-input-inset);
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	line-height: 1.2;
 	color: var(--ctd-ink-soft);
 }
@@ -70,7 +70,7 @@
 
 .error {
 	padding-inline-start: var(--text-input-inset);
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	line-height: 1.2;
 	color: var(--ctd-danger-ink);
 }

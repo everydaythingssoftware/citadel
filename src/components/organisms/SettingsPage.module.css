@@ -20,7 +20,7 @@
 
 .title {
 	margin: 0;
-	font-size: var(--ctd-text-lg);
+	font-size: var(--ctd-text-title-2);
 	font-weight: 600;
 	line-height: 1.3;
 	color: var(--ctd-ink);
@@ -47,7 +47,7 @@
 	margin: 0;
 	/* On the same edge as the note beneath it (SettingsPanes .paneNote). */
 	padding-inline: 0.125rem;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }

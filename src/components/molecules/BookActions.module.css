@@ -19,7 +19,7 @@
 	box-shadow: var(--ctd-control-shadow);
 	color: var(--ctd-control-text);
 	font: inherit;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: var(--ctd-control-font-weight);
 	cursor: default;
 	transition:
@@ -229,6 +229,6 @@
 
 .note {
 	margin: 0;
-	font-size: var(--ctd-text-xs);
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 }

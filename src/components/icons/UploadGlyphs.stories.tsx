@@ -46,7 +46,7 @@ export const All: Story = {
 					style={{ margin: 0, display: "grid", gap: 6, justifyItems: "center" }}
 				>
 					<Glyph />
-					<figcaption style={{ fontSize: "var(--ctd-text-2xs)" }}>
+					<figcaption style={{ fontSize: "var(--ctd-text-subheadline)" }}>
 						{name}
 					</figcaption>
 				</figure>

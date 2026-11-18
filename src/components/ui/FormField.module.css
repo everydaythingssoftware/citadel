@@ -6,19 +6,19 @@
 
 .label {
 	padding-inline-start: 2px;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	line-height: 1;
 	color: var(--ctd-ink-soft);
 }
 
 .description {
-	font-size: var(--ctd-text-2xs);
+	font-size: var(--ctd-text-subheadline);
 	line-height: 1.4;
 	color: var(--ctd-ink-soft);
 }
 
 .error {
-	font-size: var(--ctd-text-2xs);
+	font-size: var(--ctd-text-subheadline);
 	line-height: 1.4;
 	color: var(--ctd-danger-ink);
 }

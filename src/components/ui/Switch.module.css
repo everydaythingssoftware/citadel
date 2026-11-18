@@ -5,7 +5,7 @@
 }
 
 .label {
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink);
 }
 

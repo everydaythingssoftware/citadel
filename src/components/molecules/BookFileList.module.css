@@ -50,20 +50,20 @@
 }
 
 .format {
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	line-height: 1.25;
 	color: var(--ctd-ink);
 }
 
 .name {
-	font-size: var(--ctd-text-2xs);
+	font-size: var(--ctd-text-subheadline);
 	line-height: 1.35;
 	color: var(--ctd-ink-soft);
 }
 
 .failure {
-	font-size: var(--ctd-text-2xs);
+	font-size: var(--ctd-text-subheadline);
 	line-height: 1.35;
 	color: var(--ctd-danger-ink);
 }
@@ -162,17 +162,17 @@
 }
 
 .mobileRow .format {
-	font-size: var(--ctd-text-md);
+	font-size: var(--ctd-text-title-3);
 }
 
 .mobileRow .name,
 .mobileRow .failure {
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 }
 
 .size {
 	flex: none;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-variant-numeric: tabular-nums;
 	color: var(--ctd-ink-soft);
 }

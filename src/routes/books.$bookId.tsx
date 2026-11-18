@@ -188,7 +188,7 @@ const EditBookRoute = () => {
 			<div style={centeredFill}>
 				<span
 					style={{
-						fontSize: "var(--ctd-text-sm)",
+						fontSize: "var(--ctd-text-body)",
 						color: "var(--ctd-ink-soft)",
 					}}
 				>
