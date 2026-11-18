@@ -1,7 +1,17 @@
-.spine {
+.spine,
+.edges {
 	position: absolute;
 	inset: 0;
 	border-radius: inherit;
-	background: var(--ctd-cover-spine-bg);
 	pointer-events: none;
+	z-index: 1;
+}
+
+.spine {
+	background: var(--ctd-cover-spine-bg);
+	mix-blend-mode: multiply;
+}
+
+.edges {
+	background: var(--ctd-cover-edges);
 }

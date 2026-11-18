@@ -74,32 +74,58 @@
 	--ctd-danger-border: oklch(from var(--pal-red) calc(l - 0.06) c h);
 	/* Red for words: dark enough to read on grey, light enough in dark mode. */
 	--ctd-danger-ink: oklch(47% 0.17 25);
-	/* The last layer is a tight contact shadow so covers sit on the shelf
-	   instead of floating above it. */
+	/* Cover contour and contact shadows. */
 	--ctd-cover-shadow:
-		0 1px 2px oklch(0% 0 0 / 0.16), 0 6px 14px oklch(0% 0 0 / 0.12),
-		0 10px 8px -8px oklch(0% 0 0 / 0.3);
+		0 0 0 0.5px rgb(0 0 0 / 0.14), 0 0 1.5px rgb(0 0 0 / 0.12), 0 1px 2px rgb(
+			0 0 0 / 0.2
+		), 0 4px 7px -1px rgb(0 0 0 / 0.18), 0 10px 16px -4px rgb(0 0 0 / 0.2);
 	--ctd-cover-overlay: #12161a;
 	--ctd-cover-title: oklch(99% 0.002 280);
 	--ctd-cover-author: oklch(88% 0.005 280);
 	--ctd-cover-title-shadow: 0px 1px oklch(25% 0 0 / 0.85);
 	--ctd-cover-author-shadow: 0px 2px oklch(15% 0 0 / 0.85);
-	--ctd-cover-spine-bg:
+	--ctd-cover-spine-bg: linear-gradient(
+		to right,
+		#f7f7f7 0%,
+		#f5f5f5 .5%,
+		#f8f8f8 1%,
+		#fdfdfd 1.4%,
+		#fff 2.1%,
+		#f9f9f9 2.5%,
+		#f3f3f3 3.2%,
+		#ececec 3.6%,
+		#ececec 4.1%,
+		#f2f2f2 4.6%,
+		#f9f9f9 5.3%,
+		#fcfcfc 5.9%,
+		#fff 6.3%
+	);
+	--ctd-cover-edges:
 		linear-gradient(
 			to right,
-			oklch(0% 0 0 / 0.55) 0%,
-			oklch(100% 0 0 / 0.4) 1%,
-			oklch(100% 0 0 / 0.15) 3.5%,
-			oklch(0% 0 0 / 0.2) 5%,
-			oklch(100% 0 0 / 0.1) 6.5%,
-			transparent 9%
+			rgb(110 110 110 / 0.32) 0,
+			rgb(110 110 110 / 0.32) 1px,
+			rgb(0 0 0 / 0.09) 1px,
+			rgb(0 0 0 / 0.03) 2.5px,
+			transparent 3px
+		),
+		linear-gradient(
+			to left,
+			rgb(255 255 255 / 0.2) 0,
+			rgb(255 255 255 / 0.2) 0.5px,
+			transparent 1.5px
 		),
 		linear-gradient(
 			to bottom,
-			oklch(100% 0 0 / 0.04) 0%,
-			transparent 8%,
-			transparent 92%,
-			oklch(0% 0 0 / 0.08) 100%
+			rgb(255 255 255 / 0.35) 0,
+			rgb(255 255 255 / 0.35) 1px,
+			transparent 1.5px
+		),
+		linear-gradient(
+			to top,
+			rgb(0 0 0 / 0.22) 0,
+			rgb(0 0 0 / 0.22) 1px,
+			transparent 1.5px
 		);
 	--ctd-shadow-soft:
 		0 1px 2px oklch(0% 0 0 / 0.06), 0 4px 12px oklch(0% 0 0 / 0.05);
@@ -236,29 +262,55 @@
 	--ctd-danger-border: oklch(from var(--pal-red) calc(l - 0.07) c h);
 	--ctd-danger-ink: oklch(78% 0.13 22);
 	--ctd-cover-shadow:
-		0 0 0 1px oklch(100% 0 0 / 0.07), 0 8px 18px oklch(0% 0 0 / 0.5),
-		0 10px 8px -8px oklch(0% 0 0 / 0.6);
+		0 0 0 0.5px rgb(255 255 255 / 0.12), 0 1px 2px rgb(0 0 0 / 0.3),
+		0 8px 18px rgb(0 0 0 / 0.5), 0 10px 8px -8px rgb(0 0 0 / 0.6);
 	--ctd-cover-overlay: #12161a;
 	--ctd-cover-title: oklch(98% 0.003 280);
 	--ctd-cover-author: oklch(88% 0.005 280);
 	--ctd-cover-title-shadow: 0px 1px oklch(25% 0 0 / 0.85);
 	--ctd-cover-author-shadow: 0px 2px oklch(15% 0 0 / 0.85);
-	--ctd-cover-spine-bg:
+	--ctd-cover-spine-bg: linear-gradient(
+		to right,
+		#f7f7f7 0%,
+		#f5f5f5 .5%,
+		#f8f8f8 1%,
+		#fdfdfd 1.4%,
+		#fff 2.1%,
+		#f9f9f9 2.5%,
+		#f3f3f3 3.2%,
+		#ececec 3.6%,
+		#ececec 4.1%,
+		#f2f2f2 4.6%,
+		#f9f9f9 5.3%,
+		#fcfcfc 5.9%,
+		#fff 6.3%
+	);
+	--ctd-cover-edges:
 		linear-gradient(
 			to right,
-			oklch(0% 0 0 / 0.62) 0%,
-			oklch(100% 0 0 / 0.34) 1%,
-			oklch(100% 0 0 / 0.12) 3.5%,
-			oklch(0% 0 0 / 0.3) 5%,
-			oklch(100% 0 0 / 0.09) 6.5%,
-			transparent 9%
+			rgb(110 110 110 / 0.32) 0,
+			rgb(110 110 110 / 0.32) 1px,
+			rgb(0 0 0 / 0.09) 1px,
+			rgb(0 0 0 / 0.03) 2.5px,
+			transparent 3px
+		),
+		linear-gradient(
+			to left,
+			rgb(255 255 255 / 0.2) 0,
+			rgb(255 255 255 / 0.2) 0.5px,
+			transparent 1.5px
 		),
 		linear-gradient(
 			to bottom,
-			oklch(100% 0 0 / 0.03) 0%,
-			transparent 8%,
-			transparent 92%,
-			oklch(0% 0 0 / 0.14) 100%
+			rgb(255 255 255 / 0.35) 0,
+			rgb(255 255 255 / 0.35) 1px,
+			transparent 1.5px
+		),
+		linear-gradient(
+			to top,
+			rgb(0 0 0 / 0.22) 0,
+			rgb(0 0 0 / 0.22) 1px,
+			transparent 1.5px
 		);
 	--ctd-shadow-soft:
 		0 1px 2px oklch(0% 0 0 / 0.4), 0 6px 16px oklch(0% 0 0 / 0.35);
