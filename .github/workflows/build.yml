@@ -60,7 +60,7 @@ jobs:
         with:
           tauriScript: bun tauri
           # Verbose so a bundle_dmg.sh failure shows the script's output.
-          args: --verbose${{ matrix.platform == 'windows-11-arm' && ' --bundles nsis' || '' }}
+          args: --verbose${{ startsWith(matrix.platform, 'windows') && ' --bundles nsis' || '' }}
 
       - name: (Ubuntu only) Upload build artifacts
         if: matrix.platform == 'ubuntu-22.04'
@@ -84,10 +84,8 @@ jobs:
         if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x64-installers
-          path: |
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
+          name: windows-x64-installer
+          path: target/release/bundle/nsis/*.exe
 
       - name: (Windows only) Upload build artifacts
         if: matrix.platform == 'windows-11-arm'
