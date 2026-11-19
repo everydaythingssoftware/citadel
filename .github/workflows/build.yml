@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, macos-15]
+        platform: [ubuntu-22.04, macos-15, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +35,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
 
+      - name: (Windows ARM64 only) Ensure clang is on PATH
+        if: matrix.platform == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command clang -ErrorAction SilentlyContinue)) {
+            choco install llvm -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          'C:\Program Files\LLVM\bin' >> $env:GITHUB_PATH
+
       - name: Install node packages
         run: bun install
 
@@ -50,7 +60,7 @@ jobs:
         with:
           tauriScript: bun tauri
           # Verbose so a bundle_dmg.sh failure shows the script's output.
-          args: --verbose
+          args: --verbose${{ startsWith(matrix.platform, 'windows') && ' --bundles nsis' || '' }}
 
       - name: (Ubuntu only) Upload build artifacts
         if: matrix.platform == 'ubuntu-22.04'
@@ -69,3 +79,17 @@ jobs:
           path: |
             target/release/bundle/macos/Citadel.app
             target/release/bundle/dmg/*.dmg
+
+      - name: (Windows only) Upload build artifacts
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: target/release/bundle/nsis/*.exe
+
+      - name: (Windows only) Upload build artifacts
+        if: matrix.platform == 'windows-11-arm'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-arm64-installer
+          path: target/release/bundle/nsis/*.exe

@@ -40,6 +40,10 @@ Download the `.dmg` from [Releases](https://github.com/everydaythingssoftware/ci
 > xattr -d com.apple.quarantine /Applications/Citadel.app/
 > ```
 
+### Installing on Windows
+
+Download the `-setup.exe` for your architecture from [Releases](https://github.com/everydaythingssoftware/citadel/releases). Installers are not code-signed, so SmartScreen warns on first run: choose **More info → Run anyway**.
+
 ## Developing
 
 As a prerequisite, you'll need to install [Bun](https://bun.sh) and
@@ -61,10 +65,10 @@ bun run dev
 
 ### Building on Windows
 
-Windows builds are unofficial and not covered by CI. They need the MSVC build
-tools and, on ARM64, `clang` on the `PATH` (the `ring` crate requires it; the
-LLVM installer puts it in `C:\Program Files\LLVM\bin`). SQLite is compiled in
-on Windows, so no system SQLite is needed.
+CI builds Windows x64 and ARM64 installers (NSIS). Installers
+are not code-signed, so SmartScreen warns on first run. Building locally needs
+the MSVC build tools and, on ARM64, `clang` on the `PATH` (required by `ring`).
+SQLite is compiled in on Windows, so no system SQLite is needed.
 
 ### Updating Rust
 
