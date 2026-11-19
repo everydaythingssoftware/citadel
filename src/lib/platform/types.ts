@@ -34,6 +34,11 @@ export interface PlatformCapabilities {
 	supportsAutoUpdates: boolean;
 	/** Only the desktop build can host the local OPDS server. */
 	supportsLocalOpdsServer: boolean;
+	/**
+	 * The window has no native title bar: content extends under the window
+	 * controls, so the app provides its own drag region and clears the controls.
+	 */
+	hasOverlayTitleBar: boolean;
 }
 
 export type { MenuCommand, MenuStateUpdate } from "@/bindings";
