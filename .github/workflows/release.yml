@@ -264,7 +264,7 @@ jobs:
         with:
           tauriScript: bun tauri
           # The RPM is packaged in the next step: its version can't hold a "-".
-          args: --config '{"bundle":{"createUpdaterArtifacts":true}}' ${{ matrix.platform == 'ubuntu-22.04' && '--bundles deb,appimage' || matrix.platform == 'windows-11-arm' && '--bundles nsis' || '' }}
+          args: --config '{"bundle":{"createUpdaterArtifacts":true}}' ${{ matrix.platform == 'ubuntu-22.04' && '--bundles deb,appimage' || startsWith(matrix.platform, 'windows') && '--bundles nsis' || '' }}
           tagName: v${{ needs.version.outputs.version }}
           releaseName: Citadel v${{ needs.version.outputs.version }}
           releaseBody: |
