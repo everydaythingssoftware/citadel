@@ -120,8 +120,8 @@
 	line-clamp: 3;
 	font-family: var(--ctd-font-serif);
 	font-size: var(--ctd-text-large-title);
-	font-weight: var(--ctd-emphasis-large-title, 600);
-	line-height: var(--ctd-leading-large-title, 1.17);
+	font-weight: 700;
+	line-height: var(--ctd-leading-large-title);
 	letter-spacing: -0.012em;
 	color: var(--ctd-ink);
 	text-wrap: pretty;
@@ -259,9 +259,7 @@
 
 .descriptionText {
 	font-size: var(--ctd-text-body);
-	/* One line's height in em, which the four-line clamp below measures. */
-	--description-leading: var(--ctd-leading-body, 1.6);
-	line-height: var(--description-leading);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 }
 
@@ -275,14 +273,14 @@
 
 /* Four lines, the last fading out. */
 .descriptionText:not([data-expanded]) {
-	max-height: calc(var(--description-leading) * 4em);
+	max-height: calc(var(--ctd-leading-body) * 4em);
 	overflow: hidden;
 }
 
 .descriptionText[data-clamped] {
 	mask-image: linear-gradient(
 		to bottom,
-		#000 calc(100% - var(--description-leading) * 1em),
+		#000 calc(100% - var(--ctd-leading-body) * 1em),
 		transparent
 	);
 }
@@ -495,10 +493,6 @@
 
 	.sectionTitle {
 		margin-inline: 4px;
-	}
-
-	.descriptionText {
-		--description-leading: var(--ctd-leading-body, 1.55);
 	}
 
 	.more {

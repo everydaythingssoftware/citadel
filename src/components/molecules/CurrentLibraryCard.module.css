@@ -55,7 +55,7 @@
 	background: none;
 	font-family: inherit;
 	font-size: var(--ctd-text-body);
-	line-height: var(--ctd-leading-body, 1.35);
+	line-height: var(--ctd-leading-body);
 	text-align: left;
 	color: var(--ctd-danger-ink);
 }
@@ -68,13 +68,13 @@
 
 .rowLabel {
 	font-size: var(--ctd-text-body);
-	line-height: var(--ctd-leading-body, 1.35);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 }
 
 .rowValue {
 	font-size: var(--ctd-text-body);
-	line-height: var(--ctd-leading-body, 1.35);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink-soft);
 }
 

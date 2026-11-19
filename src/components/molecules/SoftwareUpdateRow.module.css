@@ -17,7 +17,7 @@
 
 .description {
 	font-size: var(--ctd-text-callout);
-	line-height: var(--ctd-leading-callout, 1.35);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 }
 
@@ -30,7 +30,7 @@
 
 .detail {
 	font-size: var(--ctd-text-callout);
-	line-height: var(--ctd-leading-callout, 1.35);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-danger-ink);
 	overflow-wrap: anywhere;
 }
@@ -41,7 +41,7 @@
 	gap: 0.4375rem;
 	min-width: 0;
 	font-size: var(--ctd-text-body);
-	line-height: var(--ctd-leading-body, 1.35);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 }
 

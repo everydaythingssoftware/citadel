@@ -52,19 +52,19 @@
 .format {
 	font-size: var(--ctd-text-body);
 	font-weight: 600;
-	line-height: var(--ctd-leading-body, 1.25);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 }
 
 .name {
 	font-size: var(--ctd-text-subheadline);
-	line-height: var(--ctd-leading-subheadline, 1.35);
+	line-height: var(--ctd-leading-subheadline);
 	color: var(--ctd-ink-soft);
 }
 
 .failure {
 	font-size: var(--ctd-text-subheadline);
-	line-height: var(--ctd-leading-subheadline, 1.35);
+	line-height: var(--ctd-leading-subheadline);
 	color: var(--ctd-danger-ink);
 }
 

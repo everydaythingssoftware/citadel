@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { SettingsPanes } from "@/components/organisms/SettingsPanes";
 import classes from "@/components/pages/SettingsWindow.module.css";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
-import { useApplyTextMetrics } from "@/lib/text-metrics";
 import {
 	useApplyColorScheme,
 	useResolvedColorScheme,
@@ -46,7 +45,6 @@ export const SettingsWindow = () => {
 	// Keep the document color scheme in sync with the persisted theme; this
 	// window hydrates its own settings store (see src/main.tsx).
 	useApplyColorScheme(theme);
-	useApplyTextMetrics(useSettings((state) => state.appleTextMetrics));
 
 	// macOS tints this window's real title bar from the window background
 	// color, which menu.rs sets once at creation. Without this it stays the

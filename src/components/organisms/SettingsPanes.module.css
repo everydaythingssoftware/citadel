@@ -76,7 +76,7 @@
 .tabLabel {
 	font-size: var(--ctd-text-subheadline);
 	font-weight: 500;
-	line-height: var(--ctd-leading-subheadline, 1.2);
+	line-height: var(--ctd-leading-subheadline);
 }
 
 /*
@@ -161,13 +161,13 @@
 
 .rowLabel {
 	font-size: var(--ctd-text-body);
-	line-height: var(--ctd-leading-body, 1.35);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 }
 
 .rowDescription {
 	font-size: var(--ctd-text-callout);
-	line-height: var(--ctd-leading-callout, 1.35);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 }
 
@@ -191,7 +191,7 @@
 .inlineNote {
 	margin: 0.5rem 0.125rem 0;
 	font-size: var(--ctd-text-callout);
-	line-height: var(--ctd-leading-callout, 1.4);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 }
 
@@ -280,7 +280,7 @@
 
 .paneNote {
 	margin: 0 0.125rem 0.625rem;
-	line-height: var(--ctd-leading-body, 1.45);
+	line-height: var(--ctd-leading-body);
 	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink-soft);
 }
@@ -405,7 +405,7 @@
 
 .problemDetail {
 	font-size: var(--ctd-text-callout);
-	line-height: var(--ctd-leading-callout, 1.4);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 	overflow-wrap: anywhere;
 }

@@ -88,7 +88,7 @@
 	color: var(--ctd-nav-active-text);
 	font-size: var(--ctd-text-subheadline);
 	font-weight: 600;
-	line-height: var(--ctd-leading-subheadline, 1.5);
+	line-height: var(--ctd-leading-subheadline);
 	white-space: nowrap;
 	cursor: default;
 }

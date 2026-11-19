@@ -61,13 +61,13 @@
 .title {
 	font-size: var(--ctd-text-callout);
 	font-weight: 600;
-	line-height: var(--ctd-leading-callout, 1.25);
+	line-height: var(--ctd-leading-callout);
 }
 
 .action {
 	font-size: var(--ctd-text-subheadline);
 	font-weight: 500;
-	line-height: var(--ctd-leading-subheadline, 1.25);
+	line-height: var(--ctd-leading-subheadline);
 	color: var(--ctd-ink-soft);
 }
 

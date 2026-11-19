@@ -52,7 +52,7 @@
 
 .columnLabel {
 	font-size: var(--ctd-text-callout);
-	line-height: var(--ctd-leading-callout, 1.4);
+	line-height: var(--ctd-leading-callout);
 	font-weight: 600;
 	color: var(--ctd-ink-soft);
 	white-space: nowrap;
@@ -81,7 +81,7 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	font-size: var(--ctd-text-body);
-	line-height: var(--ctd-leading-body, 1.45);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 }
 
@@ -110,7 +110,7 @@
 	position: relative;
 	z-index: 1;
 	font-size: var(--ctd-text-body);
-	line-height: var(--ctd-leading-body, 1.45);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-link);
 	text-decoration: none;
 }
@@ -167,7 +167,7 @@
 	margin-inline: 12px;
 	text-align: center;
 	font-size: var(--ctd-text-callout);
-	line-height: var(--ctd-leading-callout, 1.4);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 }
 

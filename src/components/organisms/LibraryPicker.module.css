@@ -13,7 +13,7 @@
 	max-width: 100%;
 	margin: 0;
 	padding: 4px 8px 3px;
-	line-height: var(--ctd-leading-subheadline, 1.3);
+	line-height: var(--ctd-leading-subheadline);
 	border: none;
 	border-radius: var(--ctd-radius-control);
 	background: transparent;
@@ -119,7 +119,7 @@
 .menuName {
 	flex: 1;
 	min-width: 0;
-	line-height: var(--ctd-leading-body, 1.2);
+	line-height: var(--ctd-leading-body);
 	text-align: left;
 	overflow: hidden;
 	text-overflow: ellipsis;

@@ -30,7 +30,7 @@
 .title {
 	margin: 0 0 8px;
 	font-size: var(--ctd-text-title-2);
-	font-weight: var(--ctd-emphasis-title-2, 600);
+	font-weight: 700;
 	letter-spacing: -0.01em;
 	text-align: center;
 	color: var(--ctd-ink);

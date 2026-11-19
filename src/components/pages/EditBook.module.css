@@ -170,7 +170,7 @@
 		transform 160ms ease-out;
 	font-family: var(--ctd-font-serif);
 	font-size: var(--ctd-text-title-2);
-	font-weight: var(--ctd-emphasis-title-2, 600);
+	font-weight: 700;
 	letter-spacing: 0.01em;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -315,7 +315,7 @@
 .rowLabel {
 	text-align: right;
 	font-size: var(--ctd-text-body);
-	line-height: var(--ctd-leading-body, 1.45);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink-soft);
 	user-select: none;
 	overflow: hidden;
@@ -420,7 +420,7 @@
 
 /* Description HTML display */
 .descriptionHtml {
-	line-height: var(--ctd-leading-body, 1.5);
+	line-height: var(--ctd-leading-body);
 	overflow-wrap: break-word;
 }
 

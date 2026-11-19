@@ -52,7 +52,7 @@
 	margin: 0;
 	font-family: var(--ctd-font-serif);
 	font-size: var(--ctd-text-large-title);
-	line-height: var(--ctd-leading-large-title, 1.15);
+	line-height: var(--ctd-leading-large-title);
 }
 
 .hint {

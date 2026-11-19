@@ -87,15 +87,12 @@ Calibre's cluttered chrome, generic web-app SaaS.
   changes with the device. An icon is sized by its width and height, not
   by a font size. A drawing that must not change with the device (a
   generated cover) uses the fixed `--ctd-type-mac-*` or `--ctd-type-ios-*`.
-- **Line heights and weights**: Citadel's own by default (1.45 for running
-  text, 600 for headings). The "Apple line heights and title weights"
-  setting swaps in Apple's for the same text styles: it sets
-  `data-text-metrics="apple"` on `<html>`, which defines `--ctd-leading-*`
-  and `--ctd-emphasis-*`. A rule that sets a line height or a title's
-  weight writes it as `var(--ctd-leading-body, 1.45)` or
-  `var(--ctd-emphasis-title-2, 600)`, so its own value applies while the
-  setting is off. A line height of `1` or in px sizes a glyph or a control
-  and stays as it is.
+- **Line heights and weights** are Apple's for the same styles.
+  `--ctd-leading-*` is each style's line height over its size (body is
+  16/13 on macOS and 22/17 on iOS); the root's is body's, and a rule that
+  sets a line height uses its style's token. A line height of `1` or in
+  px sizes a glyph or a control and stays as it is. Emphasized text is
+  600, and 700 in `large-title`, `title-1` and `title-2`.
 - **No ALL CAPS anywhere**: no `text-transform: uppercase`, no small caps, no
   wide-tracked eyebrow labels. Text is written the way it shows ("Current"
   in a pill, not "current" uppercased by CSS). Acronyms (ISBN, EPUB) stay as
