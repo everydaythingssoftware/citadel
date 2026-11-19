@@ -51,8 +51,8 @@
 }
 
 .columnLabel {
-	font-size: 12px;
-	line-height: 1.4;
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
 	font-weight: 600;
 	color: var(--ctd-ink-soft);
 	white-space: nowrap;
@@ -80,8 +80,8 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: 14px;
-	line-height: 1.45;
+	font-size: var(--ctd-text-body);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 }
 
@@ -96,7 +96,7 @@
 	padding: 0 8px;
 	/* Capsule clamps to half the 16px height, matching the old 8px. */
 	border-radius: var(--ctd-radius-capsule);
-	font-size: var(--ctd-text-2xs);
+	font-size: var(--ctd-text-subheadline);
 	line-height: 16px;
 	font-weight: 600;
 	white-space: nowrap;
@@ -109,8 +109,8 @@
 	justify-self: end;
 	position: relative;
 	z-index: 1;
-	font-size: 14px;
-	line-height: 1.45;
+	font-size: var(--ctd-text-body);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-link);
 	text-decoration: none;
 }
@@ -134,7 +134,11 @@
 .actionIcon {
 	width: 28px;
 	height: 28px;
-	font-size: 16px;
+}
+
+.actionIcon svg {
+	width: 16px;
+	height: 16px;
 }
 
 .dangerIcon {
@@ -162,8 +166,8 @@
 	max-width: 880px;
 	margin-inline: 12px;
 	text-align: center;
-	font-size: 12px;
-	line-height: 1.4;
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 }
 
@@ -225,19 +229,23 @@
 	border-radius: 8px;
 	background-color: color-mix(in oklch, var(--ctd-danger-bg) 12%, transparent);
 	color: var(--ctd-ink);
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 }
 
 .sheetFailure {
 	margin: 12px 0 0;
 	color: var(--ctd-danger-ink);
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 }
 
 @media (pointer: coarse) {
 	.actionIcon {
 		width: 36px;
 		height: 36px;
-		font-size: 18px;
+	}
+
+	.actionIcon svg {
+		width: 18px;
+		height: 18px;
 	}
 }

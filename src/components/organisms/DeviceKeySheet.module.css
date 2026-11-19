@@ -12,8 +12,8 @@
 
 .note {
 	margin: 0.125rem 0 0.5rem;
-	font-size: 0.8125rem;
-	line-height: 1.4;
+	font-size: var(--ctd-text-body);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink-soft);
 }
 
@@ -27,9 +27,9 @@
 .password {
 	overflow-wrap: anywhere;
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: 1.5rem;
+	font-size: var(--ctd-text-title-1);
 	font-weight: 500;
-	line-height: 1.25;
+	line-height: var(--ctd-leading-title-1);
 	letter-spacing: 0.02em;
 	font-variant-ligatures: none;
 	color: var(--ctd-ink);
@@ -100,8 +100,8 @@
 	grid-template-columns: 5rem minmax(0, 1fr);
 	gap: 0.375rem 0.75rem;
 	margin: 0;
-	font-size: 0.8125rem;
-	line-height: 1.4;
+	font-size: var(--ctd-text-body);
+	line-height: var(--ctd-leading-body);
 }
 
 .details dt {

@@ -6,7 +6,7 @@
 
 .label {
 	padding-inline-start: 2px;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	line-height: 1;
 	color: var(--ctd-ink-soft);
 }
@@ -16,8 +16,8 @@
 	padding: 4px 8px;
 	resize: vertical;
 	font-family: inherit;
-	font-size: 13px;
-	line-height: 1.45;
+	font-size: var(--ctd-text-body);
+	line-height: var(--ctd-leading-body);
 	border-radius: var(--ctd-radius-control);
 	background-color: var(--ctd-control-bg);
 	border: var(--ctd-control-border-width) solid var(--ctd-border);
@@ -54,6 +54,6 @@
 }
 
 .error {
-	font-size: 12px;
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-danger-ink);
 }

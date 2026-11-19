@@ -16,7 +16,7 @@ import styles from "./DatabaseRecovery.module.css";
 import card from "./FirstRunFlow.module.css";
 
 const ShelfMark = () => (
-	<FluentLibraryFilled fontSize={28} aria-hidden="true" />
+	<FluentLibraryFilled width={28} height={28} aria-hidden="true" />
 );
 
 const ChevronRight = () => (

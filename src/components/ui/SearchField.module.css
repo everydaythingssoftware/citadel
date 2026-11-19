@@ -50,7 +50,7 @@
 	height: calc(var(--ctd-control-height) - 2px);
 	padding: 0;
 	font-family: inherit;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	background: none;
 	border: none;
 	color: var(--ctd-control-text);
@@ -86,9 +86,9 @@
 	border-radius: 999px;
 	background-color: var(--ctd-nav-active-bg);
 	color: var(--ctd-nav-active-text);
-	font-size: 11px;
+	font-size: var(--ctd-text-subheadline);
 	font-weight: 600;
-	line-height: 1.5;
+	line-height: var(--ctd-leading-subheadline);
 	white-space: nowrap;
 	cursor: default;
 }

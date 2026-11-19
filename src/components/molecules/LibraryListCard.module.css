@@ -1,7 +1,7 @@
 .cardTitle {
 	margin: 0 0 0.375rem;
 	padding: 0 0.125rem;
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
@@ -117,16 +117,16 @@
 
 .rowName {
 	overflow: hidden;
-	font-size: 0.8125rem;
-	line-height: 1.35;
+	font-size: var(--ctd-text-body);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
 .rowSubtitle {
-	font-size: 0.75rem;
-	line-height: 1.35;
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 }
 
@@ -146,7 +146,7 @@
 .renameInput {
 	/* Match the row footprint so entering rename mode doesn't shift layout. */
 	min-height: 28px;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 }
 
 /* The open library: its name in semibold beside the checkmark, so the

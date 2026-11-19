@@ -99,7 +99,13 @@ const Editable = (args: ComponentProps<typeof UploadReviewCard>) => {
 					setTouched((current) => [...new Set([...current, field])]);
 				}}
 			/>
-			<pre style={{ fontSize: 11, color: "var(--ctd-ink-soft)", margin: 0 }}>
+			<pre
+				style={{
+					fontSize: "var(--ctd-text-subheadline)",
+					color: "var(--ctd-ink-soft)",
+					margin: 0,
+				}}
+			>
 				{JSON.stringify(form, null, 2)}
 			</pre>
 		</div>

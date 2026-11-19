@@ -1,10 +1,22 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { useFileDrag } from "@/lib/hooks/use-file-drag";
+import { PlatformProvider } from "@/lib/platform/context";
+import { createWebPlatform } from "@/lib/platform/create";
+import type { PlatformAdapter } from "@/lib/platform/types";
 import { DropOverlay, type DropOverlayProps } from "./DropOverlay";
+
+const MOCK_PLATFORM: PlatformAdapter = createWebPlatform();
 
 const meta: Meta<typeof DropOverlay> = {
 	component: DropOverlay,
+	decorators: [
+		(Story) => (
+			<PlatformProvider value={MOCK_PLATFORM}>
+				<Story />
+			</PlatformProvider>
+		),
+	],
 	args: { visible: true, contained: true },
 	render: (args) => (
 		<div

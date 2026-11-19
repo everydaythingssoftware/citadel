@@ -19,7 +19,7 @@
 	box-shadow: var(--ctd-control-shadow);
 	color: var(--ctd-control-text);
 	font: inherit;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	font-weight: var(--ctd-control-font-weight);
 	cursor: default;
 	transition:
@@ -177,12 +177,12 @@
 	stroke-linejoin: round;
 }
 
+/* Part of the drawing: sized in the page's own units, not on the type scale. */
 .format {
-	position: relative;
-	font-size: 9.5px;
 	font-weight: 700;
 	letter-spacing: 0.04em;
-	color: var(--ctd-ink);
+	fill: var(--ctd-ink);
+	stroke: none;
 }
 
 /* What a click does, shown where the pointer is. */
@@ -229,6 +229,6 @@
 
 .note {
 	margin: 0;
-	font-size: 12px;
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 }

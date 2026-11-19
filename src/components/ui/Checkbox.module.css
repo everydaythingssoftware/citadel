@@ -5,7 +5,7 @@
 }
 
 .label {
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	line-height: 16px;
 	color: var(--ctd-ink);
 }

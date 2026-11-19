@@ -17,7 +17,7 @@
 	height: calc(var(--ctd-control-height) - 6px);
 	min-width: 30px;
 	padding: 0 9px;
-	font-size: 12px;
+	font-size: var(--ctd-text-callout);
 	font-weight: var(--ctd-control-font-weight);
 	font-family: inherit;
 	color: var(--ctd-segmented-label);

@@ -600,7 +600,7 @@ const SaveAsShelfControl = ({
 				>
 					<F7Bookmark
 						aria-hidden="true"
-						style={{ fontSize: "var(--ctd-text-base)" }}
+						style={{ fontSize: "var(--ctd-text-body)" }}
 					/>
 					<span className={styles.shelfLabel}>Save as shelf…</span>
 				</Button>

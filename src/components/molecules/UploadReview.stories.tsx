@@ -78,7 +78,13 @@ const Deck = () => {
 			>
 				Reset
 			</button>
-			<ul style={{ fontSize: 12, color: "var(--ctd-ink-soft)", margin: 0 }}>
+			<ul
+				style={{
+					fontSize: "var(--ctd-text-callout)",
+					color: "var(--ctd-ink-soft)",
+					margin: 0,
+				}}
+			>
 				{log.map((entry, index) => (
 					// biome-ignore lint/suspicious/noArrayIndexKey: an append-only log
 					<li key={index}>{entry}</li>

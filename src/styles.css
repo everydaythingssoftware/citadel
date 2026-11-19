@@ -120,8 +120,8 @@
 	   padding, press motion, focus halo, popover depth) without touching
 	   the color stones or any component CSS. */
 	--ctd-font-ui:
-		-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
-		Helvetica, Arial, sans-serif;
+		-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable",
+		"Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 	--ctd-radius-control: 6px;
 	--ctd-radius-capsule: 9999px;
 	--ctd-toolbar-height: 46px;
@@ -157,7 +157,7 @@
 	/* A share of the reader's default size, so a larger browser or system
 	   text setting scales the whole UI: 14px at the usual 16px. */
 	font-size: 87.5%;
-	line-height: 1.45;
+	line-height: var(--ctd-leading-body);
 	font-weight: 400;
 
 	font-synthesis: none;
@@ -299,28 +299,112 @@
 }
 
 /*
- * Type scale: font sizes come from these steps (some older rules still
- * use raw values), in rem so they follow the root size above. 1rem is the
- * root, 14px at the usual 16px browser default, so each step is its size
- * at that default over 14.
- *   2xs  11px  pills, tags, sidebar section headings
- *   xs   12px  secondary lines, small controls
- *   sm   13px  controls, menus, rows, group titles
- *   base 14px  body text
- *   md   15px  touch-sized rows and menus
- *   lg   17px  headings; phone-sized text
- *   xl   22px  a compact book title
- *   2xl  24px  a book title
+ * Type: Apple's text styles, by role. Each has a macOS size and an iOS
+ * size (Human Interface Guidelines, Typography; iOS at the default Dynamic
+ * Type size), and --ctd-text-* is whichever suits the device: the iOS one
+ * where the pointer is a finger, the macOS one everywhere else. CSS sets a
+ * font size with --ctd-text-* only; --ctd-type-* is for a drawing that must
+ * not change with the device, such as a generated cover.
+ *
+ * Line heights are Apple's too: --ctd-leading-* is each style's line
+ * height over its size (body is 16 over 13 on macOS, 22 over 17 on iOS),
+ * and the root's is body's, so text that sets none gets it. A rule that
+ * sets one uses its style's token; a line height of 1 or in px sizes a
+ * glyph or a control and is not a text line height. Emphasis is Apple's as
+ * well: 600, and 700 for large-title, title-1 and title-2.
+ *
+ * In rem, so they follow the root size above: 1rem is 14px at the usual
+ * 16px browser default, so each step is its size at that default over 14.
+ *
+ *                macOS  iOS
+ *   large-title    26    34   a book title, a display line or number
+ *   title-1        22    28   a book title where room is short
+ *   title-2        17    22   a page or sheet heading
+ *   title-3        15    20   a small heading
+ *   headline       13    17   body's size; pair it with a bold weight
+ *   body           13    17   controls, menus, rows, running text
+ *   callout        12    16   secondary lines, small controls
+ *   subheadline    11    15   pills, tags, sidebar section headings
+ *   footnote       10    13
+ *   caption-1      10    12
+ *   caption-2      10    11
  */
 :root {
-	--ctd-text-2xs: calc(11rem / 14); /* 11px */
-	--ctd-text-xs: calc(12rem / 14); /* 12px */
-	--ctd-text-sm: calc(13rem / 14); /* 13px */
-	--ctd-text-base: 1rem; /* 14px */
-	--ctd-text-md: calc(15rem / 14); /* 15px */
-	--ctd-text-lg: calc(17rem / 14); /* 17px */
-	--ctd-text-xl: calc(22rem / 14); /* 22px */
-	--ctd-text-2xl: calc(24rem / 14); /* 24px */
+	--ctd-type-mac-large-title: calc(26rem / 14);
+	--ctd-type-mac-title-1: calc(22rem / 14);
+	--ctd-type-mac-title-2: calc(17rem / 14);
+	--ctd-type-mac-title-3: calc(15rem / 14);
+	--ctd-type-mac-headline: calc(13rem / 14);
+	--ctd-type-mac-body: calc(13rem / 14);
+	--ctd-type-mac-callout: calc(12rem / 14);
+	--ctd-type-mac-subheadline: calc(11rem / 14);
+	--ctd-type-mac-footnote: calc(10rem / 14);
+	--ctd-type-mac-caption-1: calc(10rem / 14);
+	--ctd-type-mac-caption-2: calc(10rem / 14);
+
+	--ctd-type-ios-large-title: calc(34rem / 14);
+	--ctd-type-ios-title-1: calc(28rem / 14);
+	--ctd-type-ios-title-2: calc(22rem / 14);
+	--ctd-type-ios-title-3: calc(20rem / 14);
+	--ctd-type-ios-headline: calc(17rem / 14);
+	--ctd-type-ios-body: calc(17rem / 14);
+	--ctd-type-ios-callout: calc(16rem / 14);
+	--ctd-type-ios-subheadline: calc(15rem / 14);
+	--ctd-type-ios-footnote: calc(13rem / 14);
+	--ctd-type-ios-caption-1: calc(12rem / 14);
+	--ctd-type-ios-caption-2: calc(11rem / 14);
+
+	--ctd-text-large-title: var(--ctd-type-mac-large-title);
+	--ctd-text-title-1: var(--ctd-type-mac-title-1);
+	--ctd-text-title-2: var(--ctd-type-mac-title-2);
+	--ctd-text-title-3: var(--ctd-type-mac-title-3);
+	--ctd-text-headline: var(--ctd-type-mac-headline);
+	--ctd-text-body: var(--ctd-type-mac-body);
+	--ctd-text-callout: var(--ctd-type-mac-callout);
+	--ctd-text-subheadline: var(--ctd-type-mac-subheadline);
+	--ctd-text-footnote: var(--ctd-type-mac-footnote);
+	--ctd-text-caption-1: var(--ctd-type-mac-caption-1);
+	--ctd-text-caption-2: var(--ctd-type-mac-caption-2);
+
+	--ctd-leading-large-title: calc(32 / 26);
+	--ctd-leading-title-1: calc(26 / 22);
+	--ctd-leading-title-2: calc(22 / 17);
+	--ctd-leading-title-3: calc(20 / 15);
+	--ctd-leading-headline: calc(16 / 13);
+	--ctd-leading-body: calc(16 / 13);
+	--ctd-leading-callout: calc(15 / 12);
+	--ctd-leading-subheadline: calc(14 / 11);
+	--ctd-leading-footnote: calc(13 / 10);
+	--ctd-leading-caption-1: calc(13 / 10);
+	--ctd-leading-caption-2: calc(13 / 10);
+}
+
+@media (pointer: coarse) {
+	:root {
+		--ctd-text-large-title: var(--ctd-type-ios-large-title);
+		--ctd-text-title-1: var(--ctd-type-ios-title-1);
+		--ctd-text-title-2: var(--ctd-type-ios-title-2);
+		--ctd-text-title-3: var(--ctd-type-ios-title-3);
+		--ctd-text-headline: var(--ctd-type-ios-headline);
+		--ctd-text-body: var(--ctd-type-ios-body);
+		--ctd-text-callout: var(--ctd-type-ios-callout);
+		--ctd-text-subheadline: var(--ctd-type-ios-subheadline);
+		--ctd-text-footnote: var(--ctd-type-ios-footnote);
+		--ctd-text-caption-1: var(--ctd-type-ios-caption-1);
+		--ctd-text-caption-2: var(--ctd-type-ios-caption-2);
+
+		--ctd-leading-large-title: calc(41 / 34);
+		--ctd-leading-title-1: calc(34 / 28);
+		--ctd-leading-title-2: calc(28 / 22);
+		--ctd-leading-title-3: calc(25 / 20);
+		--ctd-leading-headline: calc(22 / 17);
+		--ctd-leading-body: calc(22 / 17);
+		--ctd-leading-callout: calc(21 / 16);
+		--ctd-leading-subheadline: calc(20 / 15);
+		--ctd-leading-footnote: calc(18 / 13);
+		--ctd-leading-caption-1: calc(16 / 12);
+		--ctd-leading-caption-2: calc(13 / 11);
+	}
 }
 
 /*
@@ -341,7 +425,7 @@
 	--ctd-menu-item-radius: 4px;
 	--ctd-menu-item-height: 26px;
 	--ctd-menu-item-pad-x: 10px;
-	--ctd-menu-font-size: var(--ctd-text-sm);
+	--ctd-menu-font-size: var(--ctd-text-body);
 	--ctd-menu-highlight-bg: var(--ctd-nav-hover-bg);
 	--ctd-menu-highlight-text: var(--ctd-ink);
 	--ctd-menu-danger-highlight-bg: oklch(from var(--ctd-danger-bg) l c h / 0.14);
@@ -373,11 +457,13 @@
 	:root,
 	:root[data-platform] {
 		--ctd-menu-item-height: 36px;
-		--ctd-menu-font-size: var(--ctd-text-md);
 	}
 }
 
+/* Text that sets no size of its own is body text. The root keeps its
+   share of the reader's default, which is what rem measures. */
 body {
+	font-size: var(--ctd-text-body);
 	margin: 0;
 	padding: 0;
 	overflow: hidden;

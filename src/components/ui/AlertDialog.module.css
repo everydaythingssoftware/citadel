@@ -51,15 +51,15 @@
 	margin: 0;
 	overflow-wrap: anywhere;
 	text-wrap: balance;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
 
 .description {
 	margin: 6px 0 0;
-	font-size: 11px;
-	line-height: 1.45;
+	font-size: var(--ctd-text-subheadline);
+	line-height: var(--ctd-leading-subheadline);
 	color: var(--ctd-ink-soft);
 	text-wrap: balance;
 }
@@ -68,6 +68,13 @@
 	display: flex;
 	gap: 8px;
 	margin-top: 16px;
+}
+
+/* Touch-sized labels don't fit side by side, so they stack as iOS's do. */
+@media (pointer: coarse) {
+	.buttons {
+		flex-direction: column;
+	}
 }
 
 @keyframes alert-overlay-in {

@@ -22,7 +22,7 @@
 	border-radius: var(--ctd-radius-control);
 	background: transparent;
 	font: inherit;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink);
 	text-align: left;
 	--disclosure-soft: var(--ctd-ink-soft);
@@ -73,7 +73,7 @@
 	flex: none;
 	/* At the row's end, with or without the hint. */
 	margin-left: auto;
-	font-size: 14px;
+	font-size: var(--ctd-text-body);
 	color: var(--disclosure-soft);
 	transition: transform 240ms ease;
 }
@@ -145,7 +145,7 @@
 
 .error {
 	margin: 0;
-	font-size: 12px;
+	font-size: var(--ctd-text-callout);
 	color: color-mix(in oklch, var(--ctd-danger-bg) 88%, var(--ctd-ink));
 }
 
@@ -166,11 +166,9 @@
 @media (max-width: 36em) {
 	.fields :global(input) {
 		min-height: 48px;
-		font-size: 17px;
 	}
 
 	.disclosure {
 		min-height: 48px;
-		font-size: 17px;
 	}
 }

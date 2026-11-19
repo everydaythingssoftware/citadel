@@ -51,13 +51,13 @@
 .title {
 	margin: 0;
 	font-family: var(--ctd-font-serif);
-	font-size: 30px;
-	line-height: 1.15;
+	font-size: var(--ctd-text-large-title);
+	line-height: var(--ctd-leading-large-title);
 }
 
 .hint {
 	margin: 0;
-	font-size: 14px;
+	font-size: var(--ctd-text-body);
 	opacity: 0.92;
 	/* The small line needs a firmer halo than the title over a light window. */
 	text-shadow: 0 1px 3px oklch(0% 0 0 / 0.5);
@@ -73,9 +73,5 @@
 @media (max-width: 36em) {
 	.overlay {
 		gap: 24px;
-	}
-
-	.title {
-		font-size: 24px;
 	}
 }

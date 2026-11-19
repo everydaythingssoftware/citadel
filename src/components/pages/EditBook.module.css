@@ -169,8 +169,8 @@
 		opacity 160ms ease-out,
 		transform 160ms ease-out;
 	font-family: var(--ctd-font-serif);
-	font-size: 16px;
-	font-weight: 600;
+	font-size: var(--ctd-text-title-2);
+	font-weight: 700;
 	letter-spacing: 0.01em;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -185,7 +185,7 @@
 	margin: 14px 24px 0;
 	padding: 8px 8px 8px 12px;
 	border-radius: 8px;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	border: 1px solid transparent;
 }
 
@@ -207,7 +207,7 @@
 
 .noticeClose {
 	flex-shrink: 0;
-	font-size: 14px;
+	font-size: var(--ctd-text-body);
 }
 
 /* Margin, not padding, so the slot can collapse to nothing. A message that
@@ -314,8 +314,8 @@
 
 .rowLabel {
 	text-align: right;
-	font-size: 13px;
-	line-height: 1.45;
+	font-size: var(--ctd-text-body);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink-soft);
 	user-select: none;
 	overflow: hidden;
@@ -355,7 +355,7 @@
 }
 
 .sectionLabel {
-	font-size: var(--ctd-text-sm);
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
@@ -390,7 +390,7 @@
 }
 
 .removeIdentifier {
-	font-size: 15px;
+	font-size: var(--ctd-text-title-3);
 }
 
 /* Series name and its number share a row; the # belongs to the number, so
@@ -414,13 +414,13 @@
 
 .emptyText {
 	margin: 0;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink-soft);
 }
 
 /* Description HTML display */
 .descriptionHtml {
-	line-height: 1.5;
+	line-height: var(--ctd-leading-body);
 	overflow-wrap: break-word;
 }
 
@@ -466,7 +466,7 @@
 }
 
 .subjectStripLabel {
-	font-size: 12px;
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 	margin-right: 2px;
 }

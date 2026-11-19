@@ -141,7 +141,7 @@
 	border-radius: var(--ctd-radius-control);
 	background: var(--ctd-ink);
 	color: var(--ctd-surface);
-	font-size: 12px;
+	font-size: var(--ctd-text-callout);
 	white-space: nowrap;
 	pointer-events: none;
 	animation: hold-hint-in 140ms ease-out;

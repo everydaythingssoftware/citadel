@@ -1,5 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PlatformProvider } from "@/lib/platform/context";
+import { createWebPlatform } from "@/lib/platform/create";
+import type { PlatformAdapter } from "@/lib/platform/types";
 import {
 	NO_UPDATE_ACTIONS,
 	type SoftwareUpdateState,
@@ -42,8 +45,17 @@ const handlers = {
 	onRestartNow: () => {},
 };
 
+const MOCK_PLATFORM: PlatformAdapter = createWebPlatform();
+
 const meta = {
 	component: SoftwareUpdateRow,
+	decorators: [
+		(Story) => (
+			<PlatformProvider value={MOCK_PLATFORM}>
+				<Story />
+			</PlatformProvider>
+		),
+	],
 	args: { state: state({ kind: "idle" }), ...handlers },
 	render: (args) => (
 		<div style={groupStyle}>
@@ -142,7 +154,12 @@ export const AllStates: Story = {
 		<div style={{ display: "grid", gap: 14, alignContent: "start" }}>
 			{ALL_STATES.map(([title, rowState]) => (
 				<div key={title} style={{ display: "grid", gap: 4 }}>
-					<span style={{ fontSize: 11, color: "var(--ctd-ink-soft)" }}>
+					<span
+						style={{
+							fontSize: "var(--ctd-text-subheadline)",
+							color: "var(--ctd-ink-soft)",
+						}}
+					>
 						{title}
 					</span>
 					<div style={groupStyle}>

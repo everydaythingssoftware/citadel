@@ -148,7 +148,7 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 			</header>
 			<Actions book={book} className={styles.phoneActions} />
 			<div ref={bodyRef} className={clsx(styles.body, "ctd-scroller")}>
-				<Description html={book.description} />
+				<Description key={book.id} html={book.description} />
 				<Tags book={book} onClose={onClose} />
 				<Files files={files} />
 				<Details book={book} />
@@ -296,7 +296,13 @@ const Chevron = ({ up }: { up: boolean }) => (
 	</svg>
 );
 
-const Description = ({ html }: { html: string | null }) => {
+const Description = ({ html }: { html: string | null }) =>
+	html === null || html.trim().length === 0 ? null : (
+		<DescriptionText html={html} />
+	);
+
+/** Mounted only with text to show, so its first measurement finds it. */
+const DescriptionText = ({ html }: { html: string }) => {
 	const textRef = useRef<HTMLDivElement>(null);
 	const [expanded, setExpanded] = useState(false);
 	const [overflows, setOverflows] = useState(false);
@@ -310,7 +316,6 @@ const Description = ({ html }: { html: string | null }) => {
 		observer.observe(element);
 		return () => observer.disconnect();
 	}, [expanded]);
-	if (html === null || html.trim().length === 0) return null;
 	return (
 		<section className={styles.description}>
 			<div

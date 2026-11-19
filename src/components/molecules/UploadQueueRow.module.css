@@ -23,7 +23,11 @@
 	box-sizing: border-box;
 	border-radius: 2px;
 	object-fit: cover;
-	font-size: 20px;
+}
+
+.thumb svg {
+	width: 20px;
+	height: 20px;
 }
 
 .pending {
@@ -50,7 +54,7 @@
 }
 
 .subtitle {
-	font-size: 12px;
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -88,16 +92,11 @@
 	.row {
 		grid-template-columns: 40px minmax(0, 1fr) auto;
 		min-height: 72px;
-		font-size: 15px;
 	}
 
 	.thumb {
 		width: 40px;
 		height: 60px;
-	}
-
-	.subtitle {
-		font-size: 13px;
 	}
 
 	/* The whole row is the review target, ending in a disclosure chevron. */
@@ -108,7 +107,6 @@
 		box-shadow: none;
 		padding: 0;
 		color: var(--ctd-ink-soft);
-		font-size: 17px;
 	}
 
 	.review::after {

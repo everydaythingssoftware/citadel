@@ -8,15 +8,15 @@
 
 .unsupported h3 {
 	margin: 0;
-	font-size: 1rem;
+	font-size: var(--ctd-text-body);
 	font-weight: 600;
 }
 
 .unsupported p {
 	max-width: 65ch;
 	margin: 0.25rem 0 0;
-	font-size: 0.75rem;
-	line-height: 1.45;
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 }
 
@@ -42,13 +42,13 @@
 	align-items: center;
 	gap: 0.45rem;
 	margin: 0;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink-soft);
 }
 
 .listen code {
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-body);
 	color: var(--ctd-ink);
 }
 
@@ -74,15 +74,15 @@
 	box-shadow: var(--ctd-focus-shadow);
 }
 
-/* Fixed 0.75rem slot: reserved even when hidden, so hover/copied never
+/* Fixed 1em slot: reserved even when hidden, so hover/copied never
  * shifts the URL or collapses the button. */
 .urlChipIcon {
 	display: inline-grid;
 	place-items: center;
 	flex: none;
-	width: 0.75rem;
-	height: 0.75rem;
-	font-size: 0.75rem;
+	width: 1em;
+	height: 1em;
+	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 	opacity: 0;
 	transition: opacity 120ms ease-out;
@@ -125,7 +125,7 @@
  * while "Copied" flashes. */
 .urlCopyLabel {
 	display: inline-grid;
-	font-size: 0.6875rem;
+	font-size: var(--ctd-text-subheadline);
 	font-weight: 500;
 	line-height: 1;
 	color: var(--ctd-ink-soft);

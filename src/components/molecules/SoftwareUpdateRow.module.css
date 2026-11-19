@@ -16,21 +16,21 @@
 }
 
 .description {
-	font-size: 0.75rem;
-	line-height: 1.35;
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-ink-soft);
 }
 
 /* A link standing in for a control: the row's own size, on one line. */
 .link {
 	flex-shrink: 0;
-	font-size: 0.8125rem;
+	font-size: var(--ctd-text-body);
 	white-space: nowrap;
 }
 
 .detail {
-	font-size: 0.75rem;
-	line-height: 1.35;
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
 	color: var(--ctd-danger-ink);
 	overflow-wrap: anywhere;
 }
@@ -40,8 +40,8 @@
 	align-items: center;
 	gap: 0.4375rem;
 	min-width: 0;
-	font-size: 0.8125rem;
-	line-height: 1.35;
+	font-size: var(--ctd-text-body);
+	line-height: var(--ctd-leading-body);
 	color: var(--ctd-ink);
 }
 

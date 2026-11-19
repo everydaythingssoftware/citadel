@@ -5,7 +5,7 @@
 	gap: 8px;
 	height: var(--ctd-control-height);
 	padding: 0 4px 0 10px;
-	font-size: 13px;
+	font-size: var(--ctd-text-body);
 	font-family: inherit;
 	border-radius: var(--ctd-radius-control);
 	background-color: var(--ctd-control-bg-strong);

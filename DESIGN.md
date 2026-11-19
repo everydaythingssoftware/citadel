@@ -63,12 +63,36 @@ Calibre's cluttered chrome, generic web-app SaaS.
 - The root size is `87.5%` of the reader's default (14px at the usual
   16px), so a larger browser or system text setting scales the whole UI.
   `1rem` is that root, not 16px.
-- **Type scale**: font sizes come from the `--ctd-text-*` steps in
-  `src/styles.css`, in rem: `2xs` 11px, `xs` 12px, `sm` 13px, `base` 14px,
-  `md` 15px, `lg` 17px, `xl` 22px, `2xl` 24px (at the default). Controls,
-  menus and dialog text are `sm` (menus are `md` on touch screens). New CSS
-  uses a step, never a raw px or ad-hoc rem size; a size between steps moves
-  to the nearest one.
+- **Text styles**: font sizes are Apple's text styles, by role, as
+  `--ctd-text-*` in `src/styles.css`. Each has a macOS size and an iOS
+  size, and the token is the iOS one where the pointer is a finger and the
+  macOS one everywhere else:
+
+  | Token | macOS | iOS | For |
+  |---|---|---|---|
+  | `large-title` | 26 | 34 | a book title, a display line or number |
+  | `title-1` | 22 | 28 | a book title where room is short |
+  | `title-2` | 17 | 22 | a page or sheet heading |
+  | `title-3` | 15 | 20 | a small heading |
+  | `headline` | 13 | 17 | body's size, with a bold weight |
+  | `body` | 13 | 17 | controls, menus, rows, running text |
+  | `callout` | 12 | 16 | secondary lines, small controls |
+  | `subheadline` | 11 | 15 | pills, tags, sidebar section headings |
+  | `footnote` | 10 | 13 | |
+  | `caption-1` | 10 | 12 | |
+  | `caption-2` | 10 | 11 | |
+
+  Text that sets no size is `body`. CSS picks a style and never a raw px
+  or rem size, and never sets a second size for touch: the token already
+  changes with the device. An icon is sized by its width and height, not
+  by a font size. A drawing that must not change with the device (a
+  generated cover) uses the fixed `--ctd-type-mac-*` or `--ctd-type-ios-*`.
+- **Line heights and weights** are Apple's for the same styles.
+  `--ctd-leading-*` is each style's line height over its size (body is
+  16/13 on macOS and 22/17 on iOS); the root's is body's, and a rule that
+  sets a line height uses its style's token. A line height of `1` or in
+  px sizes a glyph or a control and stays as it is. Emphasized text is
+  600, and 700 in `large-title`, `title-1` and `title-2`.
 - **No ALL CAPS anywhere**: no `text-transform: uppercase`, no small caps, no
   wide-tracked eyebrow labels. Text is written the way it shows ("Current"
   in a pill, not "current" uppercased by CSS). Acronyms (ISBN, EPUB) stay as

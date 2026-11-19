@@ -1,5 +1,5 @@
 .content {
-	font-size: 12px;
+	font-size: var(--ctd-text-callout);
 	padding: 3px 8px;
 	background-color: var(--ctd-surface-strong);
 	color: var(--ctd-ink);
