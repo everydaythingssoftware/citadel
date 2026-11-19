@@ -30,6 +30,10 @@ if (platform.capabilities.supportsNativeWindows && platform.os === "macos") {
 	html.dataset.vibrancy = "true";
 }
 
+if (platform.capabilities.hasOverlayTitleBar) {
+	html.dataset.titlebar = "overlay";
+}
+
 setChordPlatform(platform.os);
 installChromeGuards(document, {
 	allowInspect: import.meta.env.DEV,
