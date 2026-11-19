@@ -65,7 +65,7 @@ bun run dev
 
 ### Building on Windows
 
-CI builds Windows x64 and ARM64 installers (NSIS, plus MSI on x64). Installers
+CI builds Windows x64 and ARM64 installers (NSIS). Installers
 are not code-signed, so SmartScreen warns on first run. Building locally needs
 the MSVC build tools and, on ARM64, `clang` on the `PATH` (required by `ring`).
 SQLite is compiled in on Windows, so no system SQLite is needed.
