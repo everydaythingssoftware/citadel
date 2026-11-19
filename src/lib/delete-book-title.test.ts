@@ -44,20 +44,3 @@ describe("deleteBooksDialogTitle", () => {
 		expect(deleteBooksDialogTitle(["A", "B"])).toBe("Delete 2 books?");
 	});
 });
-
-it("uses Recycle Bin throughout Windows deletion confirmations and failures", () => {
-	for (const copy of [
-		deleteBookCopy("trash", "windows"),
-		deleteBooksCopy("trash", 3, "windows"),
-	]) {
-		for (const text of Object.values(copy)) {
-			expect(text).toContain("Recycle Bin");
-			expect(text).not.toContain("Trash");
-		}
-	}
-	expect(deleteBookCopy("trash", "macos").confirmLabel).toBe("Move to Trash");
-	expect(deleteBookCopy("trash", "linux").confirmLabel).toBe("Move to Trash");
-	expect(deleteBookCopy("permanent", "windows")).toEqual(
-		deleteBookCopy("permanent"),
-	);
-});

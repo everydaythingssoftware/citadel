@@ -25,7 +25,8 @@
 	border-bottom: 1px solid var(--ctd-border);
 }
 
-:global([data-vibrancy]) .tabStrip {
+/* 4.5rem clears the macOS traffic lights. */
+:global([data-titlebar="overlay"]) .tabStrip {
 	padding-inline: 4.5rem;
 }
 
