@@ -2,7 +2,7 @@ import { defaultSettings } from "./types";
 import type { MetadataProvidersSettings, SettingsSchema } from "./types";
 
 /** The current settings schema version. Bump when the shape changes. */
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 /**
  * v0 -> v1: fold the flat `hardcoverApiKey` / `hardcoverAutoLookup` keys into
@@ -90,6 +90,32 @@ const migrateV3toV4 = (raw: SettingsSchema): SettingsSchema => {
 	};
 };
 
+/** v4 -> v5: add the BnF provider (keyless, enabled), preserving the user's
+ * existing toggles and order. Inserted after K10plus, else after DNB. */
+const migrateV4toV5 = (raw: SettingsSchema): SettingsSchema => {
+	const previous = raw.metadataProviders;
+	if (previous.configs.bnf) {
+		return { ...raw, settingsSchemaVersion: 5 };
+	}
+
+	const order = [...previous.preferenceOrder];
+	if (!order.includes("bnf")) {
+		const anchor = Math.max(order.indexOf("k10plus"), order.indexOf("dnb"));
+		const insertAt = anchor === -1 ? Math.max(order.length - 1, 0) : anchor + 1;
+		order.splice(insertAt, 0, "bnf");
+	}
+
+	const metadataProviders: MetadataProvidersSettings = {
+		...previous,
+		preferenceOrder: order,
+		configs: {
+			...previous.configs,
+			bnf: { enabled: true, apiKey: "" },
+		},
+	};
+	return { ...raw, settingsSchemaVersion: 5, metadataProviders };
+};
+
 /**
  * Bring a loaded settings object up to the current schema version by applying
  * each step in order. Gated on an explicit version, not value-equality with
@@ -109,6 +135,9 @@ export const migrateSettings = (raw: SettingsSchema): SettingsSchema => {
 	}
 	if (settings.settingsSchemaVersion < 4) {
 		settings = migrateV3toV4(settings);
+	}
+	if (settings.settingsSchemaVersion < 5) {
+		settings = migrateV4toV5(settings);
 	}
 	return settings;
 };

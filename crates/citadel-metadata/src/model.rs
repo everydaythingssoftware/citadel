@@ -19,6 +19,8 @@ pub enum MetadataProvider {
     Dnb,
     #[serde(rename = "k10plus")]
     K10plus,
+    #[serde(rename = "bnf")]
+    Bnf,
     #[serde(rename = "openlibrary")]
     OpenLibrary,
 }
@@ -35,11 +37,12 @@ impl std::str::FromStr for MetadataProvider {
 }
 
 impl MetadataProvider {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Hardcover,
         Self::Loc,
         Self::Dnb,
         Self::K10plus,
+        Self::Bnf,
         Self::OpenLibrary,
     ];
 
@@ -50,6 +53,7 @@ impl MetadataProvider {
             Self::Loc => "loc",
             Self::Dnb => "dnb",
             Self::K10plus => "k10plus",
+            Self::Bnf => "bnf",
             Self::OpenLibrary => "openlibrary",
         }
     }
@@ -60,6 +64,7 @@ impl MetadataProvider {
             Self::Loc => "Library of Congress",
             Self::Dnb => "Deutsche Nationalbibliothek",
             Self::K10plus => "K10plus",
+            Self::Bnf => "Bibliothèque nationale de France",
             Self::OpenLibrary => "Open Library",
         }
     }
@@ -77,6 +82,7 @@ impl MetadataProvider {
             Self::Loc => "lccn",
             Self::Dnb => "dnb",
             Self::K10plus => "k10plus",
+            Self::Bnf => "bnf",
             Self::OpenLibrary => "openlibrary",
         }
     }
@@ -94,7 +100,7 @@ impl MetadataProvider {
 pub struct BookMetadata {
     pub provider: MetadataProvider,
     /// Provider-native id: hardcover id (stringified), LCCN, DNB control
-    /// number, or Open Library OLID.
+    /// number, BnF ARK name, or Open Library OLID.
     pub provider_id: String,
     pub identifier_label: String,
     pub title: String,
@@ -128,6 +134,16 @@ pub struct BookMetadata {
     /// Hardcover deep-link slug; `None` for other providers.
     #[cfg_attr(feature = "openapi", schema(required = true))]
     pub slug: Option<String>,
+    /// Narrative series (not a publisher's collection); BnF only for now.
+    #[cfg_attr(feature = "openapi", schema(required = true))]
+    pub series: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(required = true))]
+    pub series_index: Option<f64>,
+    /// A publisher's collection with its number (e.g. "Folio junior 899"), as
+    /// distinct from a narrative series. Applied only to a Calibre custom
+    /// column labelled `collection` when the library has one.
+    #[cfg_attr(feature = "openapi", schema(required = true))]
+    pub collection: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -251,6 +267,35 @@ fn ean13_check_digit(twelve: &str) -> Option<char> {
     char::from_digit(check, 10)
 }
 
+/// The forms an ISBN should be searched under: its 13-digit form plus, for
+/// 978-prefixed ISBNs, the 10-digit form. For catalogues that index only the
+/// printed form (BnF), so an ISBN-13 query still finds a record catalogued
+/// under its ISBN-10 and vice versa.
+pub fn isbn_search_forms(raw: &str) -> Vec<String> {
+    let Some(isbn13) = canonical_isbn13(raw) else {
+        return Vec::new();
+    };
+    let isbn10 = isbn13
+        .strip_prefix("978")
+        .and_then(|core| core.get(..9))
+        .and_then(|nine| isbn10_check_digit(nine).map(|check| format!("{nine}{check}")));
+    std::iter::once(isbn13).chain(isbn10).collect()
+}
+
+fn isbn10_check_digit(nine: &str) -> Option<char> {
+    if nine.len() != 9 {
+        return None;
+    }
+    let mut sum = 0u32;
+    for (i, c) in nine.chars().enumerate() {
+        sum += c.to_digit(10)? * (10 - i as u32);
+    }
+    match (11 - (sum % 11)) % 11 {
+        10 => Some('X'),
+        check => char::from_digit(check, 10),
+    }
+}
+
 /// True when two ISBN strings denote the same edition, comparing across the
 /// ISBN-10 and ISBN-13 forms. This is the only place 10<->13 conversion lives;
 /// the frontend relies on Rust having verified equivalence.
@@ -284,6 +329,26 @@ mod tests {
         assert!(isbn_equivalent("9780553103540", "978-0-553-10354-0"));
         // Different editions do not.
         assert!(!isbn_equivalent("9780553103540", "9780374528379"));
+    }
+
+    #[test]
+    fn isbn_search_forms_cover_both_lengths() {
+        assert_eq!(
+            isbn_search_forms("2070360024"),
+            vec!["9782070360024", "2070360024"]
+        );
+        assert_eq!(
+            isbn_search_forms("978-2-07-058462-8"),
+            vec!["9782070584628", "2070584623"]
+        );
+        // ISBN-10 check digit X.
+        assert_eq!(
+            isbn_search_forms("9780804429573"),
+            vec!["9780804429573", "080442957X"]
+        );
+        // 979 ISBNs have no ISBN-10 form.
+        assert_eq!(isbn_search_forms("9791032305690"), vec!["9791032305690"]);
+        assert!(isbn_search_forms("garbage").is_empty());
     }
 
     #[test]

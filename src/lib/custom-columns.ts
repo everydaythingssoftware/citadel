@@ -12,6 +12,13 @@ import type {
 export const READ_COLUMN_LABEL = "read";
 
 /**
+ * The label of the optional Calibre text column that holds a publisher's
+ * collection ("Folio junior 899"). Citadel fills it from a metadata lookup
+ * only when the library already has it; it never creates it.
+ */
+export const COLLECTION_COLUMN_LABEL = "collection";
+
+/**
  * A custom-column value as held in the edit form.
  *
  * - bool: `null` (unset) | `"yes"` | `"no"`

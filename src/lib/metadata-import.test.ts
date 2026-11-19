@@ -19,6 +19,9 @@ const book: BookMetadata = {
 	genre_candidates: [],
 	language_code: null,
 	slug: null,
+	series: null,
+	series_index: null,
+	collection: null,
 };
 
 describe("applyMetadataCover", () => {

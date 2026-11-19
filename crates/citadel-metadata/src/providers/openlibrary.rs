@@ -161,6 +161,9 @@ fn map_data_book(book: OlDataBook, queried_isbn: &str) -> BookMetadata {
         genre_candidates: Vec::new(),
         language_code: None,
         slug: None,
+        series: None,
+        series_index: None,
+        collection: None,
     }
 }
 
@@ -193,6 +196,9 @@ fn map_search_doc(doc: OlSearchDoc) -> BookMetadata {
         genre_candidates: Vec::new(),
         language_code: None,
         slug: None,
+        series: None,
+        series_index: None,
+        collection: None,
     }
 }
 

@@ -44,14 +44,15 @@ pub(crate) fn limits(provider: MetadataProvider) -> Limits {
             concurrency: 2,
             per_credential: false,
         },
-        MetadataProvider::OpenLibrary | MetadataProvider::Dnb | MetadataProvider::K10plus => {
-            Limits {
-                burst: 10.0,
-                per_second: 1.0,
-                concurrency: 4,
-                per_credential: false,
-            }
-        }
+        MetadataProvider::OpenLibrary
+        | MetadataProvider::Dnb
+        | MetadataProvider::K10plus
+        | MetadataProvider::Bnf => Limits {
+            burst: 10.0,
+            per_second: 1.0,
+            concurrency: 4,
+            per_credential: false,
+        },
     }
 }
 
