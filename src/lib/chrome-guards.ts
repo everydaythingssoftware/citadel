@@ -1,3 +1,5 @@
+import type { KeymapEventLike } from "@/lib/keymap";
+import type { OperatingSystem } from "@/lib/platform/os";
 import { eventMatchesChord } from "@/lib/keymap";
 
 /**
@@ -112,12 +114,26 @@ const selectAllWithinContent = (doc: Document) => {
 export interface ChromeGuardOptions {
 	/** Development builds let ⌥-right-click through, for Inspect Element. */
 	allowInspect?: boolean;
+	os?: OperatingSystem;
+	desktop?: boolean;
 }
 
 export const installChromeGuards = (
 	doc: Document = document,
-	{ allowInspect = false }: ChromeGuardOptions = {},
+	{
+		allowInspect = false,
+		os = "other",
+		desktop = false,
+	}: ChromeGuardOptions = {},
 ): (() => void) => {
+	const onBrowserKeyDown = (event: KeyboardEvent) => {
+		if (event.defaultPrevented || !blocksBrowserKey(event, os, desktop)) return;
+		browserGuardedEvents.add(event);
+		event.preventDefault();
+	};
+	const onWheel = (event: WheelEvent) => {
+		if (desktop && os === "windows" && event.ctrlKey) event.preventDefault();
+	};
 	const onContextMenu = (event: MouseEvent) => {
 		if (event.defaultPrevented) return;
 		if (allowInspect && event.altKey) return;
@@ -140,12 +156,33 @@ export const installChromeGuards = (
 		if (allowsDragStart(asTarget(event.target))) return;
 		event.preventDefault();
 	};
+	doc.addEventListener("keydown", onBrowserKeyDown, true);
+	doc.addEventListener("wheel", onWheel, { capture: true, passive: false });
 	doc.addEventListener("contextmenu", onContextMenu);
 	doc.addEventListener("keydown", onKeyDown);
 	doc.addEventListener("dragstart", onDragStart);
 	return () => {
+		doc.removeEventListener("keydown", onBrowserKeyDown, true);
+		doc.removeEventListener("wheel", onWheel, true);
 		doc.removeEventListener("contextmenu", onContextMenu);
 		doc.removeEventListener("keydown", onKeyDown);
 		doc.removeEventListener("dragstart", onDragStart);
 	};
+};
+
+// A browser default was cancelled, but the app's matching command still gets one turn.
+export const browserGuardedEvents = new WeakSet<KeyboardEvent>();
+
+export const blocksBrowserKey = (
+	event: KeymapEventLike,
+	os: OperatingSystem,
+	desktop: boolean,
+): boolean => {
+	if (!desktop || os !== "windows" || event.altKey || event.metaKey)
+		return false;
+	const key = event.key.toLowerCase();
+	if (["f3", "f5", "f7"].includes(key)) return true;
+	if (!event.ctrlKey) return false;
+	if (["r", "g", "+", "=", "-", "_", "0"].includes(key)) return true;
+	return !event.shiftKey && ["p", "f", "u"].includes(key);
 };

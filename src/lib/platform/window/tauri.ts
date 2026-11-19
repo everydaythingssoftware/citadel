@@ -22,6 +22,10 @@ export const createTauriWindow = (): WindowAdapter => ({
 		await window.setFocus();
 	},
 	hide: () => getCurrentWindow().hide(),
+	toggleFullscreen: some(async () => {
+		const window = getCurrentWindow();
+		await window.setFullscreen(!(await window.isFullscreen()));
+	}),
 	openSettings: () => commands.clbCmdOpenSettings(),
 	setTheme: (theme) => getCurrentWindow().setTheme(theme),
 	setBackgroundColor: (color) => getCurrentWindow().setBackgroundColor(color),

@@ -10,7 +10,7 @@ import styles from "./WindowDragStrip.module.css";
 export const WindowDragStrip = () => {
 	const platform = usePlatform();
 	const { ref, onPointerDown } = useWindowDragStrip();
-	if (!platform.capabilities.supportsNativeWindows) return null;
+	if (!platform.capabilities.hasOverlayTitleBar) return null;
 	return (
 		<div
 			ref={ref}

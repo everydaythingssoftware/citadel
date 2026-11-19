@@ -1,3 +1,4 @@
+import { usePlatform } from "@/lib/platform/context";
 import {
 	createFileRoute,
 	useNavigate,
@@ -33,6 +34,7 @@ const centeredFill: CSSProperties = {
 };
 
 const EditBookRoute = () => {
+	const platform = usePlatform();
 	const { bookId } = useParams({ from: "/books/$bookId" });
 	const state = useLibraryState();
 	const readOnly = useLibraryStore((state) => state.library?.readOnly === true);
@@ -157,7 +159,7 @@ const EditBookRoute = () => {
 	}
 
 	if (deleteFailures.length > 0) {
-		const copy = deleteBookCopy(deletion);
+		const copy = deleteBookCopy(deletion, platform.os);
 		return (
 			<div style={{ padding: 24, maxWidth: 640 }}>
 				<div role="alert">

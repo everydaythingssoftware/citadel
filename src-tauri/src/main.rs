@@ -223,7 +223,17 @@ fn run_tauri_backend() -> std::io::Result<()> {
         .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .build(tauri::generate_context!())
+        .build({
+            #[allow(unused_mut)]
+            let mut context = tauri::generate_context!();
+            #[cfg(target_os = "macos")]
+            for window in &mut context.config_mut().app.windows {
+                if window.label == window::MAIN_WINDOW {
+                    window.transparent = true;
+                }
+            }
+            context
+        })
         .expect("error while building tauri application");
 
     const OPDS_EXIT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);

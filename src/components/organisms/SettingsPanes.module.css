@@ -21,8 +21,13 @@
 	align-items: stretch;
 	gap: 0.25rem;
 	flex-shrink: 0;
-	padding: 0.375rem 4.5rem;
+	padding: 0.375rem 0.75rem;
 	border-bottom: 1px solid var(--ctd-border);
+}
+
+/* 4.5rem clears the macOS traffic lights. */
+:global([data-titlebar="overlay"]) .tabStrip {
+	padding-inline: 4.5rem;
 }
 
 .tab {
