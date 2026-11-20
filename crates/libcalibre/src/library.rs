@@ -259,6 +259,10 @@ pub enum BookSortOrder {
     AuthorAsc,
     /// By the primary author's sort name, Z to A.
     AuthorDesc,
+    /// Most recently added (`timestamp`) first.
+    AddedDesc,
+    /// Oldest added (`timestamp`) first.
+    AddedAsc,
     /// Most recently modified (`last_modified`) first.
     UpdatedDesc,
     /// By series index, lowest first, then by title sort.

@@ -804,7 +804,7 @@ export interface components {
             title: string;
         };
         /** @enum {string} */
-        BookSortOrder: "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc";
+        BookSortOrder: "TitleAsc" | "TitleDesc" | "AuthorAsc" | "AuthorDesc" | "AddedDesc" | "AddedAsc";
         BookUpdate: {
             author_id_list?: string[] | null;
             description?: string | null;

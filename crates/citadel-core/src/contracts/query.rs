@@ -8,6 +8,8 @@ pub enum BookSortOrder {
     TitleDesc,
     AuthorAsc,
     AuthorDesc,
+    AddedDesc,
+    AddedAsc,
 }
 
 impl From<BookSortOrder> for libcalibre::BookSortOrder {
@@ -17,6 +19,8 @@ impl From<BookSortOrder> for libcalibre::BookSortOrder {
             BookSortOrder::TitleDesc => libcalibre::BookSortOrder::TitleDesc,
             BookSortOrder::AuthorAsc => libcalibre::BookSortOrder::AuthorAsc,
             BookSortOrder::AuthorDesc => libcalibre::BookSortOrder::AuthorDesc,
+            BookSortOrder::AddedDesc => libcalibre::BookSortOrder::AddedDesc,
+            BookSortOrder::AddedAsc => libcalibre::BookSortOrder::AddedAsc,
         }
     }
 }

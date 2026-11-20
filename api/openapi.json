@@ -4046,7 +4046,9 @@
           "TitleAsc",
           "TitleDesc",
           "AuthorAsc",
-          "AuthorDesc"
+          "AuthorDesc",
+          "AddedDesc",
+          "AddedAsc"
         ]
       },
       "BookUpdate": {

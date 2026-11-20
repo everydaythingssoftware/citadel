@@ -84,6 +84,8 @@ const SORT_LABELS: Record<LibraryBookSortOrderKey, string> = {
 	nameZa: "Name (Z–A)",
 	authorAz: "Author (A–Z)",
 	authorZa: "Author (Z–A)",
+	addedNewest: "Recently added",
+	addedOldest: "Oldest added",
 };
 
 /**
@@ -658,6 +660,6 @@ const SaveAsShelfControl = ({
 };
 
 export interface BookViewOptions {
-	sortOrder: "authorAz" | "authorZa" | "nameAz" | "nameZa";
+	sortOrder: LibraryBookSortOrderKey;
 	searchQuery: string;
 }

@@ -222,6 +222,8 @@ fn order_by_sql(sort: BookSortOrder) -> String {
         BookSortOrder::TitleDesc => "books.sort DESC, books.id DESC".to_string(),
         BookSortOrder::AuthorAsc => format!("{AUTHOR_SORT} ASC, books.id ASC"),
         BookSortOrder::AuthorDesc => format!("{AUTHOR_SORT} DESC, books.id DESC"),
+        BookSortOrder::AddedDesc => "books.timestamp DESC, books.id DESC".to_string(),
+        BookSortOrder::AddedAsc => "books.timestamp ASC, books.id ASC".to_string(),
         BookSortOrder::UpdatedDesc => "books.last_modified DESC, books.id DESC".to_string(),
         BookSortOrder::SeriesIndexAsc => {
             "books.series_index IS NULL ASC, books.series_index ASC, books.sort ASC, books.id ASC"

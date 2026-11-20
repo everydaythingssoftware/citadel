@@ -11,6 +11,8 @@ export const LibraryBookSortOrder = {
 	nameZa: "name-desc",
 	authorAz: "author-asc",
 	authorZa: "author-desc",
+	addedNewest: "added-desc",
+	addedOldest: "added-asc",
 } as const satisfies Record<LibraryBookSortOrderKey, string>;
 
 export type { LibraryBookSortOrderKey };
