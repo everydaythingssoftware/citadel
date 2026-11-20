@@ -1,8 +1,10 @@
 .cover {
+	border-radius: 2px;
+	box-shadow: var(--ctd-cover-shadow);
+	isolation: isolate;
 	position: relative;
 	overflow: hidden;
 	aspect-ratio: 2 / 3;
-	border-radius: 4px;
 	box-sizing: border-box;
 }
 

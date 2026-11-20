@@ -84,6 +84,8 @@
 }
 
 .coverArt {
+	box-shadow: var(--ctd-cover-shadow);
+	isolation: isolate;
 	position: relative;
 	display: block;
 	overflow: hidden;

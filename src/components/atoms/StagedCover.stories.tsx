@@ -17,7 +17,7 @@ const meta: Meta<typeof StagedCover> = {
 export default meta;
 type Story = StoryObj<typeof StagedCover>;
 
-const size = { width: 120, aspectRatio: "2 / 3", borderRadius: 4 };
+const size = { width: 120, aspectRatio: "2 / 3", borderRadius: 2 };
 
 /** Static: a cover image with the spine, and a motif cover for a book without one. */
 export const WithAndWithoutImage: Story = {

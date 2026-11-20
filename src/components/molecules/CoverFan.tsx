@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { CoverSpine } from "@/components/atoms/CoverSpine";
 import type { CSSProperties } from "react";
 import painting1 from "@/assets/1.jpg";
 import painting2 from "@/assets/2.jpg";
@@ -37,7 +38,7 @@ export const CoverFan = ({ size = 128, className }: CoverFanProps) => (
 				style={{ background: cover.colour }}
 			>
 				<img className={styles.painting} src={cover.painting} alt="" />
-				<span className={styles.spine} />
+				<CoverSpine />
 			</div>
 		))}
 	</div>
