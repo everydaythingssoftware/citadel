@@ -11,7 +11,7 @@
 1. [Calibre Database Schema Overview](#calibre-database-schema-overview)
 2. [Python Projects](#python-projects)
    - [Calibre Official Database API](#1-calibre-official-database-api)
-   - [Calibre-Web](#2-calibre-web)
+   - [Calibre-Web](#2-calibre-web) - See also: [**Detailed Implementation Guide**](./CALIBRE_WEB_IMPLEMENTATION.md)
    - [calibrestekje](#3-calibrestekje)
    - [pycalibre](#4-pycalibre)
    - [kobuddy](#5-kobuddy)
@@ -227,6 +227,8 @@ db.copy_format_to(book_id, fmt, dest_path)
 ### 2. Calibre-Web
 
 **GitHub:** https://github.com/janeczku/calibre-web
+
+**📖 Detailed Implementation Guide:** See [CALIBRE_WEB_IMPLEMENTATION.md](./CALIBRE_WEB_IMPLEMENTATION.md) for comprehensive business logic analysis with code examples and implementation patterns for libcalibre.
 
 #### Status
 ✅ **Actively Maintained**
