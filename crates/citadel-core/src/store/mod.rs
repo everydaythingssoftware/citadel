@@ -20,6 +20,7 @@ mod credentials;
 mod device_keys;
 mod libraries;
 mod migrations;
+mod proxies;
 mod recovery;
 mod schema;
 mod users;

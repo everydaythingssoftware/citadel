@@ -541,6 +541,7 @@ pub(crate) fn validate_config(config: &ServerConfig) -> Result<(), String> {
     }
     api.public_addresses()?;
     api.proxies()?;
+    api.forwarded_header()?;
     api.uploads.validate()?;
     api.metadata.validate()?;
     if let Some(directory) = &api.web_directory {
@@ -645,9 +646,10 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         ServedLibrary::new(accounts.clone(), source.clone(), state_directory.clone())
             .with_library_roots(config.library_roots.clone()),
     );
+    let clients = config.api.client_resolver(stored_proxies(&accounts))?;
     let addresses = api::addresses::Addresses::new(
         config.api.public_addresses()?,
-        config.api.proxies()?,
+        clients.clone(),
         api::PublicUrl::parse(&format!("http://localhost:{}", config.api.listen.port())).ok(),
         config
             .config_file
@@ -684,6 +686,8 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
 
     let users = opds_users(&accounts, served.library_id().as_deref())?;
     let service = OpdsService::with_ephemeral_credentials(source.clone(), users.clone());
+    // OPDS believes the same proxies, and records the same untrusted ones.
+    service.use_client_addresses(clients.clone());
     let touched = accounts.clone();
     service.on_device_key_used(move |key_id| {
         if let Err(error) = touched.touch_device_key(key_id) {
@@ -751,7 +755,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         staging,
         metadata,
     );
-    let mut api = match api::start(&config.api, router).await {
+    let mut api = match api::start(&config.api, router, clients).await {
         Ok(api) => {
             let known: Vec<String> = addresses
                 .all()
@@ -815,6 +819,25 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     Ok(())
 }
 
+/// Proxy ranges trusted in Settings. One that no longer parses is skipped
+/// with a warning rather than keeping the server from starting.
+fn stored_proxies(accounts: &CitadelStore) -> Vec<citadel_opds::client::IpRange> {
+    let stored = accounts.trusted_proxies().unwrap_or_else(|error| {
+        eprintln!("citadel_server warning=\"could not read trusted proxies: {error}\"");
+        Vec::new()
+    });
+    stored
+        .iter()
+        .filter_map(|range| match citadel_opds::client::IpRange::parse(range) {
+            Ok(range) => Some(range),
+            Err(error) => {
+                eprintln!("citadel_server warning=\"ignoring a stored trusted proxy: {error}\"");
+                None
+            }
+        })
+        .collect()
+}
+
 /// `citadel.db` can't be opened. Rather than exit (and, under a restart
 /// policy, loop), keep answering until stopped: health fails with the
 /// reason and the browser shows it. Exits with the reason once stopped.
@@ -824,7 +847,7 @@ async fn serve_unavailable(config: &ServerConfig, reason: String) -> Result<(), 
          keeps answering so health checks and the browser show this; fix it and restart.\""
     );
     let router = api::unavailable_router(reason.clone(), config.api.web_directory.as_deref());
-    let mut api = api::start(&config.api, router).await?;
+    let mut api = api::start(&config.api, router, config.api.client_resolver(Vec::new())?).await?;
     println!(
         "citadel_server api=http://{} health=failing",
         config.api.listen

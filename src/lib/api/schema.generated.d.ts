@@ -292,7 +292,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only. */
+        /** @description How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only. Without a session cookie the answer is at most two seconds old and is served even while the server is busy. */
         get: operations["getHealth"];
         put?: never;
         post?: never;
@@ -464,6 +464,25 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/server/proxies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Which proxies Citadel believes about client addresses and the address the browser used, and which private-network peers sent forwarding headers without being trusted. Administrators only. */
+        get: operations["getServerProxies"];
+        put?: never;
+        /** @description Trust a reverse proxy's forwarding headers, on top of the configuration's trustedProxies. Saved in citadel.db; the configuration file is never written. Administrators only. */
+        post: operations["trustServerProxy"];
+        /** @description Stop trusting a range trusted here, and stop offering the untrusted peers in it. Ranges from the configuration can only be changed there (409). Administrators only. */
+        delete: operations["forgetServerProxy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1206,6 +1225,10 @@ export interface components {
             message: string;
             provider: components["schemas"]["MetadataProvider"];
         };
+        ProxyRange: {
+            /** @description An address, such as `172.18.0.5`, or a range, such as `172.18.0.0/16`. */
+            range: string;
+        };
         /** @description A published Citadel release. */
         Release: {
             /** Format: date-time */
@@ -1274,6 +1297,23 @@ export interface components {
             current: string | null;
             /** @description `current` is in the list (not merely allowed as this machine's). */
             currentListed: boolean;
+        };
+        ServerProxies: {
+            /**
+             * @description `trustedProxies` from the server's configuration. Null when unset:
+             *     then client addresses are believed from this machine only, and the
+             *     address the browser used from private networks too.
+             */
+            configured: string[] | null;
+            /** @description The header a trusted proxy names the client in. */
+            forwardedHeader: string;
+            /** @description Ranges an administrator trusted here, on top of the configuration. */
+            trusted: string[];
+            /**
+             * @description Peers on private networks that sent forwarding headers but aren't
+             *     trusted, so their headers are ignored; most recent first.
+             */
+            untrusted: components["schemas"]["UntrustedProxy"][];
         };
         ServerVersion: {
             /** @description Version and commit together; also sent as the `Citadel-Build` header. */
@@ -1349,6 +1389,20 @@ export interface components {
         };
         ThumbnailQuery: {
             book_ids: string[];
+        };
+        UntrustedProxy: {
+            /** @description The peer's address, such as `172.18.0.5`. */
+            address: string;
+            /** @description The forwarding headers it sent, lowercase. */
+            headers: string[];
+            /** Format: date-time */
+            lastSeen: string;
+            /**
+             * Format: int64
+             * @description Requests seen from it since the server started (or since it was
+             *     last forgotten).
+             */
+            requests: number;
         };
         /**
          * @description Whether this server looks for new releases.
@@ -3516,6 +3570,159 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getServerProxies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerProxies"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    trustServerProxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProxyRange"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerProxies"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    forgetServerProxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProxyRange"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerProxies"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

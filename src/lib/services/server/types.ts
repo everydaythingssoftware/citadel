@@ -46,6 +46,27 @@ export interface ServerAddresses {
 	currentListed: boolean;
 }
 
+/** A private-network peer that sent forwarding headers without being trusted. */
+export interface UntrustedProxy {
+	/** Such as `172.18.0.5`. */
+	address: string;
+	/** The forwarding headers it sent, lowercase. */
+	headers: string[];
+	lastSeen: Date;
+	requests: number;
+}
+
+/** Which proxies the server believes, and which it ignores. */
+export interface ServerProxies {
+	/** `trustedProxies` from the configuration; null when unset. */
+	configured: string[] | null;
+	/** Ranges trusted from Settings. */
+	trusted: string[];
+	forwardedHeader: string;
+	/** Most recently seen first. */
+	untrusted: UntrustedProxy[];
+}
+
 export const HEALTH_STATUS = {
 	ok: "ok",
 	degraded: "degraded",
@@ -72,6 +93,15 @@ export interface ServerService {
 	update(): Promise<ServerUpdate | null>;
 	/** Administrators only. */
 	addresses(): Promise<ServerAddresses>;
+	/** Administrators only. */
+	proxies(): Promise<ServerProxies>;
+	/** Believe a reverse proxy's forwarding headers. Administrators only. */
+	trustProxy(range: string): Promise<ServerProxies>;
+	/**
+	 * Stop trusting a range trusted from Settings and stop offering the peers
+	 * in it, which is also how an offer is dismissed. Administrators only.
+	 */
+	forgetProxy(range: string): Promise<ServerProxies>;
 	/** Answers whether or not the server is well (503 included). */
 	health(): Promise<ServerHealth>;
 }

@@ -1957,7 +1957,7 @@
     },
     "/api/health": {
       "get": {
-        "description": "How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only.",
+        "description": "How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only. Without a session cookie the answer is at most two seconds old and is served even while the server is busy.",
         "operationId": "getHealth",
         "responses": {
           "200": {
@@ -2547,6 +2547,187 @@
             }
           },
           "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/server/proxies": {
+      "get": {
+        "description": "Which proxies Citadel believes about client addresses and the address the browser used, and which private-network peers sent forwarding headers without being trusted. Administrators only.",
+        "operationId": "getServerProxies",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerProxies"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "description": "Trust a reverse proxy's forwarding headers, on top of the configuration's trustedProxies. Saved in citadel.db; the configuration file is never written. Administrators only.",
+        "operationId": "trustServerProxy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProxyRange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerProxies"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "description": "Stop trusting a range trusted here, and stop offering the untrusted peers in it. Ranges from the configuration can only be changed there (409). Administrators only.",
+        "operationId": "forgetServerProxy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProxyRange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerProxies"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
             "content": {
               "application/json": {
                 "schema": {
@@ -5286,6 +5467,19 @@
           }
         }
       },
+      "ProxyRange": {
+        "type": "object",
+        "required": [
+          "range"
+        ],
+        "properties": {
+          "range": {
+            "type": "string",
+            "description": "An address, such as `172.18.0.5`, or a range, such as `172.18.0.0/16`."
+          }
+        },
+        "additionalProperties": false
+      },
       "Release": {
         "type": "object",
         "description": "A published Citadel release.",
@@ -5470,6 +5664,45 @@
           "currentListed": {
             "type": "boolean",
             "description": "`current` is in the list (not merely allowed as this machine's)."
+          }
+        }
+      },
+      "ServerProxies": {
+        "type": "object",
+        "required": [
+          "configured",
+          "trusted",
+          "forwardedHeader",
+          "untrusted"
+        ],
+        "properties": {
+          "configured": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "`trustedProxies` from the server's configuration. Null when unset:\nthen client addresses are believed from this machine only, and the\naddress the browser used from private networks too."
+          },
+          "forwardedHeader": {
+            "type": "string",
+            "description": "The header a trusted proxy names the client in."
+          },
+          "trusted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ranges an administrator trusted here, on top of the configuration."
+          },
+          "untrusted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UntrustedProxy"
+            },
+            "description": "Peers on private networks that sent forwarding headers but aren't\ntrusted, so their headers are ignored; most recent first."
           }
         }
       },
@@ -5717,6 +5950,38 @@
           }
         },
         "additionalProperties": false
+      },
+      "UntrustedProxy": {
+        "type": "object",
+        "required": [
+          "address",
+          "headers",
+          "lastSeen",
+          "requests"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The peer's address, such as `172.18.0.5`."
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The forwarding headers it sent, lowercase."
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Requests seen from it since the server started (or since it was\nlast forgotten).",
+            "minimum": 0
+          }
+        }
       },
       "UpdateChecks": {
         "type": "string",

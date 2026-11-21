@@ -414,3 +414,16 @@
 :root[data-fullscreen] .tabStrip {
 	padding-inline: 0.75rem;
 }
+
+/* The offer to trust an unconfigured reverse proxy. */
+.proxyOffer {
+	display: flex;
+	flex-direction: column;
+}
+
+.proxyOfferActions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+}

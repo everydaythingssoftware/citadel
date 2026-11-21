@@ -79,7 +79,6 @@ pub struct OpdsBasicAuth {
 }
 
 struct AuthInner {
-    limits: crate::limits::Limits,
     required: AtomicBool,
     credentials: Mutex<Option<Arc<Vec<DeviceKeyVerifier>>>>,
     backoff: Mutex<Backoff>,
@@ -99,7 +98,6 @@ impl OpdsBasicAuth {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(AuthInner {
-                limits: crate::limits::Limits::default(),
                 required: AtomicBool::new(false),
                 credentials: Mutex::new(None),
                 backoff: Mutex::new(Backoff::default()),
@@ -107,10 +105,6 @@ impl OpdsBasicAuth {
                 reported: Mutex::new(HashMap::new()),
             }),
         }
-    }
-
-    pub(crate) fn limits(&self) -> crate::limits::Limits {
-        self.inner.limits.clone()
     }
 
     pub(crate) fn set_required(&self, required: bool) {

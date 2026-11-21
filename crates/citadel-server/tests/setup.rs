@@ -1,10 +1,11 @@
 //! First-run setup through the API: the setup code makes the administrator,
 //! the administrator chooses a library, readers stay out of the server's
 //! folders, and the choice survives a restart.
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     body::{to_bytes, Body},
+    extract::connect_info::MockConnectInfo,
     http::{Request, StatusCode},
     Router,
 };
@@ -18,6 +19,8 @@ use citadel_server::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+/// The reverse proxy in front of the test server, as its TCP peer.
+const PROXY_PEER: ([u8; 4], u16) = ([172, 18, 0, 2], 443);
 const PUBLIC_URL: &str = "https://books.example.com";
 const SETUP_CODE: &str = "K7QD-M2XV-H9RW";
 
@@ -927,9 +930,22 @@ async fn a_library_can_be_served_read_only_and_stays_so_after_a_restart() {
 
 /// How a browser reaches the test server: through a TLS proxy at
 /// `PUBLIC_URL`, which sends `Host` and `X-Forwarded-Proto` on every request.
+/// Requests carry the proxy as their peer.
 fn through_proxy(router: axum::Router) -> axum::Router {
     router.layer(axum::middleware::map_request(
         |mut request: axum::http::Request<Body>| async move {
+            // The proxy is the TCP peer: on a private network, so its scheme
+            // and host are believed by default, but not who the client is.
+            // A test that stands a different peer up keeps its own.
+            if request
+                .extensions()
+                .get::<MockConnectInfo<SocketAddr>>()
+                .is_none()
+            {
+                request
+                    .extensions_mut()
+                    .insert(MockConnectInfo(SocketAddr::from(PROXY_PEER)));
+            }
             let headers = request.headers_mut();
             let url = PUBLIC_URL.split_once("://").unwrap();
             headers
@@ -958,7 +974,8 @@ async fn from_address(
         .uri(path)
         .header("host", host)
         .header("x-forwarded-proto", scheme)
-        .header("origin", origin);
+        .header("origin", origin)
+        .extension(MockConnectInfo(SocketAddr::from(PROXY_PEER)));
     if let Some(cookie) = cookie {
         builder = builder.header("cookie", cookie);
     }
@@ -1285,4 +1302,95 @@ async fn a_library_the_server_cant_write_is_served_read_only_with_the_reason() {
     assert_eq!(info["readOnly"], true, "{info}");
     assert_eq!(info["readOnlyChosen"], false);
     assert!(info["readOnlyReason"].is_string(), "{info}");
+}
+
+#[tokio::test]
+async fn an_administrator_can_trust_a_proxy_that_sent_forwarding_headers() {
+    let directory = tempfile::tempdir().unwrap();
+    let server = fresh(directory.path(), Some(SETUP_CODE));
+    let administrator = bootstrap(&server.router).await;
+    // A reverse proxy on the container network that nobody configured.
+    let forwarded = || async {
+        let response = server
+            .router
+            .clone()
+            .layer(MockConnectInfo(SocketAddr::from(([172, 18, 0, 5], 40_000))))
+            .oneshot(
+                Request::builder()
+                    .uri("/api/version")
+                    .header("x-forwarded-for", "198.51.100.7")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    };
+    let proxies = |method: &'static str, body: Option<Value>| {
+        let router = server.router.clone();
+        let administrator = administrator.clone();
+        async move {
+            request(
+                &router,
+                method,
+                "/api/server/proxies",
+                body,
+                Some(&administrator),
+            )
+            .await
+        }
+    };
+    // The test harness's own proxy is offered too, so look for this one.
+    let offered = |listing: &Value| {
+        listing["untrusted"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|proxy| proxy["address"] == "172.18.0.5")
+            .cloned()
+    };
+    forwarded().await;
+    let (status, _, listing) = proxies("GET", None).await;
+    assert_eq!(status, StatusCode::OK, "{listing}");
+    assert_eq!(listing["configured"], Value::Null);
+    assert_eq!(listing["trusted"], json!([]));
+    assert_eq!(listing["forwardedHeader"], "x-forwarded-for");
+    let proxy = offered(&listing).expect("offered");
+    assert_eq!(
+        proxy["headers"],
+        json!(["x-forwarded-for", "x-forwarded-proto"]),
+        "the test harness adds the scheme"
+    );
+    assert_eq!(proxy["requests"], 1);
+
+    let (status, _, refused) = proxies("POST", Some(json!({"range": "the proxy"}))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    let (status, _, listing) = proxies("POST", Some(json!({"range": "172.18.0.5"}))).await;
+    assert_eq!(status, StatusCode::OK, "{listing}");
+    assert_eq!(listing["trusted"], json!(["172.18.0.5"]));
+    assert_eq!(offered(&listing), None, "a trusted proxy isn't offered");
+    assert_eq!(
+        server.accounts.trusted_proxies().unwrap(),
+        vec!["172.18.0.5"],
+        "kept in citadel.db, never the config file"
+    );
+    forwarded().await;
+    let (_, _, listing) = proxies("GET", None).await;
+    assert_eq!(offered(&listing), None, "its headers are believed now");
+
+    let (status, _, listing) = proxies("DELETE", Some(json!({"range": "172.18.0.5"}))).await;
+    assert_eq!(status, StatusCode::OK, "{listing}");
+    assert_eq!(listing["trusted"], json!([]));
+    assert!(server.accounts.trusted_proxies().unwrap().is_empty());
+    forwarded().await;
+    let (_, _, listing) = proxies("GET", None).await;
+    assert!(offered(&listing).is_some(), "untrusted again: {listing}");
+    // Dismissing the offer is the same call: nothing trusted, nothing offered.
+    proxies("DELETE", Some(json!({"range": "172.18.0.5"}))).await;
+    forwarded().await;
+    let (_, _, listing) = proxies("GET", None).await;
+    assert_eq!(offered(&listing), None, "dismissed stays dismissed");
+
+    let (status, _, _) = request(&server.router, "GET", "/api/server/proxies", None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }

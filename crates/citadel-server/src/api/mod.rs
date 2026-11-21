@@ -16,6 +16,10 @@ use citadel_core::{
     library::{remove_permanently, LibraryService},
     HttpUrlBuilder, LibraryBook,
 };
+use citadel_opds::{
+    client::{resolve_client, ClientResolver, ForwardedHeader, IpRange, ProxyTrust},
+    limits::{Limits, RequestClass, API_CAPACITIES},
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use utoipa::openapi::{
@@ -57,9 +61,14 @@ pub struct ApiConfig {
     /// answers at any address.
     #[serde(default)]
     pub public_urls: Vec<String>,
-    /// Proxies whose `Forwarded`/`X-Forwarded-*` headers are believed.
-    /// Defaults to this machine and private networks.
+    /// Proxies whose `Forwarded`/`X-Forwarded-*` headers are believed, for
+    /// client addresses and for how the browser reached Citadel alike. When
+    /// unset, client addresses trust this machine only while scheme and host
+    /// also trust private networks (ADR 0017).
     pub trusted_proxies: Option<Vec<String>>,
+    /// Which header a trusted proxy names the client in: `x-forwarded-for`
+    /// (the default) or `forwarded`.
+    pub forwarded_header: Option<String>,
     pub web_directory: Option<std::path::PathBuf>,
     #[serde(default)]
     pub uploads: UploadConfig,
@@ -586,6 +595,8 @@ pub fn router(
         web_directory: web_directory.map(std::path::Path::to_path_buf),
     };
     let address_state = state.clone();
+    let clients = state.access.addresses.clients().clone();
+    let health = health::HealthCache::spawn(state.clone());
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes()
         .merge(setup::public_routes())
@@ -609,7 +620,8 @@ pub fn router(
             state.clone(),
             session::require_session,
         ));
-    let assets = service.book_asset_routes(source, "/api");
+    let limits = Limits::new(API_CAPACITIES, request_class);
+    let assets = citadel_opds::asset_routes(source, &limits, "/api");
     let schema = openapi();
     let library = library
         .with_state(state.clone())
@@ -635,18 +647,48 @@ pub fn router(
         Some(directory) => router.fallback_service(web::router(directory)),
         None => router,
     };
-    service
-        .limit_http_routes(
+    limits
+        .admit(
             router
                 .layer(axum::middleware::from_fn(bound_requests))
                 .merge(chunks),
         )
         .layer(axum::middleware::from_fn(normalize_errors))
         .layer(axum::middleware::from_fn_with_state(
+            health,
+            health::outside_admission,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
             address_state,
             addresses::check_address,
         ))
+        .layer(axum::middleware::from_fn_with_state(
+            clients,
+            resolve_client,
+        ))
         .layer(axum::middleware::from_fn(server::name_the_build))
+}
+
+/// Which admission pool a request waits in. The web app's files and the
+/// setup status are public; book files, upload chunks and cover uploads are
+/// streams; everything else, covers and thumbnails included, is short.
+fn request_class(method: &axum::http::Method, path: &str) -> RequestClass {
+    use axum::http::Method;
+    if path != "/api" && !path.starts_with("/api/") {
+        return RequestClass::Public;
+    }
+    if path == "/api/version" || (path == "/api/setup" && *method == Method::GET) {
+        return RequestClass::Public;
+    }
+    let book_file = path.starts_with("/api/books/") && path.contains("/files/");
+    let upload_chunk = path.starts_with("/api/uploads/") && path.ends_with("/content");
+    let cover_upload =
+        *method == Method::PUT && path.starts_with("/api/books/") && path.ends_with("/cover");
+    if book_file || upload_chunk || cover_upload {
+        RequestClass::Stream
+    } else {
+        RequestClass::Short
+    }
 }
 
 impl ApiConfig {
@@ -658,17 +700,41 @@ impl ApiConfig {
             .collect()
     }
 
-    pub fn proxies(&self) -> Result<Vec<addresses::IpRange>, String> {
-        match &self.trusted_proxies {
-            None => Ok(addresses::default_trusted_proxies()),
-            Some(ranges) => ranges
-                .iter()
-                .map(|range| {
-                    addresses::IpRange::parse(range)
-                        .map_err(|error| format!("api.trustedProxies: {error}"))
-                })
-                .collect(),
-        }
+    /// `trustedProxies`, parsed; `None` when unset.
+    pub fn proxies(&self) -> Result<Option<Vec<IpRange>>, String> {
+        self.trusted_proxies
+            .as_ref()
+            .map(|ranges| {
+                ranges
+                    .iter()
+                    .map(|range| {
+                        IpRange::parse(range)
+                            .map_err(|error| format!("api.trustedProxies: {error}"))
+                    })
+                    .collect()
+            })
+            .transpose()
+    }
+
+    /// `forwardedHeader`, parsed.
+    pub fn forwarded_header(&self) -> Result<ForwardedHeader, String> {
+        self.forwarded_header
+            .as_deref()
+            .map(|header| {
+                ForwardedHeader::parse(header)
+                    .map_err(|error| format!("api.forwardedHeader: {error}"))
+            })
+            .transpose()
+            .map(Option::unwrap_or_default)
+    }
+
+    /// Client addresses as configured, plus the ranges an administrator
+    /// trusted in Settings.
+    pub fn client_resolver(&self, stored: Vec<IpRange>) -> Result<ClientResolver, String> {
+        Ok(ClientResolver::new(
+            ProxyTrust::new(self.proxies()?, stored),
+            self.forwarded_header()?,
+        ))
     }
 }
 
@@ -815,18 +881,18 @@ impl Drop for RunningApi {
     }
 }
 
-pub(crate) async fn start(config: &ApiConfig, router: Router) -> Result<RunningApi, String> {
+pub(crate) async fn start(
+    config: &ApiConfig,
+    router: Router,
+    clients: ClientResolver,
+) -> Result<RunningApi, String> {
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|error| format!("could not bind API {}: {error}", config.listen))?;
     let (shutdown, receiver) = tokio::sync::oneshot::channel();
     let task = tokio::spawn(async move {
         // The peer's address decides whether its forwarded headers count.
-        axum::serve(
-            listener,
-            router.into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .with_graceful_shutdown(async move {
+        citadel_opds::listener::serve(listener, router, clients, async move {
             let _ = receiver.await;
         })
         .await

@@ -39,7 +39,8 @@ Settings come from environment variables; all are optional:
 | Variable | Default in the image | Meaning |
 | --- | --- | --- |
 | `CITADEL_PUBLIC_URLS` | none | Citadel's public URLs, separated by commas, spaces or newlines. Without any, Citadel answers at every address: see [Addresses](#addresses). |
-| `CITADEL_TRUSTED_PROXIES` | private networks | Reverse proxies whose forwarded headers Citadel believes, as addresses or ranges. |
+| `CITADEL_TRUSTED_PROXIES` | see [Addresses](#addresses) | Reverse proxies whose forwarded headers Citadel believes, as addresses or ranges. Unset, client addresses are believed from this machine only and the scheme and host from private networks too; set, the one list decides both. |
+| `CITADEL_FORWARDED_HEADER` | `x-forwarded-for` | Which header a trusted proxy names the client in: `x-forwarded-for` or `forwarded`. |
 | `CITADEL_LISTEN` | `0.0.0.0:8081` | Where the browser and API listen. |
 | `CITADEL_OPDS_PORT` | `8080` | The OPDS port. |
 | `CITADEL_OPDS_ADDRESSES` | `all` | `all`, `local` (private networks only) or a comma-separated list of addresses. |
@@ -82,7 +83,12 @@ The container reports its health to Docker through `citadel-server health`.
 ### Health
 
 `GET /api/health` says how each part of the server is doing, at any address
-and without signing in, so Docker, Uptime Kuma and similar can ask it:
+and without signing in, so Docker, Uptime Kuma and similar can ask it. Without
+a session cookie it is answered before admission (see
+[Limits](#limits)) from a result refreshed every 2 seconds, so a flood of
+checks does no database work and a busy server still says it is up.
+`GET /api/version` is answered the same way. With a session cookie, health
+takes the normal admitted path and is checked afresh:
 
 ```json
 {"status": "degraded", "checks": [
@@ -231,6 +237,31 @@ a device key from `users keys <name> add <device>`.
 
 ## State and listeners
 
+Every listener (the API and each OPDS address) speaks HTTP/1.1 only; HTTP/2,
+including cleartext prior-knowledge HTTP/2, is refused. A request's headers
+must arrive within 10 seconds of its first byte (or of the connection
+opening), may be at most 32 KiB (larger answer 431), and a keep-alive
+connection with no request for 60 seconds is closed. Each listener holds at
+most 1,024 connections: when full, a new connection closes the oldest idle
+one, or is refused if none is idle. 32 of those places are kept for
+connections from this machine, so `citadel-server health` always gets in. One
+peer may hold at most 32 connections unless it is a trusted proxy. These are
+fixed, not settings.
+
+### Limits
+
+Each listener admits requests on its own, so a flood of e-readers can't stop
+the browser and the other way round. Requests wait in one of three pools:
+*public* (the web app's files, `GET /api/setup`), *short* (JSON, feeds,
+covers, thumbnails) and *stream* (book downloads, upload chunks, cover
+uploads). The API serves 32 public, 64 short and 32 stream requests at once;
+each OPDS address 48 short and 24 stream. One client may have 16 short and 4
+stream requests in flight, eight times as many in soft mode (see
+[Addresses](#addresses)). Over any of these Citadel answers 503 with
+`Retry-After: 1`. A download that averages under 1 KiB/s over a minute ends
+and gives its place back, and an upload chunk that sends nothing for 30
+seconds ends.
+
 `stateDirectory` is optional. On Unix it defaults to `$XDG_STATE_HOME/citadel`
 when XDG_STATE_HOME is absolute, otherwise `~/.local/state/citadel`. On Windows
 it defaults to the local application-data directory's `citadel` subdirectory.
@@ -376,11 +407,73 @@ included.
 Each request's own address decides whether its session cookie is `Secure`, and
 a page must post to the address it was loaded from.
 
-Behind a reverse proxy, Citadel believes `Forwarded` or
-`X-Forwarded-Proto`/`X-Forwarded-Host` only from trusted proxies: by default
-this machine and private networks (`10.0.0.0/8`, `172.16.0.0/12`,
-`192.168.0.0/16`, `fc00::/7`), which covers a proxy on the same host or Docker
-network. Set `trustedProxies` (or `CITADEL_TRUSTED_PROXIES`) to narrow it.
+Behind a reverse proxy, Citadel believes forwarded headers only from trusted
+proxies, and asks them two different things:
+
+- **How the browser reached Citadel** (`Forwarded`, or
+  `X-Forwarded-Proto`/`X-Forwarded-Host`), which decides the address checks
+  above and whether cookies are `Secure`. By default this trusts this machine
+  and private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
+  `fc00::/7`), which covers a proxy on the same host or Docker network.
+- **Who the client is**, which limits and sign-in protections count by. By
+  default this trusts this machine only (`127.0.0.0/8`, `::1`): anyone on a
+  private network could otherwise claim to be someone else.
+
+Setting `trustedProxies` (or `CITADEL_TRUSTED_PROXIES`) replaces both
+defaults with that one list. The client is read from one header,
+`forwardedHeader` (or `CITADEL_FORWARDED_HEADER`): `x-forwarded-for` by
+default, or `forwarded` for its `for=` values; the other is ignored. Citadel
+reads every instance of it in order and walks the addresses from the right,
+skipping trusted proxies: the first address that isn't one is the client, so
+a client can't name itself by sending its own header. A request from a peer
+that isn't trusted is from that peer, whatever it sends.
+
+When the nearest address Citadel would believe can't be read (`unknown`, a
+name, a `Forwarded` element without `for=`), the request counts as the proxy
+and is in *soft mode*: many people may share that address, so per-client
+limits are eight times higher and address-based penalties stay lenient. A
+peer on a private, CGNAT or loopback network that sends forwarding headers
+without being trusted is in soft mode too, and is most likely a reverse proxy
+nobody told Citadel about. Citadel logs one line about such a peer at most
+once a minute, and administrators see an offer under Settings → General:
+"Requests from 172.18.0.5 include forwarding headers. Trust it as your
+reverse proxy?" **Trust** adds it, on top of `trustedProxies`, to `citadel.db`
+(never to the config file) and applies at once; **Dismiss** stops offering
+it. The same is `GET`, `POST` and `DELETE /api/server/proxies` with
+`{"range": "172.18.0.5"}`.
+
+Three common setups, each with Citadel on a Docker network and the proxy on
+the same one, where giving the proxy a fixed address keeps the list short:
+
+```yaml
+# Caddy: sends X-Forwarded-For with the client it saw, by default.
+#   books.example.com { reverse_proxy citadel:8081 }
+# nginx: append the peer rather than replace the header.
+#   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#   proxy_set_header X-Forwarded-Proto $scheme;
+#   proxy_set_header Host $host;
+# Traefik: sends X-Forwarded-For with the client it saw, by default.
+services:
+  citadel:
+    environment:
+      CITADEL_PUBLIC_URLS: https://books.example.com
+      CITADEL_TRUSTED_PROXIES: 172.18.0.5
+    networks:
+      web:
+  proxy:  # caddy, nginx or traefik
+    networks:
+      web:
+        ipv4_address: 172.18.0.5
+networks:
+  web:
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+```
+
+A proxy chain (a CDN in front of nginx) lists every hop it controls. The OPDS
+listener uses the same trust and header; the desktop app believes forwarded
+client addresses from this machine only.
 
 Browsers sign in with their Citadel username and sign-in password and receive an
 `HttpOnly`, `SameSite=Lax` session cookie that lasts 30 days from last use.
@@ -440,7 +533,8 @@ required nullable fields; request `Option` fields may be omitted or null.
 API request bodies are limited to 1 MiB, and requests must be answered within
 30 seconds (downloads only need to start within it). Upload chunks are the
 exception: they stream to disk, bounded by `chunkBytes` and a 30-second idle
-timeout. The API shares OPDS's request slots; OPDS keeps its own smaller limits.
+timeout. The API and OPDS each have their own request slots (see
+[Limits](#limits)).
 
 ### Uploads
 

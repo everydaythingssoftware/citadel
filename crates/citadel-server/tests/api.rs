@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     body::{to_bytes, Body},
+    extract::connect_info::MockConnectInfo,
     http::{Request, StatusCode},
     Router,
 };
@@ -14,6 +15,8 @@ use libcalibre::{BookAdd, Library};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+/// The reverse proxy in front of the test server, as its TCP peer.
+const PROXY_PEER: ([u8; 4], u16) = ([172, 18, 0, 2], 443);
 const PUBLIC_URL: &str = "https://books.example.com";
 
 fn accounts(directory: &std::path::Path) -> Arc<CitadelStore> {
@@ -2807,9 +2810,22 @@ async fn a_book_keeps_one_identifier_of_each_type() {
 
 /// How a browser reaches the test server: through a TLS proxy at
 /// `PUBLIC_URL`, which sends `Host` and `X-Forwarded-Proto` on every request.
+/// Requests carry the proxy as their peer.
 fn through_proxy(router: axum::Router) -> axum::Router {
     router.layer(axum::middleware::map_request(
         |mut request: axum::http::Request<Body>| async move {
+            // The proxy is the TCP peer: on a private network, so its scheme
+            // and host are believed by default, but not who the client is.
+            // A test that stands a different peer up keeps its own.
+            if request
+                .extensions()
+                .get::<MockConnectInfo<SocketAddr>>()
+                .is_none()
+            {
+                request
+                    .extensions_mut()
+                    .insert(MockConnectInfo(SocketAddr::from(PROXY_PEER)));
+            }
             let headers = request.headers_mut();
             let url = PUBLIC_URL.split_once("://").unwrap();
             headers
@@ -2821,4 +2837,213 @@ fn through_proxy(router: axum::Router) -> axum::Router {
             request
         },
     ))
+}
+
+/// The API router with nothing in front of it, so tests choose each
+/// request's peer and headers themselves.
+async fn bare() -> (tempfile::TempDir, Router) {
+    let directory = tempfile::tempdir().unwrap();
+    drop(Library::create_library_at(directory.path().to_str().unwrap()).unwrap());
+    let source = Arc::new(CalibreCatalogSource::open(directory.path()).unwrap());
+    let (_, access) = access(directory.path(), &source);
+    let service = OpdsService::with_ephemeral_credentials(source.clone(), Vec::new());
+    let staging = api::Staging::open(
+        directory.path().join("state/uploads"),
+        api::UploadConfig::default(),
+    )
+    .unwrap();
+    let router = api::router(source, &service, access, None, staging, metadata());
+    (directory, router)
+}
+
+fn from_peer(router: &Router, peer: &str) -> Router {
+    router
+        .clone()
+        .layer(MockConnectInfo(peer.parse::<SocketAddr>().unwrap()))
+}
+
+#[test]
+fn public_urls_need_a_host_name() {
+    for value in ["http://:80", "https://:8443", "http://8081"] {
+        let error = api::PublicUrl::parse(value).unwrap_err();
+        assert!(error.contains(value), "{value}: {error}");
+        assert!(error.contains("api.publicUrls"), "{error}");
+    }
+    assert!(api::PublicUrl::parse("http://192.168.1.20:8081").is_ok());
+}
+
+#[tokio::test]
+async fn a_request_naming_no_host_is_refused_once_public_urls_are_set() {
+    let (_directory, router) = bare().await;
+    let without_host = |router: Router| async move {
+        router
+            .oneshot(
+                Request::builder()
+                    .version(axum::http::Version::HTTP_10)
+                    .uri("/api/session")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    };
+    let refused = without_host(from_peer(&router, "192.168.1.20:50000")).await;
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    let body: Value =
+        serde_json::from_slice(&to_bytes(refused.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(body["message"], "Missing Host");
+
+    for local in ["127.0.0.1:50000", "[::1]:50000"] {
+        let answered = without_host(from_peer(&router, local)).await;
+        assert_eq!(
+            answered.status(),
+            StatusCode::UNAUTHORIZED,
+            "{local}: this machine works as before"
+        );
+    }
+    let health = from_peer(&router, "192.168.1.20:50000")
+        .oneshot(
+            Request::builder()
+                .version(axum::http::Version::HTTP_10)
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        health.status() != StatusCode::BAD_REQUEST,
+        "health checks answer anywhere"
+    );
+}
+
+#[tokio::test]
+async fn health_and_version_answer_while_every_admission_slot_is_held() {
+    let (directory, service, router, id, cookie) = fixture().await;
+    let (_, _, book) = request(
+        &router,
+        "GET",
+        &format!("/api/books/{id}"),
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    let download = book["file_list"][0]["Remote"]["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    // Clients on a private network: their host is believed, and each is
+    // its own client for the per-client caps.
+    let from = |client: usize| {
+        from_peer(
+            &router,
+            &format!("10.0.{}.{}:1", client / 200, client % 200 + 1),
+        )
+    };
+    let send = |router: Router, path: String, signed_in: bool| {
+        let cookie = cookie.clone();
+        async move {
+            let mut builder = Request::builder().uri(path);
+            if signed_in {
+                builder = builder.header("cookie", cookie);
+            }
+            router
+                .oneshot(builder.body(Body::empty()).unwrap())
+                .await
+                .unwrap()
+        }
+    };
+    let mut held = Vec::new();
+    let mut fill = |responses: Vec<axum::response::Response>| {
+        for response in responses {
+            assert!(response.status().is_success(), "{}", response.status());
+            held.push(response);
+        }
+    };
+    let mut publics = Vec::new();
+    for client in 0..32 {
+        publics.push(send(from(client), "/api/setup".into(), false).await);
+    }
+    fill(publics);
+    let mut shorts = Vec::new();
+    for client in 0..64 {
+        shorts.push(send(from(100 + client), "/api/session".into(), true).await);
+    }
+    fill(shorts);
+    let mut streams = Vec::new();
+    for client in 0..32 {
+        streams.push(send(from(200 + client), download.clone(), true).await);
+    }
+    fill(streams);
+
+    for (path, signed_in) in [
+        ("/api/setup".to_string(), false),
+        ("/api/session".to_string(), true),
+        (download.clone(), true),
+    ] {
+        let refused = send(from(300), path.clone(), signed_in).await;
+        assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE, "{path}");
+    }
+    let health = send(from(301), "/api/health".into(), false).await;
+    assert_eq!(health.status(), StatusCode::OK);
+    let health: Value =
+        serde_json::from_slice(&to_bytes(health.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    assert!(health["checks"]
+        .as_array()
+        .is_some_and(|checks| !checks.is_empty()));
+    let version = send(from(302), "/api/version".into(), false).await;
+    assert_eq!(version.status(), StatusCode::OK);
+    let detailed = send(from(303), "/api/health".into(), true).await;
+    assert_eq!(
+        detailed.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "a signed-in health check takes the admitted path"
+    );
+
+    drop(held);
+    let after = send(from(300), "/api/session".into(), true).await;
+    assert_eq!(after.status(), StatusCode::OK);
+    service.stop().await;
+    drop(directory);
+}
+
+#[tokio::test]
+async fn clients_behind_a_proxy_each_have_their_own_short_request_cap() {
+    let (_directory, router) = bare().await;
+    // A proxy on this machine is trusted, so X-Forwarded-For names clients.
+    let send = |peer: &'static str, client: &'static str| {
+        from_peer(&router, peer).oneshot(
+            Request::builder()
+                .uri("/api/session")
+                .header("host", "books.example.com")
+                .header("x-forwarded-proto", "https")
+                .header("x-forwarded-for", client)
+                .body(Body::empty())
+                .unwrap(),
+        )
+    };
+    let mut held = Vec::new();
+    for _ in 0..16 {
+        let response = send("127.0.0.1:1", "198.51.100.9").await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        held.push(response);
+    }
+    let refused = send("127.0.0.1:1", "198.51.100.9").await.unwrap();
+    assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(refused.headers()["retry-after"], "1");
+    let other = send("127.0.0.1:1", "198.51.100.10").await.unwrap();
+    assert_eq!(
+        other.status(),
+        StatusCode::UNAUTHORIZED,
+        "someone else still gets in"
+    );
+
+    // An untrusted local peer sending forwarding headers may be a proxy
+    // for many people: soft mode lets it have more in flight.
+    let mut soft = Vec::new();
+    for _ in 0..17 {
+        let response = send("192.168.1.30:1", "198.51.100.9").await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        soft.push(response);
+    }
 }

@@ -105,4 +105,46 @@ describe("Web server service", () => {
 		});
 		await expect(broken.health()).rejects.toThrow("(502)");
 	});
+
+	it("reads, trusts and forgets proxies", async () => {
+		const listing = (trusted: string[]) => ({
+			configured: null,
+			trusted,
+			forwardedHeader: "x-forwarded-for",
+			untrusted: trusted.length
+				? []
+				: [
+						{
+							address: "172.18.0.5",
+							headers: ["x-forwarded-for"],
+							lastSeen: "2026-11-21T09:00:00Z",
+							requests: 3,
+						},
+					],
+		});
+		const seen: string[] = [];
+		const server = createWebServerService({
+			baseUrl: "https://citadel.test",
+			fetch: async (request) => {
+				expect(new URL(request.url).pathname).toBe("/api/server/proxies");
+				const body = request.method === "GET" ? "" : await request.text();
+				seen.push(`${request.method} ${body}`);
+				return json(listing(request.method === "POST" ? ["172.18.0.5"] : []));
+			},
+		});
+		const proxies = await server.proxies();
+		expect(proxies.untrusted[0]?.lastSeen).toEqual(
+			new Date("2026-11-21T09:00:00Z"),
+		);
+		await expect(server.trustProxy("172.18.0.5")).resolves.toMatchObject({
+			trusted: ["172.18.0.5"],
+			untrusted: [],
+		});
+		await server.forgetProxy("172.18.0.5");
+		expect(seen).toEqual([
+			"GET ",
+			'POST {"range":"172.18.0.5"}',
+			'DELETE {"range":"172.18.0.5"}',
+		]);
+	});
 });

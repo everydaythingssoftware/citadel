@@ -1,9 +1,15 @@
 import type { ClientOptions } from "openapi-fetch";
 import { createCitadelHttpClient } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema.generated";
-import type { ServerHealth, ServerService, ServerUpdate } from "./types";
+import type {
+	ServerHealth,
+	ServerProxies,
+	ServerService,
+	ServerUpdate,
+} from "./types";
 
 type UpdateStatus = components["schemas"]["UpdateStatus"];
+type ProxiesListing = components["schemas"]["ServerProxies"];
 
 const dateOrNull = (value: string | null | undefined): Date | null =>
 	value ? new Date(value) : null;
@@ -23,6 +29,16 @@ const toUpdate = ({ currentVersion, details }: UpdateStatus): ServerUpdate => ({
 				checkedAt: dateOrNull(details.checkedAt),
 			}
 		: null,
+});
+
+const toProxies = (listing: ProxiesListing): ServerProxies => ({
+	configured: listing.configured ?? null,
+	trusted: listing.trusted,
+	forwardedHeader: listing.forwardedHeader,
+	untrusted: listing.untrusted.map((proxy) => ({
+		...proxy,
+		lastSeen: new Date(proxy.lastSeen),
+	})),
 });
 
 export const createWebServerService = (
@@ -58,6 +74,36 @@ export const createWebServerService = (
 					error?.message ?? `Could not read the addresses (${response.status})`,
 				);
 			return data;
+		},
+		proxies: async () => {
+			const { data, error, response } = await client.GET("/api/server/proxies");
+			if (error || !data)
+				throw new Error(
+					error?.message ?? `Could not read the proxies (${response.status})`,
+				);
+			return toProxies(data);
+		},
+		trustProxy: async (range) => {
+			const { data, error, response } = await client.POST(
+				"/api/server/proxies",
+				{ body: { range } },
+			);
+			if (error || !data)
+				throw new Error(
+					error?.message ?? `Could not trust ${range} (${response.status})`,
+				);
+			return toProxies(data);
+		},
+		forgetProxy: async (range) => {
+			const { data, error, response } = await client.DELETE(
+				"/api/server/proxies",
+				{ body: { range } },
+			);
+			if (error || !data)
+				throw new Error(
+					error?.message ?? `Could not forget ${range} (${response.status})`,
+				);
+			return toProxies(data);
 		},
 	};
 };

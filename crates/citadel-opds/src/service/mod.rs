@@ -14,12 +14,14 @@ use tokio::{sync::oneshot, task::JoinHandle};
 
 use super::{
     auth::OpdsBasicAuth,
+    client::ClientResolver,
     credential_store::OpdsCredentialStore,
+    limits::Limits,
     network::{
         advertised_url, plan_bindings, BindPolicy, InterfaceProvider, InterfaceSnapshot,
         NetdevInterfaceProvider, WaitingReason,
     },
-    router, CatalogSource,
+    router_with, CatalogSource,
 };
 
 const LISTENER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -109,6 +111,7 @@ trait ListenerFactory: Send + Sync {
         address: SocketAddr,
         source: Arc<dyn CatalogSource>,
         auth: OpdsBasicAuth,
+        clients: ClientResolver,
     ) -> io::Result<ServerTask>;
 }
 
@@ -120,19 +123,20 @@ impl ListenerFactory for TcpListenerFactory {
         address: SocketAddr,
         source: Arc<dyn CatalogSource>,
         auth: OpdsBasicAuth,
+        clients: ClientResolver,
     ) -> io::Result<ServerTask> {
         let listener = bind_socket(address)?;
         listener.set_nonblocking(true)?;
         let listener = tokio::net::TcpListener::from_std(listener)?;
         let (shutdown, shutdown_receiver) = oneshot::channel();
-        let app = router(source, auth);
+        // Each address gets its own admission limits.
+        let app = router_with(source, auth, clients.clone(), Limits::opds());
         let task = tokio::spawn(async move {
             let _ = tokio::spawn(async move {
-                let _ = axum::serve(listener, app)
-                    .with_graceful_shutdown(async move {
-                        let _ = shutdown_receiver.await;
-                    })
-                    .await;
+                let _ = crate::listener::serve(listener, app, clients, async move {
+                    let _ = shutdown_receiver.await;
+                })
+                .await;
             })
             .await;
         });
@@ -450,6 +454,8 @@ struct ServiceInner {
     source: Arc<dyn CatalogSource>,
     credentials: OpdsCredentialStore,
     auth: OpdsBasicAuth,
+    /// Who requests are from; this machine only until the host says more.
+    clients: Mutex<ClientResolver>,
     /// Serializes start/stop/reconfigure/clear across their await points so
     /// two windows (or a window and a poll race) cannot interleave a stop
     /// into a restart's drain.
@@ -472,20 +478,11 @@ enum BindOutcome {
 }
 
 impl OpdsService {
-    /// Admit additional routes through this service's shared request budget.
-    /// The host authenticates them and owns their body and deadline limits;
-    /// hosts must start the service before accepting requests on those routes.
-    pub fn limit_http_routes(&self, router: axum::Router) -> axum::Router {
-        router.layer(axum::middleware::from_fn_with_state(
-            self.inner.auth.limits(),
-            crate::limits::admit,
-        ))
-    }
-
-    /// Unprotected book asset routes for hosts that wrap the combined router with
-    /// `limit_http_routes`. Streaming shares this service's blocking-work budget.
-    pub fn book_asset_routes(&self, source: Arc<dyn CatalogSource>, prefix: &str) -> axum::Router {
-        crate::catalog::asset_routes(source, self.inner.auth.limits(), prefix)
+    /// How listeners started from now on decide who a request is from. The
+    /// desktop keeps the default, which believes forwarded addresses from
+    /// this machine only; the server passes its `trustedProxies` and header.
+    pub fn use_client_addresses(&self, clients: ClientResolver) {
+        *self.inner.clients.lock().unwrap() = clients;
     }
 
     /// Credentials are supplied by the host and held in memory; the host owns
@@ -527,6 +524,7 @@ impl OpdsService {
                 source,
                 credentials,
                 auth: OpdsBasicAuth::new(),
+                clients: Mutex::new(ClientResolver::loopback_only()),
                 op_lock: tokio::sync::Mutex::new(()),
                 dependencies,
             }),
@@ -598,6 +596,7 @@ impl OpdsService {
         self.inner.auth.set_required(config.authentication_enabled);
         self.swap_auth_from_store();
 
+        let clients = self.inner.clients.lock().unwrap().clone();
         let outcome = attempt_bind(
             &self.inner.dependencies,
             self.inner.source.clone(),
@@ -605,6 +604,7 @@ impl OpdsService {
             port,
             policy,
             self.inner.auth.clone(),
+            clients,
         )
         .await;
 
@@ -737,6 +737,7 @@ impl OpdsService {
                     }
                 }
 
+                let clients = inner.clients.lock().unwrap().clone();
                 let outcome = attempt_bind(
                     &inner.dependencies,
                     inner.source.clone(),
@@ -744,6 +745,7 @@ impl OpdsService {
                     port,
                     BindPolicy::default(),
                     inner.auth.clone(),
+                    clients,
                 )
                 .await;
 
@@ -800,6 +802,7 @@ async fn attempt_bind(
     port: u16,
     policy: BindPolicy,
     auth: OpdsBasicAuth,
+    clients: ClientResolver,
 ) -> BindOutcome {
     let desired = match target {
         OpdsBindTarget::Addresses { .. } => match plan_bindings(&[], target, port, policy) {
@@ -838,7 +841,7 @@ async fn attempt_bind(
     for address in desired {
         match dependencies
             .listeners
-            .start(address, source.clone(), auth.clone())
+            .start(address, source.clone(), auth.clone(), clients.clone())
         {
             Ok(mut task) => {
                 task.address = address;
@@ -929,6 +932,7 @@ mod tests {
             address: SocketAddr,
             _source: Arc<dyn CatalogSource>,
             _auth: OpdsBasicAuth,
+            _clients: ClientResolver,
         ) -> io::Result<ServerTask> {
             if let Some(kind) = *self.fail_every.lock().unwrap() {
                 return Err(io::Error::from(kind));
@@ -1399,6 +1403,7 @@ mod tests {
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
                 missing_source(),
                 OpdsBasicAuth::new(),
+                ClientResolver::loopback_only(),
             )
             .expect("v4 wildcard bind");
         let v6 = factory
@@ -1406,6 +1411,7 @@ mod tests {
                 SocketAddr::new(IpAddr::V6("::".parse().unwrap()), port),
                 missing_source(),
                 OpdsBasicAuth::new(),
+                ClientResolver::loopback_only(),
             )
             .expect("v6 wildcard bind (V6ONLY must be set)");
 
@@ -1647,7 +1653,12 @@ mod tests {
         let factory = TcpListenerFactory;
         let source = missing_source();
         let mut first = factory
-            .start(address, source.clone(), OpdsBasicAuth::new())
+            .start(
+                address,
+                source.clone(),
+                OpdsBasicAuth::new(),
+                ClientResolver::loopback_only(),
+            )
             .unwrap();
         // A client connects and the SERVER closes first: this port now has a
         // TIME_WAIT-eligible connection on the server side.
@@ -1658,7 +1669,12 @@ mod tests {
 
         // Immediate rebind must succeed (SO_REUSEADDR on the socket2 path).
         let second = factory
-            .start(address, source, OpdsBasicAuth::new())
+            .start(
+                address,
+                source,
+                OpdsBasicAuth::new(),
+                ClientResolver::loopback_only(),
+            )
             .expect("rebind after server-side close must not hit TIME_WAIT");
         drop(second);
     }

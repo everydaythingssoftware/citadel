@@ -1,20 +1,22 @@
 //! The server itself: which build is running, and whether a newer release
 //! is out (administrators only).
 use axum::{
-    extract::{Extension, Request, State},
+    extract::{rejection::JsonRejection, Extension, Request, State},
     http::{HeaderMap, HeaderValue},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
-use citadel_core::error::LibraryError;
-use serde::Serialize;
+use chrono::{DateTime, Utc};
+use citadel_core::error::{LibraryError, LibraryErrorCode};
+use citadel_opds::client::IpRange;
+use serde::{Deserialize, Serialize};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use super::{
     addresses::{RequestOrigin, Standing},
-    session::{current_user, signed_out},
-    ApiState,
+    session::{blocking, current_user, signed_out},
+    ApiFailure, ApiState,
 };
 use crate::{release, updates::UpdateStatus};
 
@@ -121,6 +123,148 @@ async fn addresses(
     ))
 }
 
+#[derive(Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct UntrustedProxy {
+    /// The peer's address, such as `172.18.0.5`.
+    address: String,
+    /// The forwarding headers it sent, lowercase.
+    headers: Vec<String>,
+    last_seen: DateTime<Utc>,
+    /// Requests seen from it since the server started (or since it was
+    /// last forgotten).
+    requests: u64,
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ServerProxies {
+    /// `trustedProxies` from the server's configuration. Null when unset:
+    /// then client addresses are believed from this machine only, and the
+    /// address the browser used from private networks too.
+    #[schema(required = true)]
+    configured: Option<Vec<String>>,
+    /// Ranges an administrator trusted here, on top of the configuration.
+    trusted: Vec<String>,
+    /// The header a trusted proxy names the client in.
+    forwarded_header: String,
+    /// Peers on private networks that sent forwarding headers but aren't
+    /// trusted, so their headers are ignored; most recent first.
+    untrusted: Vec<UntrustedProxy>,
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ProxyRange {
+    /// An address, such as `172.18.0.5`, or a range, such as `172.18.0.0/16`.
+    range: String,
+}
+
+fn proxies_listing(state: &ApiState) -> ServerProxies {
+    let clients = state.access.addresses.clients();
+    let trust = clients.trust();
+    ServerProxies {
+        configured: trust
+            .configured()
+            .map(|ranges| ranges.iter().map(ToString::to_string).collect()),
+        trusted: trust.stored().iter().map(ToString::to_string).collect(),
+        forwarded_header: clients.header().name().into(),
+        untrusted: clients
+            .untrusted_forwarders()
+            .list()
+            .into_iter()
+            .map(|forwarder| UntrustedProxy {
+                address: forwarder.address.to_string(),
+                headers: forwarder.headers,
+                last_seen: forwarder.last_seen.into(),
+                requests: forwarder.requests,
+            })
+            .collect(),
+    }
+}
+
+fn parse_range(request: Result<Json<ProxyRange>, JsonRejection>) -> Result<IpRange, ApiFailure> {
+    let Json(request) = request.map_err(|_| LibraryError::invalid("Invalid proxy JSON"))?;
+    IpRange::parse(&request.range).map_err(|error| LibraryError::invalid(error).into())
+}
+
+/// One edit to the stored ranges at a time, so two can't lose each other.
+static PROXY_EDITS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn store_ranges(state: &ApiState, ranges: Vec<IpRange>) -> Result<(), ApiFailure> {
+    let saved: Vec<String> = ranges.iter().map(ToString::to_string).collect();
+    blocking(state, move |accounts| accounts.set_trusted_proxies(&saved)).await?;
+    state.access.addresses.clients().trust().set_stored(ranges);
+    Ok(())
+}
+
+#[utoipa::path(get, path = "/api/server/proxies", operation_id = "getServerProxies",
+    description = "Which proxies Citadel believes about client addresses and the address the browser used, and which private-network peers sent forwarding headers without being trusted. Administrators only.",
+    responses((status = 200, body = ServerProxies), (status = 401, body = LibraryError), (status = 403, body = LibraryError)),
+    security(("session" = [])))]
+async fn proxies(State(state): State<ApiState>) -> Json<ServerProxies> {
+    Json(proxies_listing(&state))
+}
+
+#[utoipa::path(post, path = "/api/server/proxies", operation_id = "trustServerProxy",
+    request_body = ProxyRange,
+    description = "Trust a reverse proxy's forwarding headers, on top of the configuration's trustedProxies. Saved in citadel.db; the configuration file is never written. Administrators only.",
+    responses((status = 200, body = ServerProxies), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
+        (status = 403, body = LibraryError), (status = 503, body = LibraryError)),
+    security(("session" = [])))]
+async fn trust_proxy(
+    State(state): State<ApiState>,
+    request: Result<Json<ProxyRange>, JsonRejection>,
+) -> Result<Json<ServerProxies>, ApiFailure> {
+    let range = parse_range(request)?;
+    let _edit = PROXY_EDITS.lock().await;
+    let mut ranges = state.access.addresses.clients().trust().stored();
+    if !ranges.contains(&range) {
+        ranges.push(range);
+        store_ranges(&state, ranges).await?;
+    }
+    state
+        .access
+        .addresses
+        .clients()
+        .untrusted_forwarders()
+        .forget(&range);
+    Ok(Json(proxies_listing(&state)))
+}
+
+#[utoipa::path(delete, path = "/api/server/proxies", operation_id = "forgetServerProxy",
+    request_body = ProxyRange,
+    description = "Stop trusting a range trusted here, and stop offering the untrusted peers in it. Ranges from the configuration can only be changed there (409). Administrators only.",
+    responses((status = 200, body = ServerProxies), (status = 400, body = LibraryError), (status = 401, body = LibraryError),
+        (status = 403, body = LibraryError), (status = 409, body = LibraryError), (status = 503, body = LibraryError)),
+    security(("session" = [])))]
+async fn forget_proxy(
+    State(state): State<ApiState>,
+    request: Result<Json<ProxyRange>, JsonRejection>,
+) -> Result<Json<ServerProxies>, ApiFailure> {
+    let range = parse_range(request)?;
+    let clients = state.access.addresses.clients();
+    if clients
+        .trust()
+        .configured()
+        .is_some_and(|configured| configured.contains(&range))
+    {
+        return Err(LibraryError::new(
+            LibraryErrorCode::Conflict,
+            format!("{range} is in the server's trustedProxies; change it there"),
+        )
+        .into());
+    }
+    let _edit = PROXY_EDITS.lock().await;
+    let mut ranges = clients.trust().stored();
+    if ranges.contains(&range) {
+        ranges.retain(|stored| *stored != range);
+        store_ranges(&state, ranges).await?;
+    }
+    clients.untrusted_forwarders().dismiss(&range);
+    Ok(Json(proxies_listing(&state)))
+}
+
 pub(super) async fn name_the_build(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     response
@@ -136,5 +280,7 @@ pub(super) fn public_routes() -> OpenApiRouter<ApiState> {
 }
 
 pub(super) fn administrator_routes() -> OpenApiRouter<ApiState> {
-    OpenApiRouter::new().routes(routes!(addresses))
+    OpenApiRouter::new()
+        .routes(routes!(addresses))
+        .routes(routes!(proxies, trust_proxy, forget_proxy))
 }

@@ -20,7 +20,10 @@ use super::{
     auth::{require_basic_auth, OpdsBasicAuth},
 };
 use crate::identity::{book_identity, navigation_identity};
-use crate::limits::{self, run_work, Limits, WorkUnavailable};
+use crate::{
+    client::{resolve_client, ClientResolver},
+    limits::{self, run_work, Limits, WorkUnavailable},
+};
 
 const PAGE_SIZE: u64 = 50;
 const MAX_SEARCH_LENGTH: usize = 200;
@@ -156,8 +159,25 @@ pub(crate) struct FeedEntry {
     pub(crate) content: Option<String>,
 }
 
+/// The OPDS catalog with its own admission limits, believing forwarded
+/// client addresses from this machine only.
 pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
-    let limits = auth.limits();
+    router_with(
+        source,
+        auth,
+        ClientResolver::loopback_only(),
+        Limits::opds(),
+    )
+}
+
+/// The OPDS catalog for one listener: `clients` decides who each request is
+/// from, and `limits` how many are served at once.
+pub fn router_with(
+    source: Arc<dyn CatalogSource>,
+    auth: OpdsBasicAuth,
+    clients: ClientResolver,
+    limits: Limits,
+) -> Router {
     let feeds = Router::new()
         .route("/opds", get(root_feed))
         .route("/opds/all", get(all_books_feed))
@@ -177,8 +197,8 @@ pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
             source: source.clone(),
             limits: limits.clone(),
         });
-    let assets = asset_routes(source, limits.clone(), "/opds");
-    Router::new()
+    let assets = asset_routes(source, &limits, "/opds");
+    let routes = Router::new()
         .merge(feeds)
         .merge(assets)
         .layer(axum::middleware::from_fn_with_state(
@@ -188,12 +208,19 @@ pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             limits.clone(),
             limits::bound_feeds,
+        ));
+    limits
+        .admit(routes)
+        .layer(axum::middleware::from_fn_with_state(
+            clients,
+            resolve_client,
         ))
-        .layer(axum::middleware::from_fn_with_state(limits, limits::admit))
 }
 
-/// Asset routes shared with the JSON API, using the same resolver and streaming limits.
-pub(crate) fn asset_routes(source: Arc<dyn CatalogSource>, limits: Limits, prefix: &str) -> Router {
+/// Unprotected book asset routes under `prefix`, for hosts that mount them
+/// behind their own authentication. Blocking work and streaming use
+/// `limits`, which should be the listener's own.
+pub fn asset_routes(source: Arc<dyn CatalogSource>, limits: &Limits, prefix: &str) -> Router {
     Router::new()
         .route(
             &format!("{prefix}/books/{{book_id}}/files/{{format}}/{{filename}}"),
@@ -203,7 +230,10 @@ pub(crate) fn asset_routes(source: Arc<dyn CatalogSource>, limits: Limits, prefi
             &format!("{prefix}/books/{{book_id}}/cover"),
             get(book_cover).head(book_cover_head),
         )
-        .with_state(CatalogState { source, limits })
+        .with_state(CatalogState {
+            source,
+            limits: limits.clone(),
+        })
 }
 
 async fn root_feed(state: State<CatalogState>, query: Query<PageQuery>) -> Response {

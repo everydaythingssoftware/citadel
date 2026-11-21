@@ -28,6 +28,10 @@ import {
 import { useAddLibraryFlow } from "@/lib/hooks/use-add-library-flow";
 import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
+import {
+	type ProxyTrustOfferState,
+	useProxyTrustOffer,
+} from "@/lib/hooks/use-proxy-trust-offer";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
 import { useRemoveLibrary } from "@/lib/hooks/use-remove-library";
 import { useServerAddresses } from "@/lib/hooks/use-server-addresses";
@@ -332,7 +336,64 @@ const GeneralTab = () => {
 				</div>
 			)}
 			{administrator && <ServerAddressesSection />}
+			{administrator && <ProxyTrustOfferSection />}
 		</div>
+	);
+};
+
+/**
+ * Offers to trust a private-network peer that sent forwarding headers, which
+ * is most likely a reverse proxy nobody has told Citadel about. Confirms in
+ * place: the offer is replaced by what happened (ADR 0014).
+ */
+const ProxyTrustOfferSection = () => {
+	const offer = useProxyTrustOffer();
+	return <ProxyTrustOffer {...offer} />;
+};
+
+const ProxyTrustOffer = ({
+	offer,
+	trusted,
+	pending,
+	error,
+	trust,
+	dismiss,
+}: ProxyTrustOfferState) => {
+	if (!offer && !trusted && !error) return null;
+	return (
+		<section aria-label="Reverse proxy" aria-live="polite">
+			{offer ? (
+				<div className={classes.proxyOffer}>
+					<p className={classes.paneNote}>
+						Requests from <span data-selectable>{offer.address}</span> include
+						forwarding headers. Trust it as your reverse proxy?
+					</p>
+					<p className={classes.inlineNote}>
+						Until then, Citadel treats every request it passes on as coming from{" "}
+						{offer.address} itself. Only trust it if it is your proxy.
+					</p>
+					<div className={classes.proxyOfferActions}>
+						<Button variant="subtle" disabled={pending} onClick={dismiss}>
+							Dismiss
+						</Button>
+						<Button disabled={pending} onClick={trust}>
+							Trust {offer.address}
+						</Button>
+					</div>
+				</div>
+			) : (
+				trusted && (
+					<p className={classes.inlineNote}>
+						Citadel now trusts {trusted} as your reverse proxy.
+					</p>
+				)
+			)}
+			{error && (
+				<p role="alert" className={classes.inlineNote} data-tone="error">
+					{error}
+				</p>
+			)}
+		</section>
 	);
 };
 
