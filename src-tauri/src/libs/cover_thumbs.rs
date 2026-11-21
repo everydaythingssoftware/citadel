@@ -18,7 +18,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use citadel_core::path_to_asset_url;
+use citadel_core::{cover_colors::cover_colors, path_to_asset_url, CoverColors};
 use image::imageops::FilterType;
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +38,8 @@ pub struct CoverThumbnail {
     pub url: String,
     pub width: u32,
     pub height: u32,
+    /// The cover's palette and ThumbHash, worked out with the thumbnail.
+    pub cover_colors: Option<CoverColors>,
 }
 
 /// One book's entry in `thumbs.json`.
@@ -47,6 +49,10 @@ struct ThumbMeta {
     file_name: String,
     width: u32,
     height: u32,
+    /// Absent in entries written before colours were added; those count as
+    /// stale and are regenerated.
+    #[serde(default)]
+    cover_colors: Option<CoverColors>,
 }
 
 type ThumbIndex = HashMap<String, ThumbMeta>;
@@ -110,6 +116,7 @@ fn to_thumbnail(book_id: &str, cache_dir: &Path, meta: &ThumbMeta) -> CoverThumb
         url: path_to_asset_url(&cache_dir.join(&meta.file_name)),
         width: meta.width,
         height: meta.height,
+        cover_colors: meta.cover_colors.clone(),
     }
 }
 
@@ -139,6 +146,7 @@ fn generate_one(
         file_name,
         width: thumb.width(),
         height: thumb.height(),
+        cover_colors: Some(cover_colors(&thumb)),
     })
 }
 
@@ -170,7 +178,9 @@ pub fn ensure_thumbnails(
         };
         match snapshot.get(&source.book_id) {
             Some(meta)
-                if meta.cover_mtime_ms == mtime_ms && cache_dir.join(&meta.file_name).exists() =>
+                if meta.cover_mtime_ms == mtime_ms
+                    && meta.cover_colors.is_some()
+                    && cache_dir.join(&meta.file_name).exists() =>
             {
                 results.push(to_thumbnail(&source.book_id, &cache_dir, meta));
             }
@@ -294,6 +304,7 @@ mod tests {
         assert_eq!(thumb.width, 300);
         assert_eq!(thumb.height, 450);
         assert!(thumb.url.contains("asset"));
+        assert!(thumb.cover_colors.is_some());
 
         let cache_dir = thumb_cache_dir(&dir, "/library");
         assert!(index_path(&cache_dir).exists());

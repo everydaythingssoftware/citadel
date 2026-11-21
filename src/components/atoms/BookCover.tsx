@@ -1,8 +1,9 @@
 import clsx from "clsx";
-import { type HTMLAttributes, useState } from "react";
+import { type HTMLAttributes, useMemo, useState } from "react";
 import type { CoverThumbnail, LibraryBook } from "@/bindings";
 import { formatAuthorList } from "@/lib/authors";
 import { resolveCoverLoad } from "@/lib/cover-load";
+import { coverPlaceholder } from "@/lib/cover-placeholder";
 import { selectByStringHash } from "@/lib/hash-string";
 import { shortenToChars } from "$lib/domain/book";
 
@@ -75,6 +76,11 @@ const BookCoverUsingImage = ({
 	// falls back to the same placeholder treatment as books with no cover,
 	// whose fixed aspect ratio keeps the cell dimensions stable.
 	const [coverFailed, setCoverFailed] = useState(false);
+	// Painted behind the image: it shows until the cover decodes over it.
+	const placeholder = useMemo(
+		() => coverPlaceholder(thumb?.cover_colors),
+		[thumb?.cover_colors],
+	);
 
 	if (coverFailed) {
 		return (
@@ -112,6 +118,7 @@ const BookCoverUsingImage = ({
 					borderRadius: "4px",
 					overflow: "hidden",
 					boxShadow: "var(--ctd-cover-shadow)",
+					...placeholder,
 				}}
 			>
 				<img
