@@ -1375,6 +1375,48 @@ fn committed_openapi_matches_routes() {
 }
 
 #[tokio::test]
+async fn thumbnail_descriptors_carry_cover_colours_and_thumbhash() {
+    use base64::Engine;
+    let (_directory, _service, router, id, cookie) = fixture().await;
+    let (status, _, thumbnails) = request(
+        &router,
+        "POST",
+        "/api/covers/thumbnails",
+        json!({"book_ids": [id]}).to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{thumbnails}");
+    let colors = &thumbnails[0]["cover_colors"];
+    let palette = &colors["palette"];
+    let dominant = &palette["dominant"];
+    assert!((dominant["share"].as_f64().unwrap() - 1.0).abs() < 1e-9);
+    // The fixture's cover is rgb(40, 80, 120), a blue at OKLab hue ~250°
+    // (a few degrees off once it has been through JPEG).
+    let hue = dominant["b"]
+        .as_f64()
+        .unwrap()
+        .atan2(dominant["a"].as_f64().unwrap())
+        .to_degrees()
+        .rem_euclid(360.0);
+    assert!((hue - 250.3).abs() < 5.0, "{hue}");
+    assert_eq!(palette["secondary"], serde_json::Value::Null);
+    let hash = base64::engine::general_purpose::STANDARD
+        .decode(colors["thumbhash"].as_str().unwrap())
+        .unwrap();
+    assert!(!hash.is_empty());
+    let (_, _, cached) = request(
+        &router,
+        "GET",
+        "/api/covers/thumbnails",
+        String::new(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(cached, thumbnails);
+}
+
+#[tokio::test]
 async fn missing_cover_does_not_fail_other_thumbnails() {
     let (directory, service, router, valid_id, cookie) = fixture().await;
     let mut library = Library::open(directory.path()).unwrap();

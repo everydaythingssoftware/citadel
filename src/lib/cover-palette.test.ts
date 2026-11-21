@@ -1,66 +1,20 @@
 import { describe, expect, it } from "vitest";
+import type { CoverThumbnail } from "@/bindings";
 import {
 	backdropColors,
+	type CoverPalette,
 	chroma,
-	extractCoverPalette,
+	coverWash,
 	hue,
 	srgbToOklab,
 } from "./cover-palette";
 
-const must = <T>(value: T | null | undefined): T => {
-	if (value === null || value === undefined) throw new Error("missing value");
-	return value;
-};
-
-/** RGBA pixels: each [r, g, b, count] repeated `count` times. */
-const pixels = (...runs: [number, number, number, number][]): number[] =>
-	runs.flatMap(([r, g, b, count]) =>
-		Array.from({ length: count }, () => [r, g, b, 255]).flat(),
-	);
-
-describe("extractCoverPalette", () => {
-	it("takes the biggest colour first and a distinct second", () => {
-		const palette = extractCoverPalette(
-			pixels([113, 30, 29, 60], [165, 116, 80, 25], [250, 250, 250, 15]),
-		);
-		const { dominant, secondary } = must(palette);
-		const red = srgbToOklab(113, 30, 29);
-		const amber = srgbToOklab(165, 116, 80);
-		expect(hue(dominant)).toBeCloseTo(hue(red), 0);
-		expect(hue(must(secondary))).toBeCloseTo(hue(amber), 0);
-	});
-
-	it("ignores specks, near-white and near-black", () => {
-		const palette = extractCoverPalette(
-			pixels(
-				[234, 222, 176, 80],
-				[20, 140, 60, 1],
-				[5, 5, 5, 10],
-				[255, 255, 255, 9],
-			),
-		);
-		expect(must(palette).secondary).toBeNull();
-		expect(hue(must(palette).dominant)).toBeCloseTo(
-			hue(srgbToOklab(234, 222, 176)),
-			0,
-		);
-	});
-
-	it("is null for a cover of only paper and ink", () => {
-		expect(
-			extractCoverPalette(pixels([255, 255, 255, 50], [0, 0, 0, 50])),
-		).toBeNull();
-	});
-
-	it("skips transparent pixels", () => {
-		expect(extractCoverPalette([200, 40, 40, 0])).toBeNull();
-	});
-});
-
 describe("backdropColors", () => {
 	it("keeps the cover's hue and gives a one-colour cover a deeper second stop", () => {
-		const palette = extractCoverPalette(pixels([222, 108, 40, 100]));
-		const colors = backdropColors(must(palette));
+		const colors = backdropColors({
+			dominant: { ...srgbToOklab(222, 108, 40), share: 1 },
+			secondary: null,
+		});
 		const orangeHue = hue(srgbToOklab(222, 108, 40)).toFixed(1);
 		expect(colors.light[0]).toContain(orangeHue);
 		expect(colors.light[1]).toContain(orangeHue);
@@ -76,5 +30,30 @@ describe("backdropColors", () => {
 			secondary: null,
 		});
 		expect(colors.dark[0]).toMatch(/ 0\.00\d /);
+	});
+});
+
+describe("coverWash", () => {
+	const thumb = (
+		cover_colors: CoverThumbnail["cover_colors"],
+	): CoverThumbnail => ({
+		book_id: "1",
+		url: "/api/books/1/thumbnail?v=1",
+		width: 300,
+		height: 450,
+		cover_colors,
+	});
+
+	it("coverWash uses the descriptor's palette", () => {
+		const palette: CoverPalette = {
+			dominant: { ...srgbToOklab(113, 30, 29), share: 0.6 },
+			secondary: { ...srgbToOklab(165, 116, 80), share: 0.25 },
+		};
+		expect(coverWash(thumb({ palette, thumbhash: "" }))).toEqual(
+			backdropColors(palette),
+		);
+		expect(coverWash(undefined)).toBeNull();
+		expect(coverWash(thumb(null))).toBeNull();
+		expect(coverWash(thumb({ palette: null, thumbhash: "AAAA" }))).toBeNull();
 	});
 });

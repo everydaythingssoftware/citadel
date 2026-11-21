@@ -137,6 +137,7 @@ describe("dragIconPath", () => {
 				url: "asset://localhost/%2Ft%2F1.jpg",
 				width: 300,
 				height: 450,
+				cover_colors: null,
 			}),
 		).toBe("/t/1.jpg");
 		expect(dragIconPath(withCover, undefined)).toBe("/l/cover.jpg");
