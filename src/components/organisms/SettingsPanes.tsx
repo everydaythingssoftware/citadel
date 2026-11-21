@@ -35,6 +35,7 @@ import {
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
 import { useRemoveLibrary } from "@/lib/hooks/use-remove-library";
 import { useServerAddresses } from "@/lib/hooks/use-server-addresses";
+import { useSignInLimits } from "@/lib/hooks/use-sign-in-limits";
 import { useServerHealth } from "@/lib/hooks/use-server-health";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
@@ -337,6 +338,7 @@ const GeneralTab = () => {
 			)}
 			{administrator && <ServerAddressesSection />}
 			{administrator && <ProxyTrustOfferSection />}
+			{administrator && <SignInLimitsSection />}
 		</div>
 	);
 };
@@ -481,6 +483,28 @@ const ServerAddressesSection = () => {
 						it, {where}, then restart the server.
 					</p>
 				))}
+			{error && (
+				<p role="alert" className={classes.inlineNote} data-tone="error">
+					{error}
+				</p>
+			)}
+		</section>
+	);
+};
+
+/**
+ * How the server is holding back wrong sign-ins right now. Counts only: the
+ * server never says which addresses or names.
+ */
+const SignInLimitsSection = () => {
+	const { summary, error } = useSignInLimits();
+	const headingId = useId();
+	return (
+		<section aria-labelledby={headingId}>
+			<h3 id={headingId} className={classes.sectionTitle}>
+				Sign-in limits
+			</h3>
+			{summary && <p className={classes.paneNote}>{summary}</p>}
 			{error && (
 				<p role="alert" className={classes.inlineNote} data-tone="error">
 					{error}

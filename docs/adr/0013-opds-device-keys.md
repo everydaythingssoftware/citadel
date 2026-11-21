@@ -36,8 +36,14 @@ interface calls them device passwords, since that's what a reader app asks for.
 - OPDS stays HTTP Basic: a username plus one of that user's keys. Usernames
   match as they do for browser sign-in: trimmed and ignoring case. The OPDS
   runtime holds a hot-swappable snapshot of verifiers (key ID, username, salt,
-  hash), never keys. It checks every verifier so that timing doesn't show
-  which one matched, and keeps the shared back-off on failures.
+  hash), never keys. It checks every verifier, hashing the key whatever the
+  username, so that timing doesn't show which one matched or which names
+  have keys. Guesses go through the sign-in guard (ADR 0017, replacing the
+  shared back-off this ADR first described).
+- The roughly 30.5-bit format is enough because the guard's username tier
+  holds anyone who isn't on a known reader to about 120 guesses an hour per
+  username, from any number of addresses: about 0.07% of one key's space a
+  year, 0.16% in the worst case (ADR 0017).
 
 The migration turns each existing `users.app_password` into one key named
 **"Existing password"**, so readers already set up keep signing in, and then

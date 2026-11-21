@@ -1,8 +1,8 @@
 # 17. Sign-in guard and client addresses
 
-Status: Proposed - 2026-11-21 (C-02). Phase 1 (client addresses, proxy trust,
-listeners, admission, health) is implemented; the sign-in guard is the next
-phase.
+Status: Proposed - 2026-11-21 (C-02). Both phases are implemented: client
+addresses, proxy trust, listeners, admission and health first, then the
+sign-in guard.
 
 ## Context
 
@@ -126,9 +126,153 @@ work as before.
 
 ## Sign-in guard
 
-_To be written by the next phase: per-address and per-username tiers keyed by
-`ClientAddress::key()` and `aggregate_keys()`, lenient for
-`ClientAddress::is_soft()`; an Argon2 verifier pool; known-device cookies._
+Before this, every way of signing in shared one global back-off. It was
+checked before the work and recorded after it, so a burst all got through;
+any success reset it; and while it was on, nobody could sign in, the real
+administrator included. Every attempt ran Argon2id (19 MiB, about 31 ms of
+CPU) on tokio's blocking pool while holding one of the API's 64 work
+permits: 64 concurrent wrong sign-ins took the server to 1.3 GB of memory.
+OPDS counted requests without an `Authorization` header as failures, and
+`DeviceKeyVerifier::matches` returned before hashing when the username
+differed.
+
+`citadel_opds::guard::SignInGuard` replaces both back-offs. One guard per
+process judges browser sign-in, the setup code and OPDS device keys; the
+server shares the OPDS service's guard with the API. Its core is synchronous
+with an injected clock, and it never reads a database, so real and unknown
+usernames are treated the same. It follows OWASP's "Slow Down Online Guessing
+Attacks with Device Cookies" and the Credential Stuffing Prevention cheat
+sheet. Every number below is a named constant, not a setting.
+
+### Address tier
+
+The main protection. Each client key (`/32` or `/64`) has a bucket of 100
+failures that refills at 100 an hour. Its neighbourhoods have their own:
+`/24` and `/56` 400 an hour, `/48` 1,000 an hour. When a bucket is spent,
+that key is banned for an hour, doubling on each re-ban up to a day, and
+refused cheaply with 429 and the real `Retry-After`.
+
+Client keys live in a map of at most 100,000 entries that forgets the least
+recently seen entry that isn't banned (or verifying). A forgotten client's
+failures still count in its neighbourhoods, which are fixed tables of 65,536
+hashed buckets. If the map is ever full of bans, new clients are judged by
+their neighbourhoods alone. The guard never fails open, and never closes for
+everyone.
+
+Soft clients (`ClientAddress::is_soft()`, above) skip the address tier
+entirely: no bans and no in-flight cap, since they may be many people behind
+an unconfigured proxy. The username tier and the verifier pool still apply.
+
+### Username tier
+
+Each username, normalised exactly as sign-in compares it (`trim()` and ASCII
+case folding, as `COLLATE NOCASE` does; other letters keep their case), is
+keyed with SipHash-2-4 under a per-process random key into one of 65,536
+buckets. A bucket holds 10 guesses and refills one every 30 seconds. When
+it's empty, the guess is refused with 429 and `Retry-After` set to the
+seconds until the next one (at most 30). Usernames are never banned. The
+setup code has no username, so only the address tier applies to it.
+
+### Known devices
+
+A device that signed in before skips the username tier, so an attack on a
+name doesn't lock its owner out:
+
+- A browser gets a **known-device cookie** (`citadel_device`) on every
+  successful sign-in: a random device ID and an expiry 90 days out, signed
+  with HMAC-SHA-256 over them and the normalised username. It is separate
+  from the session cookie, `HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS,
+  and sent only to `/api/session`. The signing key is made on first use and
+  kept in `citadel.db`'s `properties`, so cookies survive restarts; the
+  SipHash key isn't kept, since nothing stored depends on it.
+- An OPDS reader is known by its pair of username key and client key,
+  recorded on success: the 8 most recent per username, each for 30 days
+  after its last success, in memory only.
+
+A cookie or pair counts only for the username it was made for. Each known
+device has its own budget of 20 failures an hour; past that its exemption is
+suspended for the hour and the username tier applies again.
+
+### Repeats
+
+The same failed credential (SHA-256 over the username key and the secret)
+from the same client within 10 minutes counts once, in both tiers, so a
+reader retrying a stale key doesn't ban its own address. Each client keeps
+the last 64.
+
+### Reserving before work
+
+`reserve` decides under one short lock. It refuses if the client or one of
+its neighbourhoods is banned. For browser sign-in, it refuses with 429 when
+the client already has 2 checks in flight. It refuses when the username's
+bucket is empty and the device isn't known. Otherwise it debits every tier
+at once and returns a `Ticket`. Settling a ticket as a success refunds its
+debits without resetting anything and records the known device; a failure
+keeps them; a ticket dropped unsettled counts as a failure; a ticket for a
+check the server couldn't run is refunded.
+
+### Verifier pool
+
+`citadel_opds::verifier::VerifierPool` is the only place passwords are
+checked: exactly 2 dedicated OS threads, not tokio's blocking pool, and not
+the API's work permits. Known devices have a lane of their own (16 waiting)
+that goes first; everyone else waits in a fair queue that takes turns
+between neighbourhoods (`/24` or `/48`), at most 4 waiting from each and 64
+in all. When full, the ticket is refunded and the request gets 503 with
+`Retry-After: 1`. A check stays in flight until a thread finishes it, not
+until its request goes away, so cancelling and resending can't exceed 2. A
+check whose requester has gone is skipped before hashing and still counts as
+a failure.
+
+`CitadelStore::verify_password` is split into a cheap `lookup_hash` and an
+expensive `StoredPassword::verify`; the pool runs only the second. Real and
+unknown names both go through one lookup and one verification, the unknown
+ones against a dummy hash with the same parameters, which the server makes
+at startup.
+
+### OPDS
+
+OPDS uses the guard, synchronously in `authorize`, but not the pool or the
+in-flight cap: its salted SHA-256 is cheap, and readers fetch covers in
+parallel. A request with no `Authorization` header gets the 401 challenge
+and isn't counted. A malformed header or an empty username counts as a
+failure against the address. `DeviceKeyVerifier::matches` always hashes the
+key, then checks the username.
+
+### What a guesser gets
+
+Generated device keys keep their format (ADR 0013): a word, three digits
+from 2-9 with no two alike in a row, one of 6 symbols and another word, from
+a pool of about 804 words, so about 804² × 8 × 7 × 7 × 6 ≈ 1.52 × 10⁹ keys
+(30.5 bits). The username tier bounds a guesser who isn't on a known
+device to about 120 guesses an hour per username, however many addresses
+they have:
+
+| Guesser | Guesses per hour per username | Chance of finding a given key in a year |
+| --- | --- | --- |
+| Many addresses, no known device | 120 (+10 burst) | ≈ 0.07 % |
+| Worst case: also behind all 8 known reader addresses | 120 + 8 × 20 = 280 | ≈ 0.16 % |
+
+A user with k keys multiplies the chance by k. One address alone is held to
+100 an hour, and to far fewer once its bans double.
+
+Browser passwords are chosen by people, so their strength varies; the same
+tiers bound guessing, and credential stuffing (one password per many
+usernames) is bounded by the address tier, since the username tier doesn't
+see it.
+
+NIST SP 800-63B-4 §3.2.2 requires disabling an authenticator after at most
+100 consecutive failed attempts. Citadel deliberately diverges: it never
+locks an account, because on a home server a lockout is something anyone
+can trigger against the administrator. Rate limiting by address and by
+username bounds guessing indefinitely instead, and known devices keep their
+owners in.
+
+### Administrators
+
+`GET /api/server/sign-in` reports counts only: clients and neighbourhoods
+banned now, and usernames being slowed now. Settings shows them on the
+Server page.
 
 ## Consequences
 
@@ -139,3 +283,18 @@ _To be written by the next phase: per-address and per-username tiers keyed by
   Only book files and uploads are streams.
 - Idle keep-alive connections last 60 s rather than indefinitely. Proxies
   whose upstream keep-alive is longer may see an occasional retried request.
+- An attack on a username slows that name for new devices (a wait of up to
+  30 seconds per guess), never for devices that signed in before. An
+  administrator can always get back in from a browser they used before, or
+  with the CLI's `users` commands.
+- Admission still applies on top: one client may have 16 short requests in
+  flight, so a reader fetching more than 16 covers at once gets 503 for the
+  rest. The guard never refuses them.
+- The verifier's fair queue (64) is as large as the API's short pool (64). A
+  flood from many neighbourhoods that cycles usernames (so the username tier
+  doesn't stop it) can keep both full and answer other short requests 503
+  until each address spends its allowance. Measured only in analysis, not in
+  the load test, which floods the administrator's name from many addresses.
+- On loopback every client is local, so the load test's spoofed-header
+  scenario runs in soft mode, the worst case: only the username tier and the
+  pool apply, and the two verifier threads stay busy.

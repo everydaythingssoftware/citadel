@@ -49,7 +49,8 @@ const PASSWORD_SYMBOLS: &[char] = &['!', '*', '-', '=', '~', '$'];
 /// Lowercase words from a curated pool, digits without 0/1, symbols from a
 /// URL-safe set (`! * - = ~ $`) so readers that paste credentials into
 /// `http://user:pass@host/` logins cannot mangle them. Roughly 30.5 bits:
-/// an online-only attacker faces exponential backoff on failures.
+/// enough online, where the sign-in guard holds each username to about 120
+/// guesses an hour (ADR 0017).
 pub fn generate_app_password() -> String {
     let word = |used_tail: &mut Option<char>| -> String {
         loop {

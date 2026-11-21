@@ -2744,6 +2744,46 @@
         ]
       }
     },
+    "/api/server/sign-in": {
+      "get": {
+        "description": "How many addresses are refused and usernames slowed down for wrong sign-ins right now (ADR 0017). Counts only. Administrators only.",
+        "operationId": "getSignInLimits",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/server/update": {
       "get": {
         "description": "Which Citadel this server runs, and for administrators whether a newer release is out. The server asks GitHub once a day.",
@@ -5810,6 +5850,31 @@
           "libraryConfigured": {
             "type": "boolean",
             "description": "A library has been chosen (it may still be unreachable)."
+          }
+        }
+      },
+      "SignInLimits": {
+        "type": "object",
+        "required": [
+          "bannedAddresses",
+          "bannedBlocks",
+          "slowedUsernames"
+        ],
+        "properties": {
+          "bannedAddresses": {
+            "type": "integer",
+            "description": "Client addresses (`/32` or `/64`) refused right now for too many\nwrong sign-ins.",
+            "minimum": 0
+          },
+          "bannedBlocks": {
+            "type": "integer",
+            "description": "Neighbourhoods (`/24`, `/56` or `/48`) refused right now.",
+            "minimum": 0
+          },
+          "slowedUsernames": {
+            "type": "integer",
+            "description": "Usernames being slowed down right now, because someone got them wrong\ntoo often. Browsers and readers that signed in before aren't slowed.",
+            "minimum": 0
           }
         }
       },

@@ -488,6 +488,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/server/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description How many addresses are refused and usernames slowed down for wrong sign-ins right now (ADR 0017). Counts only. Administrators only. */
+        get: operations["getSignInLimits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/server/update": {
         parameters: {
             query?: never;
@@ -1352,6 +1369,20 @@ export interface components {
             libraryAvailable: boolean;
             /** @description A library has been chosen (it may still be unreachable). */
             libraryConfigured: boolean;
+        };
+        SignInLimits: {
+            /**
+             * @description Client addresses (`/32` or `/64`) refused right now for too many
+             *     wrong sign-ins.
+             */
+            bannedAddresses: number;
+            /** @description Neighbourhoods (`/24`, `/56` or `/48`) refused right now. */
+            bannedBlocks: number;
+            /**
+             * @description Usernames being slowed down right now, because someone got them wrong
+             *     too often. Browsers and readers that signed in before aren't slowed.
+             */
+            slowedUsernames: number;
         };
         SignInRequest: {
             password: string;
@@ -3723,6 +3754,41 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    getSignInLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInLimits"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

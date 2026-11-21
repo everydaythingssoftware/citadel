@@ -82,8 +82,11 @@ The server always requires sign-in; `sharing.authenticationEnabled` and
 Browsers sign in with `POST /api/session`, which sets an `HttpOnly`,
 `SameSite=Lax`, `Path=/` cookie, `Secure` when `api.publicUrl` is https. Every API
 request looks the session, user and grant up again. Unsafe methods must carry
-the `api.publicUrl` origin when they carry an `Origin` header. Failed sign-ins
-back off like OPDS Basic. The built frontend is public so signed-out browsers can
+the `api.publicUrl` origin when they carry an `Origin` header. Sign-ins go
+through the sign-in guard, shared with OPDS (ADR 0017, amending the global
+back-off this ADR first described): guesses are limited per client address
+and per username, and browsers that signed in before keep a known-device
+cookie that exempts them from the username limit. The built frontend is public so signed-out browsers can
 load the sign-in form; all data comes from the protected API.
 
 OPDS remains HTTP Basic, checked against the device keys of users granted the

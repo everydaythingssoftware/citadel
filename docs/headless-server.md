@@ -235,6 +235,39 @@ case-insensitive and can't contain a colon.
 create a user for each former OPDS reader with `users add`, and give readers
 a device key from `users keys <name> add <device>`.
 
+### Sign-in limits
+
+Citadel limits how fast anyone can guess a password, a device key or the
+setup code ([ADR 0017](adr/0017-sign-in-guard-and-client-addresses.md)). It
+never locks an account.
+
+- **Per address.** One address may get 100 sign-ins wrong in an hour (its
+  neighbours share larger allowances). Past that, it's refused for an hour,
+  then two, four and so on up to a day, while the guessing continues.
+- **Per username.** Wherever the guesses come from, one username gets 10,
+  then one more every 30 seconds.
+
+A refused sign-in is answered `429 Too Many Requests` with `Retry-After`,
+the number of seconds until it can be tried again. The sign-in page says so.
+A `503` with `Retry-After: 1` means the server is busy checking other
+sign-ins; try again in a moment. Requests without credentials, which is how
+e-readers learn they need to sign in, are never counted.
+
+**During an attack** on your username, a browser you've signed in with
+before (it keeps a cookie for 90 days) and an e-reader that signed in from
+the same address before (remembered for 30 days) keep signing in as usual.
+A new browser or device may have to wait up to 30 seconds for each try. If
+the attack comes from your own address, such as a shared network, you may be
+refused until its ban ends.
+
+**Getting back in** as an administrator: use a browser you've signed in with
+before, or on the server, reset the password or create another administrator
+with the `users` commands above (`users reset-password <name>`, `users add
+<name> --admin`). Signing in with a new password starts a new browser
+session; the limits on the address and the username still apply.
+Administrators see how many addresses are refused and how many usernames are
+being slowed in Settings, on the Server page.
+
 ## State and listeners
 
 Every listener (the API and each OPDS address) speaks HTTP/1.1 only; HTTP/2,

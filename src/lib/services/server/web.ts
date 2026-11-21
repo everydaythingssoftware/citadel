@@ -6,6 +6,7 @@ import type {
 	ServerProxies,
 	ServerService,
 	ServerUpdate,
+	SignInLimits,
 } from "./types";
 
 type UpdateStatus = components["schemas"]["UpdateStatus"];
@@ -104,6 +105,15 @@ export const createWebServerService = (
 					error?.message ?? `Could not forget ${range} (${response.status})`,
 				);
 			return toProxies(data);
+		},
+		signInLimits: async (): Promise<SignInLimits> => {
+			const { data, error, response } = await client.GET("/api/server/sign-in");
+			if (error || !data)
+				throw new Error(
+					error?.message ??
+						`Could not read the sign-in limits (${response.status})`,
+				);
+			return data;
 		},
 	};
 };

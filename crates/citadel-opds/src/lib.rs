@@ -5,11 +5,13 @@ pub mod auth;
 pub mod catalog;
 pub mod client;
 pub mod credential_store;
+pub mod guard;
 mod identity;
 pub mod limits;
 pub mod listener;
 pub mod network;
 pub mod service;
+pub mod verifier;
 mod xml;
 
 pub use catalog::{

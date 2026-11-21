@@ -29,3 +29,9 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.png]
 opt-level = 3
+# Argon2id unoptimized takes about a second per hash, which makes the
+# sign-in guard's tests (ADR 0017) crawl.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

@@ -485,6 +485,12 @@ impl OpdsService {
         *self.inner.clients.lock().unwrap() = clients;
     }
 
+    /// The sign-in guard OPDS guesses go through. A host with other ways of
+    /// signing in shares it, so every guess counts in one place (ADR 0017).
+    pub fn sign_in_guard(&self) -> crate::guard::SignInGuard {
+        self.inner.auth.guard().clone()
+    }
+
     /// Credentials are supplied by the host and held in memory; the host owns
     /// persistence and calls `replace_credentials` when they change.
     pub fn with_ephemeral_credentials(

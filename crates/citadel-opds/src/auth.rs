@@ -2,8 +2,10 @@
 //!
 //! The credential snapshot is hot-swappable: listeners read it per request,
 //! so creating, rotating or revoking device keys never interrupts a running
-//! share. The snapshot holds salted hashes, never keys (ADR 0013). Consecutive
-//! rejections back off exponentially, which is the online-guessing defense.
+//! share. The snapshot holds salted hashes, never keys (ADR 0013). Every
+//! guess goes through the sign-in guard (ADR 0017), which limits each client
+//! and each username; readers that signed in before keep working while their
+//! username is guessed at from elsewhere.
 
 use std::{
     collections::HashMap,
@@ -26,49 +28,17 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use citadel_core::store::DeviceKeyVerifier;
 
+use crate::{
+    client::ClientAddress,
+    guard::{Credential, Outcome, Refusal, SignInGuard},
+};
+
 const BASIC_CHALLENGE: &str = "Basic realm=\"Citadel\", charset=\"UTF-8\"";
 /// How often a key's use is reported to the host, so busy readers (every
 /// cover is a request) don't write to the host's database each time.
 const KEY_USE_REPORT_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 pub(crate) type KeyUsedHook = Arc<dyn Fn(&str) + Send + Sync>;
-
-/// Global exponential backoff on consecutive rejected attempts. With a
-/// ~30.5-bit generated password, throttling the online attacker to a couple
-/// of guesses per second is what turns the margin into years.
-#[derive(Default)]
-struct Backoff {
-    consecutive_failures: u32,
-    until: Option<Instant>,
-}
-
-const BACKOFF_START_THRESHOLD: u32 = 3;
-const BACKOFF_BASE: Duration = Duration::from_secs(2);
-const BACKOFF_CAP: Duration = Duration::from_secs(60);
-
-impl Backoff {
-    /// Some(_) while the attacker is being refused without a check.
-    fn refused_until(&self, now: Instant) -> Option<Duration> {
-        self.until
-            .filter(|until| *until > now)
-            .map(|until| until.duration_since(now))
-    }
-
-    fn note_rejection(&mut self, now: Instant) {
-        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
-        if self.consecutive_failures >= BACKOFF_START_THRESHOLD {
-            let shift = self
-                .consecutive_failures
-                .saturating_sub(BACKOFF_START_THRESHOLD)
-                .min(5);
-            self.until = Some(now + BACKOFF_BASE.saturating_mul(1 << shift).min(BACKOFF_CAP));
-        }
-    }
-
-    fn note_success(&mut self) {
-        *self = Backoff::default();
-    }
-}
 
 /// One instance lives as long as the service; listeners clone the handle, so
 /// `set_required` (per start) and `swap_credentials` (per credential change)
@@ -81,7 +51,7 @@ pub struct OpdsBasicAuth {
 struct AuthInner {
     required: AtomicBool,
     credentials: Mutex<Option<Arc<Vec<DeviceKeyVerifier>>>>,
-    backoff: Mutex<Backoff>,
+    guard: SignInGuard,
     key_used: Mutex<Option<KeyUsedHook>>,
     reported: Mutex<HashMap<String, Instant>>,
 }
@@ -100,11 +70,17 @@ impl OpdsBasicAuth {
             inner: Arc::new(AuthInner {
                 required: AtomicBool::new(false),
                 credentials: Mutex::new(None),
-                backoff: Mutex::new(Backoff::default()),
+                guard: SignInGuard::new(),
                 key_used: Mutex::new(None),
                 reported: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    /// The guard every OPDS guess goes through; hosts share it with their
+    /// other ways of signing in.
+    pub fn guard(&self) -> &SignInGuard {
+        &self.inner.guard
     }
 
     pub(crate) fn set_required(&self, required: bool) {
@@ -133,40 +109,50 @@ impl OpdsBasicAuth {
         };
     }
 
-    fn authorize(&self, authorization: Option<&[u8]>) -> AuthOutcome {
+    fn authorize(&self, authorization: Option<&[u8]>, client: &ClientAddress) -> AuthOutcome {
         if !self.inner.required.load(Ordering::Relaxed) {
             return AuthOutcome::Authorized(None);
         }
-
-        {
-            let backoff = self.inner.backoff.lock().unwrap();
-            if backoff.refused_until(Instant::now()).is_some() {
-                return AuthOutcome::Backoff;
-            }
-        }
-
+        // A request without credentials is how readers learn sign-in is
+        // needed: challenged, not counted.
+        let Some(authorization) = authorization else {
+            return AuthOutcome::Rejected;
+        };
+        let parsed = parse_basic_credentials(authorization);
+        let credential = Credential::DeviceKey {
+            username: parsed
+                .as_ref()
+                .map(|provided| provided.username.as_str())
+                .filter(|username| !username.trim().is_empty()),
+            key: parsed
+                .as_ref()
+                .map_or(authorization, |provided| provided.password.as_slice()),
+        };
+        let ticket = match self.inner.guard.reserve(client, credential) {
+            Ok(ticket) => ticket,
+            Err(refusal) => return AuthOutcome::Refused(refusal),
+        };
         let credentials = self.inner.credentials.lock().unwrap().clone();
-        let parsed = authorization.and_then(parse_basic_credentials);
         // Every key is checked, so timing doesn't show which one matched.
-        let matched = parsed.and_then(|provided| {
-            credentials.and_then(|stored| {
-                stored.iter().fold(None, |matched, key| {
-                    let matches = key.matches(&provided.username, &provided.password);
-                    matched.or(matches.then(|| key.key_id.clone()))
+        let matched = parsed
+            .filter(|provided| !provided.username.trim().is_empty())
+            .and_then(|provided| {
+                credentials.and_then(|stored| {
+                    stored.iter().fold(None, |matched, key| {
+                        let matches = key.matches(&provided.username, &provided.password);
+                        matched.or(matches.then(|| key.key_id.clone()))
+                    })
                 })
-            })
-        });
-        {
-            let mut backoff = self.inner.backoff.lock().unwrap();
-            if matched.is_some() {
-                backoff.note_success();
-            } else {
-                backoff.note_rejection(Instant::now());
-            }
-        }
+            });
         match matched {
-            Some(key_id) => AuthOutcome::Authorized(Some(key_id)),
-            None => AuthOutcome::Rejected,
+            Some(key_id) => {
+                ticket.settle(Outcome::Success);
+                AuthOutcome::Authorized(Some(key_id))
+            }
+            None => {
+                ticket.settle(Outcome::Failure);
+                AuthOutcome::Rejected
+            }
         }
     }
 
@@ -190,7 +176,7 @@ enum AuthOutcome {
     /// With the key that signed in, when sign-in was required.
     Authorized(Option<String>),
     Rejected,
-    Backoff,
+    Refused(Refusal),
 }
 
 /// Axum 0.8 middleware. Apply it as the final layer around the OPDS router.
@@ -207,7 +193,8 @@ pub(crate) async fn require_basic_auth(
         .headers()
         .get(AUTHORIZATION)
         .map(|value| value.as_bytes().to_vec());
-    match auth.authorize(authorization.as_deref()) {
+    let client = ClientAddress::of(request.extensions());
+    match auth.authorize(authorization.as_deref(), &client) {
         AuthOutcome::Authorized(key_id) => {
             if let Some(key_id) = key_id {
                 if let Some(hook) = auth.key_use_to_report(&key_id, Instant::now()) {
@@ -216,9 +203,12 @@ pub(crate) async fn require_basic_auth(
             }
             next.run(request).await
         }
-        AuthOutcome::Backoff => (
+        AuthOutcome::Refused(refusal) => (
             StatusCode::TOO_MANY_REQUESTS,
-            [(RETRY_AFTER, HeaderValue::from_static("1"))],
+            [(
+                RETRY_AFTER,
+                HeaderValue::from(refusal.retry_after_seconds()),
+            )],
         )
             .into_response(),
         AuthOutcome::Rejected => unauthorized_response(),
@@ -297,34 +287,93 @@ mod tests {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn repeated_failures_throttle_into_a_backoff_window() {
-        let auth = enabled_auth("reader", "correct horse");
-        let wrong = Some(&basic_header("reader", b"wrong password")[..]);
+    /// Requests made in-process: this machine, never soft.
+    fn local() -> ClientAddress {
+        ClientAddress::in_process()
+    }
 
-        for _ in 0..BACKOFF_START_THRESHOLD {
-            assert!(matches!(auth.authorize(wrong), AuthOutcome::Rejected));
-        }
-        // The next attempt is refused without a credential check.
-        assert!(matches!(auth.authorize(wrong), AuthOutcome::Backoff));
-
-        // Backoff expires and checks resume.
-        tokio::time::sleep(BACKOFF_BASE).await;
-        assert!(matches!(auth.authorize(wrong), AuthOutcome::Rejected));
+    fn wrong(attempt: usize) -> Vec<u8> {
+        basic_header("reader", format!("wrong password {attempt}").as_bytes())
     }
 
     #[tokio::test]
-    async fn successful_authentication_resets_the_backoff_budget() {
+    async fn wrong_keys_count_against_the_address_but_bare_requests_do_not() {
+        let auth = enabled_auth("reader", "correct horse");
+        for _ in 0..500 {
+            assert!(matches!(
+                auth.authorize(None, &local()),
+                AuthOutcome::Rejected
+            ));
+        }
+        let reader = ClientAddress::direct("203.0.113.7:1".parse().unwrap());
+        for attempt in 0..100 {
+            let name = format!("reader{attempt}");
+            let header = basic_header(&name, b"wrong");
+            assert!(matches!(
+                auth.authorize(Some(&header), &reader),
+                AuthOutcome::Rejected
+            ));
+        }
+        // The next guess is refused without a check, for the real wait.
+        assert!(matches!(
+            auth.authorize(Some(&basic_header("reader", b"correct horse")), &reader),
+            AuthOutcome::Refused(refusal) if refusal.retry_after_seconds() == 3600
+        ));
+        // Malformed headers and empty usernames count as failures too.
+        let other = ClientAddress::direct("203.0.113.8:1".parse().unwrap());
+        for attempt in 0..100 {
+            let header = if attempt % 2 == 0 {
+                format!("Basic not-base64-{attempt}").into_bytes()
+            } else {
+                basic_header("", format!("key {attempt}").as_bytes())
+            };
+            assert!(matches!(
+                auth.authorize(Some(&header), &other),
+                AuthOutcome::Rejected
+            ));
+        }
+        assert!(matches!(
+            auth.authorize(Some(&basic_header("reader", b"correct horse")), &other),
+            AuthOutcome::Refused(_)
+        ));
+        assert!(matches!(
+            auth.authorize(Some(&basic_header("reader", b"correct horse")), &local()),
+            AuthOutcome::Authorized(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn success_gives_its_own_guess_back_without_forgiving_failures() {
         let auth = enabled_auth("reader", "correct horse");
         let right = Some(&basic_header("reader", b"correct horse")[..]);
-        let wrong = Some(&basic_header("reader", b"wrong password")[..]);
-
-        for _ in 0..BACKOFF_START_THRESHOLD.saturating_sub(1) {
-            assert!(matches!(auth.authorize(wrong), AuthOutcome::Rejected));
+        for attempt in 0..9 {
+            assert!(matches!(
+                auth.authorize(Some(&wrong(attempt)), &local()),
+                AuthOutcome::Rejected
+            ));
         }
-        assert!(matches!(auth.authorize(right), AuthOutcome::Authorized(_)));
-        // The failure streak was reset: more failures are answered, not refused.
-        assert!(matches!(auth.authorize(wrong), AuthOutcome::Rejected));
+        for _ in 0..50 {
+            assert!(matches!(
+                auth.authorize(right, &local()),
+                AuthOutcome::Authorized(_)
+            ));
+        }
+        let third = ClientAddress::direct("198.51.100.3:1".parse().unwrap());
+        assert!(matches!(
+            auth.authorize(Some(&wrong(9)), &third),
+            AuthOutcome::Rejected
+        ));
+        // The username's ten guesses are spent; this reader's address is
+        // known, so it keeps signing in.
+        let elsewhere = ClientAddress::direct("203.0.113.9:1".parse().unwrap());
+        assert!(matches!(
+            auth.authorize(right, &elsewhere),
+            AuthOutcome::Refused(_)
+        ));
+        assert!(matches!(
+            auth.authorize(right, &local()),
+            AuthOutcome::Authorized(_)
+        ));
     }
 
     #[tokio::test]
@@ -337,7 +386,7 @@ mod tests {
         )));
 
         assert!(matches!(
-            auth.authorize(Some(b"not even close to Basic")),
+            auth.authorize(Some(b"not even close to Basic"), &local()),
             AuthOutcome::Authorized(_)
         ));
         assert_eq!(
@@ -354,10 +403,13 @@ mod tests {
         auth.set_required(true);
 
         assert!(matches!(
-            auth.authorize(Some(&basic_header("reader", b"anything"))),
+            auth.authorize(Some(&basic_header("reader", b"anything")), &local()),
             AuthOutcome::Rejected
         ));
-        assert!(matches!(auth.authorize(None), AuthOutcome::Rejected));
+        assert!(matches!(
+            auth.authorize(None, &local()),
+            AuthOutcome::Rejected
+        ));
     }
 
     #[tokio::test]
@@ -365,18 +417,24 @@ mod tests {
         let auth = enabled_auth("reader", "correct horse");
 
         assert!(matches!(
-            auth.authorize(Some(&basic_header("reader", b"correct horse"))),
+            auth.authorize(Some(&basic_header("reader", b"correct horse")), &local()),
             AuthOutcome::Authorized(_)
         ));
         assert!(matches!(
-            auth.authorize(Some(&basic_header("reader", b"wrong password"))),
+            auth.authorize(Some(&basic_header("reader", b"wrong password")), &local()),
             AuthOutcome::Rejected
         ));
         assert!(matches!(
-            auth.authorize(Some(&basic_header("someone-else", b"correct horse"))),
+            auth.authorize(
+                Some(&basic_header("someone-else", b"correct horse")),
+                &local()
+            ),
             AuthOutcome::Rejected
         ));
-        assert!(matches!(auth.authorize(None), AuthOutcome::Rejected));
+        assert!(matches!(
+            auth.authorize(None, &local()),
+            AuthOutcome::Rejected
+        ));
     }
 
     #[test]
@@ -384,11 +442,11 @@ mod tests {
         let auth = enabled_auth("reader", "correct horse");
 
         assert!(matches!(
-            auth.authorize(Some(&basic_header("READER", b"correct horse"))),
+            auth.authorize(Some(&basic_header("READER", b"correct horse")), &local()),
             AuthOutcome::Authorized(Some(_))
         ));
         assert!(matches!(
-            auth.authorize(Some(&basic_header("reader", b"CORRECT HORSE"))),
+            auth.authorize(Some(&basic_header("reader", b"CORRECT HORSE")), &local()),
             AuthOutcome::Rejected
         ));
     }
@@ -400,7 +458,7 @@ mod tests {
         let new = basic_header("reader", b"second-secret");
 
         assert!(matches!(
-            auth.authorize(Some(&old)),
+            auth.authorize(Some(&old), &local()),
             AuthOutcome::Authorized(_)
         ));
 
@@ -410,16 +468,22 @@ mod tests {
             "second-secret",
         )));
 
-        assert!(matches!(auth.authorize(Some(&old)), AuthOutcome::Rejected));
         assert!(matches!(
-            auth.authorize(Some(&new)),
+            auth.authorize(Some(&old), &local()),
+            AuthOutcome::Rejected
+        ));
+        assert!(matches!(
+            auth.authorize(Some(&new), &local()),
             AuthOutcome::Authorized(_)
         ));
 
         // A clone of the handle shares the same snapshot.
         let clone = auth.clone();
         auth.swap_credentials(None);
-        assert!(matches!(clone.authorize(Some(&new)), AuthOutcome::Rejected));
+        assert!(matches!(
+            clone.authorize(Some(&new), &local()),
+            AuthOutcome::Rejected
+        ));
     }
 
     #[tokio::test]
@@ -445,17 +509,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn backoff_is_answered_with_too_many_requests_and_a_retry_hint() {
+    async fn refusals_are_answered_with_too_many_requests_and_the_real_wait() {
         let auth = enabled_auth("reader", "correct horse");
-        let wrong = Some(&basic_header("reader", b"wrong password")[..]);
-
-        for _ in 0..BACKOFF_START_THRESHOLD {
-            assert!(matches!(auth.authorize(wrong), AuthOutcome::Rejected));
+        for attempt in 0..10 {
+            assert!(matches!(
+                auth.authorize(Some(&wrong(attempt)), &local()),
+                AuthOutcome::Rejected
+            ));
         }
 
-        let refused = response(auth, Some(basic_header("reader", b"wrong password"))).await;
+        let refused = response(auth, Some(wrong(10))).await;
         assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(refused.headers().get(RETRY_AFTER).unwrap(), "1");
+        assert_eq!(refused.headers().get(RETRY_AFTER).unwrap(), "30");
     }
 
     #[test]
@@ -506,16 +571,16 @@ mod tests {
             ("bob", "four", "bob-phone"),
         ] {
             assert!(matches!(
-                auth.authorize(Some(&basic_header(user, password.as_bytes()))),
+                auth.authorize(Some(&basic_header(user, password.as_bytes())), &local()),
                 AuthOutcome::Authorized(Some(id)) if id == key
             ));
         }
         assert!(matches!(
-            auth.authorize(Some(&basic_header("alice", b"two:three"))),
+            auth.authorize(Some(&basic_header("alice", b"two:three")), &local()),
             AuthOutcome::Rejected
         ));
         assert!(matches!(
-            auth.authorize(Some(&basic_header("bob", b"two:three"))),
+            auth.authorize(Some(&basic_header("bob", b"two:three")), &local()),
             AuthOutcome::Authorized(_)
         ));
     }

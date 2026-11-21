@@ -60,14 +60,14 @@ impl DeviceKeyVerifier {
     }
 
     /// Usernames match as browser sign-in matches them: trimmed, and ignoring
-    /// ASCII case as `users.username COLLATE NOCASE` does. Constant time in the
-    /// hash, so timing never shows how close a guess was.
+    /// ASCII case as `users.username COLLATE NOCASE` does. The key is hashed
+    /// whatever the username, and compared in constant time, so timing shows
+    /// neither which names have keys nor how close a guess was.
     pub fn matches(&self, username: &str, key: &[u8]) -> bool {
-        if !self.username.eq_ignore_ascii_case(username.trim()) {
-            return false;
-        }
         let given = salted_hash(&self.salt, key);
-        bool::from(given.as_bytes().ct_eq(self.key_hash.as_bytes()))
+        let key_matches = bool::from(given.as_bytes().ct_eq(self.key_hash.as_bytes()));
+        let username_matches = self.username.eq_ignore_ascii_case(username.trim());
+        key_matches & username_matches
     }
 }
 
@@ -299,6 +299,8 @@ fn unknown_key(username: &str) -> StoreError {
 
 /// `sha256(salt || key)`, the same as the migration computes in SQL.
 fn salted_hash(salt: &str, key: &[u8]) -> String {
+    #[cfg(test)]
+    tests::HASHES.with(|count| count.set(count.get() + 1));
     let mut input = salt.as_bytes().to_vec();
     input.extend_from_slice(key);
     sha256_hex(&input)
@@ -314,6 +316,25 @@ fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    thread_local! {
+        pub(super) static HASHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    #[test]
+    fn matching_hashes_the_key_whatever_the_username() {
+        let verifier = super::DeviceKeyVerifier::new("kobo", "reader", "key");
+        let hashes = |username: &str, key: &[u8]| {
+            let before = HASHES.with(std::cell::Cell::get);
+            let matches = verifier.matches(username, key);
+            (matches, HASHES.with(std::cell::Cell::get) - before)
+        };
+        assert_eq!(hashes("reader", b"key"), (true, 1));
+        assert_eq!(hashes(" READER ", b"key"), (true, 1));
+        assert_eq!(hashes("reader", b"wrong"), (false, 1));
+        assert_eq!(hashes("someone-else", b"key"), (false, 1));
+        assert_eq!(hashes("", b""), (false, 1));
+    }
+
     use super::super::test_support::store;
     use super::*;
     use crate::store::LibraryPermission;

@@ -728,6 +728,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
                 !cfg!(debug_assertions),
             ),
         ),
+        verifier: citadel_opds::verifier::VerifierPool::start(),
     };
     access.updates.spawn();
     let staging = match api::Staging::open(

@@ -67,6 +67,16 @@ export interface ServerProxies {
 	untrusted: UntrustedProxy[];
 }
 
+/** How the server is holding back wrong sign-ins right now: counts only. */
+export interface SignInLimits {
+	/** Addresses refused for too many wrong sign-ins. */
+	bannedAddresses: number;
+	/** Whole networks (a /24, /56 or /48) refused. */
+	bannedBlocks: number;
+	/** Usernames slowed down for new devices. */
+	slowedUsernames: number;
+}
+
 export const HEALTH_STATUS = {
 	ok: "ok",
 	degraded: "degraded",
@@ -102,6 +112,8 @@ export interface ServerService {
 	 * in it, which is also how an offer is dismissed. Administrators only.
 	 */
 	forgetProxy(range: string): Promise<ServerProxies>;
+	/** Administrators only. */
+	signInLimits(): Promise<SignInLimits>;
 	/** Answers whether or not the server is well (503 included). */
 	health(): Promise<ServerHealth>;
 }

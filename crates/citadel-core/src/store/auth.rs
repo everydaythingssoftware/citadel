@@ -23,6 +23,13 @@ impl CitadelStore {
     /// Returns the user when the password matches. Unknown users still pay
     /// for one hash verification so timing does not reveal which names exist.
     pub fn verify_password(&self, username: &str, password: &str) -> Result<Option<User>> {
+        Ok(self.lookup_hash(username)?.verify(password))
+    }
+
+    /// The cheap half of a sign-in: what `username`'s password is checked
+    /// against. Unknown names get the dummy hash, so both go on to one
+    /// [`StoredPassword::verify`].
+    pub fn lookup_hash(&self, username: &str) -> Result<StoredPassword> {
         let found = users::table
             .filter(users::username.eq(username.trim()))
             .select((
@@ -33,20 +40,16 @@ impl CitadelStore {
             ))
             .first::<(String, String, String, Option<String>)>(&mut *self.connection())
             .optional()?;
-        let (user, hash) = match found {
-            Some((id, username, role, Some(hash))) => {
-                (Some(user_from_row((id, username, role))?), hash)
-            }
-            _ => (None, dummy_hash().to_string()),
-        };
-        let matches = PasswordHash::new(&hash)
-            .map(|hash| {
-                Argon2::default()
-                    .verify_password(password.as_bytes(), &hash)
-                    .is_ok()
-            })
-            .unwrap_or(false);
-        Ok(user.filter(|_| matches))
+        Ok(match found {
+            Some((id, username, role, Some(hash))) => StoredPassword {
+                user: Some(user_from_row((id, username, role))?),
+                hash,
+            },
+            _ => StoredPassword {
+                user: None,
+                hash: dummy_hash().to_string(),
+            },
+        })
     }
 
     /// Returns the opaque cookie token; only its SHA-256 is stored.
@@ -191,6 +194,40 @@ pub struct LibraryGrant {
     pub permission: LibraryPermission,
 }
 
+/// A password hash to check a sign-in against, and whose it is.
+pub struct StoredPassword {
+    user: Option<User>,
+    hash: String,
+}
+
+impl StoredPassword {
+    /// The expensive half of a sign-in: one Argon2id verification, whether
+    /// or not the user exists.
+    pub fn verify(self, password: &str) -> Option<User> {
+        #[cfg(test)]
+        VERIFICATIONS.with(|count| count.set(count.get() + 1));
+        let matches = PasswordHash::new(&self.hash)
+            .map(|hash| {
+                Argon2::default()
+                    .verify_password(password.as_bytes(), &hash)
+                    .is_ok()
+            })
+            .unwrap_or(false);
+        self.user.filter(|_| matches)
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static VERIFICATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Computes the hash unknown usernames are checked against, so the first
+/// sign-in for one doesn't take twice as long. Hosts call it at startup.
+pub fn warm_dummy_hash() {
+    dummy_hash();
+}
+
 fn dummy_hash() -> &'static str {
     static HASH: OnceLock<String> = OnceLock::new();
     HASH.get_or_init(|| hash_password("citadel-unknown-user").unwrap_or_default())
@@ -241,6 +278,45 @@ mod tests {
         let token = store.create_session(&alice.id).unwrap();
         store.delete_session(&token).unwrap();
         assert!(store.session_user(&token).unwrap().is_none());
+    }
+
+    #[test]
+    fn known_and_unknown_names_each_cost_one_verification_with_the_same_parameters() {
+        let (_directory, store, _) = store();
+        store.create_user("alice", "correct horse").unwrap();
+        let real = hash_password("anything").unwrap();
+        let real = PasswordHash::new(&real).unwrap();
+        let dummy = PasswordHash::new(dummy_hash()).unwrap();
+        assert_eq!(dummy.algorithm, real.algorithm);
+        assert_eq!(dummy.version, real.version);
+        assert_eq!(dummy.params, real.params);
+        assert_eq!(
+            dummy.salt.map(|salt| salt.len()),
+            real.salt.map(|salt| salt.len())
+        );
+        assert_eq!(
+            dummy.hash.map(|hash| hash.len()),
+            real.hash.map(|hash| hash.len())
+        );
+        let stored = |name: &str| store.lookup_hash(name).unwrap();
+        assert_eq!(
+            PasswordHash::new(&stored("alice").hash).unwrap().params,
+            real.params
+        );
+        assert_eq!(stored("nobody").hash, dummy_hash());
+
+        let verifications = |name: &str, password: &str| {
+            let before = VERIFICATIONS.with(std::cell::Cell::get);
+            let user = store.verify_password(name, password).unwrap();
+            (
+                user.is_some(),
+                VERIFICATIONS.with(std::cell::Cell::get) - before,
+            )
+        };
+        assert_eq!(verifications("alice", "correct horse"), (true, 1));
+        assert_eq!(verifications("alice", "wrong password"), (false, 1));
+        assert_eq!(verifications("nobody", "correct horse"), (false, 1));
+        assert_eq!(verifications(" ALICE ", "correct horse"), (true, 1));
     }
 
     #[test]

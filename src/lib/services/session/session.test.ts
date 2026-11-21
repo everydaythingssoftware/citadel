@@ -65,6 +65,46 @@ describe("browser session", () => {
 		});
 	});
 
+	it("says how long to wait when sign-in is being slowed down", async () => {
+		const refused = (seconds: string) =>
+			new Response(
+				JSON.stringify({
+					code: "rate_limited",
+					message: "Too many sign-in attempts",
+				}),
+				{
+					status: 429,
+					headers: {
+						"content-type": "application/json",
+						"retry-after": seconds,
+					},
+				},
+			);
+		const responses = [
+			refused("30"),
+			refused("1"),
+			refused("3600"),
+			refused(""),
+		];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => responses.shift()),
+		);
+		const service = createBrowserSession("https://citadel.test");
+		await expect(service.signIn("reader", "secret")).rejects.toThrow(
+			"Too many sign-in attempts. Try again in 30 seconds.",
+		);
+		await expect(service.signIn("reader", "secret")).rejects.toThrow(
+			"Too many sign-in attempts. Try again in 1 second.",
+		);
+		await expect(service.signIn("reader", "secret")).rejects.toThrow(
+			"Too many sign-in attempts. Try again in 1 hour.",
+		);
+		await expect(service.signIn("reader", "secret")).rejects.toThrow(
+			/^Too many sign-in attempts$/,
+		);
+	});
+
 	it("deletes the session to sign out", async () => {
 		const fetch = vi.fn(
 			async (request: Request) =>

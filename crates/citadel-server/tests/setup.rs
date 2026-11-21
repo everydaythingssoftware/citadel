@@ -78,6 +78,7 @@ fn fresh_with(
         ),
         setup_code: code.map(String::from),
         updates: citadel_server::updates::Updates::off(),
+        verifier: citadel_opds::verifier::VerifierPool::start(),
     };
     let staging = api::Staging::open(state.join("uploads"), api::UploadConfig::default()).unwrap();
     let metadata = Arc::new(
@@ -220,26 +221,47 @@ async fn a_fresh_server_bootstraps_its_administrator_with_the_setup_code() {
 }
 
 #[tokio::test]
-async fn wrong_setup_codes_back_off_like_sign_in() {
+async fn wrong_setup_codes_are_limited_per_address() {
     let directory = tempfile::tempdir().unwrap();
     let server = fresh(directory.path(), Some(SETUP_CODE));
-    let attempt = || {
-        request(
-            &server.router,
-            "POST",
-            "/api/setup/administrator",
-            Some(
-                json!({"setupCode": "AAAA-AAAA-AAAA", "username": "phil", "password": "a long password"}),
-            ),
-            None,
-        )
+    // Through a proxy on this machine, which names each client.
+    let attempt = |client: &str, code: &str| {
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/setup/administrator")
+            .header("origin", PUBLIC_URL)
+            .header("x-forwarded-for", client)
+            .header("content-type", "application/json")
+            .extension(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40_000))))
+            .body(Body::from(
+                json!({"setupCode": code, "username": "phil", "password": "a long password"})
+                    .to_string(),
+            ))
+            .unwrap();
+        let router = server.router.clone();
+        async move {
+            let response = router.oneshot(request).await.unwrap();
+            (response.status(), response.headers().clone())
+        }
     };
-    for _ in 0..3 {
-        assert_eq!(attempt().await.0, StatusCode::UNAUTHORIZED);
+    for guess in 0..100 {
+        let (status, _) = attempt("198.51.100.7", &format!("AAAA-AAAA-{guess:04}")).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{guess}");
     }
-    let (status, headers, _) = attempt().await;
+    let (status, headers) = attempt("198.51.100.7", SETUP_CODE).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(headers["retry-after"], "2");
+    assert_eq!(headers["retry-after"], "3600", "the real wait");
+    assert!(!server.accounts.administrator_exists().unwrap());
+
+    let (status, _) = attempt("198.51.100.8", "AAAA-AAAA-AAAA").await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "other addresses aren't affected"
+    );
+    let (status, _) = attempt("198.51.100.8", SETUP_CODE).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(server.accounts.administrator_exists().unwrap());
 }
 
 #[tokio::test]

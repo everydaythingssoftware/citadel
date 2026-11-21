@@ -27,7 +27,9 @@ prints a one-time setup code on stdout at each start, such as
 can read the server's console is its operator, the same trust the CLI relies
 on. `POST /api/setup/administrator` takes the code, a username and a password,
 creates the administrator and signs them in; the code is consumed on success,
-compared in constant time, and guesses share the sign-in back-off. The CLI
+compared in constant time, and guesses are limited per client address by
+the sign-in guard's address tier (ADR 0017, amending the shared back-off this
+ADR first described). The CLI
 keeps `users add`, gains `users add --admin`, `users promote` and `users
 demote` for scripts and for getting back in when no administrator can sign
 in, and `libraries add <path>` for scripted deployments.

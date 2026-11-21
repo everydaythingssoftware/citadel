@@ -52,6 +52,7 @@ fn access(
         ),
         setup_code: None,
         updates: citadel_server::updates::Updates::off(),
+        verifier: citadel_opds::verifier::VerifierPool::start(),
     };
     (accounts, access)
 }
@@ -2842,10 +2843,27 @@ fn through_proxy(router: axum::Router) -> axum::Router {
 /// The API router with nothing in front of it, so tests choose each
 /// request's peer and headers themselves.
 async fn bare() -> (tempfile::TempDir, Router) {
+    let (directory, router, _) = bare_with(None).await;
+    (directory, router)
+}
+
+/// [`bare`], with the verifier pool so tests can count checks, and with no
+/// public URLs when `addresses` says so.
+async fn bare_with(
+    addresses: Option<Arc<api::addresses::Addresses>>,
+) -> (
+    tempfile::TempDir,
+    Router,
+    citadel_opds::verifier::VerifierPool,
+) {
     let directory = tempfile::tempdir().unwrap();
     drop(Library::create_library_at(directory.path().to_str().unwrap()).unwrap());
     let source = Arc::new(CalibreCatalogSource::open(directory.path()).unwrap());
-    let (_, access) = access(directory.path(), &source);
+    let (_, mut access) = access(directory.path(), &source);
+    if let Some(addresses) = addresses {
+        access.addresses = addresses;
+    }
+    let verifier = access.verifier.clone();
     let service = OpdsService::with_ephemeral_credentials(source.clone(), Vec::new());
     let staging = api::Staging::open(
         directory.path().join("state/uploads"),
@@ -2853,7 +2871,7 @@ async fn bare() -> (tempfile::TempDir, Router) {
     )
     .unwrap();
     let router = api::router(source, &service, access, None, staging, metadata());
-    (directory, router)
+    (directory, router, verifier)
 }
 
 fn from_peer(router: &Router, peer: &str) -> Router {
@@ -3046,4 +3064,326 @@ async fn clients_behind_a_proxy_each_have_their_own_short_request_cap() {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         soft.push(response);
     }
+}
+
+/// A sign-in as a browser at `client` sends it, through a proxy on this
+/// machine (trusted by default) that names the client in `X-Forwarded-For`.
+fn forwarded_sign_in(client: &str, username: &str, password: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/api/session")
+        .header("host", "books.example.com")
+        .header("x-forwarded-proto", "https")
+        .header("x-forwarded-for", client)
+        .header("origin", PUBLIC_URL)
+        .header("content-type", "application/json")
+        .extension(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40_000))))
+        .body(Body::from(
+            json!({"username": username, "password": password}).to_string(),
+        ))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_burst_of_wrong_sign_ins_is_checked_twice_and_locks_nobody_else_out() {
+    let (_directory, router, verifier) = bare_with(None).await;
+    let burst = (0..64).map(|attempt| {
+        router.clone().oneshot(forwarded_sign_in(
+            "203.0.113.7",
+            "reader",
+            &format!("wrong-{attempt}"),
+        ))
+    });
+    let statuses: Vec<StatusCode> = futures_util::future::join_all(burst)
+        .await
+        .into_iter()
+        .map(|response| response.unwrap().status())
+        .collect();
+    let count = |status: StatusCode| statuses.iter().filter(|seen| **seen == status).count();
+    assert!(verifier.checked() <= 2, "{}", verifier.checked());
+    assert_eq!(count(StatusCode::UNAUTHORIZED), verifier.checked() as usize);
+    // Admission lets one client have 16 requests in flight; of those, the
+    // guard lets two be checked and refuses the rest at once.
+    assert_eq!(count(StatusCode::TOO_MANY_REQUESTS), 14, "{statuses:?}");
+    assert_eq!(count(StatusCode::SERVICE_UNAVAILABLE), 48, "{statuses:?}");
+
+    let started = std::time::Instant::now();
+    let response = router
+        .clone()
+        .oneshot(forwarded_sign_in(
+            "203.0.113.8",
+            "reader",
+            "secret-password",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    let cookies: Vec<&str> = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .collect();
+    assert!(cookies[0].starts_with("citadel_session="), "{cookies:?}");
+    assert!(
+        cookies[1].starts_with("citadel_device=") && cookies[1].contains("Path=/api/session"),
+        "{cookies:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_known_browser_signs_in_while_its_username_is_guessed_at() {
+    let (directory, router, _) = bare_with(None).await;
+    let response = router
+        .clone()
+        .oneshot(forwarded_sign_in(
+            "198.51.100.20",
+            "reader",
+            "secret-password",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let device = response_cookie(&response, "citadel_device");
+    for attempt in 0..12 {
+        router
+            .clone()
+            .oneshot(forwarded_sign_in(
+                &format!("203.0.113.{}", attempt + 1),
+                "Reader",
+                &format!("guess-{attempt}"),
+            ))
+            .await
+            .unwrap();
+    }
+    let new_device = router
+        .clone()
+        .oneshot(forwarded_sign_in("192.0.2.1", "reader", "secret-password"))
+        .await
+        .unwrap();
+    assert_eq!(new_device.status(), StatusCode::TOO_MANY_REQUESTS);
+    let wait: u64 = new_device.headers()["retry-after"]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((1..=30).contains(&wait), "{wait}");
+
+    // Administrators see counts, nothing more; readers see nothing.
+    let limits = |cookie: Option<&str>| {
+        let mut request = Request::builder()
+            .uri("/api/server/sign-in")
+            .header("host", "books.example.com")
+            .header("x-forwarded-proto", "https")
+            .extension(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40_000))));
+        if let Some(cookie) = cookie {
+            request = request.header("cookie", cookie);
+        }
+        router.clone().oneshot(request.body(Body::empty()).unwrap())
+    };
+    let session = response_cookie(&response, "citadel_session");
+    assert_eq!(
+        limits(Some(&session)).await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    let accounts = accounts(directory.path());
+    accounts
+        .create_user_with_role(
+            "phil",
+            "administrator password",
+            citadel_core::store::Role::Administrator,
+        )
+        .unwrap();
+    let admin = router
+        .clone()
+        .oneshot(forwarded_sign_in(
+            "192.0.2.9",
+            "phil",
+            "administrator password",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(admin.status(), StatusCode::OK);
+    let counts = limits(Some(&response_cookie(&admin, "citadel_session")))
+        .await
+        .unwrap();
+    assert_eq!(counts.status(), StatusCode::OK);
+    let counts: Value =
+        serde_json::from_slice(&to_bytes(counts.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(
+        counts,
+        json!({"bannedAddresses": 0, "bannedBlocks": 0, "slowedUsernames": 1})
+    );
+
+    let mut known = forwarded_sign_in("192.0.2.1", "reader", "secret-password");
+    known
+        .headers_mut()
+        .insert("cookie", device.parse().unwrap());
+    assert_eq!(
+        router.clone().oneshot(known).await.unwrap().status(),
+        StatusCode::OK,
+        "the browser's cookie vouches for it, wherever it is"
+    );
+    let mut wrong_name = forwarded_sign_in("192.0.2.2", "someone-else", "x");
+    wrong_name
+        .headers_mut()
+        .insert("cookie", device.parse().unwrap());
+    let response = router.clone().oneshot(wrong_name).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn forwarded_addresses_from_an_untrusted_peer_dont_change_who_is_banned() {
+    let (_directory, router, _) =
+        bare_with(Some(api::addresses::Addresses::fixed(Vec::new()))).await;
+    let attempt = |peer: &str, forwarded: String, username: String, password: String| {
+        from_peer(&router, peer).oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/session")
+                .header("host", "books.example.com")
+                .header("x-forwarded-for", forwarded)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"username": username, "password": password}).to_string(),
+                ))
+                .unwrap(),
+        )
+    };
+    for guess in 0..100 {
+        let response = attempt(
+            "203.0.113.9:50000",
+            format!("198.51.{}.{}", guess / 200, guess % 200 + 1),
+            format!("user{guess}"),
+            format!("guess{guess}"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{guess}");
+    }
+    let refused = attempt(
+        "203.0.113.9:50000",
+        "192.0.2.200".into(),
+        "reader".into(),
+        "secret-password".into(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(refused.headers()["retry-after"], "3600");
+    let other = attempt(
+        "203.0.113.10:50000",
+        "203.0.113.9".into(),
+        "reader".into(),
+        "secret-password".into(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(other.status(), StatusCode::OK, "a header names no one");
+}
+
+#[tokio::test]
+async fn opds_counts_wrong_keys_not_bare_requests_and_known_readers_keep_reading() {
+    let (directory, service, _router, id, _) = fixture().await;
+    let catalog = service.status().await.urls[0].clone();
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let get = |url: String, from: &str, key: Option<&str>| {
+        let mut request = client.get(url).header("x-forwarded-for", from);
+        if let Some(key) = key {
+            request = request.basic_auth("reader", Some(key));
+        }
+        async move { request.send().await.unwrap().status() }
+    };
+    for _ in 0..150 {
+        assert_eq!(get(catalog.clone(), "198.51.100.1", None).await, 401);
+    }
+    assert_eq!(
+        get(catalog.clone(), "198.51.100.1", Some("secret")).await,
+        200,
+        "challenges aren't counted"
+    );
+
+    // The reader's address becomes known when it signs in.
+    let reader = "192.0.2.50";
+    assert_eq!(get(catalog.clone(), reader, Some("secret")).await, 200);
+    // Someone guesses at the reader's key from all over.
+    for guess in 0..30 {
+        let status = get(
+            catalog.clone(),
+            &format!("203.0.{guess}.1"),
+            Some(&format!("guess-{guess}")),
+        )
+        .await;
+        assert!(status == 401 || status == 429, "{status}");
+    }
+    let refused = client
+        .get(&catalog)
+        .header("x-forwarded-for", "192.0.2.99")
+        .basic_auth("reader", Some("secret"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 429, "a new reader waits for the username");
+    let wait: u64 = refused.headers()["retry-after"]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((1..=30).contains(&wait));
+    assert_eq!(get(catalog.clone(), reader, Some("secret")).await, 200);
+
+    // A reader fetching a grid of covers at once is never refused by the
+    // guard. Past 16 in flight, admission's per-client cap answers 503.
+    let cover = catalog.replace("/opds", &format!("/opds/books/{id}/cover"));
+    let covers = (0..20).map(|_| get(cover.clone(), reader, Some("secret")));
+    let statuses = futures_util::future::join_all(covers).await;
+    assert!(
+        statuses
+            .iter()
+            .all(|status| *status == 200 || *status == 503),
+        "{statuses:?}"
+    );
+    assert!(
+        statuses.iter().filter(|status| **status == 200).count() >= 16,
+        "{statuses:?}"
+    );
+
+    // Wrong keys from one address count and end in a ban.
+    let mut statuses = Vec::new();
+    for guess in 0..101 {
+        let wrong = client
+            .get(&catalog)
+            .header("x-forwarded-for", "198.51.100.66")
+            .basic_auth(format!("user{guess}"), Some("wrong"))
+            .send()
+            .await
+            .unwrap();
+        statuses.push(wrong.status().as_u16());
+        if guess == 100 {
+            assert_eq!(wrong.headers()["retry-after"], "3600");
+        }
+    }
+    assert!(statuses[..100].iter().all(|status| *status == 401));
+    assert_eq!(statuses[100], 429);
+    service.stop().await;
+    drop(directory);
+}
+
+fn response_cookie(response: &axum::response::Response, name: &str) -> String {
+    response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|value| {
+            value
+                .to_str()
+                .unwrap()
+                .split(';')
+                .next()
+                .unwrap()
+                .to_string()
+        })
+        .find(|cookie| cookie.starts_with(&format!("{name}=")))
+        .unwrap()
 }

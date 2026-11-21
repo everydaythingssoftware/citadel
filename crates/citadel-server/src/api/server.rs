@@ -265,6 +265,32 @@ async fn forget_proxy(
     Ok(Json(proxies_listing(&state)))
 }
 
+#[derive(Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SignInLimits {
+    /// Client addresses (`/32` or `/64`) refused right now for too many
+    /// wrong sign-ins.
+    banned_addresses: usize,
+    /// Neighbourhoods (`/24`, `/56` or `/48`) refused right now.
+    banned_blocks: usize,
+    /// Usernames being slowed down right now, because someone got them wrong
+    /// too often. Browsers and readers that signed in before aren't slowed.
+    slowed_usernames: usize,
+}
+
+#[utoipa::path(get, path = "/api/server/sign-in", operation_id = "getSignInLimits",
+    description = "How many addresses are refused and usernames slowed down for wrong sign-ins right now (ADR 0017). Counts only. Administrators only.",
+    responses((status = 200, body = SignInLimits), (status = 401, body = LibraryError), (status = 403, body = LibraryError)),
+    security(("session" = [])))]
+async fn sign_in_limits(State(state): State<ApiState>) -> Json<SignInLimits> {
+    let summary = state.access.guard.summary();
+    Json(SignInLimits {
+        banned_addresses: summary.banned_addresses,
+        banned_blocks: summary.banned_neighbourhoods,
+        slowed_usernames: summary.slowed_usernames,
+    })
+}
+
 pub(super) async fn name_the_build(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     response
@@ -283,4 +309,5 @@ pub(super) fn administrator_routes() -> OpenApiRouter<ApiState> {
     OpenApiRouter::new()
         .routes(routes!(addresses))
         .routes(routes!(proxies, trust_proxy, forget_proxy))
+        .routes(routes!(sign_in_limits))
 }
