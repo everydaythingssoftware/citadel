@@ -290,11 +290,10 @@ Server page.
 - Admission still applies on top: one client may have 16 short requests in
   flight, so a reader fetching more than 16 covers at once gets 503 for the
   rest. The guard never refuses them.
-- The verifier's fair queue (64) is as large as the API's short pool (64). A
-  flood from many neighbourhoods that cycles usernames (so the username tier
-  doesn't stop it) can keep both full and answer other short requests 503
-  until each address spends its allowance. Measured only in analysis, not in
-  the load test, which floods the administrator's name from many addresses.
+- The verifier's queues are kept small (16 in the fair queue, 8 in the
+  known-device lane), so waiting sign-ins hold at most 24 of the API's 64
+  short slots. A flood from many neighbourhoods that cycles usernames gets
+  503 from the full queue instead of crowding out other requests.
 - On loopback every client is local, so the load test's spoofed-header
   scenario runs in soft mode, the worst case: only the username tier and the
   pool apply, and the two verifier threads stay busy.

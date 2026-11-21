@@ -25,10 +25,12 @@ use crate::{
 pub const VERIFIER_THREADS: usize = 2;
 /// Checks waiting from one neighbourhood…
 pub const QUEUED_PER_NEIGHBOURHOOD: usize = 4;
-/// …and from everyone, in the fair queue.
-pub const QUEUED_TOTAL: usize = 64;
+/// …and from everyone, in the fair queue. With the known lane this holds
+/// at most 24 of the API's 64 short slots, so a flood of sign-ins can't
+/// crowd out other requests, and two threads clear it in well under a second.
+pub const QUEUED_TOTAL: usize = 16;
 /// Checks from known devices waiting in their own lane.
-pub const QUEUED_KNOWN: usize = 16;
+pub const QUEUED_KNOWN: usize = 8;
 
 /// Which queue a check waits in.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
