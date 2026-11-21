@@ -355,7 +355,19 @@ mod tests {
         assert_close(palette.dominant.l, blue.l, 1e-9);
         assert_close(palette.dominant.a, blue.a, 1e-9);
         assert_close(palette.dominant.b, blue.b, 1e-9);
-        // src/lib/thumbhash.test.ts decodes this same hash.
-        assert_eq!(colors.thumbhash, "FLYBBQCGhnh4h4iHd3eH9weH+Ed4");
+        // The AC terms go through f32 cos, whose last bits differ between
+        // platforms' libm, so the hash is pinned by what it decodes to, not
+        // byte for byte. src/lib/thumbhash.test.ts decodes the Linux hash,
+        // "FLYBBQCGhnh4h4iHd3eH9weH+Ed4".
+        let hash = base64::engine::general_purpose::STANDARD
+            .decode(&colors.thumbhash)
+            .expect("base64");
+        assert_eq!(hash.len(), 21);
+        let (r, g, b, a) = thumbhash::thumb_hash_to_average_rgba(&hash).expect("thumbhash");
+        for (actual, expected) in [(r, 40.0), (g, 80.0), (b, 120.0), (a, 255.0)] {
+            assert_close(f64::from(actual) * 255.0, expected, 3.0);
+        }
+        let ratio = thumbhash::thumb_hash_to_approximate_aspect_ratio(&hash).expect("ratio");
+        assert_close(f64::from(ratio), 600.0 / 900.0, 0.1);
     }
 }
