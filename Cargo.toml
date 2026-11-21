@@ -2,12 +2,15 @@
 resolver = "2"
 members = [
     "crates/citadel-core",
+    "crates/citadel-epub",
     "crates/citadel-metadata",
     "crates/citadel-opds",
     "crates/citadel-server",
     "crates/libcalibre",
     "src-tauri",
 ]
+# Built with nightly by .github/workflows/fuzz.yml.
+exclude = ["crates/citadel-epub/fuzz"]
 
 [workspace.package]
 # citadel-desktop and citadel-server release together under one version.

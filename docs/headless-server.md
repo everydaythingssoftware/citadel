@@ -483,6 +483,15 @@ maxUploadsPerUser = 100
 reviewHours = 24             # how long a finished upload waits to be added
 ```
 
+**Files Citadel refuses.** An EPUB built to exhaust the reader is refused
+when its last chunk arrives. The server answers 422 with code `unprocessable`,
+the reason in `message` (for example "This EPUB's package file is larger than
+8 MiB."), and the upload is discarded. Examples are a package file over 8 MiB
+or a `container.xml` over 64 KiB, elements nested more than 256 deep, more
+than 20,000 files in the archive, or a package path that leaves the book
+(ADR 0016). A damaged EPUB that simply can't be read is still accepted, titled
+by its file name.
+
 Starting an upload reserves its declared size, so uploads in progress can't
 exceed `maxStagedBytes`; when they would, or a user already has
 `maxUploadsPerUser` uploads, the server answers 507.

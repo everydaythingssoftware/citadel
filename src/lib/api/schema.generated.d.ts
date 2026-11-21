@@ -1115,7 +1115,7 @@ export interface components {
             message: string;
         };
         /** @enum {string} */
-        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "readOnly" | "unavailable" | "tooLarge" | "conflict" | "storageFull" | "internal";
+        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "readOnly" | "unavailable" | "tooLarge" | "conflict" | "storageFull" | "unprocessable" | "internal";
         LibraryPublisher: {
             /** Format: int32 */
             book_count: number;
@@ -4537,6 +4537,15 @@ export interface operations {
                 };
             };
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            /** @description The finished file is one Citadel refuses to read, such as an EPUB past its parsing limits; the upload is discarded */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

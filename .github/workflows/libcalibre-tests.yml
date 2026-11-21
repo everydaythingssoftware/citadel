@@ -121,6 +121,11 @@ jobs:
       - name: Run tests
         run: cargo test --package libcalibre --all-features
 
+      # libcalibre reads EPUBs through citadel-epub; its hostile-file tests
+      # run each case in a child process on a small stack.
+      - name: Run citadel-epub tests
+        run: cargo test --package citadel-epub
+
       - name: Check docs (every public item documented, links resolve)
         env:
           RUSTDOCFLAGS: "-D warnings"

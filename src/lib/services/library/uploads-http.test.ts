@@ -175,6 +175,7 @@ describe("HTTP uploads", () => {
 			[401, "unauthorized", UploadFailure.unauthorized],
 			[403, "readOnly", UploadFailure.readOnly],
 			[400, "invalidArgument", UploadFailure.invalid],
+			[422, "unprocessable", UploadFailure.refused],
 			[503, "unavailable", UploadFailure.network],
 		] as const;
 		for (const [status, code, failure] of cases) {

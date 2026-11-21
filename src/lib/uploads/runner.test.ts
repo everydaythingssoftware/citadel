@@ -196,6 +196,18 @@ describe("upload runner", () => {
 		);
 	});
 
+	it("shows why the server refused to read a file on its row", async () => {
+		const queue = setup();
+		const reason = "This EPUB's package file is larger than 8 MiB.";
+		queue.fake.failNext(
+			"sendChunk",
+			new UploadError(UploadFailure.refused, reason),
+		);
+		queue.runner.addFiles([file("Huge.epub", "abcd")]);
+		await until(() => queue.phases()[0] === UploadPhase.rejected);
+		expect(queue.state().items[0]?.message).toBe(reason);
+	});
+
 	it("pauses when the server is full and carries on once a book is added", async () => {
 		const queue = setup({ maxUploads: 1 });
 		queue.runner.addFiles([file("One.epub", "abcd"), file("Two.epub", "efgh")]);

@@ -167,7 +167,7 @@ impl DesktopStaging {
         }
 
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let mut read = read_book_file(&path, &file_name, extension);
+        let mut read = read_book_file(&path, &file_name, extension)?;
         let cover = read
             .cover
             .take()
@@ -349,6 +349,25 @@ mod tests {
         let other = book_at(directory.path(), "notes.docx", "PK");
         for path in [empty, fake, other, directory.path().join("missing.txt")] {
             assert!(staging.stage("one".into(), path).is_err());
+        }
+        assert!(staging.list("one").unwrap().is_empty());
+    }
+
+    #[test]
+    fn hostile_epubs_are_refused_with_the_reason() {
+        let (directory, staging) = staging();
+        for (name, build) in citadel_epub::fixtures::hostile() {
+            let path = directory.path().join(format!("{name}.epub"));
+            fs::write(&path, build()).unwrap();
+            let Err(error) = staging.stage("one".into(), path) else {
+                panic!("{name} was staged");
+            };
+            assert_eq!(error.code, LibraryErrorCode::Unprocessable, "{name}");
+            assert!(
+                error.message.starts_with("This EPUB"),
+                "{name}: {}",
+                error.message
+            );
         }
         assert!(staging.list("one").unwrap().is_empty());
     }

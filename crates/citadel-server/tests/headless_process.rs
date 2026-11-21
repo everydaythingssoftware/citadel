@@ -523,3 +523,180 @@ fn a_database_from_a_newer_citadel_keeps_the_server_answering_with_the_reason() 
     let status = child.wait().unwrap();
     assert!(!status.success(), "stopping still reports the failure");
 }
+
+/// A small JPEG, so the committed book's cover can be checked.
+fn jpeg() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    image::RgbImage::from_pixel(4, 4, image::Rgb([200, 40, 40]))
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Jpeg,
+        )
+        .unwrap();
+    bytes
+}
+
+#[test]
+fn hostile_epubs_are_refused_and_server_survives() {
+    let directory = tempfile::tempdir().unwrap();
+    let state = directory.path().join("state");
+    let library_path = directory.path().join("library");
+    drop(Library::create_library_at(library_path.to_str().unwrap()).unwrap());
+    let api_port = free_port();
+    let with_settings = |command: &mut Command| {
+        command
+            .env_remove("CITADEL_CONFIG")
+            .env("CITADEL_LISTEN", format!("127.0.0.1:{api_port}"))
+            .env("CITADEL_OPDS_PORT", free_port().to_string())
+            .env("CITADEL_STATE_DIRECTORY", &state);
+    };
+    let admin = |args: &[&str], stdin: &str| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_citadel-server"));
+        with_settings(&mut command);
+        let mut child = command
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        std::io::Write::write_all(&mut child.stdin.take().unwrap(), stdin.as_bytes()).unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    admin(&["libraries", "add", library_path.to_str().unwrap()], "");
+    admin(
+        &["users", "add", "admin", "--password-stdin", "--admin"],
+        "admin-password\n",
+    );
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_citadel-server"));
+    with_settings(&mut command);
+    let mut child = ServerProcess(
+        command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let (lines, received) = mpsc::channel();
+    for stream in [
+        Box::new(child.stdout.take().unwrap()) as Box<dyn std::io::Read + Send>,
+        Box::new(child.stderr.take().unwrap()),
+    ] {
+        let lines = lines.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let _ = lines.send(line);
+            }
+        });
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut seen = Vec::new();
+    while !seen
+        .iter()
+        .any(|line: &String| line.contains("citadel_server api="))
+    {
+        let wait = deadline.saturating_duration_since(Instant::now());
+        match received.recv_timeout(wait) {
+            Ok(line) => seen.push(line),
+            Err(_) => panic!("server did not start: {seen:#?}"),
+        }
+    }
+
+    let origin = format!("http://127.0.0.1:{api_port}");
+    let client = reqwest::blocking::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap();
+    let signed_in = client
+        .post(format!("{origin}/api/session"))
+        .header("content-type", "application/json")
+        .header("origin", &origin)
+        .body(r#"{"username":"admin","password":"admin-password"}"#)
+        .send()
+        .unwrap();
+    assert_eq!(signed_in.status(), 200);
+    let cookie = signed_in.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    let upload = |name: &str, bytes: Vec<u8>| -> (u16, serde_json::Value, String) {
+        let created = client
+            .post(format!("{origin}/api/uploads"))
+            .header("content-type", "application/json")
+            .header("origin", &origin)
+            .header("cookie", &cookie)
+            .body(serde_json::json!({"fileName": name, "size": bytes.len()}).to_string())
+            .send()
+            .unwrap();
+        assert_eq!(created.status(), 201, "{name}");
+        let id = created.json::<serde_json::Value>().unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let sent = client
+            .patch(format!("{origin}/api/uploads/{id}/content"))
+            .header("content-type", "application/octet-stream")
+            .header("origin", &origin)
+            .header("cookie", &cookie)
+            .header("upload-offset", "0")
+            .body(bytes)
+            .send()
+            .unwrap();
+        let status = sent.status().as_u16();
+        (status, sent.json().unwrap(), id)
+    };
+    let alive = |child: &mut ServerProcess| {
+        assert!(child.try_wait().unwrap().is_none(), "the server is running");
+        let health = client.get(format!("{origin}/api/health")).send().unwrap();
+        assert_eq!(health.status(), 200);
+    };
+
+    for (name, build) in citadel_epub::fixtures::hostile() {
+        let (status, body, id) = upload(&format!("{name}.epub"), build());
+        assert_eq!(status, 422, "{name}: {body}");
+        assert_eq!(body["code"], "unprocessable", "{name}: {body}");
+        let reason = body["message"].as_str().unwrap();
+        assert!(reason.starts_with("This EPUB"), "{name}: {reason}");
+        let gone = client
+            .get(format!("{origin}/api/uploads/{id}"))
+            .header("cookie", &cookie)
+            .send()
+            .unwrap();
+        assert_eq!(gone.status(), 404, "{name}: a refused upload is discarded");
+        alive(&mut child);
+    }
+
+    let book = citadel_epub::fixtures::Builder::book(
+        r#"<dc:identifier id="id">urn:isbn:9780306406157</dc:identifier><dc:title>Survivor</dc:title><dc:creator>Ann Author</dc:creator>"#,
+        r#"<item id="c" href="cover.jpg" media-type="image/jpeg" properties="cover-image"/>"#,
+    )
+    .entry("OEBPS/cover.jpg", jpeg())
+    .build();
+    let (status, staged, id) = upload("Survivor.epub", book);
+    assert_eq!(status, 200, "{staged}");
+    assert_eq!(staged["book"]["title"], "Survivor");
+    assert!(staged["book"]["coverUrl"].is_string(), "{staged}");
+    let committed = client
+        .post(format!("{origin}/api/uploads/{id}/commit"))
+        .header("content-type", "application/json")
+        .header("origin", &origin)
+        .header("cookie", &cookie)
+        .body(r#"{"title":"Survivor","authorNames":["Ann Author"]}"#)
+        .send()
+        .unwrap();
+    assert_eq!(committed.status(), 201);
+    let added: serde_json::Value = committed.json().unwrap();
+    assert_eq!(added["title"], "Survivor");
+    assert!(!added["cover_image"].is_null(), "{added}");
+    alive(&mut child);
+}

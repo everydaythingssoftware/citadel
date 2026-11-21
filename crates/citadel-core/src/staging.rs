@@ -113,14 +113,18 @@ pub struct ReadBook {
 /// Reads the book file at `path`. `file_name` is the name the person knows
 /// it by, which titles PDF and TXT files (and anything without a title of
 /// its own) whatever the file is called on disk. The cover URL is left for
-/// the host to fill in once it has stored a preview.
-pub fn read_book_file(path: &Path, file_name: &str, extension: String) -> ReadBook {
-    let metadata = book_file::read_metadata(path);
-    let cover = metadata
-        .as_ref()
-        .is_some_and(|metadata| metadata.has_cover)
-        .then(|| book_file::cover_image_data(path))
-        .flatten();
+/// the host to fill in once it has stored a preview. A file that can't be
+/// parsed is still staged, titled by its name; one Citadel refuses to read
+/// (an EPUB past its parsing limits) is an `Unprocessable` error.
+pub fn read_book_file(
+    path: &Path,
+    file_name: &str,
+    extension: String,
+) -> Result<ReadBook, LibraryError> {
+    let (metadata, cover) = match book_file::read_book(path)? {
+        Some(book) => (Some(book.metadata), book.cover),
+        None => (None, None),
+    };
     let fallback_title = Path::new(file_name)
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -141,7 +145,7 @@ pub fn read_book_file(path: &Path, file_name: &str, extension: String) -> ReadBo
         MimeType::PDF | MimeType::TXT => None,
         _ => metadata.title,
     };
-    ReadBook {
+    Ok(ReadBook {
         book: StagedBook {
             format: extension,
             title: title.unwrap_or(fallback_title),
@@ -154,7 +158,7 @@ pub fn read_book_file(path: &Path, file_name: &str, extension: String) -> ReadBo
             cover_url: None,
         },
         cover,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -215,9 +219,35 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("0f3c.txt");
         std::fs::write(&path, "Call me Ishmael.").unwrap();
-        let read = read_book_file(&path, "Moby Dick.txt", "txt".into());
+        let read = read_book_file(&path, "Moby Dick.txt", "txt".into()).unwrap();
         assert_eq!(read.book.title, "Moby Dick");
         assert_eq!(read.book.format, "txt");
         assert!(read.cover.is_none());
+    }
+
+    #[test]
+    fn hostile_epubs_are_refused_and_damaged_ones_staged() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("upload.epub");
+        for (name, build) in citadel_epub::fixtures::hostile() {
+            std::fs::write(&path, build()).unwrap();
+            let error = read_book_file(&path, "Book.epub", "epub".into())
+                .err()
+                .unwrap_or_else(|| panic!("{name} was read"));
+            assert_eq!(
+                error.code,
+                crate::error::LibraryErrorCode::Unprocessable,
+                "{name}"
+            );
+            assert!(
+                error.message.starts_with("This EPUB"),
+                "{name}: {}",
+                error.message
+            );
+        }
+
+        std::fs::write(&path, b"PK\x03\x04 but not a zip").unwrap();
+        let read = read_book_file(&path, "Damaged.epub", "epub".into()).unwrap();
+        assert_eq!(read.book.title, "Damaged");
     }
 }

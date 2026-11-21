@@ -1,0 +1,57 @@
+name: Fuzz EPUB reader
+
+on:
+  schedule:
+    # Mondays, 04:17 UTC.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [epub_package]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        run: rustup toolchain install
+
+      - name: Install nightly
+        run: rustup toolchain install nightly --profile minimal
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1-rust"
+          shared-key: "fuzz"
+          workspaces: |
+            .
+            crates/citadel-epub/fuzz
+
+      - name: Seed the corpus with the hostile fixtures
+        env:
+          CITADEL_EPUB_SEEDS: ${{ github.workspace }}/crates/citadel-epub/fuzz/corpus/${{ matrix.target }}
+        run: cargo test --locked -p citadel-epub --test hostile -- --ignored write_fuzz_seeds
+
+      - name: Fuzz for 20 minutes
+        working-directory: crates/citadel-epub
+        run: >-
+          cargo +nightly fuzz run ${{ matrix.target }}
+          -- -max_total_time=1200 -rss_limit_mb=2048 -max_len=16777216
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}-artifacts
+          path: crates/citadel-epub/fuzz/artifacts/
+          retention-days: 30

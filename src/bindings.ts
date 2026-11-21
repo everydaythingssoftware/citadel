@@ -831,7 +831,12 @@ export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited
 /**
  * The server has no room to store more.
  */
-"storageFull" | "internal"
+"storageFull" | 
+/**
+ * A file Citadel refuses to read, such as an EPUB past its parsing
+ * limits; the message says why.
+ */
+"unprocessable" | "internal"
 /**
  * What a folder picked for "Add Library…" holds, so the app can offer the
  * right next step instead of refusing the folder.

@@ -18,6 +18,7 @@ const failureForCode: Partial<Record<LibraryErrorCode, TUploadFailure>> = {
 	tooLarge: UploadFailure.tooLarge,
 	storageFull: UploadFailure.storageFull,
 	invalidArgument: UploadFailure.invalid,
+	unprocessable: UploadFailure.refused,
 	readOnly: UploadFailure.readOnly,
 	unavailable: UploadFailure.network,
 };
@@ -31,11 +32,13 @@ const failureForStatus = (status: number): TUploadFailure =>
 				? UploadFailure.conflict
 				: status === 413
 					? UploadFailure.tooLarge
-					: status === 507
-						? UploadFailure.storageFull
-						: status >= 500
-							? UploadFailure.server
-							: UploadFailure.invalid;
+					: status === 422
+						? UploadFailure.refused
+						: status === 507
+							? UploadFailure.storageFull
+							: status >= 500
+								? UploadFailure.server
+								: UploadFailure.invalid;
 
 const refusal = (
 	status: number,

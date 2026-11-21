@@ -6,7 +6,7 @@ use mobi::{
     Mobi,
 };
 
-use super::{non_empty, BookFileMetadata, MAX_COVER_BYTES};
+use super::{guarded, non_empty, BookFileContents, BookFileMetadata, MAX_COVER_BYTES};
 use crate::mime_type::MimeType;
 
 fn language_to_string(lang: &Language) -> String {
@@ -100,12 +100,6 @@ fn with_mobi<T>(path: &Path, read: impl FnOnce(&Mobi) -> Option<T>) -> Option<T>
     guarded(|| read(&mobi))
 }
 
-fn guarded<T>(read: impl FnOnce() -> Option<T>) -> Option<T> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(read))
-        .ok()
-        .flatten()
-}
-
 /// The cover named by the EXTH cover offset (or, failing that, the thumbnail
 /// offset). Offsets count records from the first image record, which can
 /// also hold fonts, so the record must really be an image.
@@ -154,10 +148,22 @@ fn display_name(author: &str) -> Option<String> {
 }
 
 pub(super) fn read_metadata(path: &Path, format: MimeType) -> Option<BookFileMetadata> {
-    with_mobi(path, |mobi| read_metadata_from(mobi, format))
+    with_mobi(path, |mobi| {
+        read_metadata_from(mobi, format, guarded(|| cover(mobi)).is_some())
+    })
 }
 
-fn read_metadata_from(mobi: &Mobi, format: MimeType) -> Option<BookFileMetadata> {
+pub(super) fn read_book(path: &Path, format: MimeType) -> Option<BookFileContents> {
+    with_mobi(path, |mobi| {
+        let cover = guarded(|| cover(mobi));
+        Some(BookFileContents {
+            metadata: read_metadata_from(mobi, format, cover.is_some())?,
+            cover,
+        })
+    })
+}
+
+fn read_metadata_from(mobi: &Mobi, format: MimeType, has_cover: bool) -> Option<BookFileMetadata> {
     let publication_date = NaiveDateTime::parse_from_str(
         &mobi.metadata.publish_date().unwrap_or_default(),
         "%Y-%m-%dT%H:%M:%S%z",
@@ -190,7 +196,7 @@ fn read_metadata_from(mobi: &Mobi, format: MimeType) -> Option<BookFileMetadata>
             .filter_map(|subject| non_empty(subject))
             .collect(),
         publication_date,
-        has_cover: guarded(|| cover(mobi)).is_some(),
+        has_cover,
     })
 }
 

@@ -753,7 +753,9 @@ impl Drop for Receiving {
         description = "The next bytes of the file, at most chunkBytes"),
     responses((status = 200, body = StagedUpload), (status = 400, body = LibraryError),
         (status = 401, body = LibraryError), (status = 404, body = LibraryError),
-        (status = 409, body = LibraryError), (status = 413, body = LibraryError)),
+        (status = 409, body = LibraryError), (status = 413, body = LibraryError),
+        (status = 422, body = LibraryError,
+            description = "The finished file is one Citadel refuses to read, such as an EPUB past its parsing limits; the upload is discarded")),
     security(("session" = [])))]
 pub(super) async fn receive(
     State(state): State<ApiState>,
@@ -896,7 +898,17 @@ async fn receive_chunk(
 
     let received = offset + written;
     if received == size {
-        let book = read_book(&state, &staging, &id, &path, file_name, extension).await?;
+        let book = match read_book(&state, &staging, &id, &path, file_name, extension.clone()).await
+        {
+            Ok(book) => book,
+            Err(ApiFailure(error)) if error.code == LibraryErrorCode::Unprocessable => {
+                // A refused file can't be added, so nothing of it is kept.
+                drop(transfer);
+                discard(&staging, &id, &extension);
+                return Err(error.into());
+            }
+            Err(failure) => return Err(failure),
+        };
         staging.with_upload(&id, &owner, |upload| {
             upload.book = Some(book);
             upload.ready_at = Some((staging.now)());
@@ -956,17 +968,18 @@ async fn read_book(
     let cover_url = format!("/api/uploads/{id}/cover");
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let mut read = read_book_file(&path, &file_name, extension);
+        let mut read = read_book_file(&path, &file_name, extension)?;
         let has_cover = read
             .cover
             .take()
             .and_then(|cover| resized_jpeg(ImageReader::new(Cursor::new(cover)), 600, 600))
             .is_some_and(|(preview, _, _)| std::fs::write(&cover_path, preview).is_ok());
         read.book.cover_url = has_cover.then_some(cover_url);
-        read.book
+        Ok::<_, LibraryError>(read.book)
     })
     .await
-    .map_err(|_| LibraryError::unavailable().into())
+    .map_err(|_| LibraryError::unavailable())?
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

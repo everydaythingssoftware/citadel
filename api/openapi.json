@@ -3754,6 +3754,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "The finished file is one Citadel refuses to read, such as an EPUB past its parsing limits; the upload is discarded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5010,6 +5020,7 @@
           "tooLarge",
           "conflict",
           "storageFull",
+          "unprocessable",
           "internal"
         ]
       },
