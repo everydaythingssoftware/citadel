@@ -2,12 +2,12 @@
 //! sees it. The zip crate reserves memory for as many entries as the record
 //! declares, so a few hundred bytes could otherwise claim millions of them.
 //!
-//! The record is found the way the zip crate finds it (the last signature
-//! whose comment fits in the file, with the zip64 locator and prepended data
-//! taken into account), and the central directory it points at is walked to
-//! check that it really holds that many entries within the limits. Anything
-//! the walk can't confirm is unreadable, so the zip crate never falls back
-//! to an earlier record this check didn't see.
+//! The zip crate reads the newest end record whose comment fits in the file
+//! and falls back to older ones, and accepts any zip64 record that ends
+//! exactly at the zip64 locator. Every record it could use is held to the
+//! limits here, including the size of a zip64 record's extensible data,
+//! which it reads into memory. The central directory of the record it reads
+//! first is then walked to check it holds that many entries.
 use std::io::{Read, Seek, SeekFrom};
 
 use crate::{
@@ -102,33 +102,67 @@ fn check_counts(entries: &[u64], size: u64) -> Result<(), EpubError> {
     Ok(())
 }
 
-/// The last end-of-central-directory record whose comment fits in the file.
-fn find_eocd<R: Read + Seek>(reader: &mut R, file_len: u64) -> Result<(u64, Vec<u8>), EpubError> {
+/// End records the zip crate might use: every signature whose comment fits
+/// in the file, newest first. It reads the newest and falls back to older
+/// ones, so each is held to the limits. A real archive has one.
+const MAX_END_RECORDS: usize = 4;
+/// zip64 end records between the locator's offset and the locator itself.
+const MAX_ZIP64_END_RECORDS: usize = 16;
+
+fn find_eocds<R: Read + Seek>(
+    reader: &mut R,
+    file_len: u64,
+) -> Result<Vec<(u64, Vec<u8>)>, EpubError> {
     if file_len < EOCD_LEN {
         return Err(unreadable());
     }
     let tail_start = file_len.saturating_sub(EOCD_LEN + MAX_COMMENT);
     let tail = read_at(reader, tail_start, (file_len - tail_start) as usize)?;
     let last = tail.len() - EOCD_LEN as usize;
-    (0..=last)
+    let found: Vec<(u64, Vec<u8>)> = (0..=last)
         .rev()
         .filter(|at| &tail[*at..at + 4] == EOCD_SIGNATURE)
-        .find(|at| tail_start + *at as u64 + EOCD_LEN + u16_at(&tail, at + 20) <= file_len)
+        .filter(|at| tail_start + *at as u64 + EOCD_LEN + u16_at(&tail, at + 20) <= file_len)
+        .take(MAX_END_RECORDS + 1)
         .map(|at| {
             (
                 tail_start + at as u64,
                 tail[at..at + EOCD_LEN as usize].to_vec(),
             )
         })
-        .ok_or_else(unreadable)
+        .collect();
+    if found.is_empty() || found.len() > MAX_END_RECORDS {
+        return Err(unreadable());
+    }
+    Ok(found)
 }
 
+/// Every end record the zip crate could use must be within the limits;
+/// the walk then checks the newest one it would read.
 fn directory<R: Read + Seek>(reader: &mut R, file_len: u64) -> Result<Directory, EpubError> {
-    let (eocd_at, eocd) = find_eocd(reader, file_len)?;
-    let entries_here = u16_at(&eocd, 8);
-    let entries = u16_at(&eocd, 10);
-    let size = u32_at(&eocd, 12);
-    let start = u32_at(&eocd, 16);
+    let mut chosen = None;
+    for (eocd_at, eocd) in find_eocds(reader, file_len)? {
+        match directory_at(reader, eocd_at, &eocd) {
+            Ok(found) => {
+                chosen.get_or_insert(found);
+            }
+            Err(EpubError::Refused(refusal)) => return Err(EpubError::Refused(refusal)),
+            // The zip crate rejects such a record too, and tries the next.
+            Err(_) => {}
+        }
+    }
+    chosen.ok_or_else(unreadable)
+}
+
+fn directory_at<R: Read + Seek>(
+    reader: &mut R,
+    eocd_at: u64,
+    eocd: &[u8],
+) -> Result<Directory, EpubError> {
+    let entries_here = u16_at(eocd, 8);
+    let entries = u16_at(eocd, 10);
+    let size = u32_at(eocd, 12);
+    let start = u32_at(eocd, 16);
 
     let may_be_zip64 = entries == u16::MAX as u64 || start == u32::MAX as u64;
     let locator = match eocd_at.checked_sub(LOCATOR_LEN) {
@@ -152,20 +186,47 @@ fn directory<R: Read + Seek>(reader: &mut R, file_len: u64) -> Result<Directory,
     if declared >= locator_at || u32_at(&locator, 16) > 1 {
         return Err(unreadable());
     }
+    let locator_disk = u32_at(&locator, 4);
     let latest = locator_at.checked_sub(EOCD64_LEN).ok_or_else(unreadable)?;
-    let eocd64_at =
-        find_forward(reader, EOCD64_SIGNATURE, declared, latest + 4)?.ok_or_else(unreadable)?;
-    let eocd64 = read_at(reader, eocd64_at, EOCD64_LEN as usize)?;
-    let entries_here = u64_at(&eocd64, 24);
-    let entries = u64_at(&eocd64, 32);
-    let size = u64_at(&eocd64, 40);
-    check_counts(&[entries_here, entries], size)?;
-    Ok(Directory {
-        entries: entries_here.max(entries),
-        relative_start: u64_at(&eocd64, 48),
-        archive_offset: eocd64_at - declared,
-        end: eocd64_at,
-    })
+
+    // The zip crate accepts any zip64 record in this range that ends exactly
+    // at the locator and names the locator's disk, so every one is checked.
+    let mut chosen = None;
+    let mut seen = 0;
+    let mut from = declared;
+    while let Some(eocd64_at) = find_forward(reader, EOCD64_SIGNATURE, from, latest + 4)? {
+        seen += 1;
+        if seen > MAX_ZIP64_END_RECORDS {
+            return Err(unreadable());
+        }
+        from = eocd64_at + 1;
+        let eocd64 = read_at(reader, eocd64_at, EOCD64_LEN as usize)?;
+        let record_size = u64_at(&eocd64, 4);
+        let accepted = record_size >= 44
+            && record_size.checked_add(12) == Some(locator_at - eocd64_at)
+            && u32_at(&eocd64, 20) == locator_disk;
+        if !accepted {
+            continue;
+        }
+        // The zip crate reads the record's extensible data into memory.
+        if record_size - 44 > MAX_CENTRAL_DIRECTORY_BYTES {
+            return Err(Refusal::CentralDirectoryTooLarge {
+                limit: MAX_CENTRAL_DIRECTORY_BYTES,
+            }
+            .into());
+        }
+        let entries_here = u64_at(&eocd64, 24);
+        let entries = u64_at(&eocd64, 32);
+        let size = u64_at(&eocd64, 40);
+        check_counts(&[entries_here, entries], size)?;
+        chosen.get_or_insert(Directory {
+            entries: entries_here.max(entries),
+            relative_start: u64_at(&eocd64, 48),
+            archive_offset: eocd64_at - declared,
+            end: eocd64_at,
+        });
+    }
+    chosen.ok_or_else(unreadable)
 }
 
 /// Refuses an archive whose central directory declares more entries or

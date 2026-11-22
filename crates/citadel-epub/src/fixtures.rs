@@ -246,6 +246,49 @@ pub fn claimed_entries(entries: u64) -> Vec<u8> {
     bytes
 }
 
+/// A valid book ending in the zip64 end records `records`, one after
+/// another: `(entries, extensible bytes)` each, the locator naming the one
+/// at `declared`. Only the last ends at the locator, so only it is a record
+/// the zip crate would accept.
+pub fn zip64_end_records(records: &[(u64, u64)], declared: usize) -> Vec<u8> {
+    let mut bytes = Builder::book(METADATA, "").build();
+    let eocd = bytes
+        .windows(4)
+        .rposition(|window| window == b"PK\x05\x06")
+        .unwrap();
+    let cd_size = u32::from_le_bytes(bytes[eocd + 12..eocd + 16].try_into().unwrap()) as u64;
+    let cd_offset = u32::from_le_bytes(bytes[eocd + 16..eocd + 20].try_into().unwrap()) as u64;
+    bytes.truncate(eocd);
+    let mut offsets = Vec::new();
+    for (entries, extra) in records {
+        offsets.push(bytes.len() as u64);
+        bytes.extend_from_slice(b"PK\x06\x06");
+        bytes.extend_from_slice(&(44 + extra).to_le_bytes());
+        bytes.extend_from_slice(&45u16.to_le_bytes());
+        bytes.extend_from_slice(&45u16.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&entries.to_le_bytes());
+        bytes.extend_from_slice(&entries.to_le_bytes());
+        bytes.extend_from_slice(&cd_size.to_le_bytes());
+        bytes.extend_from_slice(&cd_offset.to_le_bytes());
+        bytes.resize(bytes.len() + *extra as usize, 0);
+    }
+    bytes.extend_from_slice(b"PK\x06\x07");
+    bytes.extend_from_slice(&0u32.to_le_bytes());
+    bytes.extend_from_slice(&offsets[declared].to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(b"PK\x05\x06");
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&u16::MAX.to_le_bytes());
+    bytes.extend_from_slice(&u16::MAX.to_le_bytes());
+    bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+    bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes
+}
+
 /// `archive` with the entry `name` declaring 1,000 uncompressed bytes in
 /// its local and central headers, whatever it holds.
 pub fn understated(mut archive: Vec<u8>, name: &str) -> Vec<u8> {

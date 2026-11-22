@@ -66,11 +66,13 @@ workspace depends on xml-rs.
   - An element has at most 128 attributes, and at most 256 namespace bindings
     are in scope at once.
   - The metadata holds at most 4,096 items, and a text value is at most 64 KiB.
-  - Before the zip crate sees the archive, the end-of-central-directory record
-    is found the way the zip crate finds it (comment, zip64 locator, prepended
-    data). An archive is refused if it declares more than 20,000 entries or a
-    central directory over 4 MiB. The directory is then walked to confirm it
-    holds those entries within that space.
+  - Before the zip crate sees the archive, every end record it could use is
+    checked: up to four end-of-central-directory records (it falls back from
+    the newest), and every zip64 record that ends at the zip64 locator. An
+    archive is refused if any declares more than 20,000 entries, a central
+    directory over 4 MiB, or zip64 extensible data over 4 MiB. The directory
+    the zip crate reads first is then walked to confirm it holds those
+    entries within that space.
   - A rootfile path must be non-empty and relative, must not start with `/`,
     and must not leave the container.
 
@@ -103,7 +105,6 @@ workspace depends on xml-rs.
   of scope. Both are follow-ups.
 - A package that is valid but past a limit would be refused. None of the 287
   books in the corpus is (`cargo run -p citadel-epub --example scan -- <dir>`).
-- The zip crate retries earlier end records when it can't read a central
-  directory. The pre-check rejects any archive whose last record it can't
-  confirm, but it doesn't re-implement every check the zip crate makes on
+- The pre-check holds every end record the zip crate could fall back to to
+  the limits, but it doesn't re-implement every check the zip crate makes on
   individual headers.

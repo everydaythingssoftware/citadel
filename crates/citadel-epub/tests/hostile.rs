@@ -143,7 +143,7 @@ fn cases() -> Vec<(&'static str, Build, Expectation)> {
         "every hostile fixture has an expectation"
     );
 
-    let extra: [(&str, Build, Expectation); 7] = [
+    let extra: [(&str, Build, Expectation); 9] = [
         (
             "opf-9mib-declared-small",
             || {
@@ -229,6 +229,24 @@ fn cases() -> Vec<(&'static str, Build, Expectation)> {
                     result,
                     Err(EpubError::Unreadable(Unreadable::Malformed(Part::Package)))
                 )
+            },
+        ),
+        (
+            // The locator names a small decoy record, but the zip crate
+            // only accepts the record that ends at the locator: 30,000.
+            "zip64-decoy-record",
+            || support::zip64_end_records(&[(1, 0), (30_000, 0)], 0),
+            |result| refused(result, |r| matches!(r, Refusal::TooManyEntries { .. })),
+        ),
+        (
+            // The zip crate reads a zip64 record's extensible data into
+            // memory, however large it claims to be.
+            "zip64-huge-extensible-data",
+            || support::zip64_end_records(&[(1, 5 * 1024 * 1024)], 0),
+            |result| {
+                refused(result, |r| {
+                    matches!(r, Refusal::CentralDirectoryTooLarge { .. })
+                })
             },
         ),
         (
