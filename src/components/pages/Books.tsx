@@ -433,7 +433,7 @@ export const Books = ({
 					<BookGrid
 						bookList={books}
 						loading={loading}
-						cardActions={grid.cardActions}
+						bookActions={grid.bookActions}
 						isSelected={isSelected}
 						scrollElementRef={gridContainerRef}
 						initialScrollOffset={gridStartOffset}

@@ -18,15 +18,21 @@ import {
 	type ScrollAnchor,
 	topRowAnchor,
 } from "@/lib/grid-virtual";
-import type { BookCardActions } from "@/lib/hooks/use-book-grid-interaction";
 import { useBookGridLayout } from "@/lib/hooks/use-book-grid-layout";
 import { useCoverThumbsMap } from "@/stores/library/store";
-import { BookCard } from "../atoms/BookCard";
-import cardClasses from "../atoms/BookCard.module.css";
+import { bookCoverProps } from "@/lib/covers/book-cover";
+import { formatAuthorList } from "@/lib/authors";
+import { bookDomId } from "@/lib/hooks/use-book-grid-interaction";
+import {
+	type BookActions,
+	useBookInteractions,
+} from "@/lib/hooks/use-book-interactions";
+import { BookCover, COVER_SHELF_HEIGHT } from "../atoms/BookCover";
+import classes from "./BookGrid.module.css";
 
 const { columnGap: COLUMN_GAP, rowGap: ROW_GAP, padding: PADDING } = BOOK_GRID;
-/** Cover height cap (BookCover FLUID_MAX_HEIGHT_PX); rows self-measure after mount. */
-const ESTIMATED_ROW_HEIGHT = 230;
+/** Shared cover height cap; rows self-measure after mount. */
+const ESTIMATED_ROW_HEIGHT = COVER_SHELF_HEIGHT;
 /**
  * Height/width fallback for covers whose thumbnail (and so real aspect
  * ratio) isn't known yet: classic 2:3 book proportions, matching the
@@ -59,7 +65,7 @@ interface BookGridProps {
 	 */
 	bookList: (LibraryBook | undefined)[];
 	/** Press, right-click and drag on a cover. */
-	cardActions: BookCardActions;
+	bookActions: BookActions;
 	/** Membership in the selection, by id (and index, for pending slots). */
 	isSelected: (bookId: LibraryBook["id"], index: number) => boolean;
 	/** The page-owned scroll region the virtualizer windows against. */
@@ -86,7 +92,7 @@ interface BookGridProps {
 export const BookGrid = ({
 	loading,
 	bookList: books,
-	cardActions,
+	bookActions,
 	isSelected,
 	scrollElementRef,
 	initialScrollOffset,
@@ -94,6 +100,7 @@ export const BookGrid = ({
 	handleRef,
 	onVisibleRangeChange,
 }: BookGridProps) => {
+	const interactionProps = useBookInteractions(bookActions);
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	// The top row's first book, noted just before the columns change, so the
 	// new layout can put its row back where it was (see the effect below).
@@ -246,13 +253,6 @@ export const BookGrid = ({
 					marginInline: "auto",
 				}}
 			>
-				{/*
-				 * Apple Books shelf, windowed: only rows near the viewport mount.
-				 * Each virtual row is its own grid with the computed column count;
-				 * the row is as tall as its tallest cover and every cell
-				 * bottom-aligns its book (see BookCard.module.css) so the bases
-				 * sit on one line.
-				 */}
 				{virtualRows.map((virtualRow) => {
 					const { start, end } = rowSlice(
 						virtualRow.index,
@@ -277,21 +277,43 @@ export const BookGrid = ({
 								columnGap: COLUMN_GAP,
 							}}
 						>
-							{books.slice(start, end).map((book, offset) =>
-								book !== undefined ? (
-									<BookCard
+							{books.slice(start, end).map((book, offset) => {
+								const index = start + offset;
+								if (book === undefined)
+									return (
+										<div
+											className={classes.cell}
+											aria-hidden="true"
+											key={`placeholder-${index}`}
+										>
+											<BookCover loading />
+										</div>
+									);
+								const selected = isSelected(book.id, index);
+								const authors = formatAuthorList(book.author_list);
+								return (
+									// biome-ignore lint/a11y/useFocusableInteractive: focus remains on the listbox, which identifies its cursor via aria-activedescendant.
+									<div
 										key={book.id}
-										book={book}
-										index={start + offset}
-										setSize={books.length}
-										actions={cardActions}
-										selected={isSelected(book.id, start + offset)}
-									/>
-								) : (
-									// biome-ignore lint/suspicious/noArrayIndexKey: an unfetched slot has no id; its flat grid index IS its identity until the book arrives (and then the keyed BookCard replaces it).
-									<BookCardPlaceholder key={`placeholder-${start + offset}`} />
-								),
-							)}
+										className={classes.cell}
+										data-book-id={book.id}
+										id={bookDomId(book.id)}
+										role="option"
+										aria-selected={selected}
+										aria-posinset={index + 1}
+										aria-setsize={books.length}
+										aria-label={
+											authors ? `${book.title}, ${authors}` : book.title
+										}
+									>
+										<BookCover
+											{...bookCoverProps(book, coverThumbs.get(book.id))}
+											{...interactionProps(book, index)}
+											selected={selected}
+										/>
+									</div>
+								);
+							})}
 						</div>
 					);
 				})}
@@ -299,14 +321,3 @@ export const BookGrid = ({
 		</div>
 	);
 };
-
-/**
- * Stand-in cell for a book whose page has not been fetched yet: the same
- * shelf-cell layout as BookCard with a quiet cover-shaped block, so rows
- * keep their height and books pop in without the shelf reflowing.
- */
-const BookCardPlaceholder = () => (
-	<div className={cardClasses.cell} aria-hidden="true">
-		<span className={cardClasses.coverPlaceholder} />
-	</div>
-);

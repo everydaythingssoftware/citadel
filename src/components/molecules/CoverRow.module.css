@@ -12,6 +12,10 @@
 /* Covers are placed from the middle by transforms, set every frame;
    neighbours shrink from their bottom middle, so all sit on one line. */
 .cover {
+	height: calc(var(--cover-width) * 1.5);
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
 	position: absolute;
 	top: 6px;
 	left: 50%;
@@ -19,7 +23,6 @@
 	margin-left: calc(var(--cover-width) / -2);
 	padding: 0;
 	border: 0;
-	border-radius: 2px;
 	background: none;
 	transform-origin: 50% 100%;
 	will-change: transform;
@@ -27,15 +30,10 @@
 
 .cover:focus-visible {
 	outline: none;
-	box-shadow: var(--ctd-focus-shadow);
 }
 
 .art {
 	display: block;
-	width: 100%;
-	aspect-ratio: 2 / 3;
-	border-radius: 2px;
-	box-shadow: var(--ctd-cover-shadow);
 	pointer-events: none;
 }
 

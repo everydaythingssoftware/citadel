@@ -1,3 +1,4 @@
+import type { BookActions } from "./use-book-interactions";
 import type React from "react";
 import { useMemo } from "react";
 import type { LibraryBook } from "@/bindings";
@@ -10,7 +11,6 @@ import {
 import { bookShortcutHint, shortcutEnvironment } from "@/lib/app-shortcuts";
 import { BOOK_COMMAND } from "@/lib/book-menu";
 import {
-	type BookClickModifiers,
 	bookClickIntent,
 	clearSelection,
 	extendSelection,
@@ -27,7 +27,6 @@ import {
 } from "@/lib/hooks/use-book-selection";
 import {
 	type ContextMenuController,
-	type ContextMenuOpenEvent,
 	keyboardMenuEvent,
 	useContextMenu,
 } from "@/lib/hooks/use-context-menu";
@@ -47,28 +46,10 @@ const supportsDownloadUrlDrag = () =>
 	typeof navigator !== "undefined" && "userAgentData" in navigator;
 
 /** The DOM id `aria-activedescendant` points the grid at. */
-export const bookCardDomId = (bookId: LibraryBook["id"]) => `book-${bookId}`;
-
-export interface BookCardActions {
-	onPress: (
-		index: number,
-		book: LibraryBook,
-		modifiers: BookClickModifiers,
-	) => void;
-	onContextMenu: (
-		event: ContextMenuOpenEvent,
-		index: number,
-		book: LibraryBook,
-	) => void;
-	onDragStart: (
-		event: React.DragEvent,
-		index: number,
-		book: LibraryBook,
-	) => void;
-}
+export const bookDomId = (bookId: LibraryBook["id"]) => `book-${bookId}`;
 
 export interface BookGridInteraction {
-	cardActions: BookCardActions;
+	bookActions: BookActions;
 	menu: ContextMenuController;
 	/** The option `aria-activedescendant` names: the cursor's book. */
 	activeDescendant: string | undefined;
@@ -93,7 +74,7 @@ export const useBookGridInteraction = (
 	const cursor = useBookSelectionStore((state) => state.selection.cursor);
 	const cursorBook = cursor >= 0 ? books[cursor] : undefined;
 
-	const cardActions = useMemo<BookCardActions>(
+	const bookActions = useMemo<BookActions>(
 		() => ({
 			onPress: (index, book, modifiers) => {
 				const intent = bookClickIntent(modifiers, {
@@ -193,11 +174,11 @@ export const useBookGridInteraction = (
 
 	const onGridKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
 		if (cursorBook === undefined) return;
-		const card = document.getElementById(bookCardDomId(cursorBook.id));
+		const card = document.getElementById(bookDomId(cursorBook.id));
 		if (card === null) return;
 		const opened = keyboardMenuEvent(event, card.getBoundingClientRect());
 		if (opened.isSome)
-			cardActions.onContextMenu(opened.value, cursor, cursorBook);
+			bookActions.onContextMenu(opened.value, cursor, cursorBook);
 	};
 
 	const onBackgroundClick = (event: React.MouseEvent) => {
@@ -208,10 +189,10 @@ export const useBookGridInteraction = (
 	};
 
 	return {
-		cardActions,
+		bookActions,
 		menu,
 		activeDescendant:
-			cursorBook !== undefined ? bookCardDomId(cursorBook.id) : undefined,
+			cursorBook !== undefined ? bookDomId(cursorBook.id) : undefined,
 		onBackgroundClick,
 		onGridKeyDown,
 	};

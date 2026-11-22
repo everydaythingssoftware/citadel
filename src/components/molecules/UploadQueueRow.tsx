@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { StagedCover } from "@/components/atoms/StagedCover";
+import { BookCover } from "@/components/atoms/BookCover";
 import { UploadProgressRing } from "@/components/atoms/UploadProgressRing";
 import {
 	AlertGlyph,
@@ -48,11 +48,15 @@ const Thumbnail = ({ item }: { item: QueueItem }) => {
 		);
 	if (item.book)
 		return (
-			<StagedCover
-				className={styles.thumb}
-				coverUrl={item.coverUrl}
-				seed={item.book.title}
-			/>
+			<span className={clsx(styles.thumb, styles.coverSlot)}>
+				<BookCover
+					alt=""
+					provisional
+					src={item.coverUrl}
+					title={item.book.title}
+					maxHeight="100cqh"
+				/>
+			</span>
 		);
 	return <span className={clsx(styles.thumb, styles.pending)} />;
 };
