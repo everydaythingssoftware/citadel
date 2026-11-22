@@ -169,6 +169,10 @@ pub enum Slowdown {
     /// The username is being guessed at from elsewhere; it gets another
     /// guess soon.
     Username,
+    /// This exact credential already failed from this client within
+    /// [`REPEAT_WINDOW`]. It is answered as wrong without being checked or
+    /// counted again, so resending one guess costs nothing.
+    Repeat,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -179,6 +183,11 @@ pub struct Refusal {
 }
 
 impl Refusal {
+    /// Whether to answer as a wrong credential rather than as a slowdown.
+    pub fn is_repeat(&self) -> bool {
+        self.reason == Slowdown::Repeat
+    }
+
     fn after(reason: Slowdown, milliseconds: u64) -> Self {
         Self {
             reason,
@@ -753,70 +762,71 @@ impl SignInGuard {
             .clients
             .get(&key)
             .is_some_and(|entry| entry.is_repeat(digest, now));
+        if repeat {
+            return Err(Refusal::after(Slowdown::Repeat, 0));
+        }
         let mut debits = Debits::default();
         let mut known = false;
-        if !repeat {
-            if strict {
-                let spent = state
-                    .clients
-                    .get(&key)
-                    .is_some_and(|entry| !entry.bucket.has_token(now, &ADDRESS_RULE));
-                if spent {
-                    let length = state.clients.ban(key, now);
-                    return Err(Refusal::after(Slowdown::Address, length));
+        if strict {
+            let spent = state
+                .clients
+                .get(&key)
+                .is_some_and(|entry| !entry.bucket.has_token(now, &ADDRESS_RULE));
+            if spent {
+                let length = state.clients.ban(key, now);
+                return Err(Refusal::after(Slowdown::Address, length));
+            }
+            for (level, index) in &neighbourhoods {
+                let buckets = state.neighbourhood(*level);
+                let rule = buckets.rule;
+                let bucket = buckets.slot(*index);
+                if !bucket.has_token(now, &rule) {
+                    let length = bucket.ban(now, &rule);
+                    return Err(Refusal::after(Slowdown::Neighbourhood, length));
                 }
-                for (level, index) in &neighbourhoods {
-                    let buckets = state.neighbourhood(*level);
-                    let rule = buckets.rule;
-                    let bucket = buckets.slot(*index);
-                    if !bucket.has_token(now, &rule) {
-                        let length = bucket.ban(now, &rule);
-                        return Err(Refusal::after(Slowdown::Neighbourhood, length));
+            }
+        }
+        if let Some(username_key) = username_key {
+            let device = match cookie_identity {
+                Some(identity) => Some(identity),
+                None => pair_identity.filter(|_| state.pairs.contains(username_key, key, now)),
+            };
+            if let Some(index) = device {
+                let bucket = state.known.slot(index);
+                if bucket.ban_remaining(now).is_none() {
+                    if bucket.has_token(now, &KNOWN_DEVICE_RULE) {
+                        debits.known = Some(index);
+                        known = true;
+                    } else {
+                        bucket.ban(now, &KNOWN_DEVICE_RULE);
                     }
                 }
             }
-            if let Some(username_key) = username_key {
-                let device = match cookie_identity {
-                    Some(identity) => Some(identity),
-                    None => pair_identity.filter(|_| state.pairs.contains(username_key, key, now)),
-                };
-                if let Some(index) = device {
-                    let bucket = state.known.slot(index);
-                    if bucket.ban_remaining(now).is_none() {
-                        if bucket.has_token(now, &KNOWN_DEVICE_RULE) {
-                            debits.known = Some(index);
-                            known = true;
-                        } else {
-                            bucket.ban(now, &KNOWN_DEVICE_RULE);
-                        }
-                    }
+            if !known {
+                let index = username_key as usize % HASHED_BUCKETS;
+                let bucket = state.usernames.slot(index);
+                if !bucket.has_token(now, &USERNAME_RULE) {
+                    let wait = bucket.wait_for_token(&USERNAME_RULE);
+                    return Err(Refusal::after(Slowdown::Username, wait));
                 }
-                if !known {
-                    let index = username_key as usize % HASHED_BUCKETS;
-                    let bucket = state.usernames.slot(index);
-                    if !bucket.has_token(now, &USERNAME_RULE) {
-                        let wait = bucket.wait_for_token(&USERNAME_RULE);
-                        return Err(Refusal::after(Slowdown::Username, wait));
-                    }
-                    debits.username = Some(index);
-                }
+                debits.username = Some(index);
             }
-            if let Some(index) = debits.known {
-                state.known.slot(index).debit();
+        }
+        if let Some(index) = debits.known {
+            state.known.slot(index).debit();
+        }
+        if let Some(index) = debits.username {
+            state.usernames.slot(index).debit();
+        }
+        if strict {
+            if let Some(entry) = state.clients.get(&key) {
+                entry.bucket.debit();
+                debits.address = Some(key);
             }
-            if let Some(index) = debits.username {
-                state.usernames.slot(index).debit();
+            for (level, index) in &neighbourhoods {
+                state.neighbourhood(*level).slot(*index).debit();
             }
-            if strict {
-                if let Some(entry) = state.clients.get(&key) {
-                    entry.bucket.debit();
-                    debits.address = Some(key);
-                }
-                for (level, index) in &neighbourhoods {
-                    state.neighbourhood(*level).slot(*index).debit();
-                }
-                debits.neighbourhoods = neighbourhoods;
-            }
+            debits.neighbourhoods = neighbourhoods;
         }
         if strict && password && tracked {
             if let Some(entry) = state.clients.get(&key) {
@@ -1094,6 +1104,15 @@ mod tests {
             }
             Err(_) => false,
         }
+    }
+
+    /// Whether `credential` was answered as an earlier failure, without a
+    /// ticket, so it is neither checked nor counted.
+    fn repeated(guard: &SignInGuard, client: &ClientAddress, credential: Credential<'_>) -> bool {
+        guard
+            .reserve(client, credential)
+            .err()
+            .is_some_and(|refusal| refusal.is_repeat() && refusal.retry_after.is_zero())
     }
 
     /// A wrong password from `client` under a fresh username.
@@ -1579,12 +1598,13 @@ mod tests {
     fn the_same_wrong_credential_counts_once_and_soft_mode_never_bans() {
         let (clock, guard) = new_guard();
         let reader = at("203.0.113.7");
-        for _ in 0..1000 {
-            assert!(fail(&guard, &reader, key("reader", b"stale key")));
+        assert!(fail(&guard, &reader, key("reader", b"stale key")));
+        for _ in 0..999 {
+            assert!(repeated(&guard, &reader, key("reader", b"stale key")));
         }
         assert_eq!(spent(&guard, &reader), 1.0);
         clock.advance(REPEAT_WINDOW - Duration::from_millis(1));
-        assert!(fail(&guard, &reader, key("reader", b"stale key")));
+        assert!(repeated(&guard, &reader, key("reader", b"stale key")));
         assert!(spent(&guard, &reader) < 0.9, "still a repeat: refilled");
         clock.advance(REPEAT_WINDOW);
         assert!(fail(&guard, &reader, key("reader", b"stale key")));
@@ -1595,8 +1615,9 @@ mod tests {
 
         // The username tier counted the repeat once too.
         let (_clock, guard) = new_guard();
-        for _ in 0..100 {
-            assert!(fail(&guard, &reader, password("phil", b"same")));
+        assert!(fail(&guard, &reader, password("phil", b"same")));
+        for _ in 0..99 {
+            assert!(repeated(&guard, &reader, password("phil", b"same")));
         }
         for attempt in 0..9 {
             assert!(fail(

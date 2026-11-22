@@ -459,6 +459,13 @@ async fn sign_in(
         },
     ) {
         Ok(ticket) => ticket,
+        Err(refusal) if refusal.is_repeat() => {
+            return failure(
+                LibraryErrorCode::Unauthorized,
+                "Incorrect username or password",
+            )
+            .into_response();
+        }
         Err(refusal) => return too_many_attempts(refusal, "Too many sign-in attempts"),
     };
     let username = input.username.clone();

@@ -210,6 +210,13 @@ async fn create_administrator(
         },
     ) {
         Ok(ticket) => ticket,
+        Err(refusal) if refusal.is_repeat() => {
+            return ApiFailure::from(LibraryError::new(
+                LibraryErrorCode::Unauthorized,
+                "Incorrect setup code",
+            ))
+            .into_response();
+        }
         Err(refusal) => return session::too_many_attempts(refusal, "Too many attempts"),
     };
     let matches = setup_code_matches(&expected, &input.setup_code);

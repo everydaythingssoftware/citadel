@@ -130,6 +130,7 @@ impl OpdsBasicAuth {
         };
         let ticket = match self.inner.guard.reserve(client, credential) {
             Ok(ticket) => ticket,
+            Err(refusal) if refusal.is_repeat() => return AuthOutcome::Rejected,
             Err(refusal) => return AuthOutcome::Refused(refusal),
         };
         let credentials = self.inner.credentials.lock().unwrap().clone();

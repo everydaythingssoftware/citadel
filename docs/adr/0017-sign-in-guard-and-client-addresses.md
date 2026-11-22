@@ -197,8 +197,11 @@ suspended for the hour and the username tier applies again.
 
 The same failed credential (SHA-256 over the username key and the secret)
 from the same client within 10 minutes counts once, in both tiers, so a
-reader retrying a stale key doesn't ban its own address. Each client keeps
-the last 64.
+reader retrying a stale key doesn't ban its own address. A repeat is
+answered as wrong at once, without checking it again: otherwise resending
+one wrong password would keep the verifier busy without ever being counted.
+Each client keeps the last 64. A password changed, within those 10 minutes,
+to a string that same client just tried is refused until the entry expires.
 
 ### Reserving before work
 

@@ -3085,6 +3085,29 @@ fn forwarded_sign_in(client: &str, username: &str, password: &str) -> Request<Bo
 }
 
 #[tokio::test]
+async fn resending_one_wrong_password_is_checked_once() {
+    let (_directory, router, verifier) = bare_with(None).await;
+    for _ in 0..20 {
+        let response = router
+            .clone()
+            .oneshot(forwarded_sign_in("203.0.113.7", "reader", "1234"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+    assert_eq!(verifier.checked(), 1, "repeats cost no Argon2 check");
+
+    // A different wrong password is a new guess: checked and counted.
+    let response = router
+        .clone()
+        .oneshot(forwarded_sign_in("203.0.113.7", "reader", "5678"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(verifier.checked(), 2);
+}
+
+#[tokio::test]
 async fn a_burst_of_wrong_sign_ins_is_checked_twice_and_locks_nobody_else_out() {
     let (_directory, router, verifier) = bare_with(None).await;
     let burst = (0..64).map(|attempt| {

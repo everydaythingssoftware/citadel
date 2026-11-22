@@ -246,6 +246,10 @@ never locks an account.
   then two, four and so on up to a day, while the guessing continues.
 - **Per username.** Wherever the guesses come from, one username gets 10,
   then one more every 30 seconds.
+- **Repeats.** Sending the same wrong password or key again from the same
+  address within 10 minutes counts once and is answered straight away, so an
+  e-reader with an old key doesn't get its household refused. Try a
+  different password to see the limits above.
 
 A refused sign-in is answered `429 Too Many Requests` with `Retry-After`,
 the number of seconds until it can be tried again. The sign-in page says so.
