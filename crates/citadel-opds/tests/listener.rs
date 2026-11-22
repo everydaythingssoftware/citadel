@@ -445,6 +445,61 @@ async fn a_trickling_download_gives_its_stream_slot_back() {
 }
 
 #[tokio::test]
+async fn an_unread_large_answer_gives_its_short_slot_back() {
+    let limits = Limits::with_rules(
+        Capacities {
+            public: 0,
+            short: 1,
+            stream: 0,
+        },
+        |_, _| RequestClass::Short,
+        StreamRules {
+            window: Duration::from_millis(400),
+            min_bytes: 256 * 1024,
+            upload_stall: Duration::from_secs(30),
+        },
+    );
+    let clients = ClientResolver::loopback_only();
+    let router = limits
+        .admit(Router::new().route(
+            "/authors",
+            get(|| async {
+                let chunks = futures_util::stream::repeat_with(|| {
+                    Ok::<_, std::io::Error>(Bytes::from(vec![b'x'; 64 * 1024]))
+                })
+                .take(1024);
+                Body::from_stream(chunks)
+            }),
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            clients.clone(),
+            resolve_client,
+        ));
+    let server = Server::start(router, clients, ListenerConfig::default()).await;
+    let mut stream = server.connect_with(None, Some(4096)).await;
+    stream
+        .write_all(b"GET /authors HTTP/1.1\r\nHost: citadel\r\n\r\n")
+        .await
+        .unwrap();
+    // The client never reads the answer.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(limits.available(RequestClass::Short), 0, "answering");
+    let started = Instant::now();
+    while limits.available(RequestClass::Short) == 0 && started.elapsed() < Duration::from_secs(10)
+    {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        limits.available(RequestClass::Short),
+        1,
+        "the slot came back after {:?}",
+        started.elapsed()
+    );
+    closed_within(&mut stream, Duration::from_secs(5)).await;
+    server.stop().await;
+}
+
+#[tokio::test]
 async fn shutdown_closes_idle_connections_and_lets_requests_finish() {
     let router = Router::new().route(
         "/brief",

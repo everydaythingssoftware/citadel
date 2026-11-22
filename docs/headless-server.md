@@ -291,12 +291,12 @@ the browser and the other way round. Requests wait in one of three pools:
 *public* (the web app's files, `GET /api/setup`), *short* (JSON, feeds,
 covers, thumbnails) and *stream* (book downloads, upload chunks, cover
 uploads). The API serves 32 public, 64 short and 32 stream requests at once;
-each OPDS address 48 short and 24 stream. One client may have 16 short and 4
-stream requests in flight, eight times as many in soft mode (see
+each OPDS address 48 short and 24 stream. One client may have 8 public, 16
+short and 4 stream requests in flight, eight times as many in soft mode (see
 [Addresses](#addresses)). Over any of these Citadel answers 503 with
-`Retry-After: 1`. A download that averages under 1 KiB/s over a minute ends
-and gives its place back, and an upload chunk that sends nothing for 30
-seconds ends.
+`Retry-After: 1`. Any answer that averages under 1 KiB/s over a minute (a
+client that stops reading a download or a large page, say) ends and gives
+its place back, and an upload chunk that sends nothing for 30 seconds ends.
 
 `stateDirectory` is optional. On Unix it defaults to `$XDG_STATE_HOME/citadel`
 when XDG_STATE_HOME is absolute, otherwise `~/.local/state/citadel`. On Windows

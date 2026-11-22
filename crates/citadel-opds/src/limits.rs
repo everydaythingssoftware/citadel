@@ -67,6 +67,7 @@ pub const OPDS_CAPACITIES: Capacities = Capacities {
 
 /// Requests one client may have in flight, multiplied by
 /// [`SOFT_MODE_MULTIPLIER`] when it may stand for many people.
+pub const CLIENT_PUBLIC_IN_FLIGHT: usize = 8;
 pub const CLIENT_SHORT_IN_FLIGHT: usize = 16;
 pub const CLIENT_STREAM_IN_FLIGHT: usize = 4;
 pub const SOFT_MODE_MULTIPLIER: usize = 8;
@@ -112,6 +113,7 @@ struct Inner {
 
 #[derive(Default)]
 struct InFlight {
+    public: usize,
     short: usize,
     stream: usize,
 }
@@ -194,7 +196,7 @@ impl Limits {
         };
         let key = client.key();
         let counted = match class {
-            RequestClass::Public => None,
+            RequestClass::Public => Some(CLIENT_PUBLIC_IN_FLIGHT * multiplier),
             RequestClass::Short => Some(CLIENT_SHORT_IN_FLIGHT * multiplier),
             RequestClass::Stream => Some(CLIENT_STREAM_IN_FLIGHT * multiplier),
         };
@@ -222,8 +224,9 @@ impl Limits {
 impl InFlight {
     fn count(&mut self, class: RequestClass) -> &mut usize {
         match class {
+            RequestClass::Public => &mut self.public,
+            RequestClass::Short => &mut self.short,
             RequestClass::Stream => &mut self.stream,
-            _ => &mut self.short,
         }
     }
 }
@@ -243,7 +246,7 @@ impl Drop for Ticket {
         if let Some(in_flight) = clients.get_mut(&key) {
             let count = in_flight.count(self.class);
             *count = count.saturating_sub(1);
-            if in_flight.short == 0 && in_flight.stream == 0 {
+            if in_flight.public == 0 && in_flight.short == 0 && in_flight.stream == 0 {
                 clients.remove(&key);
             }
         }
@@ -273,9 +276,12 @@ pub(crate) async fn run_work<T: Send + 'static>(
 }
 
 /// A request holds its slot until its response body ends or is dropped.
-/// Streams must keep moving: a request body that stalls, or a response body
-/// slower than [`StreamRules`] allow, ends and gives its slot back. Body
-/// sizes and deadlines are each listener's own (see [`bound_feeds`]).
+/// Every response body must keep moving: one slower than [`StreamRules`]
+/// allow (a client that stops reading a large answer, say) ends, gives its
+/// slot back and closes its connection. Upload bodies that stall end too.
+/// Small answers fit in the socket's buffer, so they finish whatever the
+/// client does. Body sizes and deadlines are each listener's own (see
+/// [`bound_feeds`]).
 async fn admit(State(limits): State<Limits>, request: Request, next: Next) -> Response {
     let class = (limits.inner.classify)(request.method(), request.uri().path());
     let client = ClientAddress::of(request.extensions());
@@ -290,45 +296,7 @@ async fn admit(State(limits): State<Limits>, request: Request, next: Next) -> Re
         request
     };
     let (parts, body) = next.run(request).await.into_parts();
-    let body = if class == RequestClass::Stream {
-        Body::new(Metered::new(body, ticket, rules, control))
-    } else {
-        Body::new(Held {
-            body,
-            ticket: Some(ticket),
-        })
-    };
-    Response::from_parts(parts, body)
-}
-
-/// A response body that keeps its ticket until it ends.
-struct Held {
-    body: Body,
-    ticket: Option<Ticket>,
-}
-
-impl HttpBody for Held {
-    type Data = Bytes;
-    type Error = axum::Error;
-
-    fn poll_frame(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Frame<Bytes>, axum::Error>>> {
-        let polled = Pin::new(&mut self.body).poll_frame(cx);
-        if matches!(polled, Poll::Ready(None)) {
-            self.ticket = None;
-        }
-        polled
-    }
-
-    fn is_end_stream(&self) -> bool {
-        self.body.is_end_stream()
-    }
-
-    fn size_hint(&self) -> SizeHint {
-        self.body.size_hint()
-    }
+    Response::from_parts(parts, Body::new(Metered::new(body, ticket, rules, control)))
 }
 
 struct MeterShared {
@@ -337,7 +305,7 @@ struct MeterShared {
     ticket: Mutex<Option<Ticket>>,
 }
 
-/// A streamed response body that must average `min_bytes` per window. A
+/// A response body that must average `min_bytes` per window. A
 /// watchdog checks, since a client that stops reading stops the body being
 /// polled at all; when it trips, the slot is released at once and the
 /// connection closed.
@@ -603,6 +571,42 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(again.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn one_client_cant_take_every_public_slot() {
+        let limits = Limits::new(
+            Capacities {
+                public: 100,
+                short: 0,
+                stream: 0,
+            },
+            |_, _| RequestClass::Public,
+        );
+        let app = limits.admit(Router::new().route("/app.js", get(|| async { "js" })));
+        let from = |address: &str| {
+            let peer: SocketAddr = format!("{address}:1").parse().unwrap();
+            app.clone().layer(MockConnectInfo(peer))
+        };
+        let mut held = Vec::new();
+        for _ in 0..CLIENT_PUBLIC_IN_FLIGHT {
+            let response = from("203.0.113.9")
+                .oneshot(get_request("/app.js"))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            held.push(response);
+        }
+        let refused = from("203.0.113.9")
+            .oneshot(get_request("/app.js"))
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let other = from("203.0.113.10")
+            .oneshot(get_request("/app.js"))
+            .await
+            .unwrap();
+        assert_eq!(other.status(), StatusCode::OK, "another client gets in");
     }
 
     #[tokio::test]

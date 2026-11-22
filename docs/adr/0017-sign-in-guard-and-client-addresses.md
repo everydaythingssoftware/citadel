@@ -103,10 +103,11 @@ work permits of the API's asset routes. Requests fall into three classes:
 | short | JSON, feeds, covers, thumbnails | 64 | 48 |
 | stream | book files, upload chunks, cover uploads | 32 | 24 |
 
-Each client (`AddressKey`) may have 16 short and 4 stream requests in flight,
-eight times as many in soft mode. A request keeps its slot until its response
-body ends. A streamed response body that sends less than 60 KiB in any 60 s
-window (1 KiB/s) ends, gives its slot back and closes its connection. A
+Each client (`AddressKey`) may have 8 public, 16 short and 4 stream requests
+in flight, eight times as many in soft mode. A request keeps its slot until
+its response body ends. Any response body, in every class, that sends less
+than 60 KiB in any 60 s window (1 KiB/s) ends, gives its slot back and closes
+its connection; small answers fit in the socket buffer and finish anyway. A
 watchdog checks this, because a client that stops reading stops the body from
 being polled. An upload chunk that sends nothing for 30 s ends.
 
