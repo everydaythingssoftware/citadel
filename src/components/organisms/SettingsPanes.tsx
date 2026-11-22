@@ -18,8 +18,10 @@ import classes from "@/components/organisms/SettingsPanes.module.css";
 import { GlobeGlyph } from "@/components/organisms/SetupCard";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
 import {
+	AlertDialog,
 	Button,
 	InlineLink,
+	NoBreak,
 	SegmentedControl,
 	Switch,
 	TextInput,
@@ -344,27 +346,37 @@ const GeneralTab = () => {
 };
 
 /**
- * Offers to trust a private-network peer that sent forwarding headers, which
- * is most likely a reverse proxy nobody has told Citadel about. Confirms in
- * place: the offer is replaced by what happened (ADR 0014).
+ * Reverse proxies: offers to trust a private-network peer that sent
+ * forwarding headers (most likely a proxy nobody has told Citadel about) and
+ * lists the proxies already trusted. Confirms in place (ADR 0014); stopping
+ * trusting one is rare and deliberate, so it asks once.
  */
 const ProxyTrustOfferSection = () => {
-	const offer = useProxyTrustOffer();
-	return <ProxyTrustOffer {...offer} />;
+	const proxies = useProxyTrustOffer();
+	return <ProxyTrust {...proxies} />;
 };
 
-const ProxyTrustOffer = ({
+const ProxyTrust = ({
 	offer,
-	trusted,
+	trustedProxies,
+	changed,
+	confirmingUntrust,
 	pending,
 	error,
 	trust,
 	dismiss,
+	askUntrust,
+	cancelUntrust,
+	untrust,
 }: ProxyTrustOfferState) => {
-	if (!offer && !trusted && !error) return null;
+	const headingId = useId();
+	if (!offer && trustedProxies.length === 0 && !changed && !error) return null;
 	return (
-		<section aria-label="Reverse proxy" aria-live="polite">
-			{offer ? (
+		<section aria-labelledby={headingId} aria-live="polite">
+			<h3 id={headingId} className={classes.sectionTitle}>
+				Reverse proxies
+			</h3>
+			{offer && (
 				<div className={classes.proxyOffer}>
 					<p className={classes.paneNote}>
 						Requests from <span data-selectable>{offer.address}</span> include
@@ -383,18 +395,55 @@ const ProxyTrustOffer = ({
 						</Button>
 					</div>
 				</div>
-			) : (
-				trusted && (
-					<p className={classes.inlineNote}>
-						Citadel now trusts {trusted} as your reverse proxy.
-					</p>
-				)
+			)}
+			{trustedProxies.length > 0 && (
+				<ul className={classes.proxyList} aria-label="Trusted proxies">
+					{trustedProxies.map(({ range, removable }) => (
+						<li key={range} className={classes.proxyRow}>
+							<span data-selectable>{range}</span>
+							{removable ? (
+								<Button
+									variant="subtle"
+									disabled={pending}
+									onClick={() => askUntrust(range)}
+								>
+									Stop Trusting…
+								</Button>
+							) : (
+								<span className={classes.inlineNote}>
+									Set in the server’s configuration
+								</span>
+							)}
+						</li>
+					))}
+				</ul>
+			)}
+			{changed && (
+				<p className={classes.inlineNote}>
+					{changed.kind === "trusted"
+						? `Citadel now trusts ${changed.range} as your reverse proxy.`
+						: `Citadel no longer trusts ${changed.range}.`}
+				</p>
 			)}
 			{error && (
 				<p role="alert" className={classes.inlineNote} data-tone="error">
 					{error}
 				</p>
 			)}
+			<AlertDialog
+				open={confirmingUntrust !== null}
+				onOpenChange={(open) => {
+					if (!open) cancelUntrust();
+				}}
+				title={
+					<>
+						Stop trusting <NoBreak>{confirmingUntrust}</NoBreak>?
+					</>
+				}
+				description={`Citadel will ignore its forwarding headers and treat every request it passes on as coming from ${confirmingUntrust ?? "it"} itself, so sign-in limits apply to all its users together. Nobody is signed out.`}
+				confirmLabel="Stop Trusting"
+				onConfirm={untrust}
+			/>
 		</section>
 	);
 };

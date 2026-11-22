@@ -476,7 +476,10 @@ once a minute, and administrators see an offer under Settings → General:
 "Requests from 172.18.0.5 include forwarding headers. Trust it as your
 reverse proxy?" **Trust** adds it, on top of `trustedProxies`, to `citadel.db`
 (never to the config file) and applies at once; **Dismiss** stops offering
-it. The same is `GET`, `POST` and `DELETE /api/server/proxies` with
+it. The same section lists every trusted proxy: those from `trustedProxies`
+are marked as set in the server's configuration, and those trusted from
+Settings have **Stop Trusting…**, which asks once and then applies at once.
+The same is `GET`, `POST` and `DELETE /api/server/proxies` with
 `{"range": "172.18.0.5"}`.
 
 Three common setups, each with Citadel on a Docker network and the proxy on

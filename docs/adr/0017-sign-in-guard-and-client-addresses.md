@@ -64,7 +64,9 @@ recorded untrusted forwarders. `POST` trusts a range, and `DELETE` untrusts
 one and dismisses the forwarders in it, which is also how the offer is
 dismissed. Stored ranges live in `citadel.db`'s `properties` table, because
 Citadel never writes its config file. The effective list is the configured
-ranges plus the stored ones, and it applies immediately.
+ranges plus the stored ones, and it applies immediately. Settings lists
+both: configured ranges read-only, stored ones with Stop Trusting, which
+asks once (ADR 0014: rare and deliberate).
 
 ### Listeners (`citadel_opds::listener`)
 
