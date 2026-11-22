@@ -998,9 +998,8 @@ fn test_update_book_sets_and_clears_publisher_and_rating() {
     assert!(lib.list_publishers().unwrap().is_empty());
 }
 
-/// A row that no book links to, as an earlier edit or another program can
-/// leave behind. The connection registers Calibre's SQL functions, which the
-/// series insert trigger calls.
+/// Inserts a row that no book links to. Another program or an older version
+/// of Citadel can leave such a row.
 fn insert_unused(lib: &libcalibre::Library, table: &str) {
     let mut conn =
         libcalibre::__internals::establish_connection(lib.database_path().to_str().unwrap())
@@ -1013,7 +1012,7 @@ fn insert_unused(lib: &libcalibre::Library, table: &str) {
 }
 
 #[test]
-fn test_tag_edit_deletes_every_tag_that_no_book_uses() {
+fn test_tag_edit_deletes_only_dropped_tags_that_no_book_uses() {
     let (_temp, mut lib) = setup_with_library();
     let edited = lib
         .add_book(BookAdd {
@@ -1031,7 +1030,7 @@ fn test_tag_edit_deletes_every_tag_that_no_book_uses() {
     lib.update_book(
         edited.id,
         BookUpdate {
-            tags: Some(vec!["Shared".to_string()]),
+            tags: Some(vec!["Romance".to_string()]),
             ..empty_update()
         },
     )
@@ -1042,11 +1041,14 @@ fn test_tag_edit_deletes_every_tag_that_no_book_uses() {
         .iter()
         .map(|t| (t.name.as_str(), t.book_count))
         .collect();
-    assert_eq!(summary, [("Shared", 2)]);
+    assert_eq!(
+        summary,
+        [("Previously unused", 0), ("Romance", 1), ("Shared", 1)]
+    );
 }
 
 #[test]
-fn test_series_edit_deletes_every_series_that_no_book_uses() {
+fn test_series_edit_deletes_only_dropped_series_that_no_book_uses() {
     let (_temp, mut lib) = setup_with_library();
     let edited = lib
         .add_book(BookAdd {
@@ -1078,7 +1080,27 @@ fn test_series_edit_deletes_every_series_that_no_book_uses() {
     .unwrap();
     assert_eq!(
         summary(&mut lib),
-        [("Kept Saga".to_string(), 1), ("Second Saga".to_string(), 1)]
+        [
+            ("Kept Saga".to_string(), 1),
+            ("Previously unused".to_string(), 0),
+            ("Second Saga".to_string(), 1),
+        ]
+    );
+
+    lib.update_book(
+        edited.id,
+        BookUpdate {
+            series: Some("Kept Saga".to_string()),
+            ..empty_update()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        summary(&mut lib),
+        [
+            ("Kept Saga".to_string(), 2),
+            ("Previously unused".to_string(), 0),
+        ]
     );
 
     lib.update_book(
@@ -1089,11 +1111,17 @@ fn test_series_edit_deletes_every_series_that_no_book_uses() {
         },
     )
     .unwrap();
-    assert_eq!(summary(&mut lib), [("Kept Saga".to_string(), 1)]);
+    assert_eq!(
+        summary(&mut lib),
+        [
+            ("Kept Saga".to_string(), 1),
+            ("Previously unused".to_string(), 0),
+        ]
+    );
 }
 
 #[test]
-fn test_publisher_edit_deletes_every_publisher_that_no_book_uses() {
+fn test_publisher_edit_deletes_only_dropped_publishers_that_no_book_uses() {
     let (_temp, mut lib) = setup_with_library();
     let edited = lib
         .add_book(BookAdd {
@@ -1125,7 +1153,24 @@ fn test_publisher_edit_deletes_every_publisher_that_no_book_uses() {
     .unwrap();
     assert_eq!(
         summary(&mut lib),
-        [("Gollancz".to_string(), 1), ("Tor".to_string(), 1)]
+        [
+            ("Gollancz".to_string(), 1),
+            ("Previously unused".to_string(), 0),
+            ("Tor".to_string(), 1),
+        ]
+    );
+
+    lib.update_book(
+        edited.id,
+        BookUpdate {
+            publisher: Some("Tor".to_string()),
+            ..empty_update()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        summary(&mut lib),
+        [("Previously unused".to_string(), 0), ("Tor".to_string(), 2),]
     );
 
     lib.update_book(
@@ -1136,7 +1181,10 @@ fn test_publisher_edit_deletes_every_publisher_that_no_book_uses() {
         },
     )
     .unwrap();
-    assert_eq!(summary(&mut lib), [("Tor".to_string(), 1)]);
+    assert_eq!(
+        summary(&mut lib),
+        [("Previously unused".to_string(), 0), ("Tor".to_string(), 1),]
+    );
 }
 
 #[test]

@@ -179,15 +179,14 @@ pub struct BookUpdate {
     pub is_read: Option<bool>,
 
     /// Replaces the book's tags with these names (deduplicated
-    /// case-insensitively). An empty list removes all tags. A name that is
-    /// not yet in the library becomes a new tag. Then the update deletes
-    /// each tag that no book uses, as Calibre does.
+    /// case-insensitively). An empty list removes all tags, and any
+    /// now-unused tags will be deleted. A name that is not yet in the library
+    /// becomes a new tag.
     pub tags: Option<Vec<String>>,
     /// If provided, links the book to the named series (created if it does
     /// not exist), replacing any existing series. An empty (or whitespace)
-    /// name unlinks the book from its series. `None` leaves it unchanged.
-    /// Then the update deletes each series that no book uses, as Calibre
-    /// does.
+    /// name unlinks the book from its series, and a now-unused series will
+    /// be deleted. `None` leaves it unchanged.
     pub series: Option<String>,
     /// Sets the book's position within its series.
     pub series_index: Option<f32>,
@@ -196,8 +195,8 @@ pub struct BookUpdate {
     /// An empty list clears all language links; `None` leaves them unchanged.
     pub language_codes: Option<Vec<String>>,
     /// Links the book to the named publisher, replacing any other. An empty
-    /// (or whitespace) name unlinks it. Then the update deletes each
-    /// publisher that no book uses, as Calibre does.
+    /// (or whitespace) name unlinks it, and a now-unused publisher will be
+    /// deleted.
     pub publisher: Option<String>,
     /// Replaces the publication date. It cannot be cleared back to
     /// Calibre's "undefined" date.
@@ -1287,9 +1286,8 @@ impl Library {
         crate::queries::series::list_with_book_counts(&mut self.conn)
     }
 
-    /// List every tag in the library with its linked-book count, sorted
-    /// case-insensitively by name. [`Library::update_book`] deletes each tag
-    /// that no book uses, so a count of 0 lasts only until the next tag edit.
+    /// List every tag in the library (the whole vocabulary, including tags
+    /// no longer linked to any book), sorted case-insensitively by name.
     pub fn list_tags(&mut self) -> Result<Vec<TagSummary>, CalibreError> {
         crate::queries::tags::list_all(&mut self.conn)
     }

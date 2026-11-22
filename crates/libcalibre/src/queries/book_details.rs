@@ -90,8 +90,7 @@ pub(crate) fn ratings_by_book_ids(
         .collect())
 }
 
-/// Removes the book's publisher link. The publisher itself stays, as
-/// Calibre keeps it.
+/// Removes the book's publisher link. The publisher itself stays.
 pub(crate) fn unlink_publisher(
     conn: &mut SqliteConnection,
     book_id: BookId,
