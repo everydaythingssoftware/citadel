@@ -30,7 +30,11 @@ If the TCP peer isn't a trusted proxy, the client is the peer, and forwarded
 headers are ignored for every purpose. If it is trusted, Citadel reads one
 configured header (`api.forwardedHeader`: `x-forwarded-for` by default, or
 `forwarded` and its `for=` values), joins every instance of it in order, and
-walks right to left skipping trusted entries. The first untrusted entry is
+walks right to left skipping trusted entries. Values are split from the
+right, so a client's own text (an unclosed quote, say) can't change how the
+proxy's appended entry reads. How the browser reached Citadel comes from the
+same header family (`X-Forwarded-Proto`/`-Host`, or `Forwarded`), rightmost
+value. The first untrusted entry is
 the client. If every entry is trusted, the leftmost is. Entries may be `ip`,
 `ip:port`, `[v6]` or `[v6]:port`, quoted in `Forwarded`. IPv4-mapped IPv6
 addresses count as IPv4. A request made in-process, with no peer, is
@@ -39,9 +43,9 @@ loopback.
 Two cases put a request in **soft mode** (`ClientAddress::soft()`), where
 address-based penalties should be lenient because many people may share the
 address. In the first, the nearest entry Citadel would believe can't be read,
-so the request is keyed by that proxy. In the second, an untrusted peer on a
-private, loopback, CGNAT (`100.64.0.0/10`) or link-local network sends
-forwarding headers. That second kind of peer is probably a reverse proxy
+so the request is keyed by that proxy. In the second, while `trustedProxies` isn't
+set, an untrusted peer on a private, loopback, CGNAT (`100.64.0.0/10`) or
+link-local network sends forwarding headers. That second kind of peer is probably a reverse proxy
 nobody configured. Citadel remembers up to 64 of those peers in memory so each
 one logs a single warning pointing at `CITADEL_TRUSTED_PROXIES` /
 `api.trustedProxies`, at most once a minute across the process. Public peers

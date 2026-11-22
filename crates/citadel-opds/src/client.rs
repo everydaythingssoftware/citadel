@@ -530,7 +530,11 @@ impl ClientResolver {
                 .any(|name| headers.contains_key(*name));
             if sent_forwarding && is_local(peer_ip) {
                 self.seen_forwarders.note(peer_ip);
-                client.soft = Some(SoftReason::UntrustedLocalForwarder);
+                // Leniency is only for a proxy nobody has configured yet: once
+                // trustedProxies is set, any other peer is just a client.
+                if self.trust.configured().is_none() {
+                    client.soft = Some(SoftReason::UntrustedLocalForwarder);
+                }
             }
             return client;
         }
@@ -590,14 +594,14 @@ fn forwarded_entries(headers: &HeaderMap, header: ForwardedHeader) -> Vec<Option
             entries.push(None);
             continue;
         };
-        for element in split_outside_quotes(value, ',') {
+        for element in split_from_right(value, ',') {
             let element = element.trim();
             if element.is_empty() {
                 continue;
             }
             entries.push(match header {
                 ForwardedHeader::XForwardedFor => parse_node(element),
-                ForwardedHeader::Forwarded => split_outside_quotes(element, ';')
+                ForwardedHeader::Forwarded => split_from_right(element, ';')
                     .into_iter()
                     .filter_map(|pair| pair.split_once('='))
                     .find(|(key, _)| key.trim().eq_ignore_ascii_case("for"))
@@ -608,21 +612,25 @@ fn forwarded_entries(headers: &HeaderMap, header: ForwardedHeader) -> Vec<Option
     entries
 }
 
-fn split_outside_quotes(text: &str, separator: char) -> Vec<&str> {
+/// `text` split at `separator` outside quotes, read from the right. The
+/// nearest proxy appends on the right, so whatever a client put further
+/// left (an unclosed quote, say) can't change how the proxy's entry reads.
+pub fn split_from_right(text: &str, separator: char) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut quoted = false;
-    let mut start = 0;
-    for (index, character) in text.char_indices() {
+    let mut end = text.len();
+    for (index, character) in text.char_indices().rev() {
         match character {
             '"' => quoted = !quoted,
             _ if character == separator && !quoted => {
-                parts.push(&text[start..index]);
-                start = index + character.len_utf8();
+                parts.push(&text[index + character.len_utf8()..end]);
+                end = index;
             }
             _ => {}
         }
     }
-    parts.push(&text[start..]);
+    parts.push(&text[..end]);
+    parts.reverse();
     parts
 }
 
@@ -866,22 +874,40 @@ mod tests {
                 soft: None,
             },
             Case {
-                name: "an untrusted private peer sending forwarding headers is soft",
+                name: "with trustedProxies set, another private peer is just a client",
                 trusted: PROXY,
                 header: XFF,
                 peer: "192.168.1.30",
                 sent: &[("x-forwarded-for", "198.51.100.7")],
                 client: "192.168.1.30",
-                soft: Some(SoftReason::UntrustedLocalForwarder),
+                soft: None,
             },
             Case {
-                name: "an untrusted CGNAT peer sending forwarding headers is soft",
+                name: "with trustedProxies set, a CGNAT peer is just a client",
                 trusted: PROXY,
                 header: XFF,
                 peer: "100.100.1.2",
                 sent: &[("x-real-ip", "198.51.100.7")],
                 client: "100.100.1.2",
-                soft: Some(SoftReason::UntrustedLocalForwarder),
+                soft: None,
+            },
+            Case {
+                name: "a client's unclosed quote can't hide the proxy's entry",
+                trusted: PROXY,
+                header: XFF,
+                peer: "172.18.0.5",
+                sent: &[("x-forwarded-for", "\"1.2.3.4, 198.51.100.7")],
+                client: "198.51.100.7",
+                soft: None,
+            },
+            Case {
+                name: "nor in Forwarded",
+                trusted: PROXY,
+                header: STD,
+                peer: "172.18.0.5",
+                sent: &[("forwarded", "for=\"1.2.3.4, for=198.51.100.7")],
+                client: "198.51.100.7",
+                soft: None,
             },
             Case {
                 name: "an untrusted public peer is never soft",
@@ -899,6 +925,34 @@ mod tests {
             assert_eq!(client.ip(), ip(case.client), "{}", case.name);
             assert_eq!(client.soft(), case.soft, "{}", case.name);
         }
+    }
+
+    #[test]
+    fn without_trusted_proxies_an_untrusted_local_forwarder_is_soft() {
+        let resolver = ClientResolver::new(ProxyTrust::new(None), XFF);
+        for (peer_address, sent) in [
+            ("192.168.1.30", ("x-forwarded-for", "198.51.100.7")),
+            ("100.100.1.2", ("x-real-ip", "198.51.100.7")),
+        ] {
+            let client = resolver.resolve(peer(peer_address), &headers(&[sent]));
+            assert_eq!(client.ip(), ip(peer_address));
+            assert_eq!(client.soft(), Some(SoftReason::UntrustedLocalForwarder));
+        }
+        let public = resolver.resolve(
+            peer("203.0.113.9"),
+            &headers(&[("x-forwarded-for", "198.51.100.7")]),
+        );
+        assert_eq!(public.soft(), None);
+    }
+
+    #[test]
+    fn splitting_from_the_right_ignores_a_client_quote() {
+        assert_eq!(split_from_right("a, b", ','), vec!["a", " b"]);
+        assert_eq!(split_from_right("\"x, y\", z", ','), vec!["\"x, y\"", " z"]);
+        assert_eq!(
+            split_from_right("\"1.2.3.4, 198.51.100.7", ',').last(),
+            Some(&" 198.51.100.7")
+        );
     }
 
     #[test]

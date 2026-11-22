@@ -446,8 +446,9 @@ a page must post to the address it was loaded from.
 Behind a reverse proxy, Citadel believes forwarded headers only from trusted
 proxies, and asks them two different things:
 
-- **How the browser reached Citadel** (`Forwarded`, or
-  `X-Forwarded-Proto`/`X-Forwarded-Host`), which decides the address checks
+- **How the browser reached Citadel** (`X-Forwarded-Proto` and
+  `X-Forwarded-Host`, or `Forwarded` when `forwardedHeader` names it; the
+  rightmost value, which the nearest proxy wrote), which decides the address checks
   above and whether cookies are `Secure`. By default this trusts this machine
   and private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
   `fc00::/7`), which covers a proxy on the same host or Docker network.
@@ -467,19 +468,12 @@ that isn't trusted is from that peer, whatever it sends.
 When the nearest address Citadel would believe can't be read (`unknown`, a
 name, a `Forwarded` element without `for=`), the request counts as the proxy
 and is in *soft mode*: many people may share that address, so per-client
-limits are eight times higher and address-based penalties stay lenient. A
-peer on a private, CGNAT or loopback network that sends forwarding headers
-without being trusted is in soft mode too, and is most likely a reverse proxy
-nobody told Citadel about. Citadel logs one line about such a peer at most
-once a minute, and administrators see an offer under Settings → General:
-"Requests from 172.18.0.5 include forwarding headers. Trust it as your
-reverse proxy?" **Trust** adds it, on top of `trustedProxies`, to `citadel.db`
-(never to the config file) and applies at once; **Dismiss** stops offering
-it. The section also lists trusted proxies. Those from `trustedProxies` are
-marked as set in the configuration; those trusted here can be removed with
-**Stop Trusting…**.
-The same is `GET`, `POST` and `DELETE /api/server/proxies` with
-`{"range": "172.18.0.5"}`.
+limits are eight times higher and address-based penalties stay lenient. While
+`trustedProxies` isn't set, a peer on a private, CGNAT or loopback network
+that sends forwarding headers is in soft mode too: it is most likely a
+reverse proxy nobody told Citadel about. Citadel logs one line about such a
+peer at most once a minute, naming the address to add to `trustedProxies`.
+Once `trustedProxies` is set, other peers get no such leniency.
 
 Three common setups, each with Citadel on a Docker network and the proxy on
 the same one, where giving the proxy a fixed address keeps the list short:

@@ -13,7 +13,9 @@ use axum::{
     Json,
 };
 use citadel_core::error::{LibraryError, LibraryErrorCode};
-use citadel_opds::client::{peer_of, ClientResolver, ForwardedHeader, ProxyTrust};
+use citadel_opds::client::{
+    peer_of, split_from_right, ClientResolver, ForwardedHeader, ProxyTrust,
+};
 
 use super::{session::PublicUrl, ApiState};
 
@@ -134,7 +136,7 @@ impl Addresses {
     ) -> Option<PublicUrl> {
         let trusted = peer.is_none_or(|peer| self.clients.trust().origin_trusts(peer));
         let forwarded = if trusted {
-            forwarded(headers)
+            forwarded(headers, self.clients.header())
         } else {
             Forwarded::default()
         };
@@ -161,33 +163,43 @@ struct Forwarded {
     host: Option<String>,
 }
 
-/// The nearest proxy's view: the standard `Forwarded` header, else the
-/// common `X-Forwarded-Proto` and `X-Forwarded-Host`.
-fn forwarded(headers: &HeaderMap) -> Forwarded {
-    if let Some(value) = header_text(headers, "forwarded") {
-        let first = value.split(',').next().unwrap_or_default();
-        let mut found = Forwarded::default();
-        for pair in first.split(';') {
-            if let Some((key, value)) = pair.trim().split_once('=') {
-                let value = value.trim().trim_matches('"').to_string();
-                match key.trim().to_ascii_lowercase().as_str() {
-                    "proto" => found.proto = Some(value.to_ascii_lowercase()),
-                    "host" => found.host = Some(value),
-                    _ => {}
+/// The nearest proxy's view, from the one header family `api.forwardedHeader`
+/// names (a client's own `Forwarded` must not outrank the proxy's
+/// `X-Forwarded-*`), taking the rightmost value: what the nearest proxy
+/// added, not what the client sent.
+fn forwarded(headers: &HeaderMap, header: ForwardedHeader) -> Forwarded {
+    let rightmost = |name: &str| {
+        headers
+            .get_all(name)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .flat_map(|value| split_from_right(value, ','))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .last()
+            .map(str::to_string)
+    };
+    match header {
+        ForwardedHeader::Forwarded => {
+            let mut found = Forwarded::default();
+            if let Some(element) = rightmost("forwarded") {
+                for pair in split_from_right(&element, ';') {
+                    if let Some((key, value)) = pair.trim().split_once('=') {
+                        let value = value.trim().trim_matches('"').to_string();
+                        match key.trim().to_ascii_lowercase().as_str() {
+                            "proto" => found.proto = Some(value.to_ascii_lowercase()),
+                            "host" => found.host = Some(value),
+                            _ => {}
+                        }
+                    }
                 }
             }
+            found
         }
-        if found.proto.is_some() || found.host.is_some() {
-            return found;
-        }
-    }
-    let first = |name| {
-        header_text(headers, name)
-            .and_then(|value| value.split(',').next().map(|part| part.trim().to_string()))
-    };
-    Forwarded {
-        proto: first("x-forwarded-proto").map(|proto| proto.to_ascii_lowercase()),
-        host: first("x-forwarded-host"),
+        ForwardedHeader::XForwardedFor => Forwarded {
+            proto: rightmost("x-forwarded-proto").map(|proto| proto.to_ascii_lowercase()),
+            host: rightmost("x-forwarded-host"),
+        },
     }
 }
 
@@ -377,18 +389,56 @@ mod tests {
             Some(url("http://citadel:8081")),
             "a stranger can't claim to be a proxy"
         );
+        // With Forwarded chosen, the nearest proxy's element (the rightmost)
+        // names the address, not one a client sent ahead of it.
+        let standard_proxy = Addresses::new(
+            vec![],
+            ClientResolver::new(ProxyTrust::new(None), ForwardedHeader::Forwarded),
+            None,
+            None,
+        );
         let standard = headers(&[
             ("host", "citadel:8081"),
             (
                 "forwarded",
-                "for=192.0.2.60;proto=https;host=\"books.example.com\", for=10.0.0.1",
+                "for=192.0.2.60;proto=http;host=evil.example, for=10.0.0.1;proto=https;host=\"books.example.com\"",
             ),
         ]);
         assert_eq!(
-            addresses.origin_of(
+            standard_proxy.origin_of(
                 &standard,
                 &Uri::default(),
                 Some("127.0.0.1".parse().unwrap())
+            ),
+            Some(url("https://books.example.com"))
+        );
+        // With X-Forwarded-For (the default), a client's own Forwarded header,
+        // passed along by a proxy that only sets X-Forwarded-*, is ignored.
+        let smuggled = headers(&[
+            ("host", "citadel:8081"),
+            ("x-forwarded-proto", "https"),
+            ("x-forwarded-host", "books.example.com"),
+            ("forwarded", "proto=http;host=localhost:8081"),
+        ]);
+        assert_eq!(
+            addresses.origin_of(
+                &smuggled,
+                &Uri::default(),
+                Some("172.18.0.3".parse().unwrap())
+            ),
+            Some(url("https://books.example.com"))
+        );
+        // A proxy that appends: its own value is the rightmost.
+        let appended = headers(&[
+            ("host", "citadel:8081"),
+            ("x-forwarded-proto", "http, https"),
+            ("x-forwarded-host", "evil.example, books.example.com"),
+        ]);
+        assert_eq!(
+            addresses.origin_of(
+                &appended,
+                &Uri::default(),
+                Some("172.18.0.3".parse().unwrap())
             ),
             Some(url("https://books.example.com"))
         );
