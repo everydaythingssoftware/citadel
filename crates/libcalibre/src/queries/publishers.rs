@@ -7,8 +7,8 @@ use crate::library::PublisherSummary;
 use crate::CalibreError;
 
 /// Every publisher with its linked-book count, sorted case-insensitively by
-/// name. Includes publishers no longer linked to any book (count 0),
-/// matching [`super::series::list_with_book_counts`].
+/// name. A publisher that no book uses has a count of 0 until the next
+/// publisher edit deletes it.
 pub(crate) fn list_with_book_counts(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<PublisherSummary>, CalibreError> {
@@ -40,6 +40,18 @@ pub(crate) fn list_with_book_counts(
             book_count: row.book_count,
         })
         .collect())
+}
+
+/// Deletes every publisher that no book links to.
+pub(crate) fn delete_unused(conn: &mut SqliteConnection) -> Result<(), CalibreError> {
+    sql_query(
+        "DELETE FROM publishers
+         WHERE NOT EXISTS (
+             SELECT 1 FROM books_publishers_link link WHERE link.publisher = publishers.id
+         )",
+    )
+    .execute(conn)?;
+    Ok(())
 }
 
 /// Links the book to the named publisher, creating it if needed (matched

@@ -110,6 +110,16 @@ pub(crate) fn unlink_book(
     Ok(())
 }
 
+/// Deletes every series that no book links to.
+pub(crate) fn delete_unused(conn: &mut SqliteConnection) -> Result<(), CalibreError> {
+    sql_query(
+        "DELETE FROM series
+         WHERE NOT EXISTS (SELECT 1 FROM books_series_link link WHERE link.series = series.id)",
+    )
+    .execute(conn)?;
+    Ok(())
+}
+
 /// Makes `series_id` the book's only series, replacing any existing link.
 /// A book belongs to at most one series in Calibre's schema.
 pub(crate) fn set_book_series(
