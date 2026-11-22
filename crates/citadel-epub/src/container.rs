@@ -44,7 +44,10 @@ pub(crate) fn package_path(
             Node::Eof => break,
         }
     }
-    let full_path = package.or(first).ok_or(Refusal::NoRootfile)?;
+    let full_path = package
+        .or(first)
+        .filter(|path| !path.trim().is_empty())
+        .ok_or(Refusal::NoRootfile)?;
     paths::rootfile(full_path.trim(), exists)
         .map_err(|()| Refusal::InvalidRootfile)?
         .ok_or(EpubError::Unreadable(Unreadable::MissingPackage))

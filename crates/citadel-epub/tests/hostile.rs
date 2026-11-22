@@ -123,7 +123,9 @@ fn cases() -> Vec<(&'static str, Build, Expectation)> {
                 matches!(r, Refusal::TooManyEntries { limit: 20_000 })
             })
         }),
-        ("rootfile-empty", invalid_rootfile),
+        ("rootfile-empty", |result| {
+            refused(result, |r| matches!(r, Refusal::NoRootfile))
+        }),
         ("rootfile-slash", invalid_rootfile),
         ("rootfile-parent", invalid_rootfile),
     ];
