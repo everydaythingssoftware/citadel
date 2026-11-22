@@ -106,10 +106,10 @@ impl Addresses {
         all
     }
 
-    /// Whether the list limits anything: it names an address other than
-    /// this machine's own.
+    /// Whether any public URLs are set. When they are, other hosts are
+    /// refused; this machine's own names still work.
     pub fn restricted(&self) -> bool {
-        self.configured.iter().any(|url| !url.is_loopback())
+        !self.configured.is_empty()
     }
 
     pub fn standing(&self, origin: &PublicUrl) -> Standing {
@@ -296,18 +296,33 @@ mod tests {
 
     #[test]
     fn with_no_public_urls_configured_every_address_is_answered() {
-        for configured in [vec![], vec![url("http://localhost:8081")]] {
-            let addresses = Addresses::fixed(configured);
-            assert!(!addresses.restricted());
-            assert_eq!(
-                addresses.standing(&url("http://nas.local:8081")),
-                Standing::Unrestricted
-            );
-            assert_eq!(
-                addresses.standing(&url("http://127.0.0.1:8081")),
-                Standing::Loopback
-            );
-        }
+        let addresses = Addresses::fixed(vec![]);
+        assert!(!addresses.restricted());
+        assert_eq!(
+            addresses.standing(&url("http://nas.local:8081")),
+            Standing::Unrestricted
+        );
+        assert_eq!(
+            addresses.standing(&url("http://127.0.0.1:8081")),
+            Standing::Loopback
+        );
+
+        // A list naming only this machine still restricts: other hosts are
+        // refused, and this machine's names keep working.
+        let local_only = Addresses::fixed(vec![url("https://localhost:8443")]);
+        assert!(local_only.restricted());
+        assert_eq!(
+            local_only.standing(&url("http://evil.example")),
+            Standing::Refused
+        );
+        assert_eq!(
+            local_only.standing(&url("https://localhost:8443")),
+            Standing::Listed
+        );
+        assert_eq!(
+            local_only.standing(&url("http://127.0.0.1:8081")),
+            Standing::Loopback
+        );
         let configured = Addresses::new(
             vec![
                 url("https://books.example.com"),
