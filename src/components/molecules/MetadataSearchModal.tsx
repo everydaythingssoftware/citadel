@@ -1,5 +1,4 @@
-import { CoverSpine } from "@/components/atoms/CoverSpine";
-import { F7BookFill } from "@/components/icons/F7BookFill";
+import { BookCover } from "@/components/atoms/BookCover";
 import { Button, Sheet, Spinner, TextInput } from "@/components/ui";
 import type { AggregatedResult } from "@/lib/metadata-providers/aggregate";
 import { getDescriptor } from "@/lib/metadata-providers/registry";
@@ -96,22 +95,14 @@ export const MetadataSearchModal = ({
 							className={styles.searchResult}
 							onClick={() => onSelect(result)}
 						>
-							{result.coverUrl ? (
-								<span className={styles.searchResultCover}>
-									<span className={styles.coverArt}>
-										<img
-											src={result.coverUrl}
-											alt={result.book.title}
-											onError={onCoverError}
-										/>
-										<CoverSpine />
-									</span>
-								</span>
-							) : (
-								<span className={styles.coverPlaceholder} aria-hidden>
-									<F7BookFill className={styles.coverPlaceholderIcon} />
-								</span>
-							)}
+							<span className={styles.searchResultCover}>
+								<BookCover
+									src={result.coverUrl}
+									title={result.book.title}
+									maxHeight={84}
+									onImageError={onCoverError}
+								/>
+							</span>
 							<div className={styles.searchResultMeta}>
 								<span className={styles.searchResultTitle}>
 									{result.book.title}

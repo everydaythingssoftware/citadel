@@ -9,7 +9,7 @@ import type { OperatingSystem } from "../src/lib/platform/os";
 import "../src/styles.css";
 
 const STORYBOOK_IFRAME_PADDING_OFFSET = "36px";
-const FULL_HEIGHT_MINUS_SB_PADDING = `calc(100svh - ${STORYBOOK_IFRAME_PADDING_OFFSET}`;
+const FULL_HEIGHT_MINUS_SB_PADDING = `calc(100svh - ${STORYBOOK_IFRAME_PADDING_OFFSET})`;
 
 const channel = addons.getChannel();
 

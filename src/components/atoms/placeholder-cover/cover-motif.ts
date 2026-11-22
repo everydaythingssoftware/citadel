@@ -4,7 +4,7 @@
  * book's title so each book always gets the same cover.
  */
 
-export const Motif = {
+const Motif = {
 	sun: "sun",
 	arch: "arch",
 	stripes: "stripes",
@@ -15,7 +15,7 @@ export const Motif = {
 	dots: "dots",
 	crescent: "crescent",
 } as const;
-export type TMotif = (typeof Motif)[keyof typeof Motif];
+type TMotif = (typeof Motif)[keyof typeof Motif];
 
 /** One absolutely positioned layer, in percentages of the cover. */
 export interface MotifShape {
@@ -64,7 +64,7 @@ const hash = (seed: string): number => {
 };
 
 /** mulberry32: a seeded generator giving numbers in [0, 1). */
-export const seededRandom = (seed: string): (() => number) => {
+const seededRandom = (seed: string): (() => number) => {
 	let state = hash(seed);
 	return () => {
 		state = (state + 0x6d2b79f5) >>> 0;

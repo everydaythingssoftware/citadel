@@ -1,0 +1,68 @@
+import { bookCoverProps } from "@/lib/covers/book-cover";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { expect, it } from "vitest";
+import { BookCover } from "./BookCover";
+import type { LibraryBook } from "@/bindings";
+
+const book = {
+	title: "A title",
+	author_list: [],
+	is_read: true,
+	cover_image: null,
+	id: "1",
+	uuid: null,
+	tag_list: [],
+	sortable_title: null,
+	file_list: [],
+	identifier_list: [],
+	description: null,
+	series: null,
+	series_index: null,
+	language_list: [],
+	added_at: "2026-01-01T00:00:00Z",
+} satisfies LibraryBook;
+
+it("uses the thumbnail and reserves its proportions", () => {
+	const html = renderToStaticMarkup(
+		createElement(BookCover, {
+			...bookCoverProps(book, {
+				book_id: "1",
+				url: "/thumb.jpg",
+				width: 100,
+				height: 150,
+			}),
+		}),
+	);
+	expect(html).toContain('src="/thumb.jpg"');
+	expect(html).toContain('width="100"');
+	expect(html).toContain('height="150"');
+});
+
+it("uses the titled fallback for a missing metadata image", () => {
+	const html = renderToStaticMarkup(
+		createElement(BookCover, {
+			title: "Book title",
+			maxHeight: 84,
+		}),
+	);
+	expect(html).toContain("Book title");
+});
+
+it("keeps upload/review fallback artwork free of editable text", () => {
+	const html = renderToStaticMarkup(
+		createElement(BookCover, {
+			title: "Provisional title",
+			provisional: true,
+		}),
+	);
+	expect(html).not.toContain("Provisional title");
+});
+
+it.each([
+	undefined,
+	"   ",
+])("uses geometric artwork without a usable title (%j)", (title) => {
+	const html = renderToStaticMarkup(createElement(BookCover, { title }));
+	expect(html).not.toContain("<img");
+});

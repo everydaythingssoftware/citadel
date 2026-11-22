@@ -1,4 +1,5 @@
 import { usePlatform } from "@/lib/platform/context";
+import { bookCoverProps } from "@/lib/covers/book-cover";
 import clsx from "clsx";
 import {
 	useCoverThumb,
@@ -270,18 +271,6 @@ const BackChevron = () => (
 	</svg>
 );
 
-const Cover = ({
-	book,
-	size,
-}: {
-	book: LibraryBook;
-	size: CoverSize | null;
-}) => {
-	const thumb = useCoverThumb(book.id);
-	const sizeHint = size ?? thumb;
-	return <BookCover book={book} disableFade fluid sizeHint={sizeHint} />;
-};
-
 interface EditBookFormValues {
 	title: string;
 	sortTitle: string;
@@ -463,6 +452,7 @@ const EditBookForm = ({
 		value: string,
 	) => Promise<void>;
 }) => {
+	const coverThumb = useCoverThumb(book.id);
 	const actions = useLibraryActions();
 	// New authors are created as they're typed; saving waits for them so the
 	// book is linked to their real IDs, however slow the library is to answer.
@@ -1023,7 +1013,11 @@ const EditBookForm = ({
 			</div>
 			<div className={styles.layout}>
 				<div className={styles.sideColumn}>
-					<Cover book={book} size={coverSize} />
+					<BookCover
+						{...bookCoverProps(book)}
+						finished={false}
+						sizeHint={coverSize ?? coverThumb}
+					/>
 					<BookActions
 						files={book.file_list}
 						isRead={values.isRead}

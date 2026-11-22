@@ -1,317 +1,120 @@
 import clsx from "clsx";
-import { type HTMLAttributes, useState } from "react";
-import type { CoverThumbnail, LibraryBook } from "@/bindings";
-import { formatAuthorList } from "@/lib/authors";
-import { resolveCoverLoad } from "@/lib/cover-load";
-import { selectByStringHash } from "@/lib/hash-string";
-import { shortenToChars } from "$lib/domain/book";
-
-import img1Url from "../../assets/1.jpg";
-import img2Url from "../../assets/2.jpg";
-import img3Url from "../../assets/3.jpg";
-import img4Url from "../../assets/4.jpg";
-import img5Url from "../../assets/5.jpg";
+import {
+	type CSSProperties,
+	type HTMLAttributes,
+	type ReactEventHandler,
+	memo,
+} from "react";
+import { useCoverImage } from "@/lib/hooks/use-cover-image";
+import { PlaceholderCover } from "./placeholder-cover/PlaceholderCover";
 import styles from "./BookCover.module.css";
-import { CoverSpine } from "./CoverSpine";
 
-type LibraryBookWithCoverImage = LibraryBook & {
-	cover_image: NonNullable<LibraryBook["cover_image"]>;
-};
+export const COVER_SHELF_HEIGHT = 230;
 
-interface CoverSizeHint {
-	width: number;
-	height: number;
+export interface BookCoverProps extends HTMLAttributes<HTMLDivElement> {
+	src?: string | null;
+	title?: string;
+	alt?: string;
+	authors?: string;
+	/** The title comes from an import that is still under review. */
+	provisional?: boolean;
+	sizeHint?: { width: number; height: number };
+	maxHeight?: number | string;
+	selected?: boolean;
+	finished?: boolean;
+	loading?: boolean;
+	exit?: "added" | "skipped";
+	onImageError?: ReactEventHandler<HTMLImageElement>;
 }
 
-/**
- * The box a fluid cover of this size settles into, set on its wrapper up
- * front: an image's width/height attributes don't reserve space while CSS
- * sizes it `auto`.
- */
-const fluidBoxFor = ({ width, height }: CoverSizeHint) => ({
-	width: `min(100%, ${(FLUID_MAX_HEIGHT_PX * width) / height}px, ${width}px)`,
-	aspectRatio: `${width} / ${height}`,
+export const BookCover = memo(function BookCover({
+	src,
+	...props
+}: BookCoverProps) {
+	return <BookCoverContent key={src ?? "fallback"} src={src} {...props} />;
 });
 
-/**
- * Cap on a fluid cover's height (the grid's "shelf" height). Real covers keep
- * their aspect ratio inside a box of `100% of the cell × FLUID_MAX_HEIGHT`.
- */
-const FLUID_MAX_HEIGHT_PX = 230;
-// Placeholder art keeps the classic 133:200 book proportions.
-const PLACEHOLDER_RATIO = 133 / 200;
-
-/** Dims a finished book; hovering a cover you can open lifts the dim. */
-const ReadOverlay = ({ visible }: { visible: boolean }) => (
-	<div
-		aria-hidden="true"
-		className={styles.readOverlay}
-		data-visible={visible || undefined}
-	/>
-);
-
-const BookCoverUsingImage = ({
-	book,
-	disableFade,
-	fluid,
-	interactive,
-	thumb,
+const BookCoverContent = ({
+	src,
+	title = "",
+	alt = title,
+	authors = "",
+	provisional = false,
 	sizeHint,
+	maxHeight = COVER_SHELF_HEIGHT,
+	selected = false,
+	finished = false,
+	loading = false,
+	exit,
+	onImageError,
+	className,
+	style,
+	children,
 	...props
-}: {
-	book: LibraryBookWithCoverImage;
-	disableFade: boolean;
-	fluid: boolean;
-	interactive: boolean;
-	thumb?: CoverThumbnail;
-	sizeHint?: CoverSizeHint;
-} & HTMLAttributes<HTMLDivElement>) => {
-	// A cover can fail without an `error` event: an asset:// URL outside the
-	// asset scope "loads" at 0×0, which would render a zero-height cell and
-	// collapse the virtualized grid's row measurement. Either failure mode
-	// falls back to the same placeholder treatment as books with no cover,
-	// whose fixed aspect ratio keeps the cell dimensions stable.
-	const [coverFailed, setCoverFailed] = useState(false);
-
-	if (coverFailed) {
-		return (
-			<BookCoverWithPlaceholder
-				book={book}
-				disableFade={disableFade}
-				fluid={fluid}
-				interactive={interactive}
-				{...props}
-			/>
-		);
-	}
-
+}: BookCoverProps) => {
+	const { imageSrc, size, onLoad, onError } = useCoverImage(
+		src,
+		sizeHint,
+		onImageError,
+	);
+	const heightLimit =
+		typeof maxHeight === "number" ? `${maxHeight}px` : maxHeight;
+	const ratio = size ? size.width / size.height : 2 / 3;
 	return (
 		<div
 			{...props}
-			className={clsx(styles.hit, props.className)}
-			data-interactive={interactive || undefined}
+			className={clsx(
+				styles.cover,
+				exit && styles.leaving,
+				exit === "added" && styles.added,
+				exit === "skipped" && styles.skipped,
+				className,
+			)}
+			data-selected={selected || undefined}
+			data-loading={loading || undefined}
+			data-finished={finished || undefined}
+			data-fallback={!imageSrc || undefined}
+			data-interactive={
+				Boolean(props.onClick || props.onPointerDown) || undefined
+			}
 			style={
-				// In fluid mode the wrapper shrink-wraps the constrained image
-				// so the radius/shadow/spine hug the cover exactly.
-				fluid
-					? {
-							display: "inline-block",
-							maxWidth: "100%",
-							...(sizeHint && fluidBoxFor(sizeHint)),
-						}
-					: { width: "133px" }
+				{
+					...style,
+					width: `min(100%, ${size ? `${size.width}px, ` : ""}calc(${heightLimit} * ${ratio}))`,
+					aspectRatio: String(ratio),
+					"--cover-max-height": heightLimit,
+				} as CSSProperties
 			}
 		>
-			<div
-				className={styles.art}
-				style={{
-					position: "relative",
-					borderRadius: "2px",
-					overflow: "hidden",
-					boxShadow: "var(--ctd-cover-shadow)",
-				}}
-			>
-				<img
-					src={thumb?.url ?? book.cover_image.url}
-					alt={book.title}
-					// Reserve the exact box from the thumbnail's known dimensions so
-					// the row height is right before the image decodes (no shelf
-					// shift on mount).
-					width={thumb?.width ?? sizeHint?.width}
-					height={thumb?.height ?? sizeHint?.height}
-					// Skip incremental paint: whole frames only (no half-decoded
-					// scanline strips during fast scroll).
-					decoding="async"
-					onError={() => {
-						setCoverFailed(true);
-					}}
-					onLoad={(event) => {
-						if (resolveCoverLoad(event.currentTarget) === "failed") {
-							setCoverFailed(true);
-						}
-					}}
-					style={{
-						...(fluid
-							? {
-									// Fit inside the cell width and the shelf-height cap,
-									// preserving the real cover's aspect ratio (no crop,
-									// no stretch).
-									maxWidth: "100%",
-									maxHeight: `${FLUID_MAX_HEIGHT_PX}px`,
-									width: "auto",
-									height: "auto",
-									...(sizeHint && { width: "100%" }),
-								}
-							: { width: "133px", height: "auto" }),
-						display: "block",
-					}}
-				/>
-				<CoverSpine />
-				<ReadOverlay visible={book.is_read && !disableFade} />
+			<div className={styles.surface}>
+				{!loading && (
+					<>
+						{children ??
+							(imageSrc ? (
+								<img
+									className={styles.image}
+									src={imageSrc}
+									alt={alt}
+									width={sizeHint?.width}
+									height={sizeHint?.height}
+									decoding="async"
+									draggable={false}
+									onError={onError}
+									onLoad={onLoad}
+								/>
+							) : (
+								<PlaceholderCover
+									title={title}
+									authors={authors}
+									showTitle={!provisional && title.trim().length > 0}
+								/>
+							))}
+						<span className={styles.spine} aria-hidden="true" />
+						<span className={styles.edges} aria-hidden="true" />
+						<span className={styles.readOverlay} aria-hidden="true" />
+					</>
+				)}
 			</div>
 		</div>
-	);
-};
-
-const BookCoverWithPlaceholder = ({
-	book,
-	disableFade,
-	fluid,
-	interactive,
-	...props
-}: {
-	book: LibraryBook;
-	disableFade: boolean;
-	fluid: boolean;
-	interactive: boolean;
-} & HTMLAttributes<HTMLDivElement>) => {
-	const imgUrl = selectByStringHash(
-		[img1Url, img2Url, img3Url, img4Url, img5Url],
-		book.title,
-	);
-
-	return (
-		<div
-			{...props}
-			className={clsx(styles.hit, props.className)}
-			data-interactive={interactive || undefined}
-			style={{
-				// Same box as real covers: the 133:200 ratio turns the height cap
-				// into a width cap. With explicit width and height (non-fluid)
-				// the aspect-ratio is simply ignored.
-				aspectRatio: String(fluid ? PLACEHOLDER_RATIO : 9 / 6),
-				height: fluid ? undefined : 200,
-				width: fluid ? "100%" : 133,
-				maxWidth: fluid
-					? `${FLUID_MAX_HEIGHT_PX * PLACEHOLDER_RATIO}px`
-					: undefined,
-			}}
-		>
-			<div
-				className={styles.art}
-				style={{
-					width: fluid ? "100%" : "133px",
-					height: fluid ? "100%" : "200px",
-					display: "grid",
-					gridTemplateAreas: "overlap",
-					borderRadius: "2px",
-					overflow: "hidden",
-					boxShadow: "var(--ctd-cover-shadow)",
-					position: "relative",
-				}}
-			>
-				<img
-					alt="App-provided placeholder cover."
-					src={imgUrl}
-					style={{
-						width: "inherit",
-						height: "inherit",
-						gridArea: "overlap",
-						filter: "brightness(0.7)",
-					}}
-				/>
-				<div
-					style={{
-						height: "100%",
-						width: "auto",
-						display: "flex",
-						flexDirection: "column",
-						alignContent: "flex-start",
-						justifyContent: "flex-end",
-						gridArea: "overlap",
-						padding: "0.3rem 0.3rem 0.3rem calc(0.3rem + 6px)",
-						zIndex: 1,
-					}}
-				>
-					<div
-						style={{
-							fontSize: "var(--ctd-type-mac-title-3)",
-							fontWeight: "bolder",
-							color: "var(--ctd-cover-title)",
-							fontFamily:
-								'"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
-							letterSpacing: "0.01em",
-							lineHeight: 1.15,
-							textShadow: "var(--ctd-cover-title-shadow)",
-						}}
-					>
-						{shortenToChars(book.title, 36)}
-					</div>
-					<div
-						style={{
-							fontSize: "var(--ctd-type-mac-callout)",
-							color: "var(--ctd-cover-author)",
-							textShadow: "var(--ctd-cover-author-shadow)",
-							lineHeight: 1.2,
-						}}
-					>
-						{formatAuthorList(book.author_list)}
-					</div>
-				</div>
-				<CoverSpine />
-				<ReadOverlay visible={book.is_read && !disableFade} />
-			</div>
-		</div>
-	);
-};
-
-export const BookCover = ({
-	book,
-	disableFade = false,
-	fluid = false,
-	thumb,
-	sizeHint,
-	...props
-}: {
-	book: LibraryBook;
-	disableFade?: boolean;
-	/**
-	 * Size to the parent (width ≤ 100%, height ≤ ~230px, aspect ratio kept)
-	 * instead of the fixed 133px column used in the details drawer.
-	 */
-	fluid?: boolean;
-	/**
-	 * Grid-sized thumbnail for this book's cover. When set, the small image
-	 * is rendered instead of the full-resolution cover, and its dimensions
-	 * reserve the exact row height.
-	 */
-	thumb?: CoverThumbnail;
-	/**
-	 * The full-size cover's dimensions, when known: reserves its box before
-	 * it decodes, so loading it doesn't push the content below it down.
-	 */
-	sizeHint?: CoverSizeHint;
-} & HTMLAttributes<HTMLDivElement>) => {
-	// Only covers that respond to a press lift on hover; display-only covers
-	// (details sidebar, edit page) stay still.
-	const interactive =
-		props.onClick !== undefined || props.onPointerDown !== undefined;
-
-	if (book.cover_image?.url !== undefined) {
-		return (
-			<BookCoverUsingImage
-				// Remounting on URL change resets the failed-cover fallback state
-				// when a book gains a (new) cover or its thumbnail arrives.
-				key={thumb?.url ?? book.cover_image.url}
-				// @ts-expect-error `cover_image` obviously exists
-				book={book}
-				disableFade={disableFade}
-				fluid={fluid}
-				interactive={interactive}
-				thumb={thumb}
-				sizeHint={sizeHint}
-				{...props}
-			/>
-		);
-	}
-
-	return (
-		<BookCoverWithPlaceholder
-			book={book}
-			disableFade={disableFade}
-			fluid={fluid}
-			interactive={interactive}
-			{...props}
-		/>
 	);
 };

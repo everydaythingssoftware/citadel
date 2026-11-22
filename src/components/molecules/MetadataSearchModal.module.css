@@ -83,40 +83,6 @@
 	flex-shrink: 0;
 }
 
-.coverArt {
-	box-shadow: var(--ctd-cover-shadow);
-	isolation: isolate;
-	position: relative;
-	display: block;
-	overflow: hidden;
-	border-radius: 2px;
-}
-
-.coverArt img {
-	display: block;
-	max-width: 56px;
-	max-height: 84px;
-}
-
-/* A neutral well for results from cover-less sources, so rows stay aligned and
-   library results never look broken. */
-.coverPlaceholder {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 56px;
-	height: 84px;
-	flex-shrink: 0;
-	border-radius: 6px;
-	background-color: var(--ctd-control-bg);
-}
-
-.coverPlaceholderIcon {
-	width: 20px;
-	height: 20px;
-	color: var(--ctd-ink-soft);
-}
-
 .searchResultMeta {
 	display: flex;
 	flex-direction: column;

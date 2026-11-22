@@ -1,6 +1,7 @@
+import { reviewCovers } from "@/lib/uploads/review-covers";
 import clsx from "clsx";
-import { type CSSProperties, memo, useRef } from "react";
-import { StagedCover } from "@/components/atoms/StagedCover";
+import { type CSSProperties, useRef } from "react";
+import { BookCover } from "@/components/atoms/BookCover";
 import { DEFAULT_COVER_ROW } from "@/lib/cover-row";
 import { useCoverRow } from "@/lib/hooks/use-cover-row";
 import type { DepartingCover } from "@/lib/hooks/use-review-deck";
@@ -15,18 +16,6 @@ export interface CoverRowProps {
 }
 
 const titleOf = (item: QueueItem) => item.book?.title ?? item.name;
-
-// Unchanged covers skip re-rendering when the selection moves.
-const Art = memo(
-	({ item, exit }: { item: QueueItem; exit?: DepartingCover["exit"] }) => (
-		<StagedCover
-			className={styles.art}
-			coverUrl={item.coverUrl}
-			seed={titleOf(item)}
-			exit={exit}
-		/>
-	),
-);
 
 /**
  * The ready books' covers in a row, with Cover Flow's feel: the current one
@@ -51,9 +40,6 @@ export const CoverRow = ({
 		onSelect,
 		params: DEFAULT_COVER_ROW,
 	});
-	const gone =
-		departing !== undefined &&
-		!items.some((item) => item.key === departing.item.key);
 	return (
 		<div
 			ref={stageRef}
@@ -64,37 +50,41 @@ export const CoverRow = ({
 				} as CSSProperties
 			}
 		>
-			{items.map((item, position) => (
-				<button
-					key={item.key}
-					type="button"
-					className={styles.cover}
-					data-cover-index={position}
-					tabIndex={position === index ? 0 : -1}
-					aria-current={position === index || undefined}
-					aria-label={
-						position === index
-							? `${titleOf(item)}, book ${position + 1} of ${items.length}`
-							: `Show ${titleOf(item)}`
-					}
-					onClick={() => onSelect(position)}
-				>
-					<Art item={item} />
-				</button>
-			))}
-			{gone && (
-				// The last book stays put while the review closes; any other
-				// leaves from the middle as the next one glides in.
-				<div
-					className={clsx(styles.cover, !departing.last && styles.departing)}
-					aria-hidden="true"
-				>
-					<Art
-						item={departing.item}
-						exit={departing.last ? undefined : departing.exit}
-					/>
-				</div>
-			)}
+			{reviewCovers(items, departing).map(({ item, position }) => {
+				const exiting = position === undefined;
+				return (
+					<button
+						key={item.key}
+						type="button"
+						className={clsx(
+							styles.cover,
+							exiting && !departing?.last && styles.departing,
+						)}
+						data-cover-index={position}
+						tabIndex={!exiting && position === index ? 0 : -1}
+						aria-hidden={exiting || undefined}
+						aria-current={(!exiting && position === index) || undefined}
+						aria-label={
+							position === index
+								? `${titleOf(item)}, book ${position + 1} of ${items.length}`
+								: `Show ${titleOf(item)}`
+						}
+						onClick={
+							position === undefined ? undefined : () => onSelect(position)
+						}
+					>
+						<BookCover
+							alt=""
+							provisional
+							maxHeight="calc(var(--cover-width) * 1.5)"
+							className={styles.art}
+							src={item.coverUrl}
+							title={titleOf(item)}
+							exit={exiting && !departing?.last ? departing?.exit : undefined}
+						/>
+					</button>
+				);
+			})}
 		</div>
 	);
 };

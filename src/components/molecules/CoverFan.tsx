@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { CoverSpine } from "@/components/atoms/CoverSpine";
+import { BookCover } from "@/components/atoms/BookCover";
 import type { CSSProperties } from "react";
 import painting1 from "@/assets/1.jpg";
 import painting2 from "@/assets/2.jpg";
@@ -29,8 +29,9 @@ export const CoverFan = ({ size = 128, className }: CoverFanProps) => (
 		aria-hidden="true"
 	>
 		{COVERS.map((cover, index) => (
-			<div
+			<BookCover
 				key={cover.colour}
+				maxHeight={`calc(var(--fan-size) * ${index === 2 ? 1 : 0.94} * 1.5)`}
 				className={clsx(
 					styles.book,
 					[styles.left, styles.right, styles.front][index],
@@ -38,8 +39,7 @@ export const CoverFan = ({ size = 128, className }: CoverFanProps) => (
 				style={{ background: cover.colour }}
 			>
 				<img className={styles.painting} src={cover.painting} alt="" />
-				<CoverSpine />
-			</div>
+			</BookCover>
 		))}
 	</div>
 );

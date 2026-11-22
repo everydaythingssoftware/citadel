@@ -5,16 +5,12 @@
 }
 
 .book {
-	isolation: isolate;
+	height: calc(var(--fan-size) * 0.94 * 1.5);
 	position: absolute;
 	left: 50%;
 	bottom: 0;
 	width: calc(var(--fan-size) * 0.94);
-	aspect-ratio: 2 / 3;
 	margin-left: calc(var(--fan-size) * -0.47);
-	border-radius: 2px;
-	overflow: hidden;
-	box-shadow: var(--ctd-cover-shadow);
 	transform-origin: 50% 100%;
 }
 
@@ -27,6 +23,7 @@
 }
 
 .front {
+	height: calc(var(--fan-size) * 1.5);
 	bottom: calc(var(--fan-size) * 0.06);
 	width: var(--fan-size);
 	margin-left: calc(var(--fan-size) * -0.5);

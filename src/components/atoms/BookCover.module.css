@@ -1,23 +1,60 @@
-/*
- * Covers you can open lift 2px on hover and drop the finished-book dim.
- * The lift moves only the art inside the hit target, never the element the
- * pointer is over: a hit target that moved out from under a pointer resting
- * on its bottom edge would lose :hover, drop back under it, and flicker.
- * Plain :hover, not pointer events, so a sheet's pointer lock coming and
- * going can't leave a cover stuck lifted or undimmed.
- */
-.hit {
+/* The layout supplies bounds; the surface always hugs the complete artwork. */
+:where(.cover),
+:global(button):has(> .cover) {
+	--cover-radius: 2px;
+}
+:where(.cover) {
 	position: relative;
+	display: inline-block;
+	border-radius: var(--cover-radius);
 }
-
-.art {
+.surface {
+	position: relative;
 	isolation: isolate;
-	transition:
-		transform 180ms ease,
-		box-shadow 180ms ease;
-}
+	overflow: hidden;
+	width: 100%;
+	height: 100%;
+	border-radius: inherit;
+	box-shadow: var(--ctd-cover-shadow);
+	background: inherit;
+	.cover[data-fallback] & {
+		container-type: inline-size;
+	}
 
-/* Dims finished books, 80% of the overlay token, fading over 100ms. */
+	.cover[data-interactive] & {
+		transition:
+			transform 180ms ease,
+			box-shadow 180ms ease;
+	}
+
+	.cover[data-loading] & {
+		box-shadow: none;
+		background: var(--ctd-surface-muted);
+		border: 1px solid var(--ctd-border);
+	}
+}
+.image {
+	display: block;
+	width: 100%;
+	height: auto;
+	max-width: 100%;
+	max-height: var(--cover-max-height);
+}
+.cover:focus-visible,
+:global(button):has(> .cover):focus-visible {
+	border-radius: var(--cover-radius);
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+/* Keep the selection and pointer target still when the artwork lifts. */
+.cover[data-selected] {
+	outline: 2.5px solid var(--ctd-ink-soft);
+	outline-offset: 3px;
+}
+:global([role="listbox"]:focus) .cover[data-selected],
+:global([role="listbox"]:focus-within) .cover[data-selected] {
+	outline-color: var(--ctd-ink);
+}
 .readOverlay {
 	position: absolute;
 	inset: 0;
@@ -31,17 +68,134 @@
 	opacity: 0;
 	transition: opacity 100ms ease;
 }
-
-.readOverlay[data-visible] {
+.cover[data-finished] .readOverlay {
 	opacity: 1;
 }
-
 @media (hover: hover) {
-	.hit[data-interactive]:hover .art {
+	.cover[data-interactive]:hover .surface {
 		transform: translateY(-2px);
 	}
-
-	.hit[data-interactive]:hover .readOverlay {
+	.cover[data-interactive]:hover .readOverlay {
 		opacity: 0;
 	}
+}
+
+.spine,
+.edges {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	pointer-events: none;
+	z-index: 1;
+}
+
+.spine {
+	background: var(--ctd-cover-spine-bg);
+	mix-blend-mode: multiply;
+}
+
+.edges {
+	background: var(--ctd-cover-edges);
+}
+
+/* Longhands on purpose: a shorthand without a name minifies to
+   "animation: none" and the exits below would run for 0 ms. */
+.leaving {
+	animation-duration: 380ms;
+	animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+	animation-fill-mode: forwards;
+}
+
+.added {
+	animation-name: cover-deal;
+}
+
+.skipped {
+	animation-name: cover-skip;
+}
+
+@keyframes cover-deal {
+	0% {
+		transform: translate(0, 0) rotate(0deg);
+		opacity: 1;
+	}
+	30% {
+		transform: translateY(-14px) rotate(-3deg);
+		box-shadow: var(--ctd-shadow-lift);
+	}
+	100% {
+		transform: translate(-180%, 20px) rotate(-14deg);
+		opacity: 0;
+	}
+}
+
+@keyframes cover-skip {
+	from {
+		transform: translateY(0) scale(1);
+		opacity: 1;
+	}
+	to {
+		transform: translateY(24px) scale(0.85);
+		opacity: 0;
+	}
+}
+
+@keyframes cover-fade {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.leaving.added,
+	.leaving.skipped {
+		animation-name: cover-fade;
+		animation-duration: 200ms;
+	}
+}
+
+.painting {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	filter: brightness(0.7);
+}
+.caption {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	padding: 0.3rem 0.3rem 0.3rem calc(0.3rem + 6px);
+	z-index: 1;
+}
+.title {
+	font-size: clamp(6px, 10cqi, var(--ctd-type-mac-title-3));
+	font-weight: bolder;
+	color: var(--ctd-cover-title);
+	font-family:
+		"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+	letter-spacing: 0.01em;
+	line-height: 1.15;
+	text-shadow: var(--ctd-cover-title-shadow);
+}
+.author {
+	font-size: clamp(5px, 8cqi, var(--ctd-type-mac-callout));
+	color: var(--ctd-cover-author);
+	text-shadow: var(--ctd-cover-author-shadow);
+	line-height: 1.2;
+}
+
+.shape {
+	position: absolute;
+	box-sizing: border-box;
+}
+
+.motif {
+	position: absolute;
+	inset: 0;
 }
