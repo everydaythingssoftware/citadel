@@ -995,10 +995,148 @@ fn test_update_book_sets_and_clears_publisher_and_rating() {
         .unwrap();
     assert_eq!(book.publisher, None);
     assert_eq!(book.rating, None);
-    let publishers = lib.list_publishers().unwrap();
-    assert!(publishers
+    assert!(lib.list_publishers().unwrap().is_empty());
+}
+
+/// A row that no book links to, as an earlier edit or another program can
+/// leave behind. The connection registers Calibre's SQL functions, which the
+/// series insert trigger calls.
+fn insert_unused(lib: &libcalibre::Library, table: &str) {
+    let mut conn =
+        libcalibre::__internals::establish_connection(lib.database_path().to_str().unwrap())
+            .unwrap();
+    sql_query(format!(
+        "INSERT INTO {table} (name) VALUES ('Previously unused')"
+    ))
+    .execute(&mut conn)
+    .unwrap();
+}
+
+#[test]
+fn test_tag_edit_deletes_every_tag_that_no_book_uses() {
+    let (_temp, mut lib) = setup_with_library();
+    let edited = lib
+        .add_book(BookAdd {
+            tags: Some(vec!["Fantasy".to_string(), "Shared".to_string()]),
+            ..empty_book("Edited")
+        })
+        .unwrap();
+    lib.add_book(BookAdd {
+        tags: Some(vec!["Shared".to_string()]),
+        ..empty_book("Kept")
+    })
+    .unwrap();
+    insert_unused(&lib, "tags");
+
+    lib.update_book(
+        edited.id,
+        BookUpdate {
+            tags: Some(vec!["Shared".to_string()]),
+            ..empty_update()
+        },
+    )
+    .unwrap();
+
+    let tags = lib.list_tags().unwrap();
+    let summary: Vec<(&str, i64)> = tags
         .iter()
-        .any(|p| p.name == "Tor" && p.book_count == 0));
+        .map(|t| (t.name.as_str(), t.book_count))
+        .collect();
+    assert_eq!(summary, [("Shared", 2)]);
+}
+
+#[test]
+fn test_series_edit_deletes_every_series_that_no_book_uses() {
+    let (_temp, mut lib) = setup_with_library();
+    let edited = lib
+        .add_book(BookAdd {
+            series: Some("First Saga".to_string()),
+            ..empty_book("Edited")
+        })
+        .unwrap();
+    lib.add_book(BookAdd {
+        series: Some("Kept Saga".to_string()),
+        ..empty_book("Kept")
+    })
+    .unwrap();
+    insert_unused(&lib, "series");
+    let summary = |lib: &mut libcalibre::Library| -> Vec<(String, i64)> {
+        lib.list_series()
+            .unwrap()
+            .into_iter()
+            .map(|s| (s.name, s.book_count))
+            .collect()
+    };
+
+    lib.update_book(
+        edited.id,
+        BookUpdate {
+            series: Some("Second Saga".to_string()),
+            ..empty_update()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        summary(&mut lib),
+        [("Kept Saga".to_string(), 1), ("Second Saga".to_string(), 1)]
+    );
+
+    lib.update_book(
+        edited.id,
+        BookUpdate {
+            series: Some("".to_string()),
+            ..empty_update()
+        },
+    )
+    .unwrap();
+    assert_eq!(summary(&mut lib), [("Kept Saga".to_string(), 1)]);
+}
+
+#[test]
+fn test_publisher_edit_deletes_every_publisher_that_no_book_uses() {
+    let (_temp, mut lib) = setup_with_library();
+    let edited = lib
+        .add_book(BookAdd {
+            publisher: Some("Orbit".to_string()),
+            ..empty_book("Edited")
+        })
+        .unwrap();
+    lib.add_book(BookAdd {
+        publisher: Some("Tor".to_string()),
+        ..empty_book("Kept")
+    })
+    .unwrap();
+    insert_unused(&lib, "publishers");
+    let summary = |lib: &mut libcalibre::Library| -> Vec<(String, i64)> {
+        lib.list_publishers()
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.name, p.book_count))
+            .collect()
+    };
+
+    lib.update_book(
+        edited.id,
+        BookUpdate {
+            publisher: Some("Gollancz".to_string()),
+            ..empty_update()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        summary(&mut lib),
+        [("Gollancz".to_string(), 1), ("Tor".to_string(), 1)]
+    );
+
+    lib.update_book(
+        edited.id,
+        BookUpdate {
+            publisher: Some("  ".to_string()),
+            ..empty_update()
+        },
+    )
+    .unwrap();
+    assert_eq!(summary(&mut lib), [("Tor".to_string(), 1)]);
 }
 
 #[test]

@@ -127,6 +127,16 @@ pub(crate) fn unlink_book(
     Ok(())
 }
 
+/// Deletes every tag that no book links to.
+pub(crate) fn delete_unused(conn: &mut SqliteConnection) -> Result<(), CalibreError> {
+    sql_query(
+        "DELETE FROM tags
+         WHERE NOT EXISTS (SELECT 1 FROM books_tags_link link WHERE link.tag = tags.id)",
+    )
+    .execute(conn)?;
+    Ok(())
+}
+
 pub(crate) fn find_tag_names_by_book_ids(
     conn: &mut SqliteConnection,
     book_ids: Vec<BookId>,

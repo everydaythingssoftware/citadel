@@ -53,6 +53,7 @@ pub fn update_book(
                 let book_series = series::create_if_not_exists(conn, series_name)?;
                 series::set_book_series(conn, book_series.id, book_id)?;
             }
+            series::delete_unused(conn)?;
         }
 
         if let Some(codes) = update.language_codes {
@@ -66,6 +67,7 @@ pub fn update_book(
             } else {
                 publishers::set_for_book(conn, book_id, publisher)?;
             }
+            publishers::delete_unused(conn)?;
         }
 
         if let Some(rating) = update.rating {
@@ -168,6 +170,7 @@ pub fn update_book(
                 let tag = tags::create_if_not_exists(conn, &tag_name)?;
                 tags::link_book(conn, tag.id, book_id)?;
             }
+            tags::delete_unused(conn)?;
         }
 
         books::touch(conn, book_id)?;
