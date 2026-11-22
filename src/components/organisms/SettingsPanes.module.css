@@ -201,35 +201,16 @@
 }
 
 .sectionTitle {
-	margin: 0 0.125rem 0.25rem;
+	margin: 0 0 0.375rem;
+	padding: 0 0.125rem;
 	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }
 
-/* Public URLs: a sunken, read-only well, like the one in the setup step. */
-.urlWell {
-	margin: 0;
-	padding: 0.25rem 0;
-	list-style: none;
-	background: var(--ctd-bg-deep);
-	border: 1px solid var(--ctd-border);
-	border-radius: var(--ctd-radius-control);
-	box-shadow: var(--ctd-field-inner-shadow);
-}
-
-.urlLine {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.5625rem;
-	min-width: 0;
-	padding: 0.4375rem 0.75rem;
-}
-
-.urlLine svg {
-	flex: none;
-	color: var(--ctd-ink-soft);
+.inlineCode {
+	font-family: var(--ctd-font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+	font-size: 0.92em;
 }
 
 .urlText {
@@ -240,7 +221,7 @@
 	color: var(--ctd-ink);
 }
 
-.urlLine[data-always] .urlText {
+.row[data-always] .urlText {
 	color: var(--ctd-ink-soft);
 }
 
@@ -248,8 +229,8 @@
 	flex: none;
 	padding: 0.1875rem 0.4375rem 0.25rem;
 	border-radius: var(--ctd-radius-capsule);
-	background-color: color-mix(in oklch, var(--ctd-brass) 16%, transparent);
-	color: color-mix(in oklch, var(--ctd-brass) 80%, var(--ctd-ink));
+	background-color: var(--ctd-nav-hover-bg);
+	color: var(--ctd-ink-soft);
 	font-size: var(--ctd-text-subheadline);
 	font-weight: 600;
 	line-height: 1;
@@ -359,21 +340,19 @@
 	margin: 0;
 }
 
-/* What an administrator should fix, shown only when something needs it.
-   A tinted edge marks it out without shouting; the reasons do the work. */
+/* What an administrator should fix, shown only when something needs it. */
 .problems {
 	display: flex;
 	flex-direction: column;
 	gap: 0.5rem;
 	padding: 0.75rem 0.875rem;
 	border: 1px solid var(--ctd-border);
-	border-left: 3px solid oklch(0.72 0.15 75);
 	border-radius: 0.5rem;
 	background-color: var(--ctd-surface);
 }
 
-.problems[data-status="failing"] {
-	border-left-color: var(--ctd-danger-bg);
+:global([data-theme="dark"]) .problems {
+	background-color: var(--ctd-surface-strong);
 }
 
 .problemsTitle {
@@ -381,6 +360,10 @@
 	font-size: var(--ctd-text-body);
 	font-weight: 600;
 	color: var(--ctd-ink);
+}
+
+.problems[data-status="failing"] .problemsTitle {
+	color: var(--ctd-danger-ink);
 }
 
 .problemsList {
@@ -413,35 +396,4 @@
 /* Full screen hides the traffic lights, so the strip needs no room for them. */
 :root[data-fullscreen] .tabStrip {
 	padding-inline: 0.75rem;
-}
-
-/* The offer to trust an unconfigured reverse proxy. */
-.proxyOffer {
-	display: flex;
-	flex-direction: column;
-}
-
-/* Trusted proxies: one row each, the address and what can be done. */
-.proxyList {
-	list-style: none;
-	margin: 0.5rem 0 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 0.5rem;
-}
-
-.proxyRow {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 0.75rem;
-	padding-inline: 0.125rem;
-}
-
-.proxyOfferActions {
-	display: flex;
-	justify-content: flex-end;
-	gap: 0.5rem;
-	margin-top: 0.75rem;
 }

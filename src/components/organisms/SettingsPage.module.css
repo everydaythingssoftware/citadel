@@ -47,7 +47,8 @@
 	margin: 0;
 	/* On the same edge as the note beneath it (SettingsPanes .paneNote). */
 	padding-inline: 0.125rem;
-	font-size: var(--ctd-text-body);
+	font-size: var(--ctd-text-title-3);
+	line-height: var(--ctd-leading-title-3);
 	font-weight: 600;
 	color: var(--ctd-ink);
 }

@@ -9,15 +9,15 @@
 //! should be lenient because many people may share the one address Citadel
 //! sees: the nearest unvouched entry can't be read (the request is keyed by
 //! the proxy), and a private, loopback or CGNAT peer that isn't trusted sends
-//! forwarding headers (likely an unconfigured reverse proxy). The latter are
-//! recorded in [`UntrustedForwarders`] so an administrator can trust them.
+//! forwarding headers (likely an unconfigured reverse proxy), which is also
+//! logged once per peer.
 use std::{
     collections::HashMap,
     convert::Infallible,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::{Arc, Mutex, RwLock},
-    time::{Duration, Instant, SystemTime},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use axum::{
@@ -202,29 +202,26 @@ impl ForwardedHeader {
 /// Which peers are proxies. With `trustedProxies` configured, that one list
 /// decides both client addresses and request origins. Without it, client
 /// addresses trust only this machine while origins (scheme and host) keep
-/// trusting private networks too. Ranges an administrator trusts in Settings
-/// (`stored`) add to both.
+/// trusting private networks too.
 #[derive(Debug)]
 pub struct ProxyTrust {
     configured: Option<Vec<IpRange>>,
-    stored: RwLock<Vec<IpRange>>,
     loopback: Vec<IpRange>,
     private: Vec<IpRange>,
 }
 
 impl ProxyTrust {
-    pub fn new(configured: Option<Vec<IpRange>>, stored: Vec<IpRange>) -> Arc<Self> {
+    pub fn new(configured: Option<Vec<IpRange>>) -> Arc<Self> {
         Arc::new(Self {
             configured,
-            stored: RwLock::new(stored),
             loopback: parse_ranges(LOOPBACK_PROXIES),
             private: parse_ranges(PRIVATE_PROXIES),
         })
     }
 
-    /// Nothing configured or stored: the desktop's trust.
+    /// Nothing configured: the desktop's trust.
     pub fn loopback_only() -> Arc<Self> {
-        Self::new(None, Vec::new())
+        Self::new(None)
     }
 
     /// `trustedProxies`, when set.
@@ -232,65 +229,22 @@ impl ProxyTrust {
         self.configured.as_deref()
     }
 
-    /// Ranges trusted from Settings.
-    pub fn stored(&self) -> Vec<IpRange> {
-        self.stored
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
-    }
-
-    pub fn set_stored(&self, ranges: Vec<IpRange>) {
-        *self
-            .stored
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = ranges;
-    }
-
-    fn base_for_clients(&self) -> &[IpRange] {
+    /// Whose forwarded client address is believed.
+    pub fn client_ranges(&self) -> &[IpRange] {
         self.configured.as_deref().unwrap_or(&self.loopback)
     }
 
-    fn base_for_origins(&self) -> &[IpRange] {
+    /// Whose forwarded scheme and host are believed.
+    pub fn origin_ranges(&self) -> &[IpRange] {
         self.configured.as_deref().unwrap_or(&self.private)
     }
 
-    fn with_stored(&self, base: &[IpRange]) -> Vec<IpRange> {
-        let mut all = base.to_vec();
-        for range in self.stored() {
-            if !all.contains(&range) {
-                all.push(range);
-            }
-        }
-        all
-    }
-
-    /// Whose forwarded client address is believed.
-    pub fn client_ranges(&self) -> Vec<IpRange> {
-        self.with_stored(self.base_for_clients())
-    }
-
-    /// Whose forwarded scheme and host are believed.
-    pub fn origin_ranges(&self) -> Vec<IpRange> {
-        self.with_stored(self.base_for_origins())
-    }
-
     pub fn client_trusts(&self, address: IpAddr) -> bool {
-        in_any(self.base_for_clients(), address) || self.stored_contains(address)
+        in_any(self.client_ranges(), address)
     }
 
     pub fn origin_trusts(&self, address: IpAddr) -> bool {
-        in_any(self.base_for_origins(), address) || self.stored_contains(address)
-    }
-
-    fn stored_contains(&self, address: IpAddr) -> bool {
-        in_any(
-            &self
-                .stored
-                .read()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-            address,
-        )
+        in_any(self.origin_ranges(), address)
     }
 }
 
@@ -478,133 +432,40 @@ pub fn peer_of(extensions: &Extensions) -> Option<SocketAddr> {
         })
 }
 
-/// An untrusted local peer that sent forwarding headers.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UntrustedForwarder {
-    pub address: IpAddr,
-    /// Which forwarding headers it sent, lowercase.
-    pub headers: Vec<String>,
-    pub last_seen: SystemTime,
-    pub requests: u64,
-}
-
-struct ForwarderEntry {
-    headers: Vec<&'static str>,
-    last_seen: SystemTime,
-    touched: Instant,
-    requests: u64,
-    dismissed: bool,
-}
-
-/// The most recently seen untrusted local forwarders, at most
-/// [`UNTRUSTED_FORWARDERS_CAPACITY`]; the least recently seen is forgotten
-/// first. Public peers are never recorded, so strangers can't fill it.
+/// Tracks the most recently seen untrusted local forwarders, capped at
+/// [`UNTRUSTED_FORWARDERS_CAPACITY`], so each distinct unconfigured proxy logs
+/// once rather than on every request. Public peers are never recorded.
 #[derive(Default)]
-pub struct UntrustedForwarders {
-    entries: Mutex<HashMap<IpAddr, ForwarderEntry>>,
+struct SeenForwarders {
+    entries: Mutex<HashMap<IpAddr, Instant>>,
 }
 
 static LAST_FORWARDER_LOG: Mutex<Option<Instant>> = Mutex::new(None);
 
-impl UntrustedForwarders {
-    fn record(&self, address: IpAddr, headers: Vec<&'static str>) {
+impl SeenForwarders {
+    fn note(&self, address: IpAddr) {
         let now = Instant::now();
         let first_time = {
             let mut entries = self
                 .entries
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if !entries.contains_key(&address) && entries.len() >= UNTRUSTED_FORWARDERS_CAPACITY {
+            let first_time = !entries.contains_key(&address);
+            if first_time && entries.len() >= UNTRUSTED_FORWARDERS_CAPACITY {
                 if let Some(oldest) = entries
                     .iter()
-                    .min_by_key(|(_, entry)| entry.touched)
+                    .min_by_key(|(_, touched)| *touched)
                     .map(|(address, _)| *address)
                 {
                     entries.remove(&oldest);
                 }
             }
-            let first_time = !entries.contains_key(&address);
-            let entry = entries.entry(address).or_insert_with(|| ForwarderEntry {
-                headers: Vec::new(),
-                last_seen: SystemTime::now(),
-                touched: now,
-                requests: 0,
-                dismissed: false,
-            });
-            for header in headers {
-                if !entry.headers.contains(&header) {
-                    entry.headers.push(header);
-                }
-            }
-            entry.headers.sort_unstable();
-            entry.last_seen = SystemTime::now();
-            entry.touched = now;
-            entry.requests = entry.requests.saturating_add(1);
-            first_time && !entry.dismissed
+            entries.insert(address, now);
+            first_time
         };
         if first_time {
             log_forwarder(address, now);
         }
-    }
-
-    /// Recorded forwarders nobody dismissed, most recently seen first.
-    pub fn list(&self) -> Vec<UntrustedForwarder> {
-        let entries = self
-            .entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut listed: Vec<(Instant, UntrustedForwarder)> = entries
-            .iter()
-            .filter(|(_, entry)| !entry.dismissed)
-            .map(|(address, entry)| {
-                (
-                    entry.touched,
-                    UntrustedForwarder {
-                        address: *address,
-                        headers: entry.headers.iter().map(|name| name.to_string()).collect(),
-                        last_seen: entry.last_seen,
-                        requests: entry.requests,
-                    },
-                )
-            })
-            .collect();
-        listed.sort_by_key(|(touched, _)| std::cmp::Reverse(*touched));
-        listed.into_iter().map(|(_, forwarder)| forwarder).collect()
-    }
-
-    /// How many are remembered, dismissed ones included.
-    pub fn len(&self) -> usize {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Stops listing forwarders in `range`; they stay remembered, so they
-    /// don't come back while they keep sending headers.
-    pub fn dismiss(&self, range: &IpRange) {
-        for (address, entry) in self
-            .entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .iter_mut()
-        {
-            if range.contains(*address) {
-                entry.dismissed = true;
-            }
-        }
-    }
-
-    /// Forgets forwarders in `range`, such as once it is trusted.
-    pub fn forget(&self, range: &IpRange) {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .retain(|address, _| !range.contains(*address));
     }
 }
 
@@ -618,7 +479,7 @@ fn log_forwarder(address: IpAddr, now: Instant) {
     *last = Some(now);
     eprintln!(
         "citadel warning=\"requests from {address} include forwarding headers, but it isn't a trusted proxy; \
-         its headers are ignored. If it is your reverse proxy, trust it in Settings or with trustedProxies\""
+         its headers are ignored. If it is your reverse proxy, add it to CITADEL_TRUSTED_PROXIES (or api.trustedProxies) and restart\""
     );
 }
 
@@ -627,7 +488,7 @@ fn log_forwarder(address: IpAddr, now: Instant) {
 pub struct ClientResolver {
     trust: Arc<ProxyTrust>,
     header: ForwardedHeader,
-    forwarders: Arc<UntrustedForwarders>,
+    seen_forwarders: Arc<SeenForwarders>,
 }
 
 impl ClientResolver {
@@ -635,7 +496,7 @@ impl ClientResolver {
         Self {
             trust,
             header,
-            forwarders: Arc::default(),
+            seen_forwarders: Arc::default(),
         }
     }
 
@@ -652,10 +513,6 @@ impl ClientResolver {
         self.header
     }
 
-    pub fn untrusted_forwarders(&self) -> &UntrustedForwarders {
-        &self.forwarders
-    }
-
     /// Whether `peer` is a proxy whose forwarded client address is believed.
     pub fn trusts_peer(&self, peer: IpAddr) -> bool {
         self.trust.client_trusts(peer)
@@ -668,13 +525,11 @@ impl ClientResolver {
         let peer_ip = peer.ip().to_canonical();
         if !self.trust.client_trusts(peer_ip) {
             let mut client = ClientAddress::direct(peer);
-            let sent: Vec<&'static str> = FORWARDING_HEADERS
+            let sent_forwarding = FORWARDING_HEADERS
                 .iter()
-                .copied()
-                .filter(|name| headers.contains_key(*name))
-                .collect();
-            if !sent.is_empty() && is_local(peer_ip) {
-                self.forwarders.record(peer_ip, sent);
+                .any(|name| headers.contains_key(*name));
+            if sent_forwarding && is_local(peer_ip) {
+                self.seen_forwarders.note(peer_ip);
                 client.soft = Some(SoftReason::UntrustedLocalForwarder);
             }
             return client;
@@ -827,15 +682,12 @@ mod tests {
 
     fn trusting(ranges: &[&str], header: ForwardedHeader) -> ClientResolver {
         ClientResolver::new(
-            ProxyTrust::new(
-                Some(
-                    ranges
-                        .iter()
-                        .map(|range| IpRange::parse(range).unwrap())
-                        .collect(),
-                ),
-                Vec::new(),
-            ),
+            ProxyTrust::new(Some(
+                ranges
+                    .iter()
+                    .map(|range| IpRange::parse(range).unwrap())
+                    .collect(),
+            )),
             header,
         )
     }
@@ -1056,7 +908,7 @@ mod tests {
         for last in 0..=255u8 {
             resolver.resolve(peer(&format!("203.0.113.{last}")), &spoofing);
         }
-        assert!(resolver.untrusted_forwarders().is_empty());
+        assert!(resolver.seen_forwarders.entries.lock().unwrap().is_empty());
 
         for third in 0..8u8 {
             for last in 0..=255u8 {
@@ -1064,48 +916,14 @@ mod tests {
             }
         }
         assert_eq!(
-            resolver.untrusted_forwarders().len(),
+            resolver.seen_forwarders.entries.lock().unwrap().len(),
             UNTRUSTED_FORWARDERS_CAPACITY
         );
-        let listed = resolver.untrusted_forwarders().list();
-        assert_eq!(
-            listed[0].address,
-            ip("10.0.7.255"),
-            "the most recent is first"
-        );
-        assert_eq!(listed[0].headers, vec!["x-forwarded-for"]);
-        assert!(
-            !listed.iter().any(|seen| seen.address == ip("10.0.0.0")),
-            "the least recently seen were forgotten"
-        );
-    }
-
-    #[test]
-    fn dismissed_forwarders_stay_hidden_and_trusted_ones_are_forgotten() {
-        let resolver = trusting(PROXY, XFF);
-        let sent = headers(&[("x-forwarded-proto", "https")]);
-        resolver.resolve(peer("192.168.1.30"), &sent);
-        resolver.resolve(peer("192.168.1.31"), &sent);
-        resolver
-            .untrusted_forwarders()
-            .dismiss(&IpRange::parse("192.168.1.30").unwrap());
-        resolver.resolve(peer("192.168.1.30"), &sent);
-        let listed: Vec<IpAddr> = resolver
-            .untrusted_forwarders()
-            .list()
-            .into_iter()
-            .map(|seen| seen.address)
-            .collect();
-        assert_eq!(listed, vec![ip("192.168.1.31")]);
-        resolver
-            .untrusted_forwarders()
-            .forget(&IpRange::parse("192.168.1.0/24").unwrap());
-        assert!(resolver.untrusted_forwarders().is_empty());
     }
 
     #[test]
     fn without_configuration_clients_trust_loopback_and_origins_private_networks() {
-        let trust = ProxyTrust::new(None, Vec::new());
+        let trust = ProxyTrust::new(None);
         assert_eq!(trust.client_ranges(), parse_ranges(LOOPBACK_PROXIES));
         assert_eq!(trust.origin_ranges(), parse_ranges(PRIVATE_PROXIES));
         assert!(trust.client_trusts(ip("127.0.0.1")));
@@ -1127,22 +945,11 @@ mod tests {
             resolver.resolve(peer("127.0.0.1"), &sent).ip(),
             ip("198.51.100.7")
         );
-
-        trust.set_stored(vec![IpRange::parse("172.18.0.5").unwrap()]);
-        assert!(trust.client_trusts(ip("172.18.0.5")));
-        assert_eq!(
-            resolver.resolve(peer("172.18.0.5"), &sent).ip(),
-            ip("198.51.100.7"),
-            "a range trusted in Settings applies at once"
-        );
     }
 
     #[test]
     fn an_explicit_list_applies_to_clients_and_origins_alike() {
-        let trust = ProxyTrust::new(
-            Some(vec![IpRange::parse("203.0.113.0/24").unwrap()]),
-            vec![],
-        );
+        let trust = ProxyTrust::new(Some(vec![IpRange::parse("203.0.113.0/24").unwrap()]));
         for address in ["203.0.113.7"] {
             assert!(trust.client_trusts(ip(address)));
             assert!(trust.origin_trusts(ip(address)));

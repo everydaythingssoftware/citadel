@@ -42,10 +42,10 @@ address. In the first, the nearest entry Citadel would believe can't be read,
 so the request is keyed by that proxy. In the second, an untrusted peer on a
 private, loopback, CGNAT (`100.64.0.0/10`) or link-local network sends
 forwarding headers. That second kind of peer is probably a reverse proxy
-nobody configured. Citadel records it in `UntrustedForwarders`, a list of at
-most 64 that forgets the least recently seen first, with the header names and
-when it was last seen. Public peers are never recorded. One log line is
-written at most once a minute across the process.
+nobody configured. Citadel remembers up to 64 of those peers in memory so each
+one logs a single warning pointing at `CITADEL_TRUSTED_PROXIES` /
+`api.trustedProxies`, at most once a minute across the process. Public peers
+are never recorded or logged.
 
 Counting uses `AddressKey`: `/32` (IPv4) or `/64` (IPv6) for one client, and
 the aggregates `/24`, `/56` and `/48` for its neighbourhood.
@@ -55,18 +55,15 @@ the aggregates `/24`, `/56` and `/48` for its neighbourhood.
 When `trustedProxies` isn't configured, client addresses trust loopback only
 (`127.0.0.0/8`, `::1`). Origin derivation (scheme and host) keeps the old
 default, which adds the private ranges, so existing proxy setups keep their
-addresses and cookies. When `trustedProxies` is configured, that one list
-applies to both. The server's OPDS listener uses the same trust and header
-(one shared `ClientResolver`), and the desktop's OPDS trusts loopback only.
+addresses and cookies. When `trustedProxies` is configured
+(`CITADEL_TRUSTED_PROXIES` or `api.trustedProxies`), that one list applies to
+both. The server's OPDS listener uses the same trust and header (one shared
+`ClientResolver`), and the desktop's OPDS trusts loopback only.
 
-Administrators can add ranges from Settings. `GET /api/server/proxies` lists
-recorded untrusted forwarders. `POST` trusts a range, and `DELETE` untrusts
-one and dismisses the forwarders in it, which is also how the offer is
-dismissed. Stored ranges live in `citadel.db`'s `properties` table, because
-Citadel never writes its config file. The effective list is the configured
-ranges plus the stored ones, and it applies immediately. Settings lists
-both. Configured ranges are read-only; stored ones can be removed after one
-confirmation (ADR 0014).
+Reverse-proxy trust is host configuration only, never editable in Settings or
+stored in `citadel.db` — container IPs rotate on recreate, so a configured
+subnet or static address is the durable source of truth, matching
+`publicUrls`.
 
 ### Listeners (`citadel_opds::listener`)
 
@@ -280,14 +277,15 @@ owners in.
 ### Administrators
 
 `GET /api/server/sign-in` reports counts only: clients and neighbourhoods
-banned now, and usernames being slowed now. Settings shows them on the
-Server page.
+banned now, and usernames being slowed now. Settings doesn't show them —
+counts alone aren't actionable without a user management surface.
 
 ## Consequences
 
 - Deployments with a proxy on a private network, and no `trustedProxies`,
   keep their addresses and cookies. Their clients count as the proxy,
-  softly, until an administrator trusts it from the Settings offer.
+  softly, until an administrator adds it to `CITADEL_TRUSTED_PROXIES` /
+  `api.trustedProxies` and restarts.
 - Covers count as short requests so a browser's grid isn't throttled to four.
   Only book files and uploads are streams.
 - Idle keep-alive connections last 60 s rather than indefinitely. Proxies

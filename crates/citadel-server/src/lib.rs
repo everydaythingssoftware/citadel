@@ -646,7 +646,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         ServedLibrary::new(accounts.clone(), source.clone(), state_directory.clone())
             .with_library_roots(config.library_roots.clone()),
     );
-    let clients = config.api.client_resolver(stored_proxies(&accounts))?;
+    let clients = config.api.client_resolver()?;
     let addresses = api::addresses::Addresses::new(
         config.api.public_addresses()?,
         clients.clone(),
@@ -686,7 +686,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
 
     let users = opds_users(&accounts, served.library_id().as_deref())?;
     let service = OpdsService::with_ephemeral_credentials(source.clone(), users.clone());
-    // OPDS believes the same proxies, and records the same untrusted ones.
+    // OPDS believes the same proxies.
     service.use_client_addresses(clients.clone());
     let touched = accounts.clone();
     service.on_device_key_used(move |key_id| {
@@ -820,25 +820,6 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Proxy ranges trusted in Settings. One that no longer parses is skipped
-/// with a warning rather than keeping the server from starting.
-fn stored_proxies(accounts: &CitadelStore) -> Vec<citadel_opds::client::IpRange> {
-    let stored = accounts.trusted_proxies().unwrap_or_else(|error| {
-        eprintln!("citadel_server warning=\"could not read trusted proxies: {error}\"");
-        Vec::new()
-    });
-    stored
-        .iter()
-        .filter_map(|range| match citadel_opds::client::IpRange::parse(range) {
-            Ok(range) => Some(range),
-            Err(error) => {
-                eprintln!("citadel_server warning=\"ignoring a stored trusted proxy: {error}\"");
-                None
-            }
-        })
-        .collect()
-}
-
 /// `citadel.db` can't be opened. Rather than exit (and, under a restart
 /// policy, loop), keep answering until stopped: health fails with the
 /// reason and the browser shows it. Exits with the reason once stopped.
@@ -848,7 +829,7 @@ async fn serve_unavailable(config: &ServerConfig, reason: String) -> Result<(), 
          keeps answering so health checks and the browser show this; fix it and restart.\""
     );
     let router = api::unavailable_router(reason.clone(), config.api.web_directory.as_deref());
-    let mut api = api::start(&config.api, router, config.api.client_resolver(Vec::new())?).await?;
+    let mut api = api::start(&config.api, router, config.api.client_resolver()?).await?;
     println!(
         "citadel_server api=http://{} health=failing",
         config.api.listen

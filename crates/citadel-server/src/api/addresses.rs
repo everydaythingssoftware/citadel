@@ -70,10 +70,7 @@ impl Addresses {
     pub fn fixed(configured: Vec<PublicUrl>) -> Arc<Self> {
         Self::new(
             configured,
-            ClientResolver::new(
-                ProxyTrust::new(None, Vec::new()),
-                ForwardedHeader::default(),
-            ),
+            ClientResolver::new(ProxyTrust::new(None), ForwardedHeader::default()),
             None,
             None,
         )
@@ -432,10 +429,7 @@ mod tests {
         let explicit = Addresses::new(
             vec![],
             ClientResolver::new(
-                ProxyTrust::new(
-                    Some(vec![IpRange::parse("203.0.113.0/24").unwrap()]),
-                    vec![],
-                ),
+                ProxyTrust::new(Some(vec![IpRange::parse("203.0.113.0/24").unwrap()])),
                 ForwardedHeader::default(),
             ),
             None,

@@ -115,10 +115,9 @@ fn shortened() -> ListenerConfig {
 
 fn trusting(ranges: &[&str]) -> ClientResolver {
     ClientResolver::new(
-        ProxyTrust::new(
-            Some(ranges.iter().map(|r| IpRange::parse(r).unwrap()).collect()),
-            Vec::new(),
-        ),
+        ProxyTrust::new(Some(
+            ranges.iter().map(|r| IpRange::parse(r).unwrap()).collect(),
+        )),
         ForwardedHeader::XForwardedFor,
     )
 }

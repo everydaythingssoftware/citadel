@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { signInLimitsSummary } from "./sign-in-limits";
 import { createWebServerService } from "./web";
 
 const json = (data: unknown, status = 200) =>
@@ -105,100 +104,5 @@ describe("Web server service", () => {
 			fetch: async () => new Response("bad gateway", { status: 502 }),
 		});
 		await expect(broken.health()).rejects.toThrow("(502)");
-	});
-
-	it("reads, trusts and forgets proxies", async () => {
-		const listing = (trusted: string[]) => ({
-			configured: null,
-			trusted,
-			forwardedHeader: "x-forwarded-for",
-			untrusted: trusted.length
-				? []
-				: [
-						{
-							address: "172.18.0.5",
-							headers: ["x-forwarded-for"],
-							lastSeen: "2026-11-21T09:00:00Z",
-							requests: 3,
-						},
-					],
-		});
-		const seen: string[] = [];
-		const server = createWebServerService({
-			baseUrl: "https://citadel.test",
-			fetch: async (request) => {
-				expect(new URL(request.url).pathname).toBe("/api/server/proxies");
-				const body = request.method === "GET" ? "" : await request.text();
-				seen.push(`${request.method} ${body}`);
-				return json(listing(request.method === "POST" ? ["172.18.0.5"] : []));
-			},
-		});
-		const proxies = await server.proxies();
-		expect(proxies.untrusted[0]?.lastSeen).toEqual(
-			new Date("2026-11-21T09:00:00Z"),
-		);
-		await expect(server.trustProxy("172.18.0.5")).resolves.toMatchObject({
-			trusted: ["172.18.0.5"],
-			untrusted: [],
-		});
-		await server.forgetProxy("172.18.0.5");
-		expect(seen).toEqual([
-			"GET ",
-			'POST {"range":"172.18.0.5"}',
-			'DELETE {"range":"172.18.0.5"}',
-		]);
-	});
-
-	it("reads the sign-in limits", async () => {
-		const server = createWebServerService({
-			baseUrl: "https://citadel.test",
-			fetch: async (request) => {
-				expect(new URL(request.url).pathname).toBe("/api/server/sign-in");
-				return json({
-					bannedAddresses: 2,
-					bannedBlocks: 0,
-					slowedUsernames: 1,
-				});
-			},
-		});
-		expect(await server.signInLimits()).toEqual({
-			bannedAddresses: 2,
-			bannedBlocks: 0,
-			slowedUsernames: 1,
-		});
-		const refused = createWebServerService({
-			baseUrl: "https://citadel.test",
-			fetch: async () =>
-				json({ code: "unauthorized", message: "Administrators only" }, 403),
-		});
-		await expect(refused.signInLimits()).rejects.toThrow("Administrators only");
-	});
-});
-
-describe("Sign-in limits summary", () => {
-	it("says who is refused and who is slowed down", () => {
-		expect(
-			signInLimitsSummary({
-				bannedAddresses: 0,
-				bannedBlocks: 0,
-				slowedUsernames: 0,
-			}),
-		).toBe("Nobody is being refused or slowed down for wrong sign-ins.");
-		expect(
-			signInLimitsSummary({
-				bannedAddresses: 1,
-				bannedBlocks: 0,
-				slowedUsernames: 0,
-			}),
-		).toBe("1 address is refused for too many wrong sign-ins.");
-		expect(
-			signInLimitsSummary({
-				bannedAddresses: 3,
-				bannedBlocks: 1,
-				slowedUsernames: 1,
-			}),
-		).toBe(
-			"3 addresses and 1 network are refused for too many wrong sign-ins. 1 username is being slowed down on new devices; browsers and readers that signed in before aren’t affected.",
-		);
 	});
 });

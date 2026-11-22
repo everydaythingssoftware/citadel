@@ -735,11 +735,10 @@ impl ApiConfig {
             .map(Option::unwrap_or_default)
     }
 
-    /// Client addresses as configured, plus the ranges an administrator
-    /// trusted in Settings.
-    pub fn client_resolver(&self, stored: Vec<IpRange>) -> Result<ClientResolver, String> {
+    /// Client addresses as configured.
+    pub fn client_resolver(&self) -> Result<ClientResolver, String> {
         Ok(ClientResolver::new(
-            ProxyTrust::new(self.proxies()?, stored),
+            ProxyTrust::new(self.proxies()?),
             self.forwarded_header()?,
         ))
     }
