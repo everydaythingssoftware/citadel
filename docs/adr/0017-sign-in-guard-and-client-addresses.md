@@ -290,6 +290,9 @@ Server page.
 - Admission still applies on top: one client may have 16 short requests in
   flight, so a reader fetching more than 16 covers at once gets 503 for the
   rest. The guard never refuses them.
+- Argon2 memory is held only while hashing. On glibc the server fixes the
+  allocator's mapping threshold at startup, so each 19 MiB buffer is
+  unmapped when freed instead of staying in the verifier thread's heap.
 - The verifier's queues are kept small (16 in the fair queue, 8 in the
   known-device lane), so waiting sign-ins hold at most 24 of the API's 64
   short slots. A flood from many neighbourhoods that cycles usernames gets

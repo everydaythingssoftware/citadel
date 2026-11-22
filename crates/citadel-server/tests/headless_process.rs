@@ -709,6 +709,17 @@ fn peak_memory(pid: u32) -> u64 {
         .unwrap()
 }
 
+/// Resident memory now (`VmRSS`), in KiB.
+#[cfg(target_os = "linux")]
+fn resident_memory(pid: u32) -> u64 {
+    std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .unwrap()
+        .lines()
+        .find_map(|line| line.strip_prefix("VmRSS:"))
+        .and_then(|value| value.trim().trim_end_matches("kB").trim().parse().ok())
+        .unwrap()
+}
+
 #[test]
 fn sign_in_flood() {
     let directory = tempfile::tempdir().unwrap();
@@ -759,6 +770,8 @@ fn sign_in_flood() {
             Err(_) => panic!("server did not start"),
         }
     }
+    #[cfg(target_os = "linux")]
+    let memory_at_rest = resident_memory(child.id());
     let origin = format!("http://127.0.0.1:{api_port}");
     let client = || {
         reqwest::blocking::Client::builder()
@@ -873,6 +886,9 @@ fn sign_in_flood() {
     {
         let grew = peak_memory(child.id()).saturating_sub(memory_before);
         assert!(grew < 200 * 1024, "peak memory grew {grew} KiB");
+        // Checked passwords' Argon2 buffers (19 MiB each) go back to the OS.
+        let kept = resident_memory(child.id()).saturating_sub(memory_at_rest);
+        assert!(kept < 16 * 1024, "resident memory kept {kept} KiB");
     }
 
     // The administrator's browser is known, so it gets straight in.

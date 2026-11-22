@@ -80,3 +80,13 @@ sign-in, real vs unknown user (5% trimmed): 18.626 vs 18.643 ms, difference -0.0
 OPDS check, username with keys vs without (mean): 7.216 vs 7.186 µs, difference +0.031 µs (+0.43%), 90% CI [-0.039, +0.101], margin ±0.144, t = 4.1 / 2.7 (critical 1.65, df 3985): EQUIVALENT
 OPDS check, username with keys vs without (5% trimmed): 6.973 vs 6.948 µs, difference +0.025 µs (+0.36%), 90% CI [-0.010, +0.059], margin ±0.139, t = 7.8 / 5.5 (critical 1.65, df 3590): EQUIVALENT
 ```
+
+## Memory between sign-ins
+
+Peak memory in the table above includes both verifier threads hashing at
+once (2 × 19 MiB). Afterwards that memory goes back to the operating system:
+the server fixes glibc's mapping threshold at startup so each Argon2 buffer
+is unmapped when freed. Measured on a release build: 27 MB at rest, 32 MB
+after sign-ins and after a 64-request burst (it was 71 MB before this change,
+with each thread's last buffer still resident). `headless_process`'s
+`sign_in_flood` checks that less than 16 MiB stays resident.

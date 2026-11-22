@@ -4,6 +4,7 @@ use citadel_server::Invocation;
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    return_large_blocks_to_the_os();
     let result = match citadel_server::invocation_from_args(std::env::args_os()) {
         Ok(Invocation::Version) => {
             println!("{}", citadel_server::release::describe());
@@ -30,3 +31,21 @@ async fn main() -> ExitCode {
         }
     }
 }
+
+/// Each Argon2 check allocates a 19 MiB buffer. Once glibc frees one large
+/// mapped block it raises its mapping threshold past that size, so later
+/// buffers land in the verifier thread's heap and stay resident after the
+/// check. A fixed threshold maps every large block on its own and unmaps it
+/// when freed, which costs microseconds against a 19 ms check.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn return_large_blocks_to_the_os() {
+    const LARGE_BLOCK_BYTES: libc::c_int = 4 * 1024 * 1024;
+    // SAFETY: mallopt only adjusts allocator tuning; it is called before
+    // any large allocation and with a valid parameter.
+    unsafe {
+        libc::mallopt(libc::M_MMAP_THRESHOLD, LARGE_BLOCK_BYTES);
+    }
+}
+
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn return_large_blocks_to_the_os() {}
