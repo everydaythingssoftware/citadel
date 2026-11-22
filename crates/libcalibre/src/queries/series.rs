@@ -110,12 +110,32 @@ pub(crate) fn unlink_book(
     Ok(())
 }
 
-/// Deletes every series that no book links to.
-pub(crate) fn delete_unused(conn: &mut SqliteConnection) -> Result<(), CalibreError> {
+/// Returns the id of the series that the book links to, or `None` if the
+/// book has no series.
+pub(crate) fn id_for_book(
+    conn: &mut SqliteConnection,
+    book_id: BookId,
+) -> Result<Option<i32>, CalibreError> {
+    use crate::schema::books_series_link::dsl::*;
+
+    books_series_link
+        .filter(book.eq(book_id.as_i32()))
+        .select(series)
+        .first::<i32>(conn)
+        .optional()
+        .map_err(CalibreError::from)
+}
+
+/// Deletes the series with id `series_id` if no book links to it.
+pub(crate) fn delete_if_unused(
+    conn: &mut SqliteConnection,
+    series_id: i32,
+) -> Result<(), CalibreError> {
     sql_query(
-        "DELETE FROM series
-         WHERE NOT EXISTS (SELECT 1 FROM books_series_link link WHERE link.series = series.id)",
+        "DELETE FROM series WHERE id = ? AND NOT EXISTS \
+         (SELECT 1 FROM books_series_link link WHERE link.series = series.id)",
     )
+    .bind::<Integer, _>(series_id)
     .execute(conn)?;
     Ok(())
 }

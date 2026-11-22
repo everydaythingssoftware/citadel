@@ -47,13 +47,16 @@ pub fn update_book(
 
         if let Some(series_name) = update.series {
             let series_name = series_name.trim();
+            let previous_series_id = series::id_for_book(conn, book_id)?;
             if series_name.is_empty() {
                 series::unlink_book(conn, book_id)?;
             } else {
                 let book_series = series::create_if_not_exists(conn, series_name)?;
                 series::set_book_series(conn, book_series.id, book_id)?;
             }
-            series::delete_unused(conn)?;
+            if let Some(series_id) = previous_series_id {
+                series::delete_if_unused(conn, series_id)?;
+            }
         }
 
         if let Some(codes) = update.language_codes {
@@ -62,12 +65,15 @@ pub fn update_book(
 
         if let Some(publisher) = update.publisher {
             let publisher = publisher.trim();
+            let previous_publisher_id = publishers::id_for_book(conn, book_id)?;
             if publisher.is_empty() {
                 book_details::unlink_publisher(conn, book_id)?;
             } else {
                 publishers::set_for_book(conn, book_id, publisher)?;
             }
-            publishers::delete_unused(conn)?;
+            if let Some(publisher_id) = previous_publisher_id {
+                publishers::delete_if_unused(conn, publisher_id)?;
+            }
         }
 
         if let Some(rating) = update.rating {
@@ -152,7 +158,7 @@ pub fn update_book(
                 .map(|tag| tag.id)
                 .collect();
 
-            for tag_id in to_unlink {
+            for &tag_id in &to_unlink {
                 tags::unlink_book(conn, tag_id, book_id)?;
             }
 
@@ -170,7 +176,7 @@ pub fn update_book(
                 let tag = tags::create_if_not_exists(conn, &tag_name)?;
                 tags::link_book(conn, tag.id, book_id)?;
             }
-            tags::delete_unused(conn)?;
+            tags::delete_if_unused(conn, &to_unlink)?;
         }
 
         books::touch(conn, book_id)?;

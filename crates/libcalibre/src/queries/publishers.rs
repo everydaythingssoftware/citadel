@@ -7,8 +7,8 @@ use crate::library::PublisherSummary;
 use crate::CalibreError;
 
 /// Every publisher with its linked-book count, sorted case-insensitively by
-/// name. A publisher that no book uses has a count of 0 until the next
-/// publisher edit deletes it.
+/// name. Includes publishers no longer linked to any book (count 0),
+/// matching [`super::series::list_with_book_counts`].
 pub(crate) fn list_with_book_counts(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<PublisherSummary>, CalibreError> {
@@ -42,14 +42,32 @@ pub(crate) fn list_with_book_counts(
         .collect())
 }
 
-/// Deletes every publisher that no book links to.
-pub(crate) fn delete_unused(conn: &mut SqliteConnection) -> Result<(), CalibreError> {
+/// Returns the id of the publisher that the book links to, or `None` if the
+/// book has no publisher.
+pub(crate) fn id_for_book(
+    conn: &mut SqliteConnection,
+    book_id: crate::BookId,
+) -> Result<Option<i32>, CalibreError> {
+    use crate::schema::books_publishers_link;
+
+    books_publishers_link::table
+        .filter(books_publishers_link::book.eq(book_id.as_i32()))
+        .select(books_publishers_link::publisher)
+        .first::<i32>(conn)
+        .optional()
+        .map_err(CalibreError::from)
+}
+
+/// Deletes the publisher with id `publisher_id` if no book links to it.
+pub(crate) fn delete_if_unused(
+    conn: &mut SqliteConnection,
+    publisher_id: i32,
+) -> Result<(), CalibreError> {
     sql_query(
-        "DELETE FROM publishers
-         WHERE NOT EXISTS (
-             SELECT 1 FROM books_publishers_link link WHERE link.publisher = publishers.id
-         )",
+        "DELETE FROM publishers WHERE id = ? AND NOT EXISTS \
+         (SELECT 1 FROM books_publishers_link link WHERE link.publisher = publishers.id)",
     )
+    .bind::<Integer, _>(publisher_id)
     .execute(conn)?;
     Ok(())
 }
