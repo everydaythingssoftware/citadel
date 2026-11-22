@@ -65,8 +65,8 @@ one and dismisses the forwarders in it, which is also how the offer is
 dismissed. Stored ranges live in `citadel.db`'s `properties` table, because
 Citadel never writes its config file. The effective list is the configured
 ranges plus the stored ones, and it applies immediately. Settings lists
-both: configured ranges read-only, stored ones with Stop Trusting, which
-asks once (ADR 0014: rare and deliberate).
+both. Configured ranges are read-only; stored ones can be removed after one
+confirmation (ADR 0014).
 
 ### Listeners (`citadel_opds::listener`)
 
@@ -125,6 +125,10 @@ the error names the value. When `Host` is missing, the authority comes from
 the request target. When `publicUrls` is set and no origin can be derived,
 checked paths answer 400 "Missing Host". Loopback peers and in-process calls
 work as before.
+
+A `publicUrls` list that names only this machine (`https://localhost:8443`
+behind a local proxy) now restricts like any other. It used to restrict
+nothing, while Settings said only those URLs were accepted.
 
 ## Sign-in guard
 
@@ -200,10 +204,10 @@ suspended for the hour and the username tier applies again.
 The same failed credential (SHA-256 over the username key and the secret)
 from the same client within 10 minutes counts once, in both tiers, so a
 reader retrying a stale key doesn't ban its own address. A repeat is
-answered as wrong at once, without checking it again: otherwise resending
-one wrong password would keep the verifier busy without ever being counted.
-Each client keeps the last 64. A password changed, within those 10 minutes,
-to a string that same client just tried is refused until the entry expires.
+answered as wrong without a second check. Checking it again would let one
+address keep the verifier busy without ever being counted. Each client keeps
+the last 64. If a password is changed to a value that client just tried, it
+is refused there until the 10 minutes pass.
 
 ### Reserving before work
 

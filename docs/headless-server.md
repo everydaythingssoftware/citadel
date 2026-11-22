@@ -246,10 +246,9 @@ never locks an account.
   then two, four and so on up to a day, while the guessing continues.
 - **Per username.** Wherever the guesses come from, one username gets 10,
   then one more every 30 seconds.
-- **Repeats.** Sending the same wrong password or key again from the same
-  address within 10 minutes counts once and is answered straight away, so an
-  e-reader with an old key doesn't get its household refused. Try a
-  different password to see the limits above.
+- **Repeats.** The same wrong password or key from the same address counts
+  once per 10 minutes, so an e-reader with an old key can't get its household
+  refused.
 
 A refused sign-in is answered `429 Too Many Requests` with `Retry-After`,
 the number of seconds until it can be tried again. The sign-in page says so.
@@ -476,9 +475,9 @@ once a minute, and administrators see an offer under Settings → General:
 "Requests from 172.18.0.5 include forwarding headers. Trust it as your
 reverse proxy?" **Trust** adds it, on top of `trustedProxies`, to `citadel.db`
 (never to the config file) and applies at once; **Dismiss** stops offering
-it. The same section lists every trusted proxy: those from `trustedProxies`
-are marked as set in the server's configuration, and those trusted from
-Settings have **Stop Trusting…**, which asks once and then applies at once.
+it. The section also lists trusted proxies. Those from `trustedProxies` are
+marked as set in the configuration; those trusted here can be removed with
+**Stop Trusting…**.
 The same is `GET`, `POST` and `DELETE /api/server/proxies` with
 `{"range": "172.18.0.5"}`.
 
