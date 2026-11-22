@@ -383,8 +383,9 @@ const ProxyTrust = ({
 						forwarding headers. Trust it as your reverse proxy?
 					</p>
 					<p className={classes.inlineNote}>
-						Until you do, sign-in limits count everyone behind it as one
-						address. Only trust it if it’s your proxy.
+						Until you do, Citadel can’t tell the people behind it apart, so it
+						limits wrong sign-ins by username only. Only trust it if it’s your
+						proxy.
 					</p>
 					<div className={classes.proxyOfferActions}>
 						<Button variant="subtle" disabled={pending} onClick={dismiss}>
@@ -440,7 +441,7 @@ const ProxyTrust = ({
 						Stop trusting <NoBreak>{confirmingUntrust}</NoBreak>?
 					</>
 				}
-				description="Citadel will ignore its forwarding headers, so sign-in limits will count everyone behind it as one address. Nobody is signed out."
+				description="Citadel will ignore its forwarding headers and can’t tell the people behind it apart, so it will limit wrong sign-ins by username only. Nobody is signed out."
 				confirmLabel="Stop Trusting"
 				onConfirm={untrust}
 			/>
