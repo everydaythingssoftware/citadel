@@ -137,9 +137,10 @@ impl HealthCache {
             let mut interval = tokio::time::interval(REFRESH);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                interval.tick().await;
-                if sender.is_closed() {
-                    return;
+                // Stop as soon as the router is gone, so its library closes.
+                tokio::select! {
+                    _ = interval.tick() => {}
+                    () = sender.closed() => return,
                 }
                 let health = Health::of(checks(&state).await).public();
                 if sender.send(Some(Arc::new(health))).is_err() {

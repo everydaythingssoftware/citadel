@@ -647,11 +647,16 @@ async fn the_chosen_library_survives_restart_and_a_missing_folder_is_reported() 
     assert!(restarted.source.is_open());
     let info = restarted.served.info().unwrap();
     assert_eq!((info.available, info.name.as_str()), (true, "Books"));
-    // Windows won't rename a folder whose database is open.
+    // Windows won't rename a folder whose database is open: once the router
+    // is gone, its background health task lets go of the library.
     drop(restarted);
 
     let moved = directory.path().join("Moved");
-    std::fs::rename(&books, &moved).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while let Err(error) = std::fs::rename(&books, &moved) {
+        assert!(std::time::Instant::now() < deadline, "{error}");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
     let broken = fresh(directory.path(), None);
     assert!(!broken.source.is_open());
     let info = broken.served.info().unwrap();
