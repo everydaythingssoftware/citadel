@@ -40,7 +40,8 @@ pub struct Package {
     /// The first `dc:description`.
     pub description: Option<String>,
     /// The publication date as written: a `dc:date` with `opf:event`
-    /// `publication`, or else the first `dc:date` without an event.
+    /// `publication`, then `original-publication`, then one without an
+    /// event, then any but the modification date.
     pub published: Option<String>,
     /// The cover image: the manifest item with the `cover-image` property,
     /// or else the one an EPUB 2 `<meta name="cover">` names.
@@ -370,13 +371,16 @@ pub(crate) fn parse(
         }
     };
 
+    let is_event = |item: &&DcItem, name: &str| {
+        item.event
+            .as_deref()
+            .is_some_and(|event| event.eq_ignore_ascii_case(name))
+    };
     let published = elements("date")
-        .find(|item| {
-            item.event
-                .as_deref()
-                .is_some_and(|event| event.eq_ignore_ascii_case("publication"))
-        })
+        .find(|item| is_event(item, "publication"))
+        .or_else(|| elements("date").find(|item| is_event(item, "original-publication")))
         .or_else(|| elements("date").find(|item| item.event.is_none()))
+        .or_else(|| elements("date").find(|item| !is_event(item, "modification")))
         .map(|item| item.value.clone());
 
     let package_dir = paths::parent(&path).to_string();

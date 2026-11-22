@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use citadel_epub::{Epub, EpubError};
 
 use super::{
-    guarded, non_empty, BookFileContents, BookFileMetadata, RefusedBookFile, MAX_COVER_BYTES,
+    guarded, isbn, non_empty, BookFileContents, BookFileMetadata, RefusedBookFile, MAX_COVER_BYTES,
 };
 use crate::mime_type::MimeType;
 
@@ -34,7 +34,14 @@ fn read_from(reader: BufReader<File>) -> Result<BookFileContents, EpubError> {
             .authors()
             .filter_map(|author| non_empty(&author.name))
             .collect(),
-        identifier: package.identifier.as_deref().and_then(non_empty),
+        // Citadel only keeps an ISBN, so prefer one over the package's own
+        // unique identifier (often a UUID in books exported from Calibre).
+        identifier: package
+            .identifiers
+            .iter()
+            .find(|identifier| isbn(identifier).is_some())
+            .or(package.identifier.as_ref())
+            .and_then(|identifier| non_empty(identifier)),
         publisher: package.publisher.as_deref().and_then(non_empty),
         language: package.language().and_then(non_empty),
         tags: package
@@ -204,6 +211,78 @@ mod tests {
             book.metadata.publication_date,
             NaiveDate::from_ymd_opt(2018, 11, 6)
         );
+    }
+
+    #[test]
+    fn an_isbn_is_preferred_over_the_unique_identifier() {
+        // The shape Calibre exports: the ISBN first, a UUID as the package's
+        // unique identifier.
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            &dir,
+            Epub {
+                opf_metadata: r#"<dc:identifier xmlns:opf="http://www.idpf.org/2007/opf" opf:scheme="ISBN">9780140449136</dc:identifier><dc:identifier id="id" xmlns:opf="http://www.idpf.org/2007/opf" opf:scheme="uuid">urn:uuid:7f3c0b1e-0000-4000-8000-000000000000</dc:identifier><dc:title>T</dc:title>"#,
+                manifest: "",
+                files: vec![],
+            },
+        );
+        let metadata = read_metadata(&path).unwrap();
+        assert_eq!(metadata.identifier.as_deref(), Some("9780140449136"));
+        assert_eq!(
+            isbn(metadata.identifier.as_deref().unwrap()).as_deref(),
+            Some("9780140449136")
+        );
+
+        let path = write(
+            &dir,
+            Epub {
+                opf_metadata: r#"<dc:identifier id="id">urn:uuid:7f3c0b1e-0000-4000-8000-000000000000</dc:identifier><dc:title>T</dc:title>"#,
+                manifest: "",
+                files: vec![],
+            },
+        );
+        assert_eq!(
+            read_metadata(&path).unwrap().identifier.as_deref(),
+            Some("urn:uuid:7f3c0b1e-0000-4000-8000-000000000000"),
+            "without an ISBN, the unique identifier"
+        );
+    }
+
+    #[test]
+    fn original_publication_dates_count_and_modification_dates_dont() {
+        let dir = tempfile::tempdir().unwrap();
+        let dated = |dates: &str| {
+            let path = write(
+                &dir,
+                Epub {
+                    opf_metadata: &format!(
+                        r#"<dc:identifier id="id">x</dc:identifier><dc:title>T</dc:title>{dates}"#
+                    ),
+                    manifest: "",
+                    files: vec![],
+                },
+            );
+            read_metadata(&path).unwrap().publication_date
+        };
+        let date = |event: &str, value: &str| {
+            format!(
+                r#"<dc:date xmlns:opf="http://www.idpf.org/2007/opf" opf:event="{event}">{value}</dc:date>"#
+            )
+        };
+        assert_eq!(
+            dated(&date("original-publication", "2012-09-15")),
+            NaiveDate::from_ymd_opt(2012, 9, 15)
+        );
+        assert_eq!(
+            dated(&format!(
+                "{}{}",
+                date("original-publication", "2012-09-15"),
+                date("publication", "2013-01-02")
+            )),
+            NaiveDate::from_ymd_opt(2013, 1, 2),
+            "publication wins"
+        );
+        assert_eq!(dated(&date("modification", "2020-01-01")), None);
     }
 
     #[test]
