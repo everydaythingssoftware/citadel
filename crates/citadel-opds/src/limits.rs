@@ -312,6 +312,14 @@ struct MeterShared {
 struct Metered {
     body: Body,
     shared: Arc<MeterShared>,
+    /// Stopped when the answer ends, so quick answers leave no timer behind.
+    watchdog: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Metered {
+    fn drop(&mut self) {
+        self.watchdog.abort();
+    }
 }
 
 impl Metered {
@@ -326,8 +334,12 @@ impl Metered {
             expired: AtomicBool::new(false),
             ticket: Mutex::new(Some(ticket)),
         });
-        tokio::spawn(watch_rate(Arc::downgrade(&shared), rules, control));
-        Self { body, shared }
+        let watchdog = tokio::spawn(watch_rate(Arc::downgrade(&shared), rules, control));
+        Self {
+            body,
+            shared,
+            watchdog,
+        }
     }
 }
 
@@ -383,7 +395,10 @@ impl HttpBody for Metered {
                         .fetch_add(data.len() as u64, Ordering::AcqRel);
                 }
             }
-            Poll::Ready(None) => drop(self.shared.ticket.lock().unwrap().take()),
+            Poll::Ready(None) => {
+                drop(self.shared.ticket.lock().unwrap().take());
+                self.watchdog.abort();
+            }
             _ => {}
         }
         polled
@@ -571,6 +586,42 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(again.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn quick_answers_leave_no_watchdog_running() {
+        let limits = Limits::new(
+            Capacities {
+                public: 0,
+                short: 1000,
+                stream: 0,
+            },
+            opds_class,
+        );
+        let app = limits.admit(Router::new().route("/opds", get(|| async { "feed" })));
+        let alive = || {
+            tokio::runtime::Handle::current()
+                .metrics()
+                .num_alive_tasks()
+        };
+        let before = alive();
+        for _ in 0..100 {
+            let response = app.clone().oneshot(get_request("/opds")).await.unwrap();
+            axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+        }
+        // Aborted watchdogs finish cancelling within moments; unaborted ones
+        // would sleep for a quarter of the rate window (15 s).
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while alive() > before + 1 && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            alive() <= before + 1,
+            "{} tasks still alive",
+            alive() - before
+        );
     }
 
     #[tokio::test]
