@@ -1,9 +1,9 @@
 export type {
 	HealthCheck,
 	HealthStatus,
-	ServerHealth,
 	ServerAddress,
 	ServerAddresses,
+	ServerHealth,
 	ServerRelease,
 	ServerService,
 	ServerUpdate,

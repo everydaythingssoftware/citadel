@@ -15,7 +15,6 @@ import {
 	serverKeyStatus,
 } from "@/components/organisms/ServerProviderKey";
 import classes from "@/components/organisms/SettingsPanes.module.css";
-import { GlobeGlyph } from "@/components/organisms/SetupCard";
 import { SharingSettings } from "@/components/organisms/SharingSettings";
 import {
 	Button,
@@ -26,7 +25,6 @@ import {
 	Tooltip,
 } from "@/components/ui";
 import { useAddLibraryFlow } from "@/lib/hooks/use-add-library-flow";
-import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
 import { useRemoveLibrary } from "@/lib/hooks/use-remove-library";
@@ -201,10 +199,13 @@ export const SettingsPanes = () => {
 };
 
 /** The sections the browser's in-app Settings page offers. */
-export const BROWSER_SETTINGS_SECTIONS: readonly TSettingsSection[] =
-	providerKeysOnServer
-		? [SettingsSection.general, SettingsSection.metadata]
-		: [SettingsSection.general];
+export const browserSettingsSections = (
+	administrator: boolean,
+): readonly TSettingsSection[] => [
+	SettingsSection.general,
+	...(administrator ? [SettingsSection.server] : []),
+	...(providerKeysOnServer ? [SettingsSection.metadata] : []),
+];
 
 interface SettingsSectionContentProps {
 	section: TSettingsSection;
@@ -217,6 +218,8 @@ export const SettingsSectionContent = ({
 	switch (section) {
 		case SettingsSection.general:
 			return <GeneralTab />;
+		case SettingsSection.server:
+			return <ServerTab />;
 		case SettingsSection.metadata:
 			return <IntegrationsTab />;
 	}
@@ -269,7 +272,6 @@ const GeneralTab = () => {
 	const platform = usePlatform();
 	const supportsAutoUpdates = platform.capabilities.supportsAutoUpdates;
 	const softwareUpdate = useSoftwareUpdate();
-	const administrator = useBrowserSessionControls()?.administrator ?? false;
 
 	const applyTheme = useCallback(
 		(value: string) => {
@@ -283,7 +285,6 @@ const GeneralTab = () => {
 
 	return (
 		<div className={classes.groups}>
-			{administrator && <ServerProblemsNotice />}
 			<div className={classes.group}>
 				<SettingsRow
 					label="Appearance"
@@ -331,10 +332,17 @@ const GeneralTab = () => {
 					)}
 				</div>
 			)}
-			{administrator && <ServerAddressesSection />}
 		</div>
 	);
 };
+
+/** Administrator-only server information on the web Settings page. */
+const ServerTab = () => (
+	<div className={classes.groups}>
+		<ServerProblemsNotice />
+		<ServerAddressesSection />
+	</div>
+);
 
 /**
  * What an administrator should fix, if anything: the server's checks that
@@ -380,46 +388,59 @@ const ServerAddressesSection = () => {
 	const listed =
 		addresses?.addresses.filter((address) => address.url !== always) ?? [];
 	const current = addresses?.current ?? null;
-	const where = addresses?.configFile
-		? `add publicUrls to ${addresses.configFile}`
-		: "set CITADEL_PUBLIC_URLS in the server’s environment";
+	const configHint = addresses?.configFile ? (
+		<>
+			Add <code className={classes.inlineCode}>publicUrls</code> to{" "}
+			<code className={classes.inlineCode}>{addresses.configFile}</code> and
+			restart to limit accepted URLs.
+		</>
+	) : (
+		<>
+			Set <code className={classes.inlineCode}>CITADEL_PUBLIC_URLS</code> and
+			restart to limit accepted URLs.
+		</>
+	);
 	return (
-		<section aria-labelledby={headingId}>
-			<h3 id={headingId} className={classes.sectionTitle}>
-				{addresses && listed.length === 0
-					? "Public URLs"
-					: "Configured public URLs"}
-			</h3>
-			{addresses &&
-				(listed.length > 0 ? (
-					<>
-						<p className={classes.paneNote}>
-							Only traffic sent to these URLs is accepted by Citadel. To add
-							more, update the server’s configuration.
-						</p>
-						<ul className={classes.urlWell}>
-							{listed.map((address) => (
-								<PublicUrlLine
-									key={address.url}
-									url={address.url}
-									current={address.url === current}
-								/>
-							))}
-							{always && (
-								<PublicUrlLine
-									url={always}
-									current={always === current}
-									always
-								/>
-							)}
-						</ul>
-					</>
-				) : (
-					<p className={classes.paneNote}>
-						None are configured, so Citadel accepts traffic at any URL. To limit
-						it, {where}, then restart the server.
-					</p>
-				))}
+		<section aria-labelledby={addresses ? headingId : undefined}>
+			{addresses && (
+				<>
+					<h3 id={headingId} className={classes.sectionTitle}>
+						Public URLs
+					</h3>
+					{listed.length > 0 ? (
+						<>
+							<div className={classes.group}>
+								{listed.map((address) => (
+									<PublicUrlLine
+										key={address.url}
+										url={address.url}
+										current={address.url === current}
+									/>
+								))}
+								{always && (
+									<PublicUrlLine
+										url={always}
+										current={always === current}
+										always
+									/>
+								)}
+							</div>
+							<p className={classes.inlineNote}>
+								Only these URLs are accepted.
+							</p>
+						</>
+					) : (
+						<div className={classes.group}>
+							<div className={classes.row}>
+								<div className={classes.rowLabels}>
+									<span className={classes.rowLabel}>Any URL</span>
+									<span className={classes.rowDescription}>{configHint}</span>
+								</div>
+							</div>
+						</div>
+					)}
+				</>
+			)}
 			{error && (
 				<p role="alert" className={classes.inlineNote} data-tone="error">
 					{error}
@@ -440,46 +461,47 @@ const PublicUrlLine = ({
 	current,
 	always = false,
 }: PublicUrlLineProps) => (
-	<li className={classes.urlLine} data-always={always || undefined}>
-		<GlobeGlyph />
+	<div className={classes.row} data-always={always || undefined}>
 		<span className={classes.urlText} data-selectable>
 			{url}
 		</span>
-		{current && <span className={classes.currentPill}>Current</span>}
-		{always && (
-			<Tooltip label="Always included" openDelay={150}>
-				<button
-					type="button"
-					className={classes.alwaysInfo}
-					aria-label="Always included"
-				>
-					<svg
-						width="16"
-						height="16"
-						viewBox="0 0 16 16"
-						fill="none"
-						aria-hidden="true"
+		<div className={classes.rowActions}>
+			{current && <span className={classes.currentPill}>Current</span>}
+			{always && (
+				<Tooltip label="Always included" openDelay={150}>
+					<button
+						type="button"
+						className={classes.alwaysInfo}
+						aria-label="Always included"
 					>
-						<circle
-							cx="8"
-							cy="8"
-							r="7.25"
-							stroke="currentColor"
-							strokeOpacity="0.55"
-							strokeWidth="1"
-						/>
-						<circle cx="8" cy="4.9" r="0.95" fill="currentColor" />
-						<path
-							d="M8 7.2v4.4"
-							stroke="currentColor"
-							strokeWidth="1.5"
-							strokeLinecap="round"
-						/>
-					</svg>
-				</button>
-			</Tooltip>
-		)}
-	</li>
+						<svg
+							width="16"
+							height="16"
+							viewBox="0 0 16 16"
+							fill="none"
+							aria-hidden="true"
+						>
+							<circle
+								cx="8"
+								cy="8"
+								r="7.25"
+								stroke="currentColor"
+								strokeOpacity="0.55"
+								strokeWidth="1"
+							/>
+							<circle cx="8" cy="4.9" r="0.95" fill="currentColor" />
+							<path
+								d="M8 7.2v4.4"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+							/>
+						</svg>
+					</button>
+				</Tooltip>
+			)}
+		</div>
+	</div>
 );
 
 const LibrariesTab = () => {
@@ -777,39 +799,29 @@ const IntegrationsTab = () => {
 
 	return (
 		<div className={classes.groups}>
-			<div>
-				<p className={classes.paneNote}>
-					Search these sources for titles, authors and other details when you
-					add or edit a book.
-				</p>
-				<div className={classes.group}>
-					{preferenceOrder.map((id) => (
-						<ProviderRow key={id} id={id} />
-					))}
-				</div>
+			<div className={classes.group}>
+				{preferenceOrder.map((id) => (
+					<ProviderRow key={id} id={id} />
+				))}
 			</div>
-			<div>
-				<div className={classes.group}>
-					<SettingsRow
-						label="Search automatically when adding books"
-						htmlFor={autoLookupSwitchId}
-						description={
-							anySourceEnabled
-								? "For files that include an ISBN."
-								: "Turn on a source above to use this."
-						}
-						control={
-							<Switch
-								id={autoLookupSwitchId}
-								checked={autoLookup}
-								disabled={!anySourceEnabled}
-								onCheckedChange={(checked) =>
-									void setAutoLookupOnImport(checked)
-								}
-							/>
-						}
-					/>
-				</div>
+			<div className={classes.group}>
+				<SettingsRow
+					label="Look up details when adding books"
+					htmlFor={autoLookupSwitchId}
+					description={
+						anySourceEnabled
+							? "Uses the file’s ISBN."
+							: "Turn on a source above."
+					}
+					control={
+						<Switch
+							id={autoLookupSwitchId}
+							checked={autoLookup}
+							disabled={!anySourceEnabled}
+							onCheckedChange={(checked) => void setAutoLookupOnImport(checked)}
+						/>
+					}
+				/>
 			</div>
 		</div>
 	);
