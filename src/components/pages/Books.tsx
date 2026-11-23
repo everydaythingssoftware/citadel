@@ -369,7 +369,7 @@ export const Books = ({
 	];
 
 	return (
-		<div className={styles.page}>
+		<div className={styles.page} data-owns-scroll>
 			{/*
 			 * Finder-style scope bar above the grid's scroll region. It is a
 			 * size container: the sidebar and window both change the panel's
