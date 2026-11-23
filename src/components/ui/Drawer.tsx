@@ -10,6 +10,7 @@ import { PHONE_QUERY } from "@/lib/hooks/use-breakpoint";
 import { useKeymap } from "@/lib/hooks/use-keymap";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import { useSwipeToClose } from "@/lib/hooks/use-swipe-to-close";
+import { escapeLayerOpen } from "@/lib/keyboard-owner";
 import { panelTakesEscape } from "@/lib/keymap";
 import { DialogCloseButton } from "./DialogCloseButton";
 import styles from "./Drawer.module.css";
@@ -38,10 +39,6 @@ export interface DrawerProps {
 }
 
 const preventDefault = (event: Event) => event.preventDefault();
-
-/** Layers that take an Escape before the drawer does. */
-const ESCAPE_FIRST_SELECTOR =
-	'[role="dialog"][data-state="open"]:not([data-drawer]), [role="alertdialog"], [role="menu"], [role="listbox"][data-state="open"]';
 
 /**
  * A non-modal inspector at the right of the page that renders it (placed
@@ -87,11 +84,7 @@ export const Drawer = ({
 					{
 						chord: "escape",
 						allowInEditable: true,
-						when: (event) =>
-							panelTakesEscape(
-								event.target,
-								document.querySelector(ESCAPE_FIRST_SELECTOR) !== null,
-							),
+						when: (event) => panelTakesEscape(event.target, escapeLayerOpen()),
 						onMatch: () => onOpenChange(false),
 					},
 				]

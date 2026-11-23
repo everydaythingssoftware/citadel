@@ -37,3 +37,13 @@ export const overlayOpen = (): boolean =>
 			'[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
 		),
 	]);
+
+/**
+ * Layers that take an Escape before a panel or page behind them: an open
+ * sheet, alert, popover, menu or select list.
+ */
+const ESCAPE_FIRST_SELECTOR =
+	'[role="dialog"][data-state="open"]:not([data-drawer]), [role="alertdialog"], [role="menu"], [role="listbox"][data-state="open"]';
+
+export const escapeLayerOpen = (): boolean =>
+	document.querySelector(ESCAPE_FIRST_SELECTOR) !== null;

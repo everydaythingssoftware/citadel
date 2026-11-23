@@ -222,6 +222,9 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   own chords: Redo is also Ctrl+Y; Back and Forward are Alt+← / Alt+→ in the
   app; Show Details is also Alt+Enter in the app; Delete deletes. Menus show
   only the primary chord.
+- Escape closes Settings (its window hides; the web page goes back), unless
+  a pop-up, list, menu or sheet inside it, or a field with text, takes the
+  press first.
 - **Undo** works like NSUndoManager: one history for the library window
   (`src/lib/undo-history.ts`, `src/stores/undo/store.ts`). Edit > Undo and
   Redo name the top entry ("Undo Mark as Finished") and are disabled when
