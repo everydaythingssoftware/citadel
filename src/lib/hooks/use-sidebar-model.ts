@@ -1,5 +1,6 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
+import { shortcutEnvironment } from "@/lib/app-shortcuts";
 import type { ContextMenuEntry } from "@/lib/context-menu";
 import {
 	type BrowserSessionControls,
@@ -20,7 +21,9 @@ import {
 	useShelfDelete,
 	useShelfRename,
 } from "@/lib/hooks/use-shelf-actions";
+import { useShortcutHints } from "@/lib/hooks/use-shortcut-hints";
 import { useUpdateNotice } from "@/lib/hooks/use-update-notice";
+import { usesCommandKey } from "@/lib/keymap";
 import { none, type Option, some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
 import type { SmartShelf } from "@/lib/platform/settings/types";
@@ -62,6 +65,8 @@ export interface SidebarViewModel {
 	onOpenSettings: () => void;
 	/** The signed-in browser user; null on desktop. */
 	session: BrowserSessionControls | null;
+	/** Ctrl (⌘) is held: each item shows the digit of its shortcut. */
+	shortcutHints: boolean;
 }
 
 export interface SidebarModel {
@@ -88,6 +93,12 @@ export const useSidebarModel = (): Option<SidebarModel> => {
 	const rename = useShelfRename();
 	const shelfDelete = useShelfDelete();
 	const libraryActions = useLibraryActionsMenu();
+	const env = shortcutEnvironment(platform);
+	// Ctrl/⌘+digit is bound only in the desktop app (a browser keeps it).
+	const shortcutHints = useShortcutHints(
+		usesCommandKey(env.os) ? "Meta" : "Control",
+		env.desktop && platform.window.isMain,
+	);
 
 	const allShelves = useSettings((s) => s.smartShelves);
 	const libraryId = useLibrarySelection().activeLibrary?.id;
@@ -192,6 +203,7 @@ export const useSidebarModel = (): Option<SidebarModel> => {
 				void navigate({ to: "/", search: shelfRouteFilters(shelf.filter) });
 			},
 			rename,
+			shortcutHints,
 			updateNotice: notice.isSome
 				? some({
 						title: notice.value.title,

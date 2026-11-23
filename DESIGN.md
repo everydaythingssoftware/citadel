@@ -222,6 +222,18 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   own chords: Redo is also Ctrl+Y; Back and Forward are Alt+← / Alt+→ in the
   app; Show Details is also Alt+Enter in the app; Delete deletes. Menus show
   only the primary chord.
+- The sidebar in its order: ⌘1…5 (Ctrl elsewhere) go to All Books, Authors,
+  Series, Tags and Publishers (the Go menu), and ⌘6…9 open the first four
+  shelves, which the page binds in the desktop app, the Mac included, since
+  the menu bar lists no shelves. A digit chord is the digit row's key
+  whatever it types (AZERTY's Ctrl+& is Ctrl+1). Pressing ⌘ (Ctrl) alone
+  shows each row's digit over its trailing edge at once; they
+  stay while it is held across the chords that walk the sidebar (the
+  digits, ⌃Tab, ⌃⇧Tab, Ctrl+Page Up/Down), so a hop shows where it lands.
+  Any other key, the modifier's release, a pointer press or leaving the
+  window hides them. Next and previous item, wrapping: ⌃Tab and ⌃⇧Tab, as in Safari
+  and Finder; Windows and Linux add Ctrl+Page Down / Page Up. None of
+  these fires in a field, and a browser keeps them all for its tabs.
 - **Undo** works like NSUndoManager: one history for the library window
   (`src/lib/undo-history.ts`, `src/stores/undo/store.ts`). Edit > Undo and
   Redo name the top entry ("Undo Mark as Finished") and are disabled when

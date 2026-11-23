@@ -54,6 +54,7 @@ const BASE: SidebarViewProps = {
 	settingsShowing: false,
 	onOpenSettings: noop,
 	session: null,
+	shortcutHints: false,
 };
 
 interface FrameProps extends SidebarViewProps {
@@ -139,6 +140,11 @@ export const Default: Story = {};
 
 export const WithShelves: Story = {
 	args: { shelves: SHELVES, currentPathname: "/" },
+};
+
+/** Ctrl (⌘) held: each row shows its shortcut's digit. */
+export const ShortcutHints: Story = {
+	args: { shelves: SHELVES, currentPathname: "/", shortcutHints: true },
 };
 
 /** An update has downloaded: the footer row where the gear was. */

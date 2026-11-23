@@ -2,7 +2,9 @@ import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useEffect, useEffectEvent } from "react";
 import {
 	pageShortcuts,
+	shelfShortcuts,
 	shortcutEnvironment,
+	sidebarStepShortcuts,
 	type TShortcutCommand,
 } from "@/lib/app-shortcuts";
 import { useAddBook } from "@/lib/hooks/use-add-book";
@@ -19,9 +21,16 @@ import { keyboardBusyAt, overlayOpen } from "@/lib/keyboard-owner";
 import type { KeyBinding } from "@/lib/keymap";
 import { appUndo, GO_PATHS, isBookCommand } from "@/lib/menu-commands";
 import { usePlatform } from "@/lib/platform/context";
+import { shelfInLibrary, shelfRouteFilters } from "@/lib/shelves";
+import {
+	activeSidebarPosition,
+	sidebarItems,
+	stepSidebarPosition,
+} from "@/lib/sidebar-navigation";
 import { useBookEditor } from "@/stores/book-editor/store";
 import { useLibraryView } from "@/stores/library-view/store";
 import { requestFind, setShelfSheetOpen } from "@/stores/menu-requests/store";
+import { useSettings } from "@/stores/settings/store";
 import { toggleSidebar } from "@/stores/sidebar/store";
 import { redoLast, undoLast, useUndoStore } from "@/stores/undo/store";
 
@@ -74,6 +83,47 @@ export const useMenuCommands = (): { addLibrary: AddLibraryFlow } => {
 	const openSettings = useOpenSettings();
 	const env = shortcutEnvironment(platform);
 	const enabled = platform.window.isMain;
+
+	const shelves = useSettings((state) => state.smartShelves);
+
+	const sidebarShelves = () =>
+		shelves.filter((candidate) =>
+			shelfInLibrary(candidate.filter, activeLibrary?.id),
+		);
+
+	/** The sidebar's nth shelf, in its order. */
+	const shelfAt = (index: number) => sidebarShelves()[index];
+
+	/** Next or previous sidebar item (sections, then shelves), wrapping. */
+	const stepSidebar = (step: 1 | -1) => {
+		const listed = sidebarShelves();
+		const { activeShelfId } = useLibraryView.getState();
+		const items = sidebarItems(listed.length);
+		const target =
+			items[
+				stepSidebarPosition(
+					activeSidebarPosition({
+						pathname,
+						activeShelfIndex: listed.findIndex(
+							(shelf) => shelf.id === activeShelfId,
+						),
+					}),
+					items.length,
+					step,
+				)
+			];
+		if (target === undefined) return;
+		if (target.kind === "go") run({ go: target.go });
+		else openShelf(target.index);
+	};
+
+	/** Opens the sidebar's nth shelf, as a click on it does. */
+	const openShelf = (index: number) => {
+		const shelf = shelfAt(index);
+		if (shelf === undefined) return;
+		useLibraryView.getState().applyShelf(shelf);
+		void navigate({ to: "/", search: shelfRouteFilters(shelf.filter) });
+	};
 
 	const toBooks = () => {
 		if (pathname !== GO_PATHS.allBooks)
@@ -154,6 +204,9 @@ export const useMenuCommands = (): { addLibrary: AddLibraryFlow } => {
 			return {
 				when: () => selectionActions.selectedCount > 0 && !keyboardBusy(),
 			};
+		// Go keys (Ctrl+1…5) stay out of fields, where the digit row types.
+		if (typeof command !== "string" && "go" in command)
+			return { when: () => !overlayOpen() };
 		switch (command) {
 			case "find":
 				// A browser keeps its own Find on pages without a search field.
@@ -175,11 +228,23 @@ export const useMenuCommands = (): { addLibrary: AddLibraryFlow } => {
 	};
 	useKeymap(
 		enabled
-			? pageShortcuts(env).map(({ command, chord }) => ({
-					chord,
-					onMatch: () => run(command),
-					...guard(command),
-				}))
+			? [
+					...pageShortcuts(env).map(({ command, chord }) => ({
+						chord,
+						onMatch: () => run(command),
+						...guard(command),
+					})),
+					...shelfShortcuts(env).map(({ index, chord }) => ({
+						chord,
+						onMatch: () => openShelf(index),
+						when: () => !overlayOpen() && shelfAt(index) !== undefined,
+					})),
+					...sidebarStepShortcuts(env).map(({ step, chord }) => ({
+						chord,
+						onMatch: () => stepSidebar(step),
+						when: () => !overlayOpen(),
+					})),
+				]
 			: [],
 	);
 
