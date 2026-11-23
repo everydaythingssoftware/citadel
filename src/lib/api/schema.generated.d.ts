@@ -292,7 +292,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only. */
+        /** @description How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only. Without a session cookie the answer is at most two seconds old and is served even while the server is busy. */
         get: operations["getHealth"];
         put?: never;
         post?: never;

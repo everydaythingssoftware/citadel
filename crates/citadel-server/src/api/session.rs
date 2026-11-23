@@ -69,6 +69,14 @@ impl PublicUrl {
             .map(|port| format!(":{port}"))
             .unwrap_or_default();
         let host = authority.host().to_ascii_lowercase();
+        // `http://:80` has no host, and `http://8081` is a port where the
+        // host should be; neither is an address a browser can use.
+        if host.is_empty() || host.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(format!(
+                "api.publicUrls: {value:?} has no host name; write the name or address browsers use, \
+                 such as \"https://books.example.com\" or \"http://192.168.1.20:8081\""
+            ));
+        }
         Ok(Self {
             origin: format!("{}://{host}{port}", uri.scheme_str().unwrap_or_default()),
             secure,
@@ -225,6 +233,11 @@ pub(super) fn cross_origin_refused() -> Response {
 
 pub(super) fn signed_out() -> ApiFailure {
     failure(LibraryErrorCode::Unauthorized, "Sign in to Citadel")
+}
+
+/// Whether the request carries a session cookie, valid or not.
+pub(super) fn has_session_cookie(headers: &HeaderMap) -> bool {
+    session_token(headers).is_some()
 }
 
 fn session_token(headers: &HeaderMap) -> Option<String> {

@@ -1,19 +1,37 @@
 //! How each part of the server is doing. Anyone may ask (container health
 //! checks, uptime monitors); signed-in administrators also get the reasons,
 //! which can name paths on the server.
-use std::{path::Path, time::Duration};
+//!
+//! Anonymous checks are answered outside admission from a result a
+//! background task refreshes every two seconds, so a flood of them does no
+//! database work and a server whose admission is full still says it is up
+//! (ADR 0017). A request with a session cookie takes the admitted path and
+//! is checked afresh, with the reasons for administrators.
+use std::{path::Path, sync::Arc, time::Duration};
 
 use axum::{
-    extract::State,
-    http::{HeaderMap, StatusCode},
+    extract::{Request, State},
+    http::{HeaderMap, Method, StatusCode},
+    middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
 use citadel_opds::OpdsLifecycleState;
 use serde::Serialize;
+use tokio::sync::{watch, Semaphore};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use super::{session::current_user, ApiState};
+use super::{
+    session::{current_user, has_session_cookie},
+    ApiState,
+};
+
+/// How often the anonymous answer is refreshed.
+const REFRESH: Duration = Duration::from_secs(2);
+/// Anonymous checks answered at once; the rest get the same cached answer
+/// without waiting, or are told to retry while there is none yet.
+const ANONYMOUS_PERMITS: usize = 8;
+const FIRST_RESULT_WAIT: Duration = Duration::from_secs(5);
 
 /// Below this much free space, writes start failing: Citadel's own database
 /// on the state volume, new books on the library's.
@@ -89,7 +107,7 @@ fn check(name: &str, status: HealthStatus, detail: impl Into<String>) -> HealthC
 }
 
 #[utoipa::path(get, path = "/api/health", operation_id = "getHealth",
-    description = "How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only.",
+    description = "How each part of the server is doing. 200 while it can serve, 503 when it can't. Answers at any address; the reasons are for signed-in administrators only. Without a session cookie the answer is at most two seconds old and is served even while the server is busy.",
     responses((status = 200, body = Health), (status = 503, body = Health)))]
 async fn health(State(state): State<ApiState>, headers: HeaderMap) -> Response {
     let administrator = matches!(
@@ -101,6 +119,83 @@ async fn health(State(state): State<ApiState>, headers: HeaderMap) -> Response {
         health.into_response()
     } else {
         health.public().into_response()
+    }
+}
+
+/// The latest anonymous answer, refreshed in the background until the
+/// router that owns it is dropped.
+#[derive(Clone)]
+pub(super) struct HealthCache {
+    latest: watch::Receiver<Option<Arc<Health>>>,
+    permits: Arc<Semaphore>,
+}
+
+impl HealthCache {
+    pub(super) fn spawn(state: ApiState) -> Self {
+        let (sender, latest) = watch::channel(None);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(REFRESH);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                // Stop as soon as the router is gone, so its library closes.
+                tokio::select! {
+                    _ = interval.tick() => {}
+                    () = sender.closed() => return,
+                }
+                let health = Health::of(checks(&state).await).public();
+                if sender.send(Some(Arc::new(health))).is_err() {
+                    return;
+                }
+            }
+        });
+        Self {
+            latest,
+            permits: Arc::new(Semaphore::new(ANONYMOUS_PERMITS)),
+        }
+    }
+
+    async fn answer(&self) -> Response {
+        let cached = self.latest.borrow().clone();
+        let Ok(_permit) = self.permits.try_acquire() else {
+            return cached.map_or_else(starting, |health| (*health).clone().into_response());
+        };
+        if let Some(health) = cached {
+            return (*health).clone().into_response();
+        }
+        let mut latest = self.latest.clone();
+        let first = tokio::time::timeout(FIRST_RESULT_WAIT, latest.wait_for(Option::is_some))
+            .await
+            .ok()
+            .and_then(|waited| waited.ok().and_then(|health| health.clone()));
+        first.map_or_else(starting, |health| (*health).clone().into_response())
+    }
+}
+
+fn starting() -> Response {
+    let mut response = Health::of(vec![HealthCheck {
+        name: "database".into(),
+        status: HealthStatus::Failing,
+        detail: None,
+    }])
+    .into_response();
+    response
+        .headers_mut()
+        .insert(axum::http::header::RETRY_AFTER, "1".parse().unwrap());
+    response
+}
+
+/// `/api/version`, and `/api/health` without a session cookie, answered
+/// before admission.
+pub(super) async fn outside_admission(
+    State(cache): State<HealthCache>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let reading = matches!(*request.method(), Method::GET | Method::HEAD);
+    match request.uri().path() {
+        "/api/version" if reading => super::server::version_json().into_response(),
+        "/api/health" if reading && !has_session_cookie(request.headers()) => cache.answer().await,
+        _ => next.run(request).await,
     }
 }
 

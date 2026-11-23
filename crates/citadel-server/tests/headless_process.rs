@@ -873,6 +873,12 @@ fn sign_in_flood() {
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     let health = health.join().unwrap();
     assert!(!health.is_empty());
+    assert!(
+        health
+            .iter()
+            .all(|status| matches!(status, Ok(status) if status.as_u16() == 200)),
+        "{health:?}"
+    );
     // At most two at a time, and no more than the username's burst of ten
     // in all, were checked; the rest were refused without a check.
     assert!(
