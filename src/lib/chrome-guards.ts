@@ -149,6 +149,7 @@ export const installChromeGuards = (
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.defaultPrevented || !isSelectAllChord(event)) return;
 		if (allowsNativeSelectAll(asTarget(event.target))) return;
+		browserGuardedEvents.add(event);
 		event.preventDefault();
 		selectAllWithinContent(doc);
 	};
