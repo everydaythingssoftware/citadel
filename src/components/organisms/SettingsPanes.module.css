@@ -419,3 +419,36 @@
 :root[data-fullscreen] .tabStrip {
 	padding-inline: 0.75rem;
 }
+
+/* Keyboard shortcuts: the keys of a row as small chips, right-aligned. */
+.keys {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.keyRun {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.keyJoiner {
+	font-size: var(--ctd-text-callout);
+	color: var(--ctd-ink-soft);
+}
+
+.key {
+	padding: 0.0625rem 0.375rem;
+	border: 1px solid var(--ctd-border);
+	border-bottom-color: var(--ctd-border-strong);
+	border-radius: 0.25rem;
+	background-color: var(--ctd-bg);
+	font-family: var(--ctd-font-ui);
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
+	color: var(--ctd-ink);
+	white-space: nowrap;
+}

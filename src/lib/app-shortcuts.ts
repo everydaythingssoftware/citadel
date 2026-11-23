@@ -127,6 +127,13 @@ export const pageShortcuts = (env: ShortcutEnvironment): Shortcut[] => {
 };
 
 /**
+ * Every menu chord that works here, whoever binds it: the menu bar on the
+ * Mac, the page elsewhere. For lists of shortcuts, not for binding them.
+ */
+export const boundShortcuts = (env: ShortcutEnvironment): Shortcut[] =>
+	menuBarOwnsChords(env) ? [...MENU_SHORTCUTS] : pageShortcuts(env);
+
+/**
  * The sidebar's shelves follow its library sections (⌘1…5, Go menu) on the
  * next digits, in display order. Only the desktop app binds them: a browser
  * keeps Ctrl/⌘+digit for its tabs. The Mac's menu bar lists no shelves, so
@@ -196,6 +203,9 @@ const MAC_KEY_SYMBOLS: Record<string, string> = {
 	enter: "↩",
 	escape: "⎋",
 	space: "Space",
+	tab: "⇥",
+	pageup: "⇞",
+	pagedown: "⇟",
 	arrowleft: "←",
 	arrowright: "→",
 	arrowup: "↑",
@@ -207,6 +217,9 @@ const OTHER_KEY_NAMES: Record<string, string> = {
 	enter: "Enter",
 	escape: "Esc",
 	space: "Space",
+	tab: "Tab",
+	pageup: "Page Up",
+	pagedown: "Page Down",
 	arrowleft: "Left",
 	arrowright: "Right",
 	arrowup: "Up",

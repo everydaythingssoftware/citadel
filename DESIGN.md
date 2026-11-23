@@ -234,6 +234,12 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   window hides them. Next and previous item, wrapping: ⌃Tab and ⌃⇧Tab, as in Safari
   and Finder; Windows and Linux add Ctrl+Page Down / Page Up. None of
   these fires in a field, and a browser keeps them all for its tabs.
+- Settings lists every shortcut that works where it is opened (the
+  Shortcuts tab; a "Keyboard shortcuts" section on the web), read-only and
+  grouped Navigation, Books, Library, App, each key a small chip spelled
+  for the platform ("⇧⌘R", "Ctrl+Shift+R"). It is built from the tables
+  that bind the keys (`src/lib/shortcut-list.ts` reads `MENU_ACCELERATORS`
+  through `app-shortcuts.ts`); a key one page binds is added there too.
 - **Undo** works like NSUndoManager: one history for the library window
   (`src/lib/undo-history.ts`, `src/stores/undo/store.ts`). Edit > Undo and
   Redo name the top entry ("Undo Mark as Finished") and are disabled when
