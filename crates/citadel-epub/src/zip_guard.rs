@@ -202,18 +202,22 @@ fn directory_at<R: Read + Seek>(
         from = eocd64_at + 1;
         let eocd64 = read_at(reader, eocd64_at, EOCD64_LEN as usize)?;
         let record_size = u64_at(&eocd64, 4);
-        let accepted = record_size >= 44
-            && record_size.checked_add(12) == Some(locator_at - eocd64_at)
-            && u32_at(&eocd64, 20) == locator_disk;
-        if !accepted {
-            continue;
-        }
-        // The zip crate reads the record's extensible data into memory.
-        if record_size - 44 > MAX_CENTRAL_DIRECTORY_BYTES {
+        let available = locator_at - eocd64_at;
+        // The zip crate reads a record's extensible data into memory as soon
+        // as the record fits before the locator, before it checks the record
+        // ends there, so every such record is held to the cap.
+        let parsed =
+            record_size >= 44 && record_size.checked_add(12).is_some_and(|n| n <= available);
+        if parsed && record_size - 44 > MAX_CENTRAL_DIRECTORY_BYTES {
             return Err(Refusal::CentralDirectoryTooLarge {
                 limit: MAX_CENTRAL_DIRECTORY_BYTES,
             }
             .into());
+        }
+        let accepted =
+            parsed && record_size + 12 == available && u32_at(&eocd64, 20) == locator_disk;
+        if !accepted {
+            continue;
         }
         let entries_here = u64_at(&eocd64, 24);
         let entries = u64_at(&eocd64, 32);

@@ -145,7 +145,7 @@ fn cases() -> Vec<(&'static str, Build, Expectation)> {
         "every hostile fixture has an expectation"
     );
 
-    let extra: [(&str, Build, Expectation); 9] = [
+    let extra: [(&str, Build, Expectation); 10] = [
         (
             "opf-9mib-declared-small",
             || {
@@ -245,6 +245,18 @@ fn cases() -> Vec<(&'static str, Build, Expectation)> {
             // memory, however large it claims to be.
             "zip64-huge-extensible-data",
             || support::zip64_end_records(&[(1, 5 * 1024 * 1024)], 0),
+            |result| {
+                refused(result, |r| {
+                    matches!(r, Refusal::CentralDirectoryTooLarge { .. })
+                })
+            },
+        ),
+        (
+            // A decoy record that fits before the locator but doesn't end at
+            // it: the zip crate reads its 5 MiB of extensible data before it
+            // moves on to the real record.
+            "zip64-decoy-extensible-data",
+            || support::zip64_end_records(&[(1, 5 * 1024 * 1024), (1, 0)], 0),
             |result| {
                 refused(result, |r| {
                     matches!(r, Refusal::CentralDirectoryTooLarge { .. })
