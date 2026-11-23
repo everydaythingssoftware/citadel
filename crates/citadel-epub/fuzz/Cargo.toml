@@ -1,0 +1,28 @@
+[package]
+name = "citadel-epub-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Run with nightly and cargo-fuzz, from crates/citadel-epub:
+#   CITADEL_EPUB_SEEDS=fuzz/corpus/epub_package \
+#     cargo test -p citadel-epub --test hostile -- --ignored write_fuzz_seeds
+#   cargo +nightly fuzz run epub_package
+# .github/workflows/fuzz.yml does both weekly.
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+citadel-epub = { path = ".." }
+libfuzzer-sys = "0.4"
+
+# Kept out of the root workspace: it needs nightly.
+[workspace]
+
+[[bin]]
+name = "epub_package"
+path = "fuzz_targets/epub_package.rs"
+test = false
+doc = false
+bench = false

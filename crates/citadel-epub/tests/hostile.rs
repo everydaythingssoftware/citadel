@@ -315,3 +315,20 @@ fn hostile_epubs_are_refused_without_crashing() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// Writes the hostile fixtures to `$CITADEL_EPUB_SEEDS` to seed the fuzzer.
+#[test]
+#[ignore = "writes fuzz seeds"]
+fn write_fuzz_seeds() {
+    let Ok(directory) = std::env::var("CITADEL_EPUB_SEEDS") else {
+        return;
+    };
+    std::fs::create_dir_all(&directory).unwrap();
+    for (name, build, _) in cases() {
+        std::fs::write(
+            std::path::Path::new(&directory).join(format!("{name}.epub")),
+            build(),
+        )
+        .unwrap();
+    }
+}
