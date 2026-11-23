@@ -33,7 +33,7 @@ export const Tags = () => {
 			items={tags}
 			kind="tags"
 			noun={TAG_NOUN}
-			toSearch={(tag) => ({ tag_id: tag.id })}
+			toSearch={(tag) => ({ tag_id: tag.id, from: "tags" })}
 		/>
 	);
 };

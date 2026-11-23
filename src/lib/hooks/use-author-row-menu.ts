@@ -23,9 +23,12 @@ export interface AuthorRowMenu {
 export const useAuthorRowMenu = ({
 	onEdit,
 	onDelete,
+	onShowBooks,
 }: {
 	onEdit: (authorId: LibraryAuthor["id"]) => void;
 	onDelete: (authorId: LibraryAuthor["id"]) => void;
+	/** Show Books is about to open the author's books (a drill-down). */
+	onShowBooks?: (authorId: LibraryAuthor["id"]) => void;
 }): AuthorRowMenu => {
 	const navigate = useNavigate();
 	const menu = useContextMenu();
@@ -40,8 +43,13 @@ export const useAuthorRowMenu = ({
 			{
 				id: "show-books",
 				label: "Show Books",
-				onSelect: () =>
-					void navigate({ to: "/", search: { author_id: author.id } }),
+				onSelect: () => {
+					onShowBooks?.(author.id);
+					void navigate({
+						to: "/",
+						search: { author_id: author.id, from: "authors" },
+					});
+				},
 			},
 			...(canEdit
 				? [

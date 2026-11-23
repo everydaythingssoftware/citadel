@@ -168,6 +168,15 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   details on the first press wherever focus is, unless a menu, pop-up,
   sheet or alert is on top or the search field has text to clear; the next
   Escape clears the selection. One press never does both.
+- **Drill-down:** a row of Authors, Series, Tags or Publishers (or an
+  author's Show Books) opens its books with `from` in the route's search
+  (`src/lib/drill-down.ts`), so a reload keeps it. The sidebar keeps that
+  section lit, and the scope bar opens with a breadcrumb, "Series ›
+  L'Archipel du Goulag", whose first step goes back. Back (the breadcrumb,
+  the mouse's back button, Alt+← or ⌘[, and Escape once nothing is
+  selected) is the history's own, so the list returns where it was
+  scrolled with the opened row shown as current. The row's filter then
+  needs no search token.
 - **Scope bar:** the search field fills what sort, Unread only and Save as
   shelf… leave it, never under 150 px. The bar reflows on its own width (a
   container query, since the sidebar and the window both move it): first

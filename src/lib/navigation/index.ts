@@ -6,6 +6,8 @@
  */
 export const SCROLL_REGION = {
 	libraryGrid: "library-grid",
+	/** The content panel, which the list pages scroll. */
+	page: "page",
 } as const;
 
 export type TScrollRegion = (typeof SCROLL_REGION)[keyof typeof SCROLL_REGION];

@@ -33,7 +33,10 @@ export const Publishers = () => {
 			items={publishers}
 			kind="publishers"
 			noun={PUBLISHER_NOUN}
-			toSearch={(publisher) => ({ publisher_id: publisher.id })}
+			toSearch={(publisher) => ({
+				publisher_id: publisher.id,
+				from: "publishers",
+			})}
 		/>
 	);
 };

@@ -3,6 +3,8 @@ import clsx from "clsx";
 import { useMemo, useState } from "react";
 
 import { SearchField } from "@/components/ui";
+import type { TDrillSource } from "@/lib/drill-down";
+import { useDrillDownList } from "@/lib/hooks/use-drill-down";
 import { useVirtualListRows } from "@/lib/hooks/use-virtual-list-rows";
 import styles from "./NamedCountList.module.css";
 
@@ -14,19 +16,21 @@ export interface NamedCount {
 }
 
 /** Deep-link search params for the library route ("/"). */
-export type BookListSearch =
+export type BookListSearch = (
 	| { series_id: number }
 	| { tag_id: number }
-	| { publisher_id: number };
+	| { publisher_id: number }
+) & { from: TDrillSource };
 
 interface NamedCountListProps<T extends NamedCount> {
 	/** Rows, already sorted by name. */
 	items: T[];
 	/**
-	 * Names the page's `data-{kind}-header` / `data-{kind}-footer` hooks,
+	 * The list's section, which its rows' books view leads back to. Also
+	 * names the page's `data-{kind}-header` / `data-{kind}-footer` hooks,
 	 * which the list regression tooling (tools/testing) looks for.
 	 */
-	kind: string;
+	kind: TDrillSource;
 	/** Singular and plural nouns, e.g. ["tag", "tags"]. */
 	noun: readonly [one: string, many: string];
 	/** Where a row links to: the library filtered by this entry. */
@@ -76,7 +80,7 @@ export const NamedCountList = <T extends NamedCount>({
 				</span>
 			</div>
 
-			<NamedCountRows items={filteredItems} toSearch={toSearch} />
+			<NamedCountRows items={filteredItems} kind={kind} toSearch={toSearch} />
 
 			<div {...{ [`data-${kind}-footer`]: "" }} className={styles.footer}>
 				<span className={styles.footerText}>
@@ -91,14 +95,17 @@ export const NamedCountList = <T extends NamedCount>({
 
 interface NamedCountRowsProps<T extends NamedCount> {
 	items: T[];
+	kind: TDrillSource;
 	toSearch: (item: T) => BookListSearch;
 }
 
 const NamedCountRows = <T extends NamedCount>({
 	items,
+	kind,
 	toSearch,
 }: NamedCountRowsProps<T>) => {
 	const { rowsRef, virtualizer, scrollMargin } = useVirtualListRows(items);
+	const { returnedRowId, noteDrill } = useDrillDownList(kind);
 
 	return (
 		<div
@@ -122,7 +129,12 @@ const NamedCountRows = <T extends NamedCount>({
 							transform: `translateY(${virtualRow.start - scrollMargin}px)`,
 						}}
 					>
-						<NamedCountRow item={item} search={toSearch(item)} />
+						<NamedCountRow
+							item={item}
+							search={toSearch(item)}
+							current={returnedRowId === String(item.id)}
+							onDrill={() => noteDrill(item.id)}
+						/>
 					</div>
 				);
 			})}
@@ -133,15 +145,23 @@ const NamedCountRows = <T extends NamedCount>({
 const NamedCountRow = ({
 	item,
 	search,
+	current,
+	onDrill,
 }: {
 	item: NamedCount;
 	search: BookListSearch;
+	/** The row whose books were open before coming Back. */
+	current: boolean;
+	onDrill: () => void;
 }) => {
 	return (
 		// The whole row links to the library filtered by this entry. The hover
 		// background, 40px min-height, and the overlay-link positioning live in
 		// styles.css (.ctd-author-row / .ctd-author-row-link).
-		<div className={clsx("ctd-author-row", styles.row, styles.grid)}>
+		<div
+			className={clsx("ctd-author-row", styles.row, styles.grid)}
+			data-current={current || undefined}
+		>
 			{/* Real anchor overlaying the row so middle-click / cmd-click /
 			    keyboard all work. The count link sits above it (position:
 			    relative + zIndex), so it keeps working without stopPropagation. */}
@@ -150,11 +170,18 @@ const NamedCountRow = ({
 				search={search}
 				className="ctd-author-row-link"
 				aria-label={`Show books in ${item.name}`}
+				aria-current={current || undefined}
+				onClick={onDrill}
 			/>
 
 			<span className={styles.cellText}>{item.name}</span>
 
-			<Link to="/" search={search} className={styles.countLink}>
+			<Link
+				to="/"
+				search={search}
+				className={styles.countLink}
+				onClick={onDrill}
+			>
 				{item.book_count}
 			</Link>
 		</div>

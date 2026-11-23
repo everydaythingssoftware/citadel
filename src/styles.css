@@ -682,7 +682,8 @@ textarea {
 }
 
 .ctd-author-row:hover,
-.ctd-author-row:focus-within {
+.ctd-author-row:focus-within,
+.ctd-author-row[data-current] {
 	background-color: var(--ctd-nav-hover-bg);
 }
 

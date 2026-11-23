@@ -97,6 +97,7 @@ export interface SidebarViewProps extends SidebarViewModel {
 export const SidebarView = ({
 	libraryHeader,
 	currentPathname,
+	activeSectionPath,
 	isAllBooksActive,
 	onAllBooks,
 	shelves,
@@ -127,7 +128,9 @@ export const SidebarView = ({
 							key={to}
 							to={to}
 							className={styles.navLink}
-							data-active={currentPathname === to || undefined}
+							data-active={
+								(activeSectionPath ?? currentPathname) === to || undefined
+							}
 						>
 							{label}
 						</Link>

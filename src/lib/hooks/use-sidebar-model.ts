@@ -1,6 +1,7 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
 import type { ContextMenuEntry } from "@/lib/context-menu";
+import { drillSourceFrom, drillSourcePath } from "@/lib/drill-down";
 import {
 	type BrowserSessionControls,
 	useBrowserSessionControls,
@@ -51,6 +52,11 @@ export interface SidebarUpdateNotice {
 
 export interface SidebarViewModel {
 	currentPathname: string;
+	/**
+	 * The section lit for books drilled into from a list page (Series for a
+	 * series' books); otherwise the section at `currentPathname`.
+	 */
+	activeSectionPath?: string;
 	isAllBooksActive: boolean;
 	onAllBooks: () => void;
 	shelves: SidebarShelf[];
@@ -107,6 +113,12 @@ export const useSidebarModel = (): Option<SidebarModel> => {
 	const currentPathname = location.pathname;
 	const routeFilters = routeFiltersFromSearch(location.search);
 	const { author_id, series_id, tag_id, publisher_id } = routeFilters;
+	const drillSource =
+		currentPathname === "/"
+			? drillSourceFrom(
+					(location.search as Record<string, unknown> | undefined)?.from,
+				)
+			: undefined;
 
 	// activeShelfId comes from localStorage, shelves from settings.json; drop a
 	// shelf id that no longer exists once settings have hydrated.
@@ -174,10 +186,13 @@ export const useSidebarModel = (): Option<SidebarModel> => {
 	return some({
 		view: {
 			currentPathname,
+			activeSectionPath:
+				drillSource !== undefined ? drillSourcePath(drillSource) : undefined,
 			// A book opened from the grid still belongs to All Books.
 			isAllBooksActive:
 				(currentPathname === "/" || currentPathname.startsWith("/books/")) &&
-				activeShelfId === null,
+				activeShelfId === null &&
+				drillSource === undefined,
 			onAllBooks: resetToAllBooks,
 			shelves: smartShelves.map((shelf) => ({
 				shelf,

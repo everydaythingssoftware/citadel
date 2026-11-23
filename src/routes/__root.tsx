@@ -26,6 +26,7 @@ import { ResizeEdge, useEdgeResize } from "@/lib/hooks/use-edge-resize";
 import { useSwipeToClose } from "@/lib/hooks/use-swipe-to-close";
 import { useWindowChromeState } from "@/lib/hooks/use-window-chrome-state";
 import { useWindowWidth } from "@/lib/hooks/use-window-width";
+import { SCROLL_REGION, scrollRegionAttributes } from "@/lib/navigation";
 import { some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";
 import { useSidebar, useSidebarWidth } from "@/stores/sidebar/store";
@@ -147,7 +148,10 @@ const Root = () => {
 
 					<main className={classes.main}>
 						<NavigationProgress visible={navigationPending} />
-						<div className={clsx(classes.content, "ctd-scroller")}>
+						<div
+							className={clsx(classes.content, "ctd-scroller")}
+							{...scrollRegionAttributes(SCROLL_REGION.page)}
+						>
 							<Outlet />
 						</div>
 					</main>
