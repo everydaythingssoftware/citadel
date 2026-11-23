@@ -30,7 +30,7 @@ jobs:
             exit 0
           fi
           if git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD -- \
-            'crates/libcalibre/' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml' '.github/workflows/libcalibre-tests.yml' | grep -q .; then
+            'crates/libcalibre/' 'crates/citadel-epub/' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml' '.github/workflows/libcalibre-tests.yml' | grep -q .; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "No libcalibre files changed — nothing to test."
@@ -54,6 +54,12 @@ jobs:
       - name: Run tests
         if: steps.changes.outputs.run == 'true'
         run: cargo test --locked --package libcalibre --all-features
+
+      # libcalibre reads EPUBs through citadel-epub; its hostile-file tests
+      # run each case in a child process on a small stack.
+      - name: Run citadel-epub tests
+        if: steps.changes.outputs.run == 'true'
+        run: cargo test --locked --package citadel-epub
 
       - name: Check docs (every public item documented, links resolve)
         if: steps.changes.outputs.run == 'true'

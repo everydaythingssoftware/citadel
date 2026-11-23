@@ -3,7 +3,8 @@
 //!
 //! EPUB and MOBI files are parsed with the `epub` and `mobi` features (both on
 //! by default). Without one, files of that format are read like PDFs: a title
-//! from the file name and no cover.
+//! from the file name and no cover. EPUBs are read by `citadel-epub`, within
+//! fixed limits; a file past them is [refused](RefusedBookFile).
 use std::{ffi::OsStr, path::Path};
 
 use chrono::NaiveDate;
@@ -29,11 +30,14 @@ pub struct BookFileMetadata {
     /// The embedded title, or for PDF and TXT the file name without
     /// extension.
     pub title: Option<String>,
-    /// Author names, in file order; blank names are dropped.
+    /// Author names, in file order; blank names are dropped. For an EPUB,
+    /// creators without a non-author role (translators, editors, …) and
+    /// contributors with the author role.
     pub author_names: Vec<String>,
-    /// The book's identifier as the file gives it: an EPUB's first
-    /// `dc:identifier` (often `urn:isbn:...` or `urn:uuid:...`), or a MOBI's
-    /// ISBN as `ISBN:...`. [`isbn`] extracts an ISBN from it.
+    /// The book's identifier as the file gives it: the EPUB `dc:identifier`
+    /// its package names as unique, or else its first (often `urn:isbn:...`
+    /// or `urn:uuid:...`), or a MOBI's ISBN as `ISBN:...`. [`isbn`]
+    /// extracts an ISBN from it.
     pub identifier: Option<String>,
     /// The publisher.
     pub publisher: Option<String>,
@@ -64,34 +68,93 @@ impl BookFileMetadata {
     }
 }
 
+/// A book file read in one pass: what it says about itself and the bytes of
+/// its embedded cover, as stored.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BookFileContents {
+    /// What the file says about itself.
+    pub metadata: BookFileMetadata,
+    /// The embedded cover, when it has one no larger than 16 MiB.
+    pub cover: Option<Vec<u8>>,
+}
+
+/// A book file Citadel won't read, such as an EPUB that breaks a parsing
+/// limit. Unlike a damaged file, it shouldn't be added at all.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("{reason}")]
+pub struct RefusedBookFile {
+    reason: String,
+}
+
+impl RefusedBookFile {
+    #[cfg_attr(not(feature = "epub"), allow(dead_code))]
+    fn new(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+        }
+    }
+
+    /// Why, in a sentence for the person who chose the file.
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
+}
+
 fn format_of(path: &Path) -> Option<MimeType> {
     path.extension()
         .and_then(OsStr::to_str)
         .and_then(MimeType::from_file_extension)
 }
 
+/// Runs `read`, counting a panic in a format parser as an unreadable file.
+#[cfg(any(feature = "epub", feature = "mobi"))]
+fn guarded<T>(read: impl FnOnce() -> Option<T>) -> Option<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(read))
+        .ok()
+        .flatten()
+}
+
+/// Reads the book file at `path` once, for both its metadata and its cover,
+/// choosing the reader by file extension. `Ok(None)` when the extension is
+/// unsupported or the file can't be parsed; `Err` when it is refused.
+pub fn read_book(path: &Path) -> Result<Option<BookFileContents>, RefusedBookFile> {
+    let Some(format) = format_of(path) else {
+        return Ok(None);
+    };
+    Ok(match format {
+        #[cfg(feature = "epub")]
+        MimeType::EPUB => return epub::read_book(path),
+        #[cfg(feature = "mobi")]
+        format @ (MimeType::MOBI | MimeType::KF7 | MimeType::KF8) => mobi::read_book(path, format),
+        MimeType::UNKNOWN => None,
+        format => {
+            BookFileMetadata::titled_from_file_name(format, path).map(|metadata| BookFileContents {
+                metadata,
+                cover: None,
+            })
+        }
+    })
+}
+
 /// Reads the metadata of the book file at `path`, choosing the reader by file
 /// extension. `None` when the extension is unsupported or the file can't be
-/// parsed.
+/// parsed or is refused.
 pub fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
     match format_of(path)? {
-        #[cfg(feature = "epub")]
-        MimeType::EPUB => epub::read_metadata(path),
         #[cfg(feature = "mobi")]
         format @ (MimeType::MOBI | MimeType::KF7 | MimeType::KF8) => {
             mobi::read_metadata(path, format)
         }
-        MimeType::UNKNOWN => None,
-        format => BookFileMetadata::titled_from_file_name(format, path),
+        _ => read_book(path).ok().flatten().map(|book| book.metadata),
     }
 }
 
 /// The cover image embedded in the book file at `path`, if it has one no
-/// larger than 16 MiB.
+/// larger than 16 MiB and the file isn't refused.
 pub fn cover_image_data(path: &Path) -> Option<Vec<u8>> {
     match format_of(path)? {
         #[cfg(feature = "epub")]
-        MimeType::EPUB => epub::cover_image_data(path),
+        MimeType::EPUB => read_book(path).ok().flatten()?.cover,
         #[cfg(feature = "mobi")]
         MimeType::MOBI | MimeType::KF7 | MimeType::KF8 => mobi::cover_image_data(path),
         _ => None,

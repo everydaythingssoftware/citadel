@@ -1,0 +1,31 @@
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:epub="http://www.idpf.org/2007/ops" version="3.0" xml:lang="en" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:coverage id="coverage">Package Documents</dc:coverage>
+    <meta refines="#coverage" property="schema:version">3.3</meta>
+    <dc:creator>Dave Cramer</dc:creator>
+    <dc:creator>Wendy Reid</dc:creator>
+    <dc:creator>Dan Lazin</dc:creator>
+    <dc:creator>Ivan Herman</dc:creator>
+    <dc:creator>Brady Duga</dc:creator>
+    <dc:date>2021-01-11</dc:date>
+    <dc:description>
+      Several creators are listed in the package document. The reading system must not display them out of order (but it may
+      display only the first).
+    </dc:description>
+    <dc:identifier id="pub-id">pkg-creator-order</dc:identifier>
+    <dc:language>en</dc:language>
+    <dc:publisher>W3C</dc:publisher>
+    <dc:title>pkg-creator-order</dc:title>
+    <link rel="dcterms:rights" href="https://www.w3.org/Consortium/Legal/2015/copyright-software-and-document"/>
+    <link rel="dcterms:rightsHolder" href="https://www.w3.org"/>
+    <meta property="dcterms:isReferencedBy">https://www.w3.org/TR/epub-rs/#confreq-rs-pkg-creator-order</meta>
+    <meta property="dcterms:modified">2021-01-11T00:00:00Z</meta>
+  </metadata>
+  <manifest>
+    <item id="content_001" href="content_001.xhtml" media-type="application/xhtml+xml"/>
+    <item id="nav" properties="nav" href="nav.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="content_001"/>
+  </spine>
+</package>

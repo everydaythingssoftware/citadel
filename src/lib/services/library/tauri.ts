@@ -38,11 +38,13 @@ export const createTauriBookImports = (): LocalBookImports => {
 	};
 	const refused = (error: LibraryError) =>
 		new UploadError(
-			error.code === "invalidArgument" ||
-				error.code === "notFound" ||
-				error.code === "conflict"
-				? UploadFailure.invalid
-				: UploadFailure.server,
+			error.code === "unprocessable"
+				? UploadFailure.refused
+				: error.code === "invalidArgument" ||
+						error.code === "notFound" ||
+						error.code === "conflict"
+					? UploadFailure.invalid
+					: UploadFailure.server,
 			error.message,
 		);
 	return {

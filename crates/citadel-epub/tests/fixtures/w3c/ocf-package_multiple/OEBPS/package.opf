@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:epub="http://www.idpf.org/2007/ops" version="3.0" xml:lang="en" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:coverage>Open Container Format</dc:coverage>
+    <dc:creator>Dave Cramer</dc:creator>
+    <dc:date>2021-01-21</dc:date>
+    <dc:description>
+    	The EPUB contains three valid package files and three corresponding sets of content documents, all referenced by the
+      container.xml file. The reading system must use the first package.
+    </dc:description>
+    <dc:identifier id="pub-id">ocf-package_multiple</dc:identifier>
+    <dc:language>en</dc:language>
+    <dc:title>Multiple packages in container file</dc:title>
+    <meta property="dcterms:isReferencedBy">https://www.w3.org/TR/epub-rs-33/#container-default-rendition</meta>
+    <meta property="dcterms:modified">2021-01-21T00:00:00Z</meta>
+  </metadata>
+  <manifest>
+    <item id="content_001" href="content_001.xhtml" media-type="application/xhtml+xml" />
+    <item id="nav" properties="nav" href="nav.xhtml" media-type="application/xhtml+xml" />
+  </manifest>
+  <spine>
+    <itemref idref="content_001" />
+  </spine>
+</package>
