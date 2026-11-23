@@ -3,83 +3,21 @@
 //! Tailscale name, a domain behind a proxy), so the configuration lists them.
 //! Once it does, requests for any other host are refused, which also closes
 //! DNS rebinding; until then, any host is answered.
-use std::{
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-};
+use std::{net::IpAddr, sync::Arc};
 
 use axum::{
-    extract::{ConnectInfo, Request, State},
+    extract::{Request, State},
     http::{header, HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
 use citadel_core::error::{LibraryError, LibraryErrorCode};
+use citadel_opds::client::{peer_of, ClientResolver, ForwardedHeader, ProxyTrust};
 
 use super::{session::PublicUrl, ApiState};
 
-/// Proxies trusted to say how the browser reached them when nothing else is
-/// configured: this machine and private networks, where a reverse proxy or
-/// its container network lives.
-pub const DEFAULT_TRUSTED_PROXIES: &[&str] = &[
-    "127.0.0.0/8",
-    "::1/128",
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    "fc00::/7",
-];
-
-/// An address range, such as `172.16.0.0/12`, or one address.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct IpRange {
-    network: IpAddr,
-    prefix: u8,
-}
-
-impl IpRange {
-    pub fn parse(text: &str) -> Result<Self, String> {
-        let invalid = || format!("{text:?} isn't an address or range such as 172.16.0.0/12");
-        let (address, prefix) = match text.trim().split_once('/') {
-            Some((address, prefix)) => (address, Some(prefix)),
-            None => (text.trim(), None),
-        };
-        let network: IpAddr = address.parse().map_err(|_| invalid())?;
-        let bits = if network.is_ipv4() { 32 } else { 128 };
-        let prefix = match prefix {
-            Some(prefix) => prefix
-                .parse::<u8>()
-                .ok()
-                .filter(|prefix| *prefix <= bits)
-                .ok_or_else(invalid)?,
-            None => bits,
-        };
-        Ok(Self { network, prefix })
-    }
-
-    pub fn contains(&self, address: IpAddr) -> bool {
-        let address = match address {
-            IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(address),
-            v4 => v4,
-        };
-        match (self.network, address) {
-            (IpAddr::V4(network), IpAddr::V4(address)) => {
-                let mask = u32::MAX
-                    .checked_shl(32 - u32::from(self.prefix))
-                    .unwrap_or(0);
-                u32::from(network) & mask == u32::from(address) & mask
-            }
-            (IpAddr::V6(network), IpAddr::V6(address)) => {
-                let mask = u128::MAX
-                    .checked_shl(128 - u32::from(self.prefix))
-                    .unwrap_or(0);
-                u128::from(network) & mask == u128::from(address) & mask
-            }
-            _ => false,
-        }
-    }
-}
+pub use citadel_opds::client::{IpRange, PRIVATE_PROXIES as DEFAULT_TRUSTED_PROXIES};
 
 /// The address a request came in on, as the browser saw it.
 #[derive(Clone, Debug)]
@@ -103,7 +41,8 @@ pub enum Standing {
 /// none, it answers at any address.
 pub struct Addresses {
     configured: Vec<PublicUrl>,
-    trusted_proxies: Vec<IpRange>,
+    /// Who requests are from, and which proxies say so (ADR 0017).
+    clients: ClientResolver,
     /// This machine's own name on the listener's port, shown as always
     /// included.
     local: Option<PublicUrl>,
@@ -115,21 +54,31 @@ pub struct Addresses {
 impl Addresses {
     pub fn new(
         configured: Vec<PublicUrl>,
-        trusted_proxies: Vec<IpRange>,
+        clients: ClientResolver,
         local: Option<PublicUrl>,
         config_file: Option<String>,
     ) -> Arc<Self> {
         Arc::new(Self {
             configured,
-            trusted_proxies,
+            clients,
             local,
             config_file,
         })
     }
 
-    /// Only these addresses and the default proxies; for tests.
+    /// Only these addresses and the default proxy trust; for tests.
     pub fn fixed(configured: Vec<PublicUrl>) -> Arc<Self> {
-        Self::new(configured, default_trusted_proxies(), None, None)
+        Self::new(
+            configured,
+            ClientResolver::new(ProxyTrust::new(None), ForwardedHeader::default()),
+            None,
+            None,
+        )
+    }
+
+    /// Who requests are from; shared with the OPDS listener.
+    pub fn clients(&self) -> &ClientResolver {
+        &self.clients
     }
 
     /// This machine's own address, which always works.
@@ -177,11 +126,7 @@ impl Addresses {
     /// router was called in-process, which is trusted. Without `Host` there
     /// is no origin, and state-changing browser requests are refused.
     pub fn origin_of(&self, headers: &HeaderMap, peer: Option<IpAddr>) -> Option<PublicUrl> {
-        let trusted = peer.is_none_or(|peer| {
-            self.trusted_proxies
-                .iter()
-                .any(|range| range.contains(peer))
-        });
+        let trusted = peer.is_none_or(|peer| self.clients.trust().origin_trusts(peer));
         let forwarded = if trusted {
             forwarded(headers)
         } else {
@@ -193,13 +138,6 @@ impl Addresses {
         let scheme = forwarded.proto.unwrap_or_else(|| "http".into());
         PublicUrl::parse(&format!("{scheme}://{host}")).ok()
     }
-}
-
-pub fn default_trusted_proxies() -> Vec<IpRange> {
-    DEFAULT_TRUSTED_PROXIES
-        .iter()
-        .map(|range| IpRange::parse(range).expect("default proxy ranges parse"))
-        .collect()
 }
 
 fn header_text(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -255,10 +193,7 @@ pub(super) async fn check_address(
     mut request: Request,
     next: Next,
 ) -> Response {
-    let peer = request
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|ConnectInfo(address)| address.ip());
+    let peer = peer_of(request.extensions()).map(|peer| peer.ip().to_canonical());
     let addresses = &state.access.addresses;
     let origin = addresses.origin_of(request.headers(), peer);
     let path = request.uri().path();
@@ -304,23 +239,6 @@ mod tests {
             headers.append(*name, HeaderValue::from_str(value).unwrap());
         }
         headers
-    }
-
-    #[test]
-    fn ranges_hold_their_addresses() {
-        let private = IpRange::parse("172.16.0.0/12").unwrap();
-        assert!(private.contains("172.20.0.5".parse().unwrap()));
-        assert!(!private.contains("172.32.0.1".parse().unwrap()));
-        assert!(private.contains("::ffff:172.17.0.1".parse().unwrap()));
-        assert!(IpRange::parse("::1")
-            .unwrap()
-            .contains("::1".parse().unwrap()));
-        assert!(IpRange::parse("fc00::/7")
-            .unwrap()
-            .contains("fd12::1".parse().unwrap()));
-        for invalid in ["nas.local", "10.0.0.0/33", "::/129", ""] {
-            assert!(IpRange::parse(invalid).is_err(), "{invalid}");
-        }
     }
 
     #[test]
@@ -371,7 +289,7 @@ mod tests {
                 url("https://books.example.com"),
                 url("https://books.example.com"),
             ],
-            default_trusted_proxies(),
+            ClientResolver::loopback_only(),
             Some(url("http://localhost:8081")),
             Some("/etc/citadel/server.toml".into()),
         );
@@ -432,6 +350,41 @@ mod tests {
             addresses.origin_of(&proxied, None),
             Some(url("https://books.example.com")),
             "in-process callers are trusted"
+        );
+    }
+
+    #[test]
+    fn origins_trust_private_proxies_by_default_and_an_explicit_list_alone() {
+        let proxied = headers(&[
+            ("host", "citadel:8081"),
+            ("x-forwarded-proto", "https"),
+            ("x-forwarded-host", "books.example.com"),
+        ]);
+        let from = |addresses: &Addresses, peer: &str| {
+            addresses.origin_of(&proxied, Some(peer.parse().unwrap()))
+        };
+        let default = Addresses::fixed(vec![]);
+        assert_eq!(
+            from(&default, "10.1.2.3"),
+            Some(url("https://books.example.com"))
+        );
+        let explicit = Addresses::new(
+            vec![],
+            ClientResolver::new(
+                ProxyTrust::new(Some(vec![IpRange::parse("203.0.113.0/24").unwrap()])),
+                ForwardedHeader::default(),
+            ),
+            None,
+            None,
+        );
+        assert_eq!(
+            from(&explicit, "203.0.113.7"),
+            Some(url("https://books.example.com"))
+        );
+        assert_eq!(
+            from(&explicit, "10.1.2.3"),
+            Some(url("http://citadel:8081")),
+            "an explicit list replaces the private-network default"
         );
     }
 }

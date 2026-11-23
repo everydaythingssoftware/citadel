@@ -16,6 +16,7 @@ use citadel_core::{
     library::{remove_permanently, LibraryService},
     HttpUrlBuilder, LibraryBook,
 };
+use citadel_opds::client::{resolve_client, ClientResolver, ForwardedHeader, IpRange, ProxyTrust};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use utoipa::openapi::{
@@ -57,9 +58,14 @@ pub struct ApiConfig {
     /// answers at any address.
     #[serde(default)]
     pub public_urls: Vec<String>,
-    /// Proxies whose `Forwarded`/`X-Forwarded-*` headers are believed.
-    /// Defaults to this machine and private networks.
+    /// Proxies whose `Forwarded`/`X-Forwarded-*` headers are believed, for
+    /// client addresses and for how the browser reached Citadel alike. When
+    /// unset, client addresses trust this machine only while scheme and host
+    /// also trust private networks (ADR 0017).
     pub trusted_proxies: Option<Vec<String>>,
+    /// Which header a trusted proxy names the client in: `x-forwarded-for`
+    /// (the default) or `forwarded`.
+    pub forwarded_header: Option<String>,
     pub web_directory: Option<std::path::PathBuf>,
     #[serde(default)]
     pub uploads: UploadConfig,
@@ -81,6 +87,8 @@ pub struct ApiAccess {
     pub setup_code: Option<String>,
     /// What administrators are told about new releases.
     pub updates: Arc<crate::updates::Updates>,
+    /// The threads that check sign-in passwords (ADR 0017).
+    pub verifier: citadel_opds::verifier::VerifierPool,
 }
 
 #[derive(Clone)]
@@ -566,6 +574,8 @@ pub fn router(
     metadata: Arc<Metadata>,
 ) -> Router {
     uploads.spawn_sweeper();
+    // The first unknown username shouldn't pay to make the dummy hash.
+    citadel_core::store::warm_dummy_hash();
     let secrets = access.secrets;
     let updates = access.updates;
     let state = ApiState {
@@ -575,6 +585,9 @@ pub fn router(
             access.served,
             access.addresses,
             access.setup_code,
+            // One guard for OPDS and the API, so every guess counts once.
+            service.sign_in_guard(),
+            access.verifier,
         )),
         work: Arc::new(Semaphore::new(64)),
         thumbnails: Default::default(),
@@ -586,6 +599,7 @@ pub fn router(
         web_directory: web_directory.map(std::path::Path::to_path_buf),
     };
     let address_state = state.clone();
+    let clients = state.access.addresses.clients().clone();
     let (library, _) = routes().split_for_parts();
     let (session, _) = session::routes()
         .merge(setup::public_routes())
@@ -646,6 +660,10 @@ pub fn router(
             address_state,
             addresses::check_address,
         ))
+        .layer(axum::middleware::from_fn_with_state(
+            clients,
+            resolve_client,
+        ))
         .layer(axum::middleware::from_fn(server::name_the_build))
 }
 
@@ -658,17 +676,40 @@ impl ApiConfig {
             .collect()
     }
 
-    pub fn proxies(&self) -> Result<Vec<addresses::IpRange>, String> {
-        match &self.trusted_proxies {
-            None => Ok(addresses::default_trusted_proxies()),
-            Some(ranges) => ranges
-                .iter()
-                .map(|range| {
-                    addresses::IpRange::parse(range)
-                        .map_err(|error| format!("api.trustedProxies: {error}"))
-                })
-                .collect(),
-        }
+    /// `trustedProxies`, parsed; `None` when unset.
+    pub fn proxies(&self) -> Result<Option<Vec<IpRange>>, String> {
+        self.trusted_proxies
+            .as_ref()
+            .map(|ranges| {
+                ranges
+                    .iter()
+                    .map(|range| {
+                        IpRange::parse(range)
+                            .map_err(|error| format!("api.trustedProxies: {error}"))
+                    })
+                    .collect()
+            })
+            .transpose()
+    }
+
+    /// `forwardedHeader`, parsed.
+    pub fn forwarded_header(&self) -> Result<ForwardedHeader, String> {
+        self.forwarded_header
+            .as_deref()
+            .map(|header| {
+                ForwardedHeader::parse(header)
+                    .map_err(|error| format!("api.forwardedHeader: {error}"))
+            })
+            .transpose()
+            .map(Option::unwrap_or_default)
+    }
+
+    /// Client addresses as configured.
+    pub fn client_resolver(&self) -> Result<ClientResolver, String> {
+        Ok(ClientResolver::new(
+            ProxyTrust::new(self.proxies()?),
+            self.forwarded_header()?,
+        ))
     }
 }
 

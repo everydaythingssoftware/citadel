@@ -83,7 +83,7 @@ Browsers sign in with `POST /api/session`, which sets an `HttpOnly`,
 `SameSite=Lax`, `Path=/` cookie, `Secure` when `api.publicUrl` is https. Every API
 request looks the session, user and grant up again. Unsafe methods must carry
 the `api.publicUrl` origin when they carry an `Origin` header. Failed sign-ins
-back off like OPDS Basic. The built frontend is public so signed-out browsers can
+are limited by the sign-in guard (ADR 0017). The built frontend is public so signed-out browsers can
 load the sign-in form; all data comes from the protected API.
 
 OPDS remains HTTP Basic, checked against the device keys of users granted the

@@ -20,7 +20,10 @@ use super::{
     auth::{require_basic_auth, OpdsBasicAuth},
 };
 use crate::identity::{book_identity, navigation_identity};
-use crate::limits::{self, run_work, Limits, WorkUnavailable};
+use crate::{
+    client::{resolve_client, ClientResolver},
+    limits::{self, run_work, Limits, WorkUnavailable},
+};
 
 const PAGE_SIZE: u64 = 50;
 const MAX_SEARCH_LENGTH: usize = 200;
@@ -156,7 +159,19 @@ pub(crate) struct FeedEntry {
     pub(crate) content: Option<String>,
 }
 
+/// The OPDS catalog, believing forwarded client addresses from this machine
+/// only.
 pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
+    router_with(source, auth, ClientResolver::loopback_only())
+}
+
+/// The OPDS catalog for one listener: `clients` decides who each request is
+/// from.
+pub(crate) fn router_with(
+    source: Arc<dyn CatalogSource>,
+    auth: OpdsBasicAuth,
+    clients: ClientResolver,
+) -> Router {
     let limits = auth.limits();
     let feeds = Router::new()
         .route("/opds", get(root_feed))
@@ -190,6 +205,10 @@ pub fn router(source: Arc<dyn CatalogSource>, auth: OpdsBasicAuth) -> Router {
             limits::bound_feeds,
         ))
         .layer(axum::middleware::from_fn_with_state(limits, limits::admit))
+        .layer(axum::middleware::from_fn_with_state(
+            clients,
+            resolve_client,
+        ))
 }
 
 /// Asset routes shared with the JSON API, using the same resolver and streaming limits.

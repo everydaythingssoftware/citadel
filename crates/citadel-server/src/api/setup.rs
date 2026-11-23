@@ -3,7 +3,7 @@
 //! behind `require_administrator`; readers never see the server's folders.
 use axum::{
     extract::{rejection::JsonRejection, Query, Request, State},
-    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
+    http::{header, HeaderMap, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Extension, Json,
@@ -12,6 +12,10 @@ use citadel_core::{
     error::{LibraryError, LibraryErrorCode},
     password::setup_code_matches,
     store::{Role, SESSION_TTL_SECONDS},
+};
+use citadel_opds::{
+    client::ClientAddress,
+    guard::{Credential, Outcome},
 };
 use serde::{Deserialize, Serialize};
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -172,6 +176,7 @@ async fn status(State(state): State<ApiState>) -> Result<Json<SetupStatus>, ApiF
 async fn create_administrator(
     State(state): State<ApiState>,
     origin: Option<Extension<RequestOrigin>>,
+    client: ClientAddress,
     method: Method,
     headers: HeaderMap,
     input: Result<Json<CreateAdministrator>, JsonRejection>,
@@ -184,17 +189,6 @@ async fn create_administrator(
         return ApiFailure::from(LibraryError::invalid("Invalid administrator JSON"))
             .into_response();
     };
-    if state.access.backoff_refused() {
-        let mut response = ApiFailure::from(LibraryError::new(
-            LibraryErrorCode::RateLimited,
-            "Too many attempts",
-        ))
-        .into_response();
-        response
-            .headers_mut()
-            .insert(header::RETRY_AFTER, HeaderValue::from_static("2"));
-        return response;
-    }
     let exists = match blocking(&state, |accounts| accounts.administrator_exists()).await {
         Ok(exists) => exists,
         Err(error) => return error.into_response(),
@@ -207,8 +201,30 @@ async fn create_administrator(
         ))
         .into_response();
     };
+    // Guesses at the code are limited per address only: it is one code, not
+    // a username, and long enough that the address tier is what matters.
+    let ticket = match state.access.guard.reserve(
+        &client,
+        Credential::SetupCode {
+            code: input.setup_code.as_bytes(),
+        },
+    ) {
+        Ok(ticket) => ticket,
+        Err(refusal) if refusal.is_repeat() => {
+            return ApiFailure::from(LibraryError::new(
+                LibraryErrorCode::Unauthorized,
+                "Incorrect setup code",
+            ))
+            .into_response();
+        }
+        Err(refusal) => return session::too_many_attempts(refusal, "Too many attempts"),
+    };
     let matches = setup_code_matches(&expected, &input.setup_code);
-    state.access.note_attempt(matches);
+    ticket.settle(if matches {
+        Outcome::Success
+    } else {
+        Outcome::Failure
+    });
     if !matches {
         return ApiFailure::from(LibraryError::new(
             LibraryErrorCode::Unauthorized,

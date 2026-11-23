@@ -39,7 +39,8 @@ Settings come from environment variables; all are optional:
 | Variable | Default in the image | Meaning |
 | --- | --- | --- |
 | `CITADEL_PUBLIC_URLS` | none | Citadel's public URLs, separated by commas, spaces or newlines. Without any, Citadel answers at every address: see [Addresses](#addresses). |
-| `CITADEL_TRUSTED_PROXIES` | private networks | Reverse proxies whose forwarded headers Citadel believes, as addresses or ranges. |
+| `CITADEL_TRUSTED_PROXIES` | see [Addresses](#addresses) | Reverse proxies whose forwarded headers Citadel believes, as addresses or ranges. |
+| `CITADEL_FORWARDED_HEADER` | `x-forwarded-for` | The header a trusted proxy names the client in: `x-forwarded-for` or `forwarded`. |
 | `CITADEL_LISTEN` | `0.0.0.0:8081` | Where the browser and API listen. |
 | `CITADEL_OPDS_PORT` | `8080` | The OPDS port. |
 | `CITADEL_OPDS_ADDRESSES` | `all` | `all`, `local` (private networks only) or a comma-separated list of addresses. |
@@ -229,6 +230,24 @@ case-insensitive and can't contain a colon.
 create a user for each former OPDS reader with `users add`, and give readers
 a device key from `users keys <name> add <device>`.
 
+### Sign-in limits
+
+Citadel limits guessing of passwords, device keys and the setup code
+([ADR 0017](adr/0017-sign-in-guard-and-client-addresses.md)). It never locks
+an account.
+
+- One address may get 100 sign-ins wrong an hour. Then it is refused for an
+  hour, doubling up to a day.
+- One username gets 10 wrong guesses, then one every 30 seconds, from
+  anywhere.
+- The same wrong password or key from the same address counts once per 10
+  minutes, so an e-reader with an old key doesn't get its household refused.
+
+Refusals are `429` with `Retry-After` in seconds; `503` with `Retry-After: 1`
+means sign-ins are busy. Browsers and e-readers that signed in before aren't
+slowed by an attack on their username. To get back in as an administrator,
+use a browser you signed in with before, or the `users` commands.
+
 ## State and listeners
 
 `stateDirectory` is optional. On Unix it defaults to `$XDG_STATE_HOME/citadel`
@@ -376,11 +395,27 @@ included.
 Each request's own address decides whether its session cookie is `Secure`, and
 a page must post to the address it was loaded from.
 
-Behind a reverse proxy, Citadel believes `Forwarded` or
-`X-Forwarded-Proto`/`X-Forwarded-Host` only from trusted proxies: by default
-this machine and private networks (`10.0.0.0/8`, `172.16.0.0/12`,
-`192.168.0.0/16`, `fc00::/7`), which covers a proxy on the same host or Docker
-network. Set `trustedProxies` (or `CITADEL_TRUSTED_PROXIES`) to narrow it.
+Behind a reverse proxy, Citadel believes forwarded headers only from trusted
+proxies (`trustedProxies` or `CITADEL_TRUSTED_PROXIES`). Unset, the scheme and
+host, which decide the address checks above and whether cookies are `Secure`,
+are believed from this machine and private networks, but the client address,
+which sign-in limits count by, only from this machine. Set, the one list
+decides both. The client is the rightmost untrusted address in
+`forwardedHeader` (`X-Forwarded-For` by default, or `Forwarded`). While the
+list is unset, Citadel logs any private-network peer that sends forwarding
+headers, naming the address to add.
+
+```yaml
+services:
+  citadel:
+    environment:
+      CITADEL_PUBLIC_URLS: https://books.example.com
+      CITADEL_TRUSTED_PROXIES: 172.18.0.5   # the proxy's fixed address
+```
+
+nginx must append to `X-Forwarded-For` rather than replace it
+(`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`). Caddy and
+Traefik do this by default.
 
 Browsers sign in with their Citadel username and sign-in password and receive an
 `HttpOnly`, `SameSite=Lax` session cookie that lasts 30 days from last use.

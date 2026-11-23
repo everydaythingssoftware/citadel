@@ -706,3 +706,219 @@ fn hostile_epubs_are_refused_and_server_survives() {
     assert!(!added["cover_image"].is_null(), "{added}");
     alive(&mut child);
 }
+
+/// Peak resident memory (`VmHWM`), in KiB.
+#[cfg(target_os = "linux")]
+fn peak_memory(pid: u32) -> u64 {
+    std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .unwrap()
+        .lines()
+        .find_map(|line| line.strip_prefix("VmHWM:"))
+        .and_then(|value| value.trim().trim_end_matches("kB").trim().parse().ok())
+        .unwrap()
+}
+
+/// Resident memory now (`VmRSS`), in KiB.
+#[cfg(target_os = "linux")]
+fn resident_memory(pid: u32) -> u64 {
+    std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .unwrap()
+        .lines()
+        .find_map(|line| line.strip_prefix("VmRSS:"))
+        .and_then(|value| value.trim().trim_end_matches("kB").trim().parse().ok())
+        .unwrap()
+}
+
+#[test]
+fn sign_in_flood() {
+    let directory = tempfile::tempdir().unwrap();
+    let state = directory.path().join("state");
+    let api_port = free_port();
+    let opds_port = free_port();
+    let with_settings = |command: &mut Command| {
+        command
+            .env_remove("CITADEL_CONFIG")
+            .env("CITADEL_LISTEN", format!("127.0.0.1:{api_port}"))
+            .env("CITADEL_OPDS_PORT", opds_port.to_string())
+            .env("CITADEL_STATE_DIRECTORY", &state)
+            .env("CITADEL_UPDATE_CHECK", "false");
+    };
+    let mut add = Command::new(env!("CARGO_BIN_EXE_citadel-server"));
+    with_settings(&mut add);
+    let mut adding = add
+        .args(["users", "add", "admin", "--admin", "--password-stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(&mut adding.stdin.take().unwrap(), b"the right password\n").unwrap();
+    assert!(adding.wait().unwrap().success());
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_citadel-server"));
+    with_settings(&mut command);
+    let mut child = ServerProcess(
+        command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap(),
+    );
+    let stdout = child.stdout.take().unwrap();
+    let (lines, received) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let _ = lines.send(line);
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let wait = deadline.saturating_duration_since(Instant::now());
+        match received.recv_timeout(wait) {
+            Ok(line) if line.contains("citadel_server api=") => break,
+            Ok(_) => {}
+            Err(_) => panic!("server did not start"),
+        }
+    }
+    #[cfg(target_os = "linux")]
+    let memory_at_rest = resident_memory(child.id());
+    let origin = format!("http://127.0.0.1:{api_port}");
+    let client = || {
+        reqwest::blocking::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap()
+    };
+    let sign_in = |client: &reqwest::blocking::Client, password: &str| {
+        client
+            .post(format!("{origin}/api/session"))
+            .header("content-type", "application/json")
+            .header("origin", &origin)
+            .body(format!(r#"{{"username":"admin","password":"{password}"}}"#))
+    };
+    // A second client: another loopback address on Linux; elsewhere only
+    // 127.0.0.1 exists, so it says who it is through a trusted proxy (this
+    // machine) instead.
+    let elsewhere = |client: &str, request: reqwest::blocking::RequestBuilder| {
+        if cfg!(target_os = "linux") {
+            request
+        } else {
+            request.header("x-forwarded-for", client)
+        }
+    };
+    let from = |address: [u8; 4]| {
+        let builder = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(30));
+        #[cfg(target_os = "linux")]
+        let builder = builder.local_address(std::net::IpAddr::from(address));
+        #[cfg(not(target_os = "linux"))]
+        let _ = address;
+        builder.build().unwrap()
+    };
+    let browser = from([127, 0, 0, 2]);
+    let first = elsewhere("198.51.100.2", sign_in(&browser, "the right password"))
+        .send()
+        .unwrap();
+    assert_eq!(first.status(), 200);
+    let device = first
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|value| {
+            value
+                .to_str()
+                .unwrap()
+                .split(';')
+                .next()
+                .unwrap()
+                .to_string()
+        })
+        .find(|cookie| cookie.starts_with("citadel_device="))
+        .unwrap();
+
+    #[cfg(target_os = "linux")]
+    let memory_before = peak_memory(child.id());
+
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let health = {
+        let stop = stop.clone();
+        let url = format!("{origin}/api/health");
+        let client = client();
+        std::thread::spawn(move || {
+            let mut statuses = Vec::new();
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                statuses.push(client.get(&url).send().map(|response| response.status()));
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            statuses
+        })
+    };
+    let start = std::sync::Arc::new(std::sync::Barrier::new(64));
+    let flood: Vec<_> = (0..64)
+        .map(|attempt| {
+            let request = sign_in(&client(), &format!("wrong password {attempt}"));
+            let start = start.clone();
+            std::thread::spawn(move || {
+                start.wait();
+                request.send().map(|response| response.status())
+            })
+        })
+        .collect();
+    let statuses: Vec<u16> = flood
+        .into_iter()
+        .map(|attempt| attempt.join().unwrap().unwrap().as_u16())
+        .collect();
+    std::thread::sleep(Duration::from_millis(500));
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let health = health.join().unwrap();
+    assert!(!health.is_empty());
+    // At most two at a time, and no more than the username's burst of ten
+    // in all, were checked; the rest were refused without a check.
+    assert!(
+        statuses.iter().filter(|status| **status == 401).count() <= 10,
+        "{statuses:?}"
+    );
+    assert!(
+        statuses
+            .iter()
+            .all(|status| matches!(status, 401 | 429 | 503)),
+        "{statuses:?}"
+    );
+    #[cfg(target_os = "linux")]
+    {
+        let grew = peak_memory(child.id()).saturating_sub(memory_before);
+        assert!(grew < 200 * 1024, "peak memory grew {grew} KiB");
+        // Checked passwords' Argon2 buffers (19 MiB each) go back to the OS.
+        let kept = resident_memory(child.id()).saturating_sub(memory_at_rest);
+        assert!(kept < 16 * 1024, "resident memory kept {kept} KiB");
+    }
+
+    // The administrator's browser is known, so it gets straight in.
+    let signed_in = elsewhere(
+        "198.51.100.2",
+        sign_in(&browser, "the right password").header("cookie", &device),
+    )
+    .send()
+    .unwrap();
+    assert_eq!(signed_in.status(), 200);
+    // A new device is answered at once: in, or told how long to wait.
+    let new_device = elsewhere(
+        "198.51.100.3",
+        sign_in(&from([127, 0, 0, 3]), "the right password"),
+    )
+    .send()
+    .unwrap();
+    match new_device.status().as_u16() {
+        200 => {}
+        429 => {
+            let wait: u64 = new_device.headers()["retry-after"]
+                .to_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+            assert!((1..=30).contains(&wait), "{wait}");
+        }
+        status => panic!("new device got {status}"),
+    }
+}

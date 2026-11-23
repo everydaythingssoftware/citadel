@@ -19,6 +19,7 @@ pub const WEB_DIRECTORY: &str = "CITADEL_WEB_DIRECTORY";
 pub const UPDATE_CHECK: &str = "CITADEL_UPDATE_CHECK";
 pub const LIBRARY_ROOTS: &str = "CITADEL_LIBRARY_ROOTS";
 pub const TRUSTED_PROXIES: &str = "CITADEL_TRUSTED_PROXIES";
+pub const FORWARDED_HEADER: &str = "CITADEL_FORWARDED_HEADER";
 
 /// The variables that configure the server.
 pub const SETTINGS: &[&str] = &[
@@ -31,6 +32,7 @@ pub const SETTINGS: &[&str] = &[
     UPDATE_CHECK,
     LIBRARY_ROOTS,
     TRUSTED_PROXIES,
+    FORWARDED_HEADER,
 ];
 
 /// `CITADEL_*` variables that mean something elsewhere: the config file,
@@ -84,6 +86,9 @@ pub fn config_from(var: impl Fn(&str) -> Option<String>) -> Result<ServerConfig,
     }
     if let Some(list) = var(TRUSTED_PROXIES) {
         api.insert("trustedProxies".into(), list_value(&list));
+    }
+    if let Some(header) = var(FORWARDED_HEADER) {
+        api.insert("forwardedHeader".into(), Value::String(header));
     }
     if let Some(directory) = var(WEB_DIRECTORY) {
         api.insert("webDirectory".into(), Value::String(directory));
@@ -152,6 +157,7 @@ fn in_variable_terms(error: &str) -> String {
         ("api.listen", LISTEN),
         ("api.publicUrls", PUBLIC_URLS),
         ("api.trustedProxies", TRUSTED_PROXIES),
+        ("api.forwardedHeader", FORWARDED_HEADER),
         ("api.webDirectory", WEB_DIRECTORY),
         ("stateDirectory", STATE_DIRECTORY),
         ("sharing.port", OPDS_PORT),
@@ -258,6 +264,7 @@ mod tests {
                 " https://books.example.com ,\n http://nas.local:8081  http://192.168.1.20:8081",
             ),
             (TRUSTED_PROXIES, "172.18.0.0/16"),
+            (FORWARDED_HEADER, "Forwarded"),
             (OPDS_PORT, "9001"),
             (OPDS_ADDRESSES, "127.0.0.1, ::1"),
             (UPDATE_CHECK, "TRUE"),
@@ -274,6 +281,10 @@ mod tests {
         assert_eq!(
             config.api.trusted_proxies,
             Some(vec!["172.18.0.0/16".to_string()])
+        );
+        assert_eq!(
+            config.api.forwarded_header().unwrap(),
+            citadel_opds::client::ForwardedHeader::Forwarded
         );
         assert_eq!(config.sharing.port, 9001);
         assert_eq!(
@@ -299,6 +310,7 @@ mod tests {
             (vec![(LISTEN, "0.0.0.0:0")], LISTEN),
             (vec![(PUBLIC_URLS, "books.example.com")], PUBLIC_URLS),
             (vec![(TRUSTED_PROXIES, "the proxy")], TRUSTED_PROXIES),
+            (vec![(FORWARDED_HEADER, "x-real-ip")], FORWARDED_HEADER),
             (vec![(OPDS_PORT, "0")], OPDS_PORT),
             (vec![(OPDS_PORT, "eighty")], OPDS_PORT),
             (vec![(UPDATE_CHECK, "maybe")], UPDATE_CHECK),

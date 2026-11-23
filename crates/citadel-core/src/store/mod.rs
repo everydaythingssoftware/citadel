@@ -20,11 +20,14 @@ mod credentials;
 mod device_keys;
 mod libraries;
 mod migrations;
+mod properties;
 mod recovery;
 mod schema;
 mod users;
 
-pub use auth::{LibraryGrant, LibraryPermission, SESSION_TTL_SECONDS};
+pub use auth::{
+    warm_dummy_hash, LibraryGrant, LibraryPermission, StoredPassword, SESSION_TTL_SECONDS,
+};
 pub use credentials::{CredentialSecret, ProviderCredential};
 pub use device_keys::{DeviceKey, DeviceKeyVerifier, NewDeviceKey};
 pub use libraries::{canonical_path, RegisteredLibrary};
