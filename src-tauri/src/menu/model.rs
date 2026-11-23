@@ -16,6 +16,7 @@ pub enum MenuCommand {
     Find,
     Undo,
     Redo,
+    SelectAll,
     BookShowDetails,
     BookOpen,
     BookEdit,
@@ -67,6 +68,7 @@ pub const MENU_ACCELERATORS: MenuAccelerators = MenuAccelerators {
         (MenuCommand::AddBook, "CmdOrCtrl+N"),
         (MenuCommand::Undo, "CmdOrCtrl+Z"),
         (MenuCommand::Redo, "CmdOrCtrl+Shift+Z"),
+        (MenuCommand::SelectAll, "CmdOrCtrl+A"),
         (MenuCommand::Find, "CmdOrCtrl+F"),
         (MenuCommand::BookShowDetails, "CmdOrCtrl+I"),
         (MenuCommand::BookOpen, "CmdOrCtrl+O"),
@@ -180,6 +182,17 @@ pub struct AppUndo {
     pub redo_label: Option<String>,
 }
 
+/// Who Edit > Select All acts on. `Books` holds on the Books page, unless
+/// the focus is in a text field, a sheet, an alert or a menu. `Native`
+/// holds in those places and on the other pages.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum MenuSelectAll {
+    #[default]
+    Native,
+    Books,
+}
+
 /// One group of what the menu bar shows, replaced whole.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -188,6 +201,7 @@ pub enum MenuStateUpdate {
     View(MenuViewOptions),
     Libraries(Vec<MenuLibrary>),
     Undo(MenuUndo),
+    SelectAll(MenuSelectAll),
     UpdateReady(Option<String>),
 }
 
@@ -198,6 +212,7 @@ pub struct MenuState {
     pub view: MenuViewOptions,
     pub libraries: Vec<MenuLibrary>,
     pub undo: MenuUndo,
+    pub select_all: MenuSelectAll,
     pub update_ready_version: Option<String>,
 }
 
@@ -208,6 +223,7 @@ impl MenuState {
             MenuStateUpdate::View(view) => self.view = view,
             MenuStateUpdate::Libraries(libraries) => self.libraries = libraries,
             MenuStateUpdate::Undo(undo) => self.undo = undo,
+            MenuStateUpdate::SelectAll(select_all) => self.select_all = select_all,
             MenuStateUpdate::UpdateReady(version) => self.update_ready_version = version,
         }
     }
@@ -250,6 +266,9 @@ pub struct MenuView {
     pub restart_to_update: bool,
     /// Undo and Redo as the app's own items; `None` keeps the native ones.
     pub undo: Option<UndoMenuView>,
+    /// Select All as the app's own item, which selects every book; `false`
+    /// keeps the native one.
+    pub select_all_books: bool,
 }
 
 /// Edit > Undo and Redo, naming what they would do and disabled when there
@@ -340,6 +359,7 @@ pub fn menu_view(state: &MenuState, file_manager_name: &str) -> MenuView {
                 app.redo_label.as_deref(),
             )),
         },
+        select_all_books: state.select_all == MenuSelectAll::Books,
     }
 }
 
@@ -403,6 +423,7 @@ mod tests {
             Some("CmdOrCtrl+4")
         );
         assert_eq!(MenuCommand::GoBack.accelerator(), Some("CmdOrCtrl+["));
+        assert_eq!(MenuCommand::SelectAll.accelerator(), Some("CmdOrCtrl+A"));
         assert_eq!(MenuCommand::NewShelf.accelerator(), None);
     }
 
@@ -422,6 +443,10 @@ mod tests {
     fn commands_have_the_frontend_shape() {
         let wire = |command: MenuCommand| serde_json::to_value(command).unwrap();
         assert_eq!(wire(MenuCommand::AddBook), serde_json::json!("add-book"));
+        assert_eq!(
+            wire(MenuCommand::SelectAll),
+            serde_json::json!("select-all")
+        );
         assert_eq!(
             wire(MenuCommand::Sort(MenuSortOrder::NameZa)),
             serde_json::json!({ "sort": "nameZa" })
@@ -472,11 +497,13 @@ mod tests {
             serde_json::json!({ "view": { "sidebarVisible": false, "unreadOnly": true, "sortOrder": "authorZa" } }),
             serde_json::json!({ "libraries": [{ "id": "l1", "name": "Books", "active": true }] }),
             serde_json::json!({ "undo": { "owner": "app", "undoLabel": "Undo Mark as Finished", "redoLabel": null } }),
+            serde_json::json!({ "selectAll": "books" }),
             serde_json::json!({ "updateReady": null }),
         ] {
             state.apply(serde_json::from_value(update).unwrap());
         }
         assert_eq!(state.view.sort_order, MenuSortOrder::AuthorZa);
+        assert_eq!(state.select_all, MenuSelectAll::Books);
         assert_eq!(state.libraries.len(), 1);
         assert_eq!(
             state.undo,
@@ -612,5 +639,15 @@ mod tests {
             menu_view(&app, "Finder").undo.map(|view| view.undo.label),
             Some("Undo Mark as Finished".to_string())
         );
+    }
+
+    #[test]
+    fn select_all_stays_native_until_the_frontend_picks_the_books() {
+        assert!(!menu_view(&MenuState::default(), "Finder").select_all_books);
+        let books = MenuState {
+            select_all: MenuSelectAll::Books,
+            ..MenuState::default()
+        };
+        assert!(menu_view(&books, "Finder").select_all_books);
     }
 }

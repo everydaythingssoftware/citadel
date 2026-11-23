@@ -1,4 +1,4 @@
-import type { AppUndo, GoDestination } from "@/bindings";
+import type { AppUndo, GoDestination, MenuSelectAll } from "@/bindings";
 import type { TShortcutCommand } from "@/lib/app-shortcuts";
 import { BOOK_COMMAND, type TBookCommand } from "@/lib/book-menu";
 import type { Option } from "@/lib/option";
@@ -37,3 +37,15 @@ export const appUndo = (
 				redoLabel: null,
 			}
 		: { undoLabel: undoTitle(history), redoLabel: redoTitle(history) };
+
+/**
+ * What Edit > Select All acts on: the books on the Books page, unless the
+ * focus is in a text field, a sheet, an alert or a menu (`keyboardBusy`).
+ * Else it is the native item. Focus in the details drawer counts as the
+ * Books page, as it does for the Book menu.
+ */
+export const selectAllOwner = (
+	keyboardBusy: boolean,
+	pathname: string,
+): MenuSelectAll =>
+	!keyboardBusy && pathname === GO_PATHS.allBooks ? "books" : "native";
