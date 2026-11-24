@@ -31,6 +31,7 @@ it("uses the thumbnail and reserves its proportions", () => {
 				url: "/thumb.jpg",
 				width: 100,
 				height: 150,
+				cover_colors: null,
 			}),
 		}),
 	);
@@ -65,4 +66,25 @@ it.each([
 ])("uses geometric artwork without a usable title (%j)", (title) => {
 	const html = renderToStaticMarkup(createElement(BookCover, { title }));
 	expect(html).not.toContain("<img");
+});
+
+it("paints the cover's colours behind the image until it loads", () => {
+	const html = renderToStaticMarkup(
+		createElement(BookCover, {
+			...bookCoverProps(book, {
+				book_id: "1",
+				url: "/thumb.jpg",
+				width: 100,
+				height: 150,
+				cover_colors: {
+					palette: {
+						dominant: { l: 0.5, a: 0.1, b: 0.05, share: 1 },
+						secondary: null,
+					},
+					thumbhash: "",
+				},
+			}),
+		}),
+	);
+	expect(html).toContain("background-color:oklab(50.0% 0.100 0.050)");
 });

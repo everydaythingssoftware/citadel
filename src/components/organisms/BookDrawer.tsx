@@ -24,10 +24,9 @@ import {
 	identifierUrl,
 	sortIdentifiers,
 } from "@/lib/book-identifiers";
-import { backdropColors } from "@/lib/cover-palette";
+import { coverWash } from "@/lib/cover-palette";
 import { useBookDrawerResize } from "@/lib/hooks/use-book-drawer-resize";
 import { type BookFiles, useBookFiles } from "@/lib/hooks/use-book-files";
-import { useCoverPalette } from "@/lib/hooks/use-cover-palette";
 import { useDetailsPanelFocus } from "@/lib/hooks/use-details-panel-focus";
 import { useScrolled } from "@/lib/hooks/use-scrolled";
 import { languageNameForCode } from "@/lib/languages";
@@ -96,9 +95,8 @@ export const BookDetailsDrawer = ({
  */
 export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 	const files = useBookFiles(book.file_list);
-	const coverUrl = book.cover_image?.url ?? null;
-	const palette = useCoverPalette(coverUrl);
-	const colors = palette ? backdropColors(palette) : null;
+	const thumb = useLibraryStore((state) => state.coverThumbs.get(book.id));
+	const colors = coverWash(thumb);
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const drawerRef = useRef<HTMLElement>(null);
 	const scrolled = useScrolled(bodyRef);

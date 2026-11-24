@@ -4,7 +4,10 @@ import {
 	type HTMLAttributes,
 	type ReactEventHandler,
 	memo,
+	useMemo,
 } from "react";
+import type { CoverColors } from "@/bindings";
+import { coverPlaceholder } from "@/lib/cover-placeholder";
 import { useCoverImage } from "@/lib/hooks/use-cover-image";
 import { PlaceholderCover } from "./placeholder-cover/PlaceholderCover";
 import styles from "./BookCover.module.css";
@@ -19,6 +22,8 @@ export interface BookCoverProps extends HTMLAttributes<HTMLDivElement> {
 	/** The title comes from an import that is still under review. */
 	provisional?: boolean;
 	sizeHint?: { width: number; height: number };
+	/** The cover's colours, painted behind the image until it arrives. */
+	coverColors?: CoverColors | null;
 	maxHeight?: number | string;
 	selected?: boolean;
 	finished?: boolean;
@@ -41,6 +46,7 @@ const BookCoverContent = ({
 	authors = "",
 	provisional = false,
 	sizeHint,
+	coverColors,
 	maxHeight = COVER_SHELF_HEIGHT,
 	selected = false,
 	finished = false,
@@ -60,6 +66,11 @@ const BookCoverContent = ({
 	const heightLimit =
 		typeof maxHeight === "number" ? `${maxHeight}px` : maxHeight;
 	const ratio = size ? size.width / size.height : 2 / 3;
+	// Painted behind the image: it shows until the cover decodes over it.
+	const placeholder = useMemo(
+		() => coverPlaceholder(coverColors),
+		[coverColors],
+	);
 	return (
 		<div
 			{...props}
@@ -86,7 +97,10 @@ const BookCoverContent = ({
 				} as CSSProperties
 			}
 		>
-			<div className={styles.surface}>
+			<div
+				className={styles.surface}
+				style={imageSrc && !loading ? placeholder : undefined}
+			>
 				{!loading && (
 					<>
 						{children ??

@@ -22,9 +22,11 @@ pub use author::LibraryAuthor;
 pub use book::{
     BookFile, Identifier, LibraryBook, LocalFile, LocalOrRemote, LocalOrRemoteUrl, RemoteFile,
 };
+pub use cover_colors::{CoverColors, CoverPalette, PaletteColor};
 pub use url::{path_to_asset_url, AssetUrlBuilder, BookUrlBuilder, HttpUrlBuilder};
 
 pub mod contracts;
+pub mod cover_colors;
 pub mod error;
 pub mod genres;
 pub mod library;

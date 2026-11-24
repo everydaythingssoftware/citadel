@@ -6,5 +6,6 @@ export const bookCoverProps = (book: LibraryBook, thumb?: CoverThumbnail) => ({
 	title: book.title,
 	authors: formatAuthorList(book.author_list),
 	sizeHint: thumb,
+	coverColors: thumb?.cover_colors,
 	finished: book.is_read,
 });

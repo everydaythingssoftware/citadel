@@ -673,11 +673,31 @@ export type CommitUpload = { title: string; authorNames?: string[];
  */
 identifier: string | null; publisher: string | null; language: string | null; tags?: string[]; publicationDate: string | null }
 /**
+ * What a cover looks like before it loads.
+ */
+export type CoverColors = { 
+/**
+ * `None` when the cover is all paper and ink.
+ */
+palette: CoverPalette | null; 
+/**
+ * The cover's ThumbHash, base64 (standard, padded).
+ */
+thumbhash: string }
+/**
+ * A cover's main colour and, when it has one, a second distinct colour.
+ */
+export type CoverPalette = { dominant: PaletteColor; secondary: PaletteColor | null }
+/**
  * What the frontend needs to render one grid cover: a small image URL and the
  * thumbnail's pixel dimensions (same aspect ratio as the source cover) to
  * reserve exact row height up front.
  */
-export type CoverThumbnail = { book_id: string; url: string; width: number; height: number }
+export type CoverThumbnail = { book_id: string; url: string; width: number; height: number; 
+/**
+ * The cover's palette and ThumbHash, worked out with the thumbnail.
+ */
+cover_colors: CoverColors | null }
 /**
  * A custom column definition, as exposed to the frontend.
  */
@@ -928,6 +948,14 @@ export type OpdsServiceStatus = { state: OpdsLifecycleState; activeLibraryId: st
 config: OpdsStartConfig | null }
 export type OpdsStartConfig = { target: OpdsBindTarget; port: number; authenticationEnabled: boolean }
 export type OpdsStatusError = { code: OpdsErrorCode; message: string }
+/**
+ * One of a cover's colours in OKLab, with how much of the cover it covers.
+ */
+export type PaletteColor = { l: number; a: number; b: number; 
+/**
+ * Share of the cover's counted pixels in this colour, 0–1.
+ */
+share: number }
 export type ProviderStatus = { provider: MetadataProvider; is_valid: boolean; message: string }
 export type RecoveryStep = 
 /**
