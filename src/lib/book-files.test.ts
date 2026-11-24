@@ -22,6 +22,7 @@ const book = (overrides: Partial<LibraryBook>): LibraryBook => ({
 	is_read: false,
 	series: null,
 	series_index: null,
+	publisher: null,
 	language_list: [],
 	added_at: "2025-01-01T00:00:00Z",
 	...overrides,

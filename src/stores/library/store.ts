@@ -3,11 +3,13 @@ import { create } from "zustand";
 import type {
 	AuthorUpdate,
 	BookCustomValue,
+	BookEdit,
 	BookUpdate,
 	CoverThumbnail,
 	CustomColumnDef,
 	CustomValueDto,
 	DeleteBooksOutcome,
+	EditBooksOutcome,
 	LibraryAuthor,
 	LibraryBook,
 	LibraryPublisher,
@@ -34,7 +36,9 @@ import {
 } from "@/lib/book-page-cache";
 import { sortAuthors } from "@/lib/domain/author";
 import type { Library, Options } from "@/lib/services/library";
+import { UnknownOutcomeError } from "@/lib/services/library/types";
 import { libraryCatalog } from "@/lib/services/library-catalog";
+import { LibrarySwitchedAfterEditError } from "@/stores/library/errors";
 import { clearUndoHistory } from "@/stores/undo/store";
 
 /** An update that changes only whether the book is finished. */
@@ -103,11 +107,27 @@ interface LibraryActions {
 	setBookCoverFromFile: (bookId: string, image: Blob) => Promise<void>;
 
 	// Book and author mutations. Each one clears the undo history (it can't
-	// be undone), except marking books finished, whose caller registers its
-	// own undo entry.
+	// be undone), except marking books finished and editing several books,
+	// whose callers register their own undo entry.
 	updateBook: (bookId: string, updates: BookUpdate) => Promise<void>;
 	/** Marks books finished or not, refreshing the grid once. */
 	setBooksRead: (bookIds: readonly string[], isRead: boolean) => Promise<void>;
+	/**
+	 * Applies the edits to several books in one request, refreshes the grid
+	 * once, and resolves with the undo edits of the books that changed. It
+	 * keeps the undo history, because the caller registers its own entry.
+	 * After an `UnknownOutcomeError`, it clears the undo history, because the
+	 * library possibly changed with no entry. It also refreshes the grid if
+	 * the library of the request is still open. Then it throws the error
+	 * again. A library switch can start while the request runs. If the edit
+	 * then applies, the action clears the undo history for the same reason,
+	 * and it throws a `LibrarySwitchedAfterEditError`. If a different step
+	 * fails after the edit applies, the action also clears the undo history.
+	 * It writes that error to the console and throws it again. Each clear
+	 * occurs only while the library of the request is still open. After any
+	 * other failure, it does nothing more, because no book changed.
+	 */
+	editBooks: (edits: readonly BookEdit[]) => Promise<EditBooksOutcome>;
 	updateAuthor: (authorId: string, updates: AuthorUpdate) => Promise<void>;
 	/** Resolves with the authors as created, IDs included. */
 	createAuthors: (newAuthors: NewAuthor[]) => Promise<LibraryAuthor[]>;
@@ -175,6 +195,8 @@ interface LibraryStoreState {
 	// loaded on demand by their pages rather than at library open.
 	tags: LibraryTag[] | null;
 	tagsLoading: boolean;
+	/** The last tag load failed. `tags` then holds an empty list. */
+	tagsLoadFailed: boolean;
 	publishers: LibraryPublisher[] | null;
 	publishersLoading: boolean;
 
@@ -202,6 +224,7 @@ const initialState = {
 	seriesError: null,
 	tags: null as LibraryTag[] | null,
 	tagsLoading: false,
+	tagsLoadFailed: false,
 	publishers: null as LibraryPublisher[] | null,
 	publishersLoading: false,
 };
@@ -241,6 +264,14 @@ let pendingRestore: number | null = null;
 let backendOpenChain: Promise<unknown> = Promise.resolve();
 
 const SWITCH_IN_PROGRESS_ERROR = "A library switch is in progress";
+
+/** A library switch started while an operation ran. */
+class LibraryChangedError extends Error {
+	constructor() {
+		super("Library changed while the operation was in progress");
+		this.name = "LibraryChangedError";
+	}
+}
 
 /** The backend global may not match the visible library: a shadow switch is
  * loading, or a cancelled/failed switch is still restoring. */
@@ -290,7 +321,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				get().library !== library ||
 				token !== shadowTokenCounter
 			) {
-				throw new Error("Library changed while the operation was in progress");
+				throw new LibraryChangedError();
 			}
 		};
 		const result = await operation(library, assertCurrent);
@@ -548,12 +579,12 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				try {
 					const tags = await library.listTags();
 					if (!canCommitActive(generation)) return;
-					set({ tags, tagsLoading: false });
+					set({ tags, tagsLoading: false, tagsLoadFailed: false });
 				} catch (error) {
 					console.error("Failed to load tags", error);
 					if (!canCommitActive(generation)) return;
 					// An empty list (not null) so the page does not retry in a loop.
-					set({ tags: [], tagsLoading: false });
+					set({ tags: [], tagsLoading: false, tagsLoadFailed: true });
 				}
 			},
 
@@ -783,6 +814,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 						// Lazy lists belong to the old library; their pages reload.
 						tags: null,
 						tagsLoading: false,
+						tagsLoadFailed: false,
 						publishers: null,
 						publishersLoading: false,
 						bookPagesError: firstPage.error,
@@ -883,6 +915,46 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 						if (ids.length > 0) get().actions.invalidateBooks();
 					}
 				}),
+
+			editBooks: async (edits) => {
+				let written = false;
+				let requested: Library | null = null;
+				// Another library has its own pages and its own undo history. A
+				// late clear or refresh must not change them.
+				const requestedIsOpen = () =>
+					requested !== null && get().library === requested;
+				// A pending switch leaves the store on the library of the request.
+				// Its pages then show the values from before the edit.
+				const refreshRequested = () => {
+					if (requestedIsOpen()) get().actions.invalidateBooks();
+				};
+				try {
+					return await withActiveLibrary(async (library) => {
+						requested = library;
+						try {
+							const outcome = await library.editBooks(edits);
+							written = true;
+							return outcome;
+						} catch (error) {
+							if (error instanceof UnknownOutcomeError) {
+								if (requestedIsOpen()) clearUndoHistory();
+								refreshRequested();
+							}
+							throw error;
+						}
+					}, true);
+				} catch (error) {
+					if (!written) throw error;
+					// The books changed, but the caller registers no entry. Thus
+					// Undo must not reach past the edit.
+					if (requestedIsOpen()) clearUndoHistory();
+					refreshRequested();
+					if (error instanceof LibraryChangedError)
+						throw new LibrarySwitchedAfterEditError();
+					console.error("A step after the edit of several books failed", error);
+					throw error;
+				}
+			},
 
 			updateAuthor: (id, updates) =>
 				writeLibrary(async (library, assertCurrent) => {

@@ -1,10 +1,12 @@
 //! Application operations shared by IPC and HTTP. Hosts supply an open library
 //! and asset URL policy; this module knows neither Tauri nor HTTP extractors.
+use std::collections::HashSet;
+
 use crate::{
     contracts::{
         custom_columns::{BookCustomValue, CustomColumnDef, CustomValueDto},
-        AuthorUpdate, BookUpdate, LibraryBookPage, LibraryBookQuery, LibraryPublisher,
-        LibrarySeries, LibraryTag, NewAuthor,
+        AuthorUpdate, BookEdit, BookUpdate, EditBooksOutcome, LibraryBookPage, LibraryBookQuery,
+        LibraryPublisher, LibrarySeries, LibraryTag, NewAuthor,
     },
     error::{LibraryError, LibraryErrorCode},
     Actor, BookUrlBuilder, LibraryAuthor, LibraryBook,
@@ -206,6 +208,100 @@ impl<'a> LibraryService<'a> {
             folders,
         })
     }
+    /// Applies each edit to its book in one transaction. An edit sets the
+    /// series, adds or removes tags and languages, and sets the publisher.
+    /// Nothing changes if an id is invalid, repeated or unknown. A book that
+    /// the edit does not change keeps its `last_modified` value.
+    ///
+    /// The outcome has the undo edit of each book that the call changes, in the
+    /// order of `edits`: the edit that gives back the values that the book had
+    /// before the call. Undo sends these undo edits to this function again.
+    /// - Series: it sets the old name, or `""` when the book had none. As in
+    ///   `BookUpdate`, `""` unlinks the value.
+    /// - Tags: it adds the removed tags again, with the spelling of the book,
+    ///   and it removes the added tags.
+    /// - Languages: it removes every code that the book has after the call, and
+    ///   then adds the codes that the book had before, in their old order. Thus
+    ///   the first (primary) language comes back too.
+    /// - Publisher: as for the series.
+    pub fn edit_books(&mut self, _actor: &Actor, edits: Vec<BookEdit>) -> Result<EditBooksOutcome> {
+        let mut seen = HashSet::new();
+        let mut targets = Vec::with_capacity(edits.len());
+        for edit in &edits {
+            let id = book_id(&edit.book_id)?;
+            if !seen.insert(id.as_i32()) {
+                return Err(LibraryError::invalid(format!(
+                    "Book {} appears twice in one edit",
+                    edit.book_id
+                )));
+            }
+            targets.push(id);
+        }
+        let mut updates = Vec::new();
+        let mut undo = Vec::new();
+        for (edit, id) in edits.iter().zip(targets) {
+            let book = self.library.get_book(id)?;
+            let series =
+                series_or_publisher_to_write(edit.series.as_deref(), book.series.as_deref());
+            let tags = patched_names(&book.tags, &edit.remove_tags, &edit.add_tags, |name| {
+                name.to_ascii_lowercase()
+            });
+            // The list gets canonical codes, so that it compares equal to the
+            // codes of the book. `patched_names` drops a blank code.
+            let added_languages: Vec<String> = edit
+                .add_languages
+                .iter()
+                .map(|code| libcalibre::canonicalize_lang_code(code))
+                .collect();
+            let languages = patched_names(
+                &book.language_codes,
+                &edit.remove_languages,
+                &added_languages,
+                libcalibre::canonicalize_lang_code,
+            );
+            let publisher =
+                series_or_publisher_to_write(edit.publisher.as_deref(), book.publisher.as_deref());
+            let tags_changed = tags.names != book.tags;
+            let languages_changed = languages.names != book.language_codes;
+            if series.is_none() && !tags_changed && !languages_changed && publisher.is_none() {
+                continue;
+            }
+            let old_value = |changed: bool, old: Option<&str>| {
+                changed.then(|| old.unwrap_or_default().to_owned())
+            };
+            undo.push(BookEdit {
+                book_id: id.as_i32().to_string(),
+                series: old_value(series.is_some(), book.series.as_deref()),
+                add_tags: if tags_changed { tags.removed } else { vec![] },
+                remove_tags: if tags_changed { tags.added } else { vec![] },
+                add_languages: if languages_changed {
+                    book.language_codes.clone()
+                } else {
+                    vec![]
+                },
+                remove_languages: if languages_changed {
+                    languages.names.clone()
+                } else {
+                    vec![]
+                },
+                publisher: old_value(publisher.is_some(), book.publisher.as_deref()),
+            });
+            updates.push((
+                id,
+                libcalibre::BookUpdate {
+                    series,
+                    tags: tags_changed.then_some(tags.names),
+                    language_codes: languages_changed.then_some(languages.names),
+                    publisher,
+                    ..Default::default()
+                },
+            ));
+        }
+        if !updates.is_empty() {
+            self.library.update_books(updates)?;
+        }
+        Ok(EditBooksOutcome { undo })
+    }
     /// Deleting an author that isn't there succeeds: the outcome the caller
     /// asked for already holds.
     pub fn delete_author(&mut self, _actor: &Actor, id: &str) -> Result<()> {
@@ -359,6 +455,60 @@ impl LibraryService<'_> {
     fn existing_book(&mut self, id: &str) -> Result<libcalibre::Book> {
         Ok(self.library.get_book(book_id(id)?)?)
     }
+}
+
+/// For a series or a publisher: the trimmed name to write, or `None` when the
+/// patch keeps the current value. A name that differs only in ASCII case keeps
+/// the current value, because libcalibre finds the name with `NOCASE`.
+fn series_or_publisher_to_write(patch: Option<&str>, current: Option<&str>) -> Option<String> {
+    let name = patch?.trim();
+    (!name.eq_ignore_ascii_case(current.unwrap_or(""))).then(|| name.to_owned())
+}
+
+/// A list of names after a patch, and the names that the patch changed.
+struct PatchedNames {
+    names: Vec<String>,
+    /// The names of the current list that the patch removed.
+    removed: Vec<String>,
+    /// The names that the patch appended to the list.
+    added: Vec<String>,
+}
+
+/// The list after a patch: remove the names that `remove` matches, then append
+/// the names of `add` that the list does not have. `key` gives the form that
+/// the matching compares. It drops the blank names of `remove` and `add`, and
+/// it keeps the order of the list.
+fn patched_names(
+    current: &[String],
+    remove: &[String],
+    add: &[String],
+    key: impl Fn(&str) -> String,
+) -> PatchedNames {
+    let removed_keys: HashSet<String> = non_blank(remove).map(&key).collect();
+    let (removed, mut names): (Vec<String>, Vec<String>) = current
+        .iter()
+        .cloned()
+        .partition(|name| removed_keys.contains(&key(name.trim())));
+    let mut keys: HashSet<String> = names.iter().map(|name| key(name.trim())).collect();
+    let mut added = Vec::new();
+    for name in non_blank(add) {
+        if keys.insert(key(name)) {
+            names.push(name.to_owned());
+            added.push(name.to_owned());
+        }
+    }
+    PatchedNames {
+        names,
+        removed,
+        added,
+    }
+}
+
+fn non_blank(names: &[String]) -> impl Iterator<Item = &str> {
+    names
+        .iter()
+        .map(|name| name.trim())
+        .filter(|name| !name.is_empty())
 }
 
 fn require_identifier(book: &libcalibre::Book, identifier_id: i32) -> Result<()> {

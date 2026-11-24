@@ -72,6 +72,7 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::staging::clb_cmd_add_staged_book,
             library::staging::clb_cmd_discard_staged_book,
             library::command::clb_cmd_update_book,
+            library::command::clb_cmd_edit_books,
             library::command::clb_cmd_upsert_book_identifier,
             library::command::clb_cmd_delete_book_identifier,
             library::command::clb_cmd_set_book_cover_from_metadata,

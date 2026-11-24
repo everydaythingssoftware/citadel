@@ -1,7 +1,12 @@
 import type { ClientOptions } from "openapi-fetch";
 import type { CoverThumbnail, LibraryBook } from "@/bindings";
 import { createCitadelHttpClient, errorBodyMessage } from "@/lib/api/client";
-import { BookDeletion, CoverExpiredError, type Library } from "./types";
+import {
+	BookDeletion,
+	CoverExpiredError,
+	type Library,
+	UnknownOutcomeError,
+} from "./types";
 import { createHttpUploads } from "./uploads-http";
 
 const unsupported = async (): Promise<never> => {
@@ -26,6 +31,33 @@ const unwrap = async <T>(
 	if (error || !response.ok || data === undefined)
 		throw new Error(failureMessage(error, response.status));
 	return data;
+};
+
+/**
+ * The statuses of a proxy that does not wait for the end of a request. The
+ * server can still commit the request after this answer.
+ */
+const UNKNOWN_OUTCOME_STATUSES: ReadonlySet<number> = new Set([502, 504]);
+
+/**
+ * Whether a 503 body is the refusal that Citadel sends before any work. A 503
+ * with the code `timedOut` comes after the deadline of the handler, and a 503
+ * with no Citadel error body comes from a proxy. The server can still commit
+ * the request after each of these.
+ */
+const refusedBeforeWork = (error: unknown): boolean =>
+	typeof error === "object" &&
+	error !== null &&
+	"code" in error &&
+	error.code === "unavailable";
+
+/**
+ * The error of an edit that can still commit. The message of the error is
+ * fixed, thus the function writes the cause to the console.
+ */
+const unknownOutcome = (cause: unknown): UnknownOutcomeError => {
+	console.error("The outcome of the edit is unknown", cause);
+	return new UnknownOutcomeError({ cause });
 };
 
 /** For writes that answer 204 No Content, where openapi-fetch has no data. */
@@ -191,6 +223,23 @@ export const createHttpLibrary = (
 					body: updates,
 				}),
 			),
+		editBooks: async (edits) => {
+			const { data, error, response } = await client
+				.POST("/api/books/edit", { body: { edits: [...edits] } })
+				.catch((cause: unknown) => {
+					throw unknownOutcome(cause);
+				});
+			if (
+				UNKNOWN_OUTCOME_STATUSES.has(response.status) ||
+				(response.status === 503 && !refusedBeforeWork(error))
+			)
+				throw unknownOutcome(
+					new Error(`Library request failed (${response.status})`),
+				);
+			if (error || !response.ok || data === undefined)
+				throw new Error(failureMessage(error, response.status));
+			return data;
+		},
 		updateAuthor: (authorId, updates) =>
 			succeed(
 				client.PATCH("/api/authors/{author_id}", {

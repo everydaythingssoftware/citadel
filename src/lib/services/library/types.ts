@@ -1,11 +1,13 @@
 import type {
 	AuthorUpdate,
 	BookCustomValue,
+	BookEdit,
 	CustomColumnDef,
 	CustomValueDto,
 	BookUpdate,
 	CoverThumbnail,
 	DeleteBooksOutcome,
+	EditBooksOutcome,
 	LibraryAuthor,
 	LibraryBook,
 	LibraryBookPage,
@@ -199,6 +201,15 @@ export interface Library {
 		},
 	): Promise<void>;
 	updateBook(bookId: string, updates: BookUpdate): Promise<void>;
+	/**
+	 * Applies series, tag, language and publisher edits to several books in one
+	 * transaction. Resolves with the undo edit of each book that changed.
+	 * Rejects with `UnknownOutcomeError` when the server does not answer, or
+	 * when the answer is a 502 or a 504. It rejects with the same error for a
+	 * 503 that can come after the work started. In each of these cases, some
+	 * books may have changed.
+	 */
+	editBooks(edits: readonly BookEdit[]): Promise<EditBooksOutcome>;
 	updateAuthor(bookId: string, updates: AuthorUpdate): Promise<void>;
 	deleteAuthor(authorId: string): Promise<void>;
 	/**
@@ -258,5 +269,16 @@ export class CoverExpiredError extends Error {
 	constructor(message = "This cover is no longer available — search again.") {
 		super(message);
 		this.name = "CoverExpiredError";
+	}
+}
+
+/**
+ * The server did not answer an edit in time. The edit can still commit
+ * later.
+ */
+export class UnknownOutcomeError extends Error {
+	constructor(options?: ErrorOptions) {
+		super("No answer from the server. Some books may have changed.", options);
+		this.name = "UnknownOutcomeError";
 	}
 }

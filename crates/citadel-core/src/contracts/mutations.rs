@@ -73,3 +73,40 @@ pub struct DeleteBooksOutcome {
     pub deleted: u32,
     pub folder_failures: Vec<String>,
 }
+
+/// One book's part of a multi-book edit: the series to set, the tags and
+/// languages to add or remove, and the publisher to set. Empty lists and
+/// `None` change nothing.
+///
+/// An edit is a patch on the current values of the book. The removes apply
+/// first, and the adds apply second. Thus a name in both lists stays, but it
+/// moves to the end of the list.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct BookEdit {
+    pub book_id: String,
+    /// `None` keeps the series. An empty (or whitespace) name unlinks it.
+    #[serde(default)]
+    pub series: Option<String>,
+    #[serde(default)]
+    pub add_tags: Vec<String>,
+    #[serde(default)]
+    pub remove_tags: Vec<String>,
+    #[serde(default)]
+    pub add_languages: Vec<String>,
+    #[serde(default)]
+    pub remove_languages: Vec<String>,
+    /// `None` keeps the publisher. An empty (or whitespace) name unlinks it.
+    #[serde(default)]
+    pub publisher: Option<String>,
+}
+
+/// Result of an edit of several books. `undo` has the undo edit of each book
+/// that the call changed, in the order of the request: the edit that gives
+/// back the values that the book had before the call.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, Eq, PartialEq)]
+pub struct EditBooksOutcome {
+    pub undo: Vec<BookEdit>,
+}

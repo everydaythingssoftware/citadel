@@ -11,6 +11,8 @@ pub enum LibraryErrorCode {
     /// The library is open for reading only, so writes are refused.
     ReadOnly,
     Unavailable,
+    /// The request passed its deadline, and the work can still finish.
+    TimedOut,
     /// A request body or declared size exceeds a limit.
     TooLarge,
     /// The request conflicts with the resource's current state.
@@ -60,6 +62,13 @@ impl LibraryError {
         Self {
             code: LibraryErrorCode::Unavailable,
             message: "Library unavailable".into(),
+        }
+    }
+
+    pub fn timed_out() -> Self {
+        Self {
+            code: LibraryErrorCode::TimedOut,
+            message: "Library request timed out".into(),
         }
     }
 }

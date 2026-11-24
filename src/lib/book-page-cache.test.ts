@@ -30,6 +30,7 @@ const book = (id: string, extra: Partial<LibraryBook> = {}): LibraryBook => ({
 	is_read: false,
 	series: null,
 	series_index: null,
+	publisher: null,
 	language_list: [],
 	added_at: "2025-03-12T10:00:00Z",
 	...extra,

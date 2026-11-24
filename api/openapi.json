@@ -576,6 +576,110 @@
         ]
       }
     },
+    "/api/books/edit": {
+      "post": {
+        "description": "Change the series, tags, languages and publisher of several books in one transaction. Nothing changes if any ID is invalid, repeated or unknown. The answer gives the undo edit of each book that changed.",
+        "operationId": "editBooks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditBooks"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditBooksOutcome"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/books/query": {
       "post": {
         "description": "Query the configured library. HTTP requires an explicit limit between 0 and 200; zero returns only the total. No arbitrary library paths are accepted.",
@@ -3906,6 +4010,57 @@
           }
         }
       },
+      "BookEdit": {
+        "type": "object",
+        "description": "One book's part of a multi-book edit: the series to set, the tags and\nlanguages to add or remove, and the publisher to set. Empty lists and\n`None` change nothing.\n\nAn edit is a patch on the current values of the book. The removes apply\nfirst, and the adds apply second. Thus a name in both lists stays, but it\nmoves to the end of the list.",
+        "required": [
+          "book_id"
+        ],
+        "properties": {
+          "add_languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "add_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "book_id": {
+            "type": "string"
+          },
+          "publisher": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`None` keeps the publisher. An empty (or whitespace) name unlinks it."
+          },
+          "remove_languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remove_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`None` keeps the series. An empty (or whitespace) name unlinks it."
+          }
+        },
+        "additionalProperties": false
+      },
       "BookFile": {
         "oneOf": [
           {
@@ -4573,6 +4728,37 @@
           }
         }
       },
+      "EditBooks": {
+        "type": "object",
+        "description": "The body of `POST /api/books/edit`: one edit for each book.",
+        "required": [
+          "edits"
+        ],
+        "properties": {
+          "edits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BookEdit"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditBooksOutcome": {
+        "type": "object",
+        "description": "Result of an edit of several books. `undo` has the undo edit of each book\nthat the call changed, in the order of the request: the edit that gives\nback the values that the book had before the call.",
+        "required": [
+          "undo"
+        ],
+        "properties": {
+          "undo": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BookEdit"
+            }
+          }
+        }
+      },
       "FoundLibraries": {
         "type": "object",
         "description": "Libraries already in the folders mounted for them, and empty mounted\nfolders a new library could start in.",
@@ -4844,6 +5030,7 @@
           "is_read",
           "series",
           "series_index",
+          "publisher",
           "language_list",
           "added_at"
         ],
@@ -4898,6 +5085,12 @@
               "type": "string"
             },
             "description": "Canonical Calibre language codes (ISO 639-2/3, e.g. `eng`, `fra`),\nordered. Empty when the book has no language metadata."
+          },
+          "publisher": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "series": {
             "type": [
@@ -5069,6 +5262,7 @@
           "notFound",
           "readOnly",
           "unavailable",
+          "timedOut",
           "tooLarge",
           "conflict",
           "storageFull",

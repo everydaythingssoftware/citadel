@@ -717,6 +717,11 @@ async fn read_only_library_refuses_deletes_and_keeps_every_byte() {
             "/api/authors/1".into(),
             json!({"full_name": "Changed"}),
         ),
+        (
+            "POST",
+            "/api/books/edit".into(),
+            json!({"edits": [{"book_id": id, "add_tags": ["x"]}]}),
+        ),
     ] {
         let body = if body.is_null() {
             String::new()
@@ -775,6 +780,11 @@ fn library_writes(id: &str) -> Vec<(&'static str, String, Value)> {
             "PATCH",
             "/api/authors/1".into(),
             json!({"full_name": "Changed"}),
+        ),
+        (
+            "POST",
+            "/api/books/edit".into(),
+            json!({"edits": [{"book_id": id, "add_tags": ["x"]}]}),
         ),
         (
             "POST",
@@ -987,6 +997,156 @@ async fn book(router: &Router, cookie: &str, id: &str) -> Value {
     .await;
     assert_eq!(status, StatusCode::OK, "{value}");
     value
+}
+
+#[tokio::test]
+async fn edit_books_changes_a_book_and_answers_with_its_undo_edit() {
+    let (_directory, service, router, id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "POST",
+        "/api/books/edit",
+        json!({"edits": [{"book_id": id, "series": "Bulk", "add_tags": ["bulk"]}]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["undo"],
+        json!([{
+            "book_id": id,
+            "add_tags": [],
+            "remove_tags": ["bulk"],
+            "add_languages": [],
+            "remove_languages": [],
+            "series": "Contracts",
+            "publisher": null,
+        }])
+    );
+    let edited = book(&router, &cookie, &id).await;
+    assert!(edited["tag_list"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("bulk")));
+    assert_eq!(edited["series"], "Bulk");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn edit_books_accepts_bodies_above_the_default_json_limit() {
+    let (_directory, service, router, id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    // The default limit of the Axum Json extractor is 2 MiB, so this body
+    // proves the limit of the bulk route.
+    let names: Vec<String> = (0..40_000).map(|n| format!("{n:0>60}")).collect();
+    let body = json!({"edits": [{"book_id": id, "remove_tags": names}]}).to_string();
+    assert!(body.len() > 2 * 1024 * 1024);
+    let (status, _, response) =
+        request(&router, "POST", "/api/books/edit", body, Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn edit_books_refuses_a_body_above_16_mib_with_413() {
+    let (_directory, service, router, _id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        "/api/books/edit",
+        "x".repeat(16 * 1024 * 1024 + 1),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(error["code"], "tooLarge");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn edit_books_refuses_a_request_with_no_session_before_it_reads_the_body() {
+    let (_directory, service, router, _id, _cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        "/api/books/edit",
+        "x".repeat(16 * 1024 * 1024 + 1),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{error}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn edit_books_refuses_a_view_only_grant_before_it_reads_the_body() {
+    let (directory, service, router, _id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let accounts = accounts(directory.path());
+    let library_id = accounts.libraries().unwrap()[0].id.clone();
+    accounts
+        .grant("reader", &library_id, LibraryPermission::View)
+        .unwrap();
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        "/api/books/edit",
+        "x".repeat(16 * 1024 * 1024 + 1),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{error}");
+    assert_eq!(error["code"], "readOnly");
+    assert_eq!(
+        error["message"],
+        "You can view this library but not change it"
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn edit_books_refuses_an_unknown_field() {
+    let (_directory, service, router, id, cookie) = fixture_opened(
+        CalibreCatalogSource::open_writable,
+        api::UploadConfig::default(),
+    )
+    .await;
+    let (status, body) = send(
+        &router,
+        &cookie,
+        "POST",
+        "/api/books/edit",
+        json!({"edits": [{"book_id": id, "add_tag": ["x"]}]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "invalidArgument");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("unknown field `add_tag`"),
+        "{body}"
+    );
+    service.stop().await;
 }
 
 #[tokio::test]
@@ -1209,6 +1369,14 @@ async fn edits_refuse_unknown_books_identifiers_and_authors_without_changing_any
             "/api/authors/999".into(),
             json!({"full_name": "Ghost"}),
         ),
+        (
+            "POST",
+            "/api/books/edit".into(),
+            json!({"edits": [
+                {"book_id": id, "add_tags": ["Ghost"]},
+                {"book_id": "999", "add_tags": ["Ghost"]}
+            ]}),
+        ),
     ] {
         let (status, error) = send(&router, &cookie, method, &path, body).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {error}");
@@ -1244,6 +1412,28 @@ async fn edits_refuse_unknown_books_identifiers_and_authors_without_changing_any
             StatusCode::BAD_REQUEST,
             "{method} {path} {body}: {error}"
         );
+    }
+
+    for edits in [
+        json!([
+            {"book_id": id, "add_tags": ["Ghost"]},
+            {"book_id": "not a number", "add_tags": ["Ghost"]}
+        ]),
+        json!([
+            {"book_id": id, "add_tags": ["Ghost"]},
+            {"book_id": id, "series": "Ghost"}
+        ]),
+    ] {
+        let (status, error) = send(
+            &router,
+            &cookie,
+            "POST",
+            "/api/books/edit",
+            json!({ "edits": edits }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{edits}: {error}");
+        assert_eq!(error["code"], "invalidArgument");
     }
 
     let (_, columns_after) =

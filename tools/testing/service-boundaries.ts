@@ -14,6 +14,7 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbQueryListTags",
 		"clbQueryListPublishers",
 		"clbCmdUpdateBook",
+		"clbCmdEditBooks",
 		"clbCmdUpdateAuthor",
 		"clbCmdDeleteAuthor",
 		"clbCmdDeleteBooks",

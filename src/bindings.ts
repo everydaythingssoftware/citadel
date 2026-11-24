@@ -236,6 +236,23 @@ async clbCmdUpdateBook(bookId: string, updates: BookUpdate) : Promise<Result<num
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Applies series, tag, language and publisher edits to several books in one
+ * transaction, and returns the undo edits of the books that changed. A
+ * Tauri command has no deadline, so the result is always known: all edits
+ * apply, or no book changes. A sync command runs on the main thread in the
+ * order of arrival. Thus a library switch cannot come between the library
+ * check of the frontend and the edit. A large edit blocks the main thread for
+ * the full call, as `clb_cmd_delete_books` does.
+ */
+async clbCmdEditBooks(edits: BookEdit[]) : Promise<Result<EditBooksOutcome, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_cmd_edit_books", { edits }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbCmdUpsertBookIdentifier(bookId: string, label: string, value: string, existingId: number | null) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_cmd_upsert_book_identifier", { bookId, label, value, existingId }) };
@@ -615,6 +632,24 @@ export type AuthorUpdate = { full_name: string | null; sortable_name: string | n
  * One book's value for one custom column.
  */
 export type BookCustomValue = { column_id: number; value: CustomValueDto }
+/**
+ * One book's part of a multi-book edit: the series to set, the tags and
+ * languages to add or remove, and the publisher to set. Empty lists and
+ * `None` change nothing.
+ * 
+ * An edit is a patch on the current values of the book. The removes apply
+ * first, and the adds apply second. Thus a name in both lists stays, but it
+ * moves to the end of the list.
+ */
+export type BookEdit = { book_id: string; 
+/**
+ * `None` keeps the series. An empty (or whitespace) name unlinks it.
+ */
+series?: string | null; add_tags?: string[]; remove_tags?: string[]; add_languages?: string[]; remove_languages?: string[]; 
+/**
+ * `None` keeps the publisher. An empty (or whitespace) name unlinks it.
+ */
+publisher?: string | null }
 export type BookFile = { Local: LocalFile } | { Remote: RemoteFile }
 /**
  * A book record from a provider. Providers return these fully populated from a
@@ -772,6 +807,12 @@ export type DetectionSource =
  * What a user sees of a key after creating it: never the secret.
  */
 export type DeviceKey = { id: string; name: string; createdAt: number; lastUsedAt: number | null }
+/**
+ * Result of an edit of several books. `undo` has the undo edit of each book
+ * that the call changed, in the order of the request: the edit that gives
+ * back the values that the book had before the call.
+ */
+export type EditBooksOutcome = { undo: BookEdit[] }
 export type GenreCandidate = { name: string; 
 /**
  * Stable provider field identity, such as `hardcover:genre` or
@@ -807,7 +848,7 @@ export type LibraryAuthor = { id: string; name: string; sortable_name: string;
  * instead of deriving counts from the whole book list.
  */
 book_count: number }
-export type LibraryBook = { id: string; uuid: string | null; title: string; author_list: LibraryAuthor[]; tag_list: string[]; sortable_title: string | null; file_list: BookFile[]; cover_image: LocalOrRemoteUrl | null; identifier_list: Identifier[]; description: string | null; is_read: boolean; series: string | null; series_index: number | null; 
+export type LibraryBook = { id: string; uuid: string | null; title: string; author_list: LibraryAuthor[]; tag_list: string[]; sortable_title: string | null; file_list: BookFile[]; cover_image: LocalOrRemoteUrl | null; identifier_list: Identifier[]; description: string | null; is_read: boolean; series: string | null; series_index: number | null; publisher: string | null; 
 /**
  * Canonical Calibre language codes (ISO 639-2/3, e.g. `eng`, `fra`),
  * ordered. Empty when the book has no language metadata.
@@ -840,6 +881,10 @@ export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited
  * The library is open for reading only, so writes are refused.
  */
 "readOnly" | "unavailable" | 
+/**
+ * The request passed its deadline, and the work can still finish.
+ */
+"timedOut" | 
 /**
  * A request body or declared size exceeds a limit.
  */

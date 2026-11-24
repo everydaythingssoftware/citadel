@@ -73,6 +73,8 @@ pub struct LibraryBook {
     pub series: Option<String>,
     #[cfg_attr(feature = "openapi", schema(required = true))]
     pub series_index: Option<f32>,
+    #[cfg_attr(feature = "openapi", schema(required = true))]
+    pub publisher: Option<String>,
 
     /// Canonical Calibre language codes (ISO 639-2/3, e.g. `eng`, `fra`),
     /// ordered. Empty when the book has no language metadata.
@@ -114,6 +116,7 @@ impl LibraryBook {
             is_read: book.is_read,
             series: book.series.clone(),
             series_index: book.series_index,
+            publisher: book.publisher.clone(),
             language_list: book.language_codes.clone(),
             added_at: book
                 .created_at

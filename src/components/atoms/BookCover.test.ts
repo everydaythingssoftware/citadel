@@ -19,6 +19,7 @@ const book = {
 	description: null,
 	series: null,
 	series_index: null,
+	publisher: null,
 	language_list: [],
 	added_at: "2026-01-01T00:00:00Z",
 } satisfies LibraryBook;

@@ -86,6 +86,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/books/edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Change the series, tags, languages and publisher of several books in one transaction. Nothing changes if any ID is invalid, repeated or unknown. The answer gives the undo edit of each book that changed. */
+        post: operations["editBooks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/books/query": {
         parameters: {
             query?: never;
@@ -760,6 +777,26 @@ export interface components {
             column_id: number;
             value: components["schemas"]["CustomValueDto"];
         };
+        /**
+         * @description One book's part of a multi-book edit: the series to set, the tags and
+         *     languages to add or remove, and the publisher to set. Empty lists and
+         *     `None` change nothing.
+         *
+         *     An edit is a patch on the current values of the book. The removes apply
+         *     first, and the adds apply second. Thus a name in both lists stays, but it
+         *     moves to the end of the list.
+         */
+        BookEdit: {
+            add_languages?: string[];
+            add_tags?: string[];
+            book_id: string;
+            /** @description `None` keeps the publisher. An empty (or whitespace) name unlinks it. */
+            publisher?: string | null;
+            remove_languages?: string[];
+            remove_tags?: string[];
+            /** @description `None` keeps the series. An empty (or whitespace) name unlinks it. */
+            series?: string | null;
+        };
         BookFile: {
             Local: components["schemas"]["LocalFile"];
         } | {
@@ -964,6 +1001,18 @@ export interface components {
             parent: string | null;
             path: string;
         };
+        /** @description The body of `POST /api/books/edit`: one edit for each book. */
+        EditBooks: {
+            edits: components["schemas"]["BookEdit"][];
+        };
+        /**
+         * @description Result of an edit of several books. `undo` has the undo edit of each book
+         *     that the call changed, in the order of the request: the edit that gives
+         *     back the values that the book had before the call.
+         */
+        EditBooksOutcome: {
+            undo: components["schemas"]["BookEdit"][];
+        };
         /**
          * @description Libraries already in the folders mounted for them, and empty mounted
          *     folders a new library could start in.
@@ -1072,6 +1121,7 @@ export interface components {
              *     ordered. Empty when the book has no language metadata.
              */
             language_list: string[];
+            publisher: string | null;
             series: string | null;
             /** Format: float */
             series_index: number | null;
@@ -1127,7 +1177,7 @@ export interface components {
             message: string;
         };
         /** @enum {string} */
-        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "readOnly" | "unavailable" | "tooLarge" | "conflict" | "storageFull" | "internal";
+        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "readOnly" | "unavailable" | "timedOut" | "tooLarge" | "conflict" | "storageFull" | "internal";
         LibraryPublisher: {
             /** Format: int32 */
             book_count: number;
@@ -1857,6 +1907,93 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    editBooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditBooks"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditBooksOutcome"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
