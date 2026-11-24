@@ -345,6 +345,17 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 		);
 	};
 
+	const thumbUnchanged = (
+		prev: CoverThumbnail | undefined,
+		next: CoverThumbnail,
+	): boolean =>
+		prev !== undefined &&
+		prev.url === next.url &&
+		prev.width === next.width &&
+		prev.height === next.height &&
+		prev.cover_colors?.thumbhash === next.cover_colors?.thumbhash &&
+		Boolean(prev.cover_colors?.palette) === Boolean(next.cover_colors?.palette);
+
 	const mergeCoverThumbs = (
 		thumbs: CoverThumbnail[],
 		generation: number,
@@ -352,6 +363,14 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 		if (thumbs.length === 0) return;
 		if (!canCommitActive(generation)) return;
 		set((state) => {
+			let changed = false;
+			for (const thumb of thumbs) {
+				if (!thumbUnchanged(state.coverThumbs.get(thumb.book_id), thumb)) {
+					changed = true;
+					break;
+				}
+			}
+			if (!changed) return state;
 			const next = new Map(state.coverThumbs);
 			for (const thumb of thumbs) next.set(thumb.book_id, thumb);
 			return { coverThumbs: next };
@@ -387,27 +406,13 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 	};
 
 	/**
-	 * Instant-paint warm path, run once per library open: seed every already
-	 * known thumbnail (cheap index read), then generate the rest of the
-	 * library's thumbnails in the background. After this lands, ANY scroll
-	 * offset paints placeholders the frame its rows mount.
+	 * Background warm pass, run once per library open after the initial index
+	 * seed: generates thumbnails for any books not yet in the cache.
 	 */
 	const warmCoverThumbs = async (): Promise<void> => {
 		const { library } = get();
 		const generation = get().bookCache.generation;
-		if (!library) {
-			if (canCommitActive(generation)) set({ coversSeeded: true });
-			return;
-		}
-		try {
-			mergeCoverThumbs(await library.listCoverThumbnails(), generation);
-		} catch (error) {
-			console.error("Failed to seed cover thumbnails:", error);
-		} finally {
-			// Even a failed seed unblocks anything waiting on it (the first-run
-			// flow's cover stage); the grid just falls back to placeholders.
-			if (canCommitActive(generation)) set({ coversSeeded: true });
-		}
+		if (!library) return;
 		try {
 			mergeCoverThumbs(await library.warmCoverThumbnails(), generation);
 		} catch (error) {
@@ -703,21 +708,31 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 					// Shadow facts load in parallel; each failure is isolated
 					// exactly as loadAuthors/loadSeries/refreshLibraryTotal do
 					// today — only an open failure fails the whole initialize.
-					const [authors, series, totalCount, firstPage] = await Promise.all([
-						settleWithMessage(library.listAuthors(), "Failed to load authors"),
-						settleWithMessage(library.listSeries(), "Failed to load series"),
-						settleWithMessage(
-							library.queryBooks({
-								...toBookQuery(ALL_BOOKS_FILTER, 0),
-								limit: 0,
-							}),
-							"Failed to load library total",
-						),
-						settleWithMessage(
-							library.queryBooks(toBookQuery(filterAtStart, 0)),
-							"Failed to load books",
-						),
-					]);
+					// Seeding the cached thumbnail index here means frame 1 of
+					// the grid already has every known ThumbHash and sizeHint.
+					const [authors, series, totalCount, firstPage, seededThumbs] =
+						await Promise.all([
+							settleWithMessage(
+								library.listAuthors(),
+								"Failed to load authors",
+							),
+							settleWithMessage(library.listSeries(), "Failed to load series"),
+							settleWithMessage(
+								library.queryBooks({
+									...toBookQuery(ALL_BOOKS_FILTER, 0),
+									limit: 0,
+								}),
+								"Failed to load library total",
+							),
+							settleWithMessage(
+								library.queryBooks(toBookQuery(filterAtStart, 0)),
+								"Failed to load books",
+							),
+							settleWithMessage(
+								library.listCoverThumbnails(),
+								"Failed to seed cover thumbnails",
+							),
+						]);
 					if (pendingSwitch?.token !== shadowToken) return;
 
 					// FLIP — one zustand set(): a single React commit that swaps
@@ -742,6 +757,13 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 						stale: new Set(),
 					};
 					const cache = cacheForKey(shadowCache, get().bookCache.key);
+					const seededCoverThumbs = new Map<
+						LibraryBook["id"],
+						CoverThumbnail
+					>();
+					for (const thumb of seededThumbs.value ?? []) {
+						seededCoverThumbs.set(thumb.book_id, thumb);
+					}
 					set({
 						library,
 						libraryState: LibraryState.ready,
@@ -749,9 +771,9 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 						confirmedLibraryPath: libraryPath,
 						bookCache: cache,
 						staleBookSnapshot: null,
-						coverThumbs: new Map<LibraryBook["id"], CoverThumbnail>(),
+						coverThumbs: seededCoverThumbs,
 						libraryTotal: totalCount.value?.total ?? null,
-						coversSeeded: false,
+						coversSeeded: true,
 						authors: authors.value ? authors.value.sort(sortAuthors) : [],
 						authorsLoading: false,
 						authorsError: authors.error,
