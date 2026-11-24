@@ -4,10 +4,13 @@ import {
 	type HTMLAttributes,
 	type ReactEventHandler,
 	memo,
+	useMemo,
 } from "react";
+import type { CoverColors } from "@/bindings";
+import { coverPlaceholder } from "@/lib/cover-placeholder";
 import { useCoverImage } from "@/lib/hooks/use-cover-image";
-import { PlaceholderCover } from "./placeholder-cover/PlaceholderCover";
 import styles from "./BookCover.module.css";
+import { PlaceholderCover } from "./placeholder-cover/PlaceholderCover";
 
 export const COVER_SHELF_HEIGHT = 230;
 
@@ -19,6 +22,8 @@ export interface BookCoverProps extends HTMLAttributes<HTMLDivElement> {
 	/** The title comes from an import that is still under review. */
 	provisional?: boolean;
 	sizeHint?: { width: number; height: number };
+	/** Palette and ThumbHash painted behind the image until it decodes. */
+	coverColors?: CoverColors | null;
 	maxHeight?: number | string;
 	selected?: boolean;
 	finished?: boolean;
@@ -41,6 +46,7 @@ const BookCoverContent = ({
 	authors = "",
 	provisional = false,
 	sizeHint,
+	coverColors,
 	maxHeight = COVER_SHELF_HEIGHT,
 	selected = false,
 	finished = false,
@@ -52,10 +58,13 @@ const BookCoverContent = ({
 	children,
 	...props
 }: BookCoverProps) => {
-	const { imageSrc, size, onLoad, onError } = useCoverImage(
-		src,
-		sizeHint,
-		onImageError,
+	const { imageSrc, imageRef, loaded, wasCached, size, onLoad, onError } =
+		useCoverImage(src, sizeHint, onImageError);
+	// Painted behind the image: it shows until the cover decodes over it.
+	// Skipped when this URL already loaded in the current session.
+	const placeholder = useMemo(
+		() => (wasCached ? undefined : coverPlaceholder(coverColors)),
+		[wasCached, coverColors],
 	);
 	const heightLimit =
 		typeof maxHeight === "number" ? `${maxHeight}px` : maxHeight;
@@ -86,13 +95,19 @@ const BookCoverContent = ({
 				} as CSSProperties
 			}
 		>
-			<div className={styles.surface}>
+			<div
+				className={styles.surface}
+				data-placeholder={!loading && imageSrc && placeholder ? "" : undefined}
+				style={!loading && imageSrc ? placeholder : undefined}
+			>
 				{!loading && (
 					<>
 						{children ??
 							(imageSrc ? (
 								<img
+									ref={imageRef}
 									className={styles.image}
+									data-loaded={loaded || undefined}
 									src={imageSrc}
 									alt={alt}
 									width={sizeHint?.width}

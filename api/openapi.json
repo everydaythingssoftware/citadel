@@ -4212,17 +4212,77 @@
         },
         "additionalProperties": false
       },
+      "CoverColors": {
+        "type": "object",
+        "description": "What a cover looks like before it loads.",
+        "required": [
+          "palette",
+          "thumbhash"
+        ],
+        "properties": {
+          "palette": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CoverPalette",
+                "description": "`None` when the cover is all paper and ink."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thumbhash": {
+            "type": "string",
+            "description": "The cover's ThumbHash, base64 (standard, padded)."
+          }
+        }
+      },
+      "CoverPalette": {
+        "type": "object",
+        "description": "A cover's main colour and, when it has one, a second distinct colour.",
+        "required": [
+          "dominant",
+          "secondary"
+        ],
+        "properties": {
+          "dominant": {
+            "$ref": "#/components/schemas/PaletteColor"
+          },
+          "secondary": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PaletteColor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "CoverThumbnail": {
         "type": "object",
         "required": [
           "book_id",
           "url",
           "width",
-          "height"
+          "height",
+          "cover_colors"
         ],
         "properties": {
           "book_id": {
             "type": "string"
+          },
+          "cover_colors": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CoverColors",
+                "description": "The cover's palette and ThumbHash, worked out with the thumbnail."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "height": {
             "type": "integer",
@@ -5212,6 +5272,35 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "PaletteColor": {
+        "type": "object",
+        "description": "One of a cover's colours in OKLab, with how much of the cover it covers.",
+        "required": [
+          "l",
+          "a",
+          "b",
+          "share"
+        ],
+        "properties": {
+          "a": {
+            "type": "number",
+            "format": "double"
+          },
+          "b": {
+            "type": "number",
+            "format": "double"
+          },
+          "l": {
+            "type": "number",
+            "format": "double"
+          },
+          "share": {
+            "type": "number",
+            "format": "double",
+            "description": "Share of the cover's counted pixels in this colour, 0–1."
           }
         }
       },

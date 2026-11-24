@@ -6,7 +6,7 @@ import {
 	RouterProvider,
 } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import type { LibraryBook } from "@/bindings";
+import type { CoverThumbnail, LibraryBook } from "@/bindings";
 import booksStyles from "@/components/pages/Books.module.css";
 import { none, some } from "@/lib/option";
 import { fileExtension } from "@/lib/platform/file-opener/default-app-cache";
@@ -171,10 +171,18 @@ interface FrameProps {
 	server?: FakeServer;
 	/** Clicks the first file's download once the drawer is up. */
 	startDownload?: boolean;
+	/** The book's thumbnail descriptor, as the grid would have fetched it. */
+	coverThumb?: CoverThumbnail;
 }
 
 /** The drawer over a stand-in for the Books page, status bar included. */
-const Frame = ({ platform, bookValue, server, startDownload }: FrameProps) => {
+const Frame = ({
+	platform,
+	bookValue,
+	server,
+	startDownload,
+	coverThumb,
+}: FrameProps) => {
 	const [ready, setReady] = useState(server === undefined);
 	useEffect(() => {
 		document.documentElement.dataset.platform = platform.os;
@@ -182,6 +190,9 @@ const Frame = ({ platform, bookValue, server, startDownload }: FrameProps) => {
 			library: { readOnly: false } as Library,
 			tags: [],
 			series: [],
+			coverThumbs: new Map(
+				coverThumb ? [[bookValue.id, coverThumb] as const] : [],
+			),
 		});
 		if (server === undefined) return;
 		const real = window.fetch;
@@ -190,7 +201,7 @@ const Frame = ({ platform, bookValue, server, startDownload }: FrameProps) => {
 		return () => {
 			window.fetch = real;
 		};
-	}, [platform, server]);
+	}, [platform, server, bookValue, coverThumb]);
 	useEffect(() => {
 		if (!ready || !startDownload) return;
 		const timer = setTimeout(() => {
@@ -269,6 +280,52 @@ export const Web: Story = {
 		platform: webPlatform("macos"),
 		bookValue: REMOTE_BOOK,
 		server: "stalls",
+	},
+};
+
+/** A red cover with an amber band, as an inline SVG. */
+const RED_AND_AMBER_COVER = `data:image/svg+xml,${encodeURIComponent(
+	'<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect width="300" height="450" fill="rgb(113,30,29)"/><rect y="300" width="300" height="150" fill="rgb(165,116,80)"/><text x="150" y="160" font-family="Georgia" font-size="30" fill="rgb(250,250,250)" text-anchor="middle">The Child &amp;</text><text x="150" y="200" font-family="Georgia" font-size="30" fill="rgb(250,250,250)" text-anchor="middle">Tchaikovsky</text></svg>',
+)}`;
+
+/**
+ * The wash comes straight from the thumbnail descriptor's palette (worked
+ * out in Rust): it is there on open, with no image fetch or canvas work.
+ */
+export const WebCoverWash: Story = {
+	args: {
+		...Web.args,
+		bookValue: {
+			...REMOTE_BOOK,
+			cover_image: {
+				kind: "Remote",
+				url: RED_AND_AMBER_COVER,
+				local_path: null,
+			},
+		},
+		coverThumb: {
+			book_id: REMOTE_BOOK.id,
+			url: RED_AND_AMBER_COVER,
+			width: 300,
+			height: 450,
+			cover_colors: {
+				palette: {
+					dominant: {
+						l: 0.37040097804771877,
+						a: 0.1052925303324819,
+						b: 0.050180778893390156,
+						share: 0.6458333333333334,
+					},
+					secondary: {
+						l: 0.6006462899528494,
+						a: 0.04368352888135707,
+						b: 0.06685143353256263,
+						share: 0.3125,
+					},
+				},
+				thumbhash: "U4kKDQSIh4CIuIiIiIaYiIeAi/hI",
+			},
+		},
 	},
 };
 

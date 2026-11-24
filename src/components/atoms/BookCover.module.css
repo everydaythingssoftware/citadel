@@ -16,7 +16,7 @@
 	height: 100%;
 	border-radius: inherit;
 	box-shadow: var(--ctd-cover-shadow);
-	background: inherit;
+	background-color: var(--ctd-surface-muted);
 	.cover[data-fallback] & {
 		container-type: inline-size;
 	}
@@ -36,9 +36,17 @@
 .image {
 	display: block;
 	width: 100%;
-	height: auto;
+	height: 100%;
+	object-fit: cover;
 	max-width: 100%;
 	max-height: var(--cover-max-height);
+}
+.surface[data-placeholder] .image {
+	opacity: 0;
+	transition: opacity 200ms ease-out;
+}
+.surface[data-placeholder] .image[data-loaded] {
+	opacity: 1;
 }
 .cover:focus-visible,
 :global(button):has(> .cover):focus-visible {
@@ -91,7 +99,6 @@
 
 .spine {
 	background: var(--ctd-cover-spine-bg);
-	mix-blend-mode: multiply;
 }
 
 .edges {
@@ -150,6 +157,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+	.surface[data-placeholder] .image {
+		transition: none;
+	}
 	.leaving.added,
 	.leaving.skipped {
 		animation-name: cover-fade;

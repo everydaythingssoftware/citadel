@@ -1,32 +1,19 @@
 /**
- * Colours for a book's backdrop, taken from its cover: the cover's pixels
- * are grouped in OKLab (k-means), near-white, near-black and specks are set
- * aside, and the biggest groups that remain are the cover's colours. Nothing
- * is invented: a cover of one colour gets one colour.
+ * Backdrop tints from a cover's colours. The colours themselves are picked
+ * once in Rust (citadel-core's cover_colors: OKLab k-means over a downscale,
+ * with near-white, near-black and specks set aside) and arrive on the
+ * cover's thumbnail descriptor.
  */
+
+import type { CoverPalette, CoverThumbnail, PaletteColor } from "@/bindings";
+
+export type { CoverPalette, PaletteColor };
 
 export interface Oklab {
 	l: number;
 	a: number;
 	b: number;
 }
-
-export interface PaletteColor extends Oklab {
-	/** Share of the cover's counted pixels in this colour, 0–1. */
-	share: number;
-}
-
-export interface CoverPalette {
-	dominant: PaletteColor;
-	secondary: PaletteColor | null;
-}
-
-const CLUSTERS = 6;
-const ITERATIONS = 10;
-/** Groups smaller than this are specks: thin lines, small type. */
-const MIN_SHARE = 0.02;
-/** Two colours closer than this read as the same colour. */
-const DISTINCT = 0.08;
 
 const toLinear = (channel: number): number => {
 	const c = channel / 255;
@@ -56,89 +43,6 @@ export const srgbToOklab = (r: number, g: number, b: number): Oklab => {
 export const chroma = ({ a, b }: Oklab): number => Math.hypot(a, b);
 export const hue = ({ a, b }: Oklab): number =>
 	((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
-
-const distance = (x: Oklab, y: Oklab): number =>
-	Math.hypot(x.l - y.l, x.a - y.a, x.b - y.b);
-
-/** Too close to paper or ink to say anything about the cover. */
-const isNeutralExtreme = (color: Oklab): boolean =>
-	color.l < 0.16 || (color.l > 0.96 && chroma(color) < 0.03);
-
-/** Spread starting centres across the colours present (farthest-first). */
-const seed = (points: Oklab[]): Oklab[] => {
-	const first = points[0];
-	if (!first) return [];
-	const centres = [first];
-	while (centres.length < Math.min(CLUSTERS, points.length)) {
-		let best: Oklab | undefined;
-		let bestDistance = -1;
-		for (const point of points) {
-			const nearest = Math.min(...centres.map((c) => distance(point, c)));
-			if (nearest > bestDistance) {
-				bestDistance = nearest;
-				best = point;
-			}
-		}
-		if (!best || bestDistance === 0) break;
-		centres.push(best);
-	}
-	return centres;
-};
-
-const cluster = (points: Oklab[]): PaletteColor[] => {
-	let centres = seed(points);
-	let assignment = new Array<number>(points.length).fill(0);
-	for (let iteration = 0; iteration < ITERATIONS; iteration++) {
-		assignment = points.map((point) => {
-			let index = 0;
-			let nearest = Number.POSITIVE_INFINITY;
-			centres.forEach((centre, i) => {
-				const d = distance(point, centre);
-				if (d < nearest) {
-					nearest = d;
-					index = i;
-				}
-			});
-			return index;
-		});
-		centres = centres.map((centre, i) => {
-			const members = points.filter((_, p) => assignment[p] === i);
-			if (members.length === 0) return centre;
-			return {
-				l: members.reduce((sum, m) => sum + m.l, 0) / members.length,
-				a: members.reduce((sum, m) => sum + m.a, 0) / members.length,
-				b: members.reduce((sum, m) => sum + m.b, 0) / members.length,
-			};
-		});
-	}
-	return centres.map((centre, i) => ({
-		...centre,
-		share: assignment.filter((a) => a === i).length / points.length,
-	}));
-};
-
-/**
- * The cover's colours from its RGBA pixels (a small downscale is plenty).
- * Null when the cover is all paper and ink, or transparent.
- */
-export const extractCoverPalette = (
-	rgba: ArrayLike<number>,
-): CoverPalette | null => {
-	const points: Oklab[] = [];
-	for (let i = 0; i + 3 < rgba.length; i += 4) {
-		if ((rgba[i + 3] ?? 0) < 128) continue;
-		points.push(srgbToOklab(rgba[i] ?? 0, rgba[i + 1] ?? 0, rgba[i + 2] ?? 0));
-	}
-	if (points.length === 0) return null;
-	const colors = cluster(points)
-		.filter((color) => color.share >= MIN_SHARE && !isNeutralExtreme(color))
-		.sort((x, y) => y.share - x.share);
-	const [dominant, ...rest] = colors;
-	if (!dominant) return null;
-	const secondary =
-		rest.find((color) => distance(color, dominant) >= DISTINCT) ?? null;
-	return { dominant, secondary };
-};
 
 export interface BackdropColors {
 	light: [string, string];
@@ -173,4 +77,12 @@ export const backdropColors = ({
 			tint(second, 0.33 - shift, 0.09, 0.035),
 		],
 	};
+};
+
+/** The drawer's wash for a book: null until its descriptor has a palette. */
+export const coverWash = (
+	thumb: CoverThumbnail | undefined,
+): BackdropColors | null => {
+	const palette = thumb?.cover_colors?.palette;
+	return palette ? backdropColors(palette) : null;
 };
