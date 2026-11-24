@@ -47,6 +47,7 @@ describe("bookMenuEntries", () => {
 			labels(
 				commandsOf(
 					BOOK_COMMAND.open,
+					BOOK_COMMAND.edit,
 					BOOK_COMMAND.toggleFinished,
 					BOOK_COMMAND.copyTitle,
 					BOOK_COMMAND.delete,
@@ -55,6 +56,7 @@ describe("bookMenuEntries", () => {
 			),
 		).toEqual([
 			"Open 2 Books",
+			"Edit 2 Books…",
 			"---",
 			"Mark as Unfinished",
 			"---",

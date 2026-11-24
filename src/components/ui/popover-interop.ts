@@ -21,3 +21,19 @@ export const ignorePopoverInteractOutside = (
 		event.preventDefault();
 	}
 };
+
+/**
+ * Whether the target is a combobox that shows its list, for example the input
+ * of a TagsInput with its completions. An Escape there closes only the list,
+ * thus a dialog must stay open.
+ */
+export const isOpenCombobox = (
+	target: Pick<Element, "getAttribute"> | null,
+): boolean =>
+	target?.getAttribute("role") === "combobox" &&
+	target.getAttribute("aria-expanded") === "true";
+
+/** An Escape in an open completion list closes only the list. */
+export const keepOpenForList = (event: KeyboardEvent) => {
+	if (isOpenCombobox(event.target as Element | null)) event.preventDefault();
+};

@@ -38,6 +38,7 @@ import {
 	useBookSelectionStore,
 } from "@/stores/book-selection/store";
 import { requestBooksDeletion } from "@/stores/delete-books/store";
+import { requestBooksEdit } from "@/stores/edit-books/store";
 import { finishedEntry } from "@/lib/undo-history";
 import { useLibraryStore } from "@/stores/library/store";
 import { useLibraryView } from "@/stores/library-view/store";
@@ -224,7 +225,8 @@ const toggleFinished = async (books: LibraryBook[]) => {
 		updateBookSelection(clearSelection);
 };
 
-interface BookCommandDeps {
+/** What `bookCommands` needs from the hook that calls it. */
+export interface BookCommandDeps {
 	platform: PlatformAdapter;
 	editBook: (book: LibraryBook) => void;
 }
@@ -234,7 +236,7 @@ interface BookCommandDeps {
  * resolves the selection when it runs, so Select All acts on books whose
  * pages were never fetched.
  */
-const bookCommands = (
+export const bookCommands = (
 	{ platform, editBook }: BookCommandDeps,
 	count: number,
 ): BookCommands => {
@@ -256,7 +258,13 @@ const bookCommands = (
 					}),
 				}
 			: {}),
-		...(single && canEdit ? { [BOOK_COMMAND.edit]: withBook(editBook) } : {}),
+		...(canEdit
+			? {
+					[BOOK_COMMAND.edit]: single
+						? withBook(editBook)
+						: withBooks(requestBooksEdit),
+				}
+			: {}),
 		...(single && quickLook.isSome
 			? { [BOOK_COMMAND.quickLook]: withLocalPath(quickLook.value) }
 			: {}),
