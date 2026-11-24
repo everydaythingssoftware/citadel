@@ -9,8 +9,8 @@ import {
 import type { CoverColors } from "@/bindings";
 import { coverPlaceholder } from "@/lib/cover-placeholder";
 import { useCoverImage } from "@/lib/hooks/use-cover-image";
-import { PlaceholderCover } from "./placeholder-cover/PlaceholderCover";
 import styles from "./BookCover.module.css";
+import { PlaceholderCover } from "./placeholder-cover/PlaceholderCover";
 
 export const COVER_SHELF_HEIGHT = 230;
 
@@ -22,7 +22,7 @@ export interface BookCoverProps extends HTMLAttributes<HTMLDivElement> {
 	/** The title comes from an import that is still under review. */
 	provisional?: boolean;
 	sizeHint?: { width: number; height: number };
-	/** The cover's colours, painted behind the image until it arrives. */
+	/** Palette and ThumbHash painted behind the image until it decodes. */
 	coverColors?: CoverColors | null;
 	maxHeight?: number | string;
 	selected?: boolean;
@@ -58,19 +58,19 @@ const BookCoverContent = ({
 	children,
 	...props
 }: BookCoverProps) => {
-	const { imageSrc, size, onLoad, onError } = useCoverImage(
+	const { imageSrc, imageRef, loaded, size, onLoad, onError } = useCoverImage(
 		src,
 		sizeHint,
 		onImageError,
 	);
-	const heightLimit =
-		typeof maxHeight === "number" ? `${maxHeight}px` : maxHeight;
-	const ratio = size ? size.width / size.height : 2 / 3;
 	// Painted behind the image: it shows until the cover decodes over it.
 	const placeholder = useMemo(
 		() => coverPlaceholder(coverColors),
 		[coverColors],
 	);
+	const heightLimit =
+		typeof maxHeight === "number" ? `${maxHeight}px` : maxHeight;
+	const ratio = size ? size.width / size.height : 2 / 3;
 	return (
 		<div
 			{...props}
@@ -99,14 +99,17 @@ const BookCoverContent = ({
 		>
 			<div
 				className={styles.surface}
-				style={imageSrc && !loading ? placeholder : undefined}
+				data-placeholder={!loading && imageSrc && placeholder ? "" : undefined}
+				style={!loading && imageSrc ? placeholder : undefined}
 			>
 				{!loading && (
 					<>
 						{children ??
 							(imageSrc ? (
 								<img
+									ref={imageRef}
 									className={styles.image}
+									data-loaded={loaded || undefined}
 									src={imageSrc}
 									alt={alt}
 									width={sizeHint?.width}

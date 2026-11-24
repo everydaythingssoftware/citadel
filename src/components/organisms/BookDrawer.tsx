@@ -128,7 +128,11 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 			<header className={styles.hero}>
 				<div className={styles.backdrop} aria-hidden="true" />
 				<div className={styles.cover}>
-					<BookCover {...bookCoverProps(book)} finished={false} />
+					<BookCover
+						{...bookCoverProps(book)}
+						coverColors={thumb?.cover_colors}
+						finished={false}
+					/>
 					{book.is_read && (
 						<span className={styles.seal} role="img" aria-label="Finished">
 							<svg viewBox="0 0 16 16" aria-hidden="true">
