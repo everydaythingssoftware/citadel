@@ -13,6 +13,11 @@ const json = (data: unknown, status = 200) =>
 		status,
 		headers: { "content-type": "application/json" },
 	});
+const html = (status: number) =>
+	new Response("<html><body>Proxy error</body></html>", {
+		status,
+		headers: { "content-type": "text/html" },
+	});
 
 describe("Metadata transport", () => {
 	beforeEach(() => vi.resetAllMocks());
@@ -89,5 +94,26 @@ describe("Metadata transport", () => {
 		);
 		for (const method of Object.values(ipc))
 			expect(method).not.toHaveBeenCalled();
+	});
+	it("reports the status in a browser when an error body is not JSON", async () => {
+		const web = createWebMetadataService({
+			baseUrl: "https://citadel.test",
+			fetch: async () => html(502),
+		});
+		await expect(web.search("loc", "a title", "")).rejects.toThrow(
+			"Metadata request failed (502)",
+		);
+		await expect(web.prefetchCover("abc")).rejects.toThrow(
+			"Metadata request failed (502)",
+		);
+	});
+	it("reports a failed cover prefetch whose body is empty", async () => {
+		const web = createWebMetadataService({
+			baseUrl: "https://citadel.test",
+			fetch: async () => new Response(null, { status: 500 }),
+		});
+		await expect(web.prefetchCover("abc")).rejects.toThrow(
+			"Metadata request failed (500)",
+		);
 	});
 });

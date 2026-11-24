@@ -1,5 +1,5 @@
 import type { ClientOptions } from "openapi-fetch";
-import { createCitadelHttpClient } from "@/lib/api/client";
+import { createCitadelHttpClient, errorBodyMessage } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema.generated";
 import type { AccountService, ProviderCredentialSummary } from "./types";
 
@@ -19,17 +19,23 @@ const toSummary = (
 	needsReentry: info.needsReentry,
 });
 
+/**
+ * The message of a Citadel error body. Each other body, for example the HTML
+ * page of a proxy, gives the status of the response.
+ */
+const failureMessage = (error: unknown, status: number): string =>
+	errorBodyMessage(error, `Account request failed (${status})`);
+
 const unwrap = async <T>(
 	request: Promise<{
 		data?: T;
-		error?: { message: string };
+		error?: unknown;
 		response: Response;
 	}>,
 ): Promise<T> => {
 	const { data, error, response } = await request;
-	if (error) throw new Error(error.message);
-	if (!response.ok || data === undefined)
-		throw new Error(`Account request failed (${response.status})`);
+	if (error || !response.ok || data === undefined)
+		throw new Error(failureMessage(error, response.status));
 	return data;
 };
 
@@ -56,7 +62,8 @@ export const createWebAccountService = (
 				"/api/account/provider-credentials/{provider}",
 				{ params: { path: { provider } } },
 			);
-			if (error && response.status !== 404) throw new Error(error.message);
+			if ((error || !response.ok) && response.status !== 404)
+				throw new Error(failureMessage(error, response.status));
 		},
 		testProviderCredential: async (provider) => {
 			try {
