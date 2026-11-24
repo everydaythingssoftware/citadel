@@ -58,15 +58,13 @@ const BookCoverContent = ({
 	children,
 	...props
 }: BookCoverProps) => {
-	const { imageSrc, imageRef, loaded, size, onLoad, onError } = useCoverImage(
-		src,
-		sizeHint,
-		onImageError,
-	);
+	const { imageSrc, imageRef, loaded, wasCached, size, onLoad, onError } =
+		useCoverImage(src, sizeHint, onImageError);
 	// Painted behind the image: it shows until the cover decodes over it.
+	// Skipped when this URL already loaded in the current session.
 	const placeholder = useMemo(
-		() => coverPlaceholder(coverColors),
-		[coverColors],
+		() => (wasCached ? undefined : coverPlaceholder(coverColors)),
+		[wasCached, coverColors],
 	);
 	const heightLimit =
 		typeof maxHeight === "number" ? `${maxHeight}px` : maxHeight;
