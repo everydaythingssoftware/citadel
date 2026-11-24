@@ -19,6 +19,7 @@ export { InlineLink, type InlineLinkProps } from "./InlineLink";
 export { LoadingOverlay, type LoadingOverlayProps } from "./LoadingOverlay";
 export { NoBreak } from "./NoBreak";
 export { ProgressBar, type ProgressBarProps } from "./ProgressBar";
+export { keepOpenForList } from "./popover-interop";
 export { SearchField, type SearchFieldProps } from "./SearchField";
 export {
 	SegmentedControl,

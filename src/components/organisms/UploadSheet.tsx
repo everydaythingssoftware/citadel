@@ -9,6 +9,7 @@ import {
 	DialogCloseButton,
 	HoldButton,
 	IconButton,
+	keepOpenForList,
 	Tooltip,
 } from "@/components/ui";
 import { useFollowNewest } from "@/lib/hooks/use-follow-newest";
@@ -79,6 +80,7 @@ export const UploadSheet = ({
 				<Dialog.Content
 					className={styles.content}
 					aria-describedby={undefined}
+					onEscapeKeyDown={keepOpenForList}
 					onInteractOutside={(event) => event.preventDefault()}
 				>
 					{/* Phones get an iOS navigation bar: Done, the title, and +. */}
