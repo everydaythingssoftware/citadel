@@ -3,31 +3,7 @@ name: OPDS runtime and headless server
 on:
   push:
     branches: [main]
-    paths:
-      - "crates/citadel-core/**"
-      - "crates/citadel-metadata/**"
-      - "crates/citadel-opds/**"
-      - "crates/citadel-server/**"
-      - "crates/libcalibre/**"
-      - "tools/api/**"
-      - "src/lib/api/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - ".github/workflows/opds-tests.yml"
   pull_request:
-    paths:
-      - "crates/citadel-core/**"
-      - "crates/citadel-metadata/**"
-      - "crates/citadel-opds/**"
-      - "crates/citadel-server/**"
-      - "crates/libcalibre/**"
-      - "tools/api/**"
-      - "src/lib/api/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - ".github/workflows/opds-tests.yml"
 
 permissions:
   contents: read
@@ -37,7 +13,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
+  test-server:
     strategy:
       fail-fast: false
       matrix:
@@ -45,17 +21,38 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check for server/OPDS changes
+        id: changes
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD -- \
+            'crates/citadel-core/' 'crates/citadel-metadata/' 'crates/citadel-opds/' 'crates/citadel-server/' 'crates/libcalibre/' \
+            'tools/api/' 'src/lib/api/' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml' '.github/workflows/opds-tests.yml' | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No server/OPDS files changed — nothing to test."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install pinned Rust toolchain
+        if: steps.changes.outputs.run == 'true'
         run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.changes.outputs.run == 'true'
         with:
           prefix-key: "v2-opds-runtime"
           workspaces: "."
 
       - name: Cache vcpkg SQLite binary on Windows
-        if: runner.os == 'Windows'
+        if: steps.changes.outputs.run == 'true' && runner.os == 'Windows'
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}\vcpkg-cache
@@ -64,7 +61,7 @@ jobs:
       # Calibre's annotations table has FTS5 triggers, so deleting a book
       # needs an SQLite built with FTS5.
       - name: Install SQLite on Windows
-        if: runner.os == 'Windows'
+        if: steps.changes.outputs.run == 'true' && runner.os == 'Windows'
         shell: pwsh
         env:
           VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-cache
@@ -75,22 +72,24 @@ jobs:
           "VCPKGRS_TRIPLET=x64-windows-static-md" >> $env:GITHUB_ENV
 
       - name: Install SQLite on Linux
-        if: runner.os == 'Linux'
+        if: steps.changes.outputs.run == 'true' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev pkg-config libssl-dev
 
       - name: Test runtime and headless host without Tauri
+        if: steps.changes.outputs.run == 'true'
         run: cargo test --locked -p citadel-core --features citadel-core/openapi -p citadel-metadata -p citadel-opds -p citadel-server
 
       - name: Test validation fixture input checks
+        if: steps.changes.outputs.run == 'true'
         run: cargo test --locked -p citadel-opds --example create_opds_validation_library
 
       - uses: oven-sh/setup-bun@v2
-        if: runner.os == 'Linux'
+        if: steps.changes.outputs.run == 'true' && runner.os == 'Linux'
         with:
           bun-version: "1.4.4"
 
       - name: Check generated HTTP contract
-        if: runner.os == 'Linux'
+        if: steps.changes.outputs.run == 'true' && runner.os == 'Linux'
         run: |
           bun install --frozen-lockfile
           bun api:check
