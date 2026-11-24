@@ -282,7 +282,7 @@ fn main() {
 
 ## Writing
 
-`Library::open` gives a writable handle: `add_book`, `update_book`, `set_custom_value`, `delete_books`. Opening for writing switches the database to WAL mode and installs Calibre's triggers. Nothing enforces a single writer; do not write while Calibre has the library open.
+`Library::open` gives a writable handle: `add_book`, `update_book`, `update_books`, `set_custom_value`, `delete_books`. Opening for writing switches the database to WAL mode and installs Calibre's triggers. Nothing enforces a single writer; do not write while Calibre has the library open.
 
 libcalibre does not write `metadata.opf` files. Each changed book is queued in `metadata_dirtied`; Calibre writes the backups for queued books the next time it opens the library.
 
