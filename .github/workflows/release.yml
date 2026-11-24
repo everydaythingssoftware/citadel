@@ -27,11 +27,11 @@ on:
 
 jobs:
   check-changes:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -63,14 +63,14 @@ jobs:
   version:
     needs: check-changes
     if: needs.check-changes.outputs.has_changes == 'true'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
       release_type: ${{ steps.version.outputs.release_type }}
       image_tags: ${{ steps.version.outputs.image_tags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Compute release version
         id: version
@@ -150,10 +150,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, macos-15, windows-latest, windows-11-arm]
+        platform: [ubuntu-24.04, macos-latest, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Apply version across project files
         shell: bash
@@ -186,9 +186,9 @@ jobs:
               || { echo "Failed to bump $package in Cargo.lock"; exit 1; }
           done
 
-      - uses: oven-sh/setup-bun@v1
+      - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.4.4"
 
       - name: Install pinned Rust toolchain
         run: rustup toolchain install
@@ -199,7 +199,7 @@ jobs:
           workspaces: "."
 
       - name: (Ubuntu only) Install dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
@@ -215,10 +215,10 @@ jobs:
           'C:\Program Files\LLVM\bin' >> $env:GITHUB_PATH
 
       - name: Install node packages
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: (macOS only) Prepare Apple notarization key
-        if: matrix.platform == 'macos-15'
+        if: matrix.platform == 'macos-latest'
         shell: bash
         env:
           APPLE_API_KEY_SECRET: ${{ secrets.APPLE_API_KEY }}
@@ -264,7 +264,7 @@ jobs:
         with:
           tauriScript: bun tauri
           # The RPM is packaged in the next step: its version can't hold a "-".
-          args: --config '{"bundle":{"createUpdaterArtifacts":true}}' ${{ matrix.platform == 'ubuntu-22.04' && '--bundles deb,appimage' || startsWith(matrix.platform, 'windows') && '--bundles nsis' || '' }}
+          args: --config '{"bundle":{"createUpdaterArtifacts":true}}' ${{ matrix.platform == 'ubuntu-24.04' && '--bundles deb,appimage' || startsWith(matrix.platform, 'windows') && '--bundles nsis' || '' }}
           tagName: v${{ needs.version.outputs.version }}
           releaseName: Citadel v${{ needs.version.outputs.version }}
           releaseBody: |
@@ -281,7 +281,7 @@ jobs:
       # The leading 0 sorts it below 0.7.2's own release, 1. Stable versions
       # keep release 1, as before.
       - name: (Ubuntu only) Package and publish the RPM
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.CITADEL_RELEASE_TOKEN }}
@@ -305,8 +305,8 @@ jobs:
       # to the base branch, which would strip the applied version bump and
       # produce artifacts built with the old version.
       - name: Open version bump pull request
-        if: github.event_name == 'workflow_dispatch' && matrix.platform == 'ubuntu-22.04' && needs.version.outputs.release_type != 'nightly'
-        uses: peter-evans/create-pull-request@v7
+        if: github.event_name == 'workflow_dispatch' && matrix.platform == 'ubuntu-24.04' && needs.version.outputs.release_type != 'nightly'
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.CITADEL_RELEASE_TOKEN }}
           commit-message: "chore(release): bump version to v${{ needs.version.outputs.version }}"
