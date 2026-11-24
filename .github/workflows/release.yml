@@ -150,7 +150,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-24.04, macos-15, windows-latest, windows-11-arm]
+        platform: [ubuntu-24.04, macos-latest, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
@@ -218,7 +218,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: (macOS only) Prepare Apple notarization key
-        if: matrix.platform == 'macos-15'
+        if: matrix.platform == 'macos-latest'
         shell: bash
         env:
           APPLE_API_KEY_SECRET: ${{ secrets.APPLE_API_KEY }}
