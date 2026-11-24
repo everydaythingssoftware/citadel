@@ -16,7 +16,7 @@
 	height: 100%;
 	border-radius: inherit;
 	box-shadow: var(--ctd-cover-shadow);
-	background: inherit;
+	background-color: var(--ctd-surface-muted);
 	.cover[data-fallback] & {
 		container-type: inline-size;
 	}
@@ -36,7 +36,8 @@
 .image {
 	display: block;
 	width: 100%;
-	height: auto;
+	height: 100%;
+	object-fit: cover;
 	max-width: 100%;
 	max-height: var(--cover-max-height);
 }
@@ -98,7 +99,6 @@
 
 .spine {
 	background: var(--ctd-cover-spine-bg);
-	mix-blend-mode: multiply;
 }
 
 .edges {
