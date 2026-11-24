@@ -53,15 +53,7 @@ jobs:
   build:
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            arch: amd64
-            runner: ubuntu-24.04
-          - platform: linux/arm64
-            arch: arm64
-            runner: ubuntu-24.04-arm
-    if: matrix.arch == 'amd64' || inputs.push
+      matrix: ${{ fromJSON(inputs.push && '{"include":[{"platform":"linux/amd64","arch":"amd64","runner":"ubuntu-24.04"},{"platform":"linux/arm64","arch":"arm64","runner":"ubuntu-24.04-arm"}]}' || '{"include":[{"platform":"linux/amd64","arch":"amd64","runner":"ubuntu-24.04"}]}') }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read

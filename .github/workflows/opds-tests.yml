@@ -41,8 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-24.04, macos-latest, windows-latest]
-    if: matrix.platform == 'ubuntu-24.04' || github.event_name == 'push'
+        platform: ${{ fromJSON(github.event_name == 'push' && '["ubuntu-24.04", "macos-latest", "windows-latest"]' || '["ubuntu-24.04"]') }}
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
