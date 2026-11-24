@@ -6,13 +6,16 @@ on:
   pull_request:
     paths:
       - "Dockerfile"
+      - ".dockerignore"
       - "docker/**"
       - "crates/citadel-core/**"
       - "crates/citadel-metadata/**"
       - "crates/citadel-opds/**"
       - "crates/citadel-server/**"
       - "crates/libcalibre/**"
+      - "src-tauri/**"
       - "src/**"
+      - "tools/testing/**"
       - "index.html"
       - "vite.config.ts"
       - "tsconfig.json"

@@ -34,7 +34,7 @@ jobs:
           fi
           if git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD -- \
             'crates/citadel-core/' 'crates/citadel-metadata/' 'crates/citadel-opds/' 'crates/citadel-server/' 'crates/libcalibre/' \
-            'tools/api/' 'src/lib/api/' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml' '.github/workflows/opds-tests.yml' | grep -q .; then
+            'api/' 'tools/api/' 'src/lib/api/' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml' '.github/workflows/opds-tests.yml' | grep -q .; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "No server/OPDS files changed — nothing to test."
