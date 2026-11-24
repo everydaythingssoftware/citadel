@@ -26,6 +26,11 @@ export const resolveColorScheme = (
 
 const setRootAttributes = (resolved: ResolvedColorScheme) => {
 	document.documentElement.setAttribute("data-theme", resolved);
+	try {
+		localStorage.setItem("citadel:theme", resolved);
+	} catch {
+		// Private mode or non-browser test environment.
+	}
 };
 
 /** Active OS-theme subscription while the applied scheme is "auto". */

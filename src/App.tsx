@@ -1,5 +1,5 @@
 import { createRouter, RouterProvider } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
 	LoadingOverlay,
 	Toaster,
@@ -18,6 +18,7 @@ import { BrowserLibraryGate } from "./components/organisms/BrowserLibraryGate";
 import { FirstRunGate } from "./components/organisms/FirstRunFlow";
 import { LibrarySwitchCurtain } from "./components/organisms/LibrarySwitchCurtain";
 import { routeTree } from "./routeTree.gen";
+import { LibraryState, useLibraryStore } from "./stores/library/store";
 import { useSettings } from "./stores/settings/store";
 
 /**
@@ -58,17 +59,60 @@ declare module "@tanstack/react-router" {
 
 export const App = () => {
 	const hydrated = useSettings((state) => state.hydrated);
+	const activeLibraryId = useSettings((state) => state.activeLibraryId);
 	const theme = useSettings((state) => state.theme);
+	const libraryState = useLibraryStore((state) => state.libraryState);
 	const platform = usePlatform();
 	useApplyColorScheme(theme);
 	const { stage: switchStage } = useLibrarySwitch();
 	useRestoredDatabaseNotice(hydrated);
 
+	// Keep the native window hidden until the first ready grid frame (or
+	// first-run / error state) has painted, so desktop launches straight into
+	// the populated library with no empty window or "Loading books..." flash.
+	const windowShownRef = useRef(false);
+	const readyToShow =
+		hydrated &&
+		(!activeLibraryId ||
+			libraryState === LibraryState.ready ||
+			libraryState === LibraryState.error);
+
 	useEffect(() => {
-		if (hydrated) {
+		if (!hydrated || windowShownRef.current) return;
+		let cancelled = false;
+		const reveal = () => {
+			if (cancelled || windowShownRef.current) return;
+			windowShownRef.current = true;
 			safeAsyncEventHandler(() => platform.window.show())();
+		};
+		if (!readyToShow) {
+			// Safety net for onboarding/recovery cards or slow external drives.
+			const fallback = window.setTimeout(reveal, 600);
+			return () => {
+				cancelled = true;
+				window.clearTimeout(fallback);
+			};
 		}
-	}, [hydrated, platform]);
+		// macOS WKWebView suspends requestAnimationFrame while hidden, so use
+		// a short tick to let the ready grid commit, then wait briefly for the
+		// initial visible covers to decode (capped at 150 ms) so desktop opens
+		// straight into sharp covers when the SSD is fast, or ThumbHashes if not.
+		let capTimer = 0;
+		const tick = window.setTimeout(() => {
+			capTimer = window.setTimeout(reveal, 150);
+			const imgs = Array.from(document.querySelectorAll("img")).slice(0, 25);
+			void Promise.allSettled(
+				imgs.map((img) =>
+					img.complete ? Promise.resolve() : img.decode().catch(() => {}),
+				),
+			).then(reveal);
+		}, 16);
+		return () => {
+			cancelled = true;
+			window.clearTimeout(tick);
+			window.clearTimeout(capTimer);
+		};
+	}, [hydrated, readyToShow, platform]);
 
 	const droppedLibraries = useSettings((state) => state.droppedLibraries);
 	useEffect(() => {
