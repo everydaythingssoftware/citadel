@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import type { BookEdit, EditBooksOutcome } from "@/bindings";
 import { unwrap } from "@/lib/option";
 import {
+	editBooksEntry,
 	emptyUndoHistory,
 	finishedEntry,
 	redoStep,
@@ -82,5 +84,95 @@ describe("finishedEntry", () => {
 		expect(finishedEntry([], false, async () => {}).name).toBe(
 			"Mark as Unfinished",
 		);
+	});
+});
+
+describe("editBooksEntry", () => {
+	const forward: BookEdit[] = [
+		{ book_id: "1", add_tags: ["new"] },
+		{ book_id: "2", add_tags: ["new"] },
+		{ book_id: "3", add_tags: ["new"] },
+	];
+	const undoEdits: BookEdit[] = [
+		{ book_id: "1", remove_tags: ["new"] },
+		{ book_id: "2", remove_tags: ["new"] },
+		{ book_id: "3", remove_tags: ["new"] },
+	];
+
+	it("names the books that the server changed", () => {
+		const editEntry = editBooksEntry(
+			forward,
+			undoEdits.slice(0, 2),
+			async () => ({ undo: [] }),
+			() => {},
+		);
+		expect(editEntry.name).toBe("Edit 2 Books");
+	});
+
+	it("names one changed book in the singular", () => {
+		const editEntry = editBooksEntry(
+			forward,
+			undoEdits.slice(0, 1),
+			async () => ({ undo: [] }),
+			() => {},
+		);
+		expect(editEntry.name).toBe("Edit Book");
+	});
+
+	it("undoes with the undo edits and redoes with the forward edits", async () => {
+		const apply = vi.fn(
+			async (_edits: readonly BookEdit[]): Promise<EditBooksOutcome> => ({
+				undo: undoEdits,
+			}),
+		);
+		const onFailure = vi.fn();
+		const editEntry = editBooksEntry(forward, undoEdits, apply, onFailure);
+		await editEntry.undo();
+		expect(apply.mock.calls).toEqual([[undoEdits]]);
+		apply.mockClear();
+		await editEntry.redo();
+		expect(apply.mock.calls).toEqual([[forward]]);
+		expect(onFailure).not.toHaveBeenCalled();
+	});
+
+	it("undoes with the undo edits that the last Redo returned", async () => {
+		const redoUndo: BookEdit[] = [
+			{ book_id: "1", series: "Dune", remove_tags: ["new"] },
+		];
+		const apply = vi.fn(
+			async (_edits: readonly BookEdit[]): Promise<EditBooksOutcome> => ({
+				undo: redoUndo,
+			}),
+		);
+		const editEntry = editBooksEntry(forward, undoEdits, apply, vi.fn());
+		await editEntry.undo();
+		await editEntry.redo();
+		apply.mockClear();
+		await editEntry.undo();
+		expect(apply.mock.calls).toEqual([[redoUndo]]);
+		expect(editEntry.name).toBe("Edit 3 Books");
+	});
+
+	it.each([
+		"undo",
+		"redo",
+	] as const)("reports a failed %s and throws the same error again", async (direction) => {
+		const failure = new Error("gone");
+		const apply = vi.fn(
+			async (_edits: readonly BookEdit[]): Promise<EditBooksOutcome> => ({
+				undo: undoEdits,
+			}),
+		);
+		apply.mockRejectedValueOnce(failure);
+		const onFailure = vi.fn();
+		const editEntry = editBooksEntry(forward, undoEdits, apply, onFailure);
+		const thrown = await editEntry[direction]().catch(
+			(error: unknown) => error,
+		);
+		expect(thrown).toBe(failure);
+		expect(onFailure).toHaveBeenCalledOnce();
+		expect(onFailure.mock.calls[0]?.[0]).toBe(direction);
+		expect(onFailure.mock.calls[0]?.[1]).toBe(failure);
+		expect(apply).toHaveBeenCalledOnce();
 	});
 });

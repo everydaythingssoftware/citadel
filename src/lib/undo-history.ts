@@ -1,3 +1,5 @@
+import type { BookEdit, EditBooksOutcome } from "@/bindings";
+import { booksTitle } from "@/lib/book-count";
 import { none, type Option, some } from "@/lib/option";
 
 /**
@@ -100,3 +102,45 @@ export const finishedEntry = (
 	undo: () => apply(ids, !finished),
 	redo: () => apply(ids, finished),
 });
+
+/** The direction of a step of an undo entry: Undo or Redo. */
+export type EditDirection = "undo" | "redo";
+
+/**
+ * Edit N Books as an undo entry over the books that the edit changed. The
+ * server gives `undoEdits`, with one edit for each book that it changed, so
+ * the name counts them. Undo sends the undo edits and Redo sends `forward`.
+ * Both are edits, and an edit is a patch, so each applies to the current
+ * state of each book. Redo can change other values than the first save, so
+ * the entry keeps the undo edits that the server returns for the Redo, and
+ * the next Undo sends them. A failure calls `onFailure`, so that the caller
+ * can show a banner, and then throws the error again.
+ */
+export const editBooksEntry = (
+	forward: readonly BookEdit[],
+	undoEdits: readonly BookEdit[],
+	apply: (edits: readonly BookEdit[]) => Promise<EditBooksOutcome>,
+	onFailure: (direction: EditDirection, error: unknown) => void,
+): UndoEntry => {
+	let currentUndo = undoEdits;
+	const run = async (
+		direction: EditDirection,
+		edits: readonly BookEdit[],
+	): Promise<EditBooksOutcome> => {
+		try {
+			return await apply(edits);
+		} catch (error) {
+			onFailure(direction, error);
+			throw error;
+		}
+	};
+	return {
+		name: `Edit ${booksTitle(undoEdits.length)}`,
+		undo: async () => {
+			await run("undo", currentUndo);
+		},
+		redo: async () => {
+			currentUndo = (await run("redo", forward)).undo;
+		},
+	};
+};

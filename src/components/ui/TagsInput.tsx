@@ -17,6 +17,7 @@ import {
 import { exactMatchIndex, rankSuggestions } from "@/lib/suggestions";
 import { POPOVER_ATTRIBUTE } from "./popover-interop";
 import styles from "./TagsInput.module.css";
+import { tokenCommit, tokenRemoveLabel, tokenText } from "./tags-input-tokens";
 
 const inBody = (list: React.ReactNode) => createPortal(list, document.body);
 
@@ -50,6 +51,18 @@ export interface TagsInputProps {
 	 * field reused across records (a form showing another book).
 	 */
 	resetKey?: string;
+	/** Text that follows the name of a token, for example "3 of 5". */
+	tokenDetail?: (token: string) => string | undefined;
+	/**
+	 * The accessible name of the remove button of a token. The default is
+	 * "Remove" and the token.
+	 */
+	removeLabel?: (token: string) => string;
+	/**
+	 * Called with the spelling of the existing token when the person commits
+	 * a name that is already a token.
+	 */
+	onCommitExisting?: (token: string) => void;
 }
 
 /**
@@ -71,6 +84,9 @@ export const TagsInput = ({
 	id,
 	className,
 	resetKey,
+	tokenDetail,
+	removeLabel,
+	onCommitExisting,
 }: TagsInputProps) => {
 	const fallbackId = useId();
 	const inputId = id ?? fallbackId;
@@ -171,18 +187,15 @@ export const TagsInput = ({
 	}, [listVisible]);
 
 	const addToken = (raw: string) => {
-		const text = raw.trim();
-		if (!text) return false;
-		// Dedupe case-insensitively against committed tokens.
-		if (value.some((v) => v.toLowerCase() === text.toLowerCase())) {
+		const commit = tokenCommit(value, suggestions, raw);
+		if (commit.kind === "none") return false;
+		if (commit.kind === "existing") {
+			onCommitExisting?.(commit.token);
 			setQuery("");
 			setOpen(false);
 			return true;
 		}
-		// Prefer the suggestion's canonical casing for free-typed matches.
-		const canonical =
-			suggestions.find((s) => s.toLowerCase() === text.toLowerCase()) ?? text;
-		onChange([...value, canonical]);
+		onChange([...value, commit.token]);
 		setQuery("");
 		setOpen(false);
 		setHighlight(-1);
@@ -261,37 +274,41 @@ export const TagsInput = ({
 				)}
 				onClick={() => inputRef.current?.focus()}
 			>
-				{value.map((token) => (
-					<span key={token} className={styles.token}>
-						<span className={styles.tokenText}>{token}</span>
-						{!disabled && (
-							<button
-								type="button"
-								className={styles.tokenRemove}
-								aria-label={`Remove ${token}`}
-								// Keep focus in the input so blur does not commit
-								// a half-typed entry before this click lands.
-								onMouseDown={(event) => event.preventDefault()}
-								onClick={() => removeToken(token)}
-							>
-								<svg
-									width="7"
-									height="7"
-									viewBox="0 0 7 7"
-									fill="none"
-									aria-hidden="true"
+				{value.map((token) => {
+					const { name, detail } = tokenText(token, tokenDetail);
+					return (
+						<span key={token} className={styles.token}>
+							<span className={styles.tokenText}>{name}</span>
+							{detail && <span className={styles.tokenDetail}>{detail}</span>}
+							{!disabled && (
+								<button
+									type="button"
+									className={styles.tokenRemove}
+									aria-label={tokenRemoveLabel(token, removeLabel)}
+									// Keep focus in the input so blur does not commit
+									// a half-typed entry before this click lands.
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => removeToken(token)}
 								>
-									<path
-										d="M1 1l5 5M6 1L1 6"
-										stroke="currentColor"
-										strokeWidth="1.2"
-										strokeLinecap="round"
-									/>
-								</svg>
-							</button>
-						)}
-					</span>
-				))}
+									<svg
+										width="7"
+										height="7"
+										viewBox="0 0 7 7"
+										fill="none"
+										aria-hidden="true"
+									>
+										<path
+											d="M1 1l5 5M6 1L1 6"
+											stroke="currentColor"
+											strokeWidth="1.2"
+											strokeLinecap="round"
+										/>
+									</svg>
+								</button>
+							)}
+						</span>
+					);
+				})}
 				<input
 					ref={inputRef}
 					id={inputId}
