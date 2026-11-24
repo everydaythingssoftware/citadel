@@ -40,6 +40,11 @@ const json = (data: unknown, status = 200) =>
 		status,
 		headers: { "content-type": "application/json" },
 	});
+const html = (status: number) =>
+	new Response("<html><body>Proxy error</body></html>", {
+		status,
+		headers: { "content-type": "text/html" },
+	});
 
 describe("HTTP Library", () => {
 	it("preserves paged search/facets and resolves cover/download URLs without local paths", async () => {
@@ -341,6 +346,49 @@ describe("HTTP Library", () => {
 		await expect(library.addBookGenres("7", ["Fiction"])).rejects.toThrow(
 			"Unknown author id '-1'",
 		);
+	});
+
+	it("reports the status when the error body of a write is not JSON", async () => {
+		const library = createHttpLibrary(
+			{ baseUrl: "https://citadel.test", fetch: async () => html(413) },
+			{ writable: true },
+		);
+		await expect(library.addBookGenres("7", ["Fiction"])).rejects.toThrow(
+			"Library request failed (413)",
+		);
+	});
+
+	it("reports the status when the error body of a cover write is not JSON", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => html(413),
+		});
+		await expect(
+			library.setBookCoverFromMetadata("7", "cover-1"),
+		).rejects.toThrow("Library request failed (413)");
+		await expect(
+			library.setBookCoverFromFile("7", new Blob([], { type: "image/jpeg" })),
+		).rejects.toThrow("Library request failed (413)");
+	});
+
+	it("reports an expired cover when the 410 body is not JSON", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => html(410),
+		});
+		await expect(
+			library.setBookCoverFromMetadata("7", "stale"),
+		).rejects.toThrow(new CoverExpiredError());
+	});
+
+	it("reports an expired cover with the default message when the 410 body has no text message", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => json({ code: "notFound", message: 42 }, 410),
+		});
+		await expect(
+			library.setBookCoverFromMetadata("7", "stale"),
+		).rejects.toThrow(new CoverExpiredError());
 	});
 
 	it("sets covers by cover ID or uploaded image, never by URL", async () => {

@@ -1,18 +1,24 @@
 import type { ClientOptions } from "openapi-fetch";
-import { createCitadelHttpClient } from "@/lib/api/client";
+import { createCitadelHttpClient, errorBodyMessage } from "@/lib/api/client";
 import { CREDENTIAL_HOME, type MetadataService } from "./types";
+
+/**
+ * The message of a Citadel error body. Each other body, for example the HTML
+ * page of a proxy, gives the status of the response.
+ */
+const failureMessage = (error: unknown, status: number): string =>
+	errorBodyMessage(error, `Metadata request failed (${status})`);
 
 const unwrap = async <T>(
 	request: Promise<{
 		data?: T;
-		error?: { message: string };
+		error?: unknown;
 		response: Response;
 	}>,
 ): Promise<T> => {
 	const { data, error, response } = await request;
-	if (error) throw new Error(error.message);
-	if (!response.ok || data === undefined)
-		throw new Error(`Metadata request failed (${response.status})`);
+	if (error || !response.ok || data === undefined)
+		throw new Error(failureMessage(error, response.status));
 	return data;
 };
 
@@ -56,11 +62,12 @@ export const createWebMetadataService = (
 				options.baseUrl,
 			).toString(),
 		prefetchCover: async (coverId) => {
-			const { error } = await client.POST(
+			const { error, response } = await client.POST(
 				"/api/metadata/covers/{cover_id}/prefetch",
 				{ params: { path: { cover_id: coverId } } },
 			);
-			if (error) throw new Error(error.message);
+			if (error || !response.ok)
+				throw new Error(failureMessage(error, response.status));
 		},
 		availability: async () =>
 			(await unwrap(client.GET("/api/metadata/providers"))).map((info) => ({
