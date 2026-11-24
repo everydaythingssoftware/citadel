@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build_app:
+  build-app:
     strategy:
       fail-fast: false
       matrix:

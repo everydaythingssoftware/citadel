@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  format:
+  format-check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
