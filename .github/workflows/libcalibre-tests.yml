@@ -1,125 +1,49 @@
-name: libcalibre Tests & Coverage
+name: libcalibre Tests
 
 on:
   push:
     branches:
       - main
+    paths:
+      - "crates/libcalibre/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/libcalibre-tests.yml"
   pull_request:
+    paths:
+      - "crates/libcalibre/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/libcalibre-tests.yml"
 
 permissions:
   contents: read
-  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
+  test:
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - name: Install Rust
+      - name: Install pinned Rust toolchain
         run: rustup toolchain install
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v1-rust"
-          shared-key: "build"
+          prefix-key: "v2-libcalibre"
           workspaces: "."
-
-      - name: Build
-        working-directory: crates/libcalibre
-        run: cargo build --all-features
 
       - name: Build without optional features
-        working-directory: crates/libcalibre
-        run: cargo build --no-default-features
-
-  report-coverage:
-    needs: setup
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install Rust
-        run: rustup toolchain install
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: "v1-rust"
-          shared-key: "build"
-          workspaces: "."
-
-      - name: Generate HTML coverage report
-        run: |
-          cargo llvm-cov --package libcalibre --all-features --html
-
-      - name: Upload HTML coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report-html
-          path: target/llvm-cov/html/
-          retention-days: 14
-
-      - name: Generate JSON coverage report (required for comment)
-        run: |
-          mkdir -p target/llvm-cov
-          cargo llvm-cov --package libcalibre --all-features --json --output-path target/llvm-cov/coverage-summary.json
-
-      - name: Extract coverage percentage
-        id: coverage
-        run: |
-          COVERAGE=$(jq -r '.data[0].totals.lines.percent' target/llvm-cov/coverage-summary.json | xargs printf "%.2f")
-          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
-          echo "Coverage: $COVERAGE%"
-
-      - name: Comment coverage on PR
-        # Fork PR tokens cannot write comments, even with pull-requests: write.
-        if: >-
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const coverage = '${{ steps.coverage.outputs.percentage }}';
-            const comment = `## libcalibre Test Coverage Report
-
-            **Overall coverage:** ${coverage}%
-
-            📊 [Download HTML Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-            Coverage breakdown available in the artifacts.`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-
-  test:
-    needs: setup
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install Rust
-        run: rustup toolchain install
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: "v1-rust"
-          shared-key: "build"
-          workspaces: "."
+        run: cargo build --locked --package libcalibre --no-default-features
 
       - name: Run tests
-        run: cargo test --package libcalibre --all-features
+        run: cargo test --locked --package libcalibre --all-features
 
       - name: Check docs (every public item documented, links resolve)
         env:

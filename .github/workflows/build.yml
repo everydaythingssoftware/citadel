@@ -1,36 +1,43 @@
 name: Build
+
 on:
   push:
     branches:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build_app:
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, macos-15, windows-latest, windows-11-arm]
+        platform: [ubuntu-24.04, macos-15, windows-latest, windows-11-arm]
+    if: matrix.platform != 'windows-11-arm' || github.event_name == 'push'
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v1
+      - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.4.4"
 
       - name: Install pinned Rust toolchain
         run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v1-rust"
+          prefix-key: "v2-rust"
           workspaces: "."
 
       - name: (Ubuntu only) Install dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
@@ -46,50 +53,8 @@ jobs:
           'C:\Program Files\LLVM\bin' >> $env:GITHUB_PATH
 
       - name: Install node packages
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: List installed versions
-        run: |
-          bun --version;
-          cargo --version;
-          bun tauri --version
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tauriScript: bun tauri
-          # Verbose so a bundle_dmg.sh failure shows the script's output.
-          args: --verbose${{ startsWith(matrix.platform, 'windows') && ' --bundles nsis' || '' }}
-
-      - name: (Ubuntu only) Upload build artifacts
-        if: matrix.platform == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-deb-and-appimage
-          path: |
-            target/release/bundle/deb/*.deb
-            target/release/bundle/appimage/*.AppImage
-
-      - name: (macOS only) Upload build artifacts
-        if: matrix.platform == 'macos-15'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-app-and-dmg
-          path: |
-            target/release/bundle/macos/Citadel.app
-            target/release/bundle/dmg/*.dmg
-
-      - name: (Windows only) Upload build artifacts
-        if: matrix.platform == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64-installer
-          path: target/release/bundle/nsis/*.exe
-
-      - name: (Windows only) Upload build artifacts
-        if: matrix.platform == 'windows-11-arm'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-arm64-installer
-          path: target/release/bundle/nsis/*.exe
+      # Full installers are packaged nightly and on release in release.yml.
+      - name: Build desktop app (no bundle)
+        run: bun tauri build --no-bundle

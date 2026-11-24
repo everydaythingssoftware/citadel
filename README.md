@@ -22,23 +22,13 @@ https://github.com/user-attachments/assets/7db593a9-2095-4ac9-8f38-45107cc059dd
 
 ## Downloading
 
-Stable builds are available in [Releases](https://github.com/everydaythingssoftware/citadel/releases).
-
-Development builds are available from [GitHub actions](https://github.com/everydaythingssoftware/citadel/actions/workflows/build.yml).
+Stable and nightly builds are available in [Releases](https://github.com/everydaythingssoftware/citadel/releases).
 
 Please report any issues or crashes you experience while using any version of Citadel!
 
 ### Installing on macOS
 
 Download the `.dmg` from [Releases](https://github.com/everydaythingssoftware/citadel/releases), drag Citadel to Applications, and open it.
-
-> [!NOTE]
->
-> Development builds from [GitHub Actions](https://github.com/everydaythingssoftware/citadel/actions/workflows/build.yml) are *not* signed. macOS will report those as "damaged"; [removing the quarantine attribute](https://superuser.com/questions/526920/how-to-remove-quarantine-from-file-permissions-in-os-x) resolves this:
->
-> ```fish
-> xattr -d com.apple.quarantine /Applications/Citadel.app/
-> ```
 
 ### Installing on Windows
 
