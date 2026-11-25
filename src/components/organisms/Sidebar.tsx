@@ -13,9 +13,9 @@ import {
 	Tooltip,
 } from "@/components/ui";
 import { safeAsyncEventHandler } from "@/lib/async";
-import type { ContextMenuTarget } from "@/lib/hooks/use-context-menu";
 import type { ShelfDelete } from "@/lib/hooks/use-shelf-actions";
 import {
+	type LibraryMenu,
 	type SidebarShelf,
 	type SidebarViewModel,
 	useSidebarModel,
@@ -70,24 +70,29 @@ export const Sidebar = () => {
 const LibraryHeading = ({
 	libraryMenu,
 }: {
-	libraryMenu: Option<ContextMenuTarget>;
-}) => (
-	<h2 className={styles.sectionLabel}>
-		{libraryMenu.isSome ? (
+	libraryMenu: Option<LibraryMenu>;
+}) => {
+	if (!libraryMenu.isSome) {
+		return <h2 className={styles.sectionLabel}>Library</h2>;
+	}
+	const { target, button } = libraryMenu.value;
+	return (
+		<h2 className={styles.sectionLabel}>
 			<button
 				type="button"
 				className={styles.headingButton}
-				aria-haspopup="menu"
-				onClick={libraryMenu.value.onContextMenu}
-				{...libraryMenu.value}
+				{...button}
+				onContextMenu={target.onContextMenu}
+				onKeyDown={(event) => {
+					button.onKeyDown(event);
+					target.onKeyDown(event);
+				}}
 			>
 				Library
 			</button>
-		) : (
-			"Library"
-		)}
-	</h2>
-);
+		</h2>
+	);
+};
 
 export interface SidebarViewProps extends SidebarViewModel {
 	/** The library picker, or the plain "Library" header. */

@@ -6,6 +6,7 @@ import {
 	useBrowserSessionControls,
 } from "@/lib/hooks/use-browser-session";
 import {
+	type ContextMenuButton,
 	type ContextMenuController,
 	type ContextMenuTarget,
 	useContextMenu,
@@ -64,12 +65,20 @@ export interface SidebarViewModel {
 	session: BrowserSessionControls | null;
 }
 
+/** The controls that open the menu of the open library. */
+export interface LibraryMenu {
+	/** For a control that opens the menu with a right-click or a key. */
+	target: ContextMenuTarget;
+	/** For the "Library" heading, which opens the menu with a click. */
+	button: ContextMenuButton;
+}
+
 export interface SidebarModel {
 	view: SidebarViewModel;
 	/** Two or more local libraries: the header switches between them. */
 	libraryPicker: boolean;
 	/** The open library's own menu (Show in Finder, Forget…). */
-	libraryMenu: Option<ContextMenuTarget>;
+	libraryMenu: Option<LibraryMenu>;
 	contextMenu: ContextMenuController;
 	shelfDelete: ShelfDelete;
 	removeLibrary: RemoveLibrary;
@@ -216,7 +225,16 @@ export const useSidebarModel = (): Option<SidebarModel> => {
 		},
 		libraryPicker: platform.capabilities.canPickLocalFiles && libraryCount >= 2,
 		libraryMenu: libraryActions.items.isSome
-			? some(contextMenu.target(libraryActions.items.value, "Library actions"))
+			? some({
+					target: contextMenu.target(
+						libraryActions.items.value,
+						"Library actions",
+					),
+					button: contextMenu.menuButton(
+						libraryActions.items.value,
+						"Library actions",
+					),
+				})
 			: none(),
 		contextMenu,
 		shelfDelete,

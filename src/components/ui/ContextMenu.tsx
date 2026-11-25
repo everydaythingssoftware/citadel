@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import type { ContextMenuEntry, ContextMenuState } from "@/lib/context-menu";
-import { isMenuItem } from "@/lib/context-menu";
+import { isMenuItem, menuItemAria } from "@/lib/context-menu";
 import { useContextMenuSurface } from "@/lib/hooks/use-context-menu-surface";
 import styles from "./ContextMenu.module.css";
 import { POPOVER_ATTRIBUTE } from "./popover-interop";
@@ -63,7 +63,7 @@ export const ContextMenu = ({
 						type="button"
 						tabIndex={-1}
 						id={surface.itemDomId(entry)}
-						role="menuitem"
+						{...menuItemAria(entry)}
 						aria-disabled={entry.disabled || undefined}
 						aria-keyshortcuts={entry.keyShortcuts}
 						className={styles.item}
@@ -72,6 +72,11 @@ export const ContextMenu = ({
 						onPointerMove={() => surface.onItemPointerMove(index)}
 						onClick={() => surface.activate(index)}
 					>
+						{entry.checked !== undefined && (
+							<span className={styles.check} aria-hidden="true">
+								{entry.checked ? "✓" : ""}
+							</span>
+						)}
 						<span className={styles.label}>{entry.label}</span>
 						{entry.shortcut && (
 							<span className={styles.shortcut} aria-hidden="true">

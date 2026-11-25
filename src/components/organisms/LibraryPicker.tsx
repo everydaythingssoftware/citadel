@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { AddLibraryDialog } from "@/components/organisms/AddLibraryDialog";
 import { POPOVER_ATTRIBUTE } from "@/components/ui/popover-interop";
 import { useAddLibraryFlow } from "@/lib/hooks/use-add-library-flow";
-import type { ContextMenuTarget } from "@/lib/hooks/use-context-menu";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
+import type { LibraryMenu } from "@/lib/hooks/use-sidebar-model";
 import type { Option } from "@/lib/option";
 import styles from "./LibraryPicker.module.css";
 
@@ -67,7 +67,7 @@ const PlusIcon = () => (
 
 export interface LibraryPickerProps {
 	/** The open library's own menu (Show in Finder, Forget…). */
-	libraryMenu: Option<ContextMenuTarget>;
+	libraryMenu: Option<LibraryMenu>;
 }
 
 /**
@@ -264,7 +264,7 @@ export const LibraryPicker = ({ libraryMenu }: LibraryPickerProps) => {
 				onContextMenu={(event) => {
 					if (!libraryMenu.isSome) return;
 					setOpen(false);
-					libraryMenu.value.onContextMenu(event);
+					libraryMenu.value.target.onContextMenu(event);
 				}}
 				onKeyDown={(event) => {
 					if (event.key === "ArrowDown" && !open) {
@@ -272,7 +272,7 @@ export const LibraryPicker = ({ libraryMenu }: LibraryPickerProps) => {
 						setOpen(true);
 						return;
 					}
-					if (libraryMenu.isSome) libraryMenu.value.onKeyDown(event);
+					if (libraryMenu.isSome) libraryMenu.value.target.onKeyDown(event);
 				}}
 			>
 				<span className={styles.triggerName}>{activeLibrary.displayName}</span>

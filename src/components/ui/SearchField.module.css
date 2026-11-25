@@ -41,6 +41,69 @@
 	pointer-events: none;
 }
 
+.withScope {
+	padding-left: 44px;
+}
+
+/* The chevron sits right of the magnifier and opens the search scope menu. */
+.scopeButton {
+	position: absolute;
+	left: 24px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: none;
+	color: var(--ctd-ink-soft);
+	cursor: default;
+}
+
+.scopeButton:hover,
+.scopeButton:focus-visible {
+	background-color: oklch(from currentColor l c h / 0.18);
+}
+
+.scopeButton:focus-visible {
+	outline: 1px solid var(--ctd-accent);
+	outline-offset: 1px;
+}
+
+/*
+ * The callout under the field. It is always in the DOM, so a screen reader
+ * announces a new text. It sits over the content below and never moves the
+ * layout.
+ */
+.message {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	z-index: 300;
+	pointer-events: none;
+	font-size: var(--ctd-text-subheadline);
+	white-space: normal;
+	max-width: min(48ch, calc(100vw - 32px));
+}
+
+.message:not(:empty) {
+	padding: 4px 10px;
+	background-color: var(--ctd-menu-bg-opaque);
+	border: 1px solid var(--ctd-menu-border);
+	border-radius: var(--ctd-menu-radius);
+	box-shadow: var(--ctd-popover-shadow);
+}
+
+.message[data-tone="error"] {
+	color: var(--ctd-danger-ink);
+}
+
+.message[data-tone="hint"] {
+	color: var(--ctd-ink-soft);
+}
+
 .input {
 	/* WebKit can ignore custom metrics on type=search without this. */
 	-webkit-appearance: none;

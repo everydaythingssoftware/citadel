@@ -3,7 +3,7 @@ import type {
 	ShelfViewFields,
 	SmartShelfFilter,
 } from "@/lib/platform/settings/types";
-import { SEARCH_SCOPE_LABELS } from "@/lib/search-scope";
+import { searchScopeLabel } from "@/lib/search-scope";
 
 /** The Books route's deep-link filters (its search params). */
 export interface BookRouteFilters {
@@ -75,7 +75,7 @@ export const shelfViewSummary = (
 	return [
 		...(hasRouteFilters(routeFilters) ? ["this view's filter"] : []),
 		query.length > 0 ? `search "${query}"` : "no search",
-		`search scope "${SEARCH_SCOPE_LABELS[view.searchScope]}"`,
+		`search scope "${searchScopeLabel(view.searchScope)}"`,
 		`sorted by ${SORT_LABELS[view.sortOrder]}`,
 		view.hideRead ? "hiding read books" : "showing read books",
 	].join(", ");

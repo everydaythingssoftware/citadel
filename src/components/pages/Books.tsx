@@ -12,7 +12,7 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
-import { bookCountStatus } from "@/lib/book-count";
+import { bookGridView } from "@/lib/book-grid-view";
 import {
 	BOOK_PAGE_SIZE,
 	type BookGridFilter,
@@ -31,10 +31,12 @@ import { useEntryScroll } from "@/lib/hooks/use-entry-scroll";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
+import { useSearchScopeMenu } from "@/lib/hooks/use-search-scope-menu";
 import { useShownEntryKey } from "@/lib/hooks/use-shown-entry-key";
 import { SORT_LABELS } from "@/lib/library-sort-options";
 import { SCROLL_REGION, scrollRegionAttributes } from "@/lib/navigation";
 import type { ShelfViewFields } from "@/lib/platform/settings/types";
+import { noMatchesText, searchPlaceholder } from "@/lib/search-scope";
 import {
 	type BookRouteFilters,
 	deepLinkClearsQuery,
@@ -48,6 +50,7 @@ import {
 	useLibraryActions,
 	useLibraryReady,
 	useLibraryTotal,
+	usePageOutcome,
 	usePublishers,
 	useSeriesList,
 	useStaleBookSnapshot,
@@ -121,6 +124,7 @@ export const Books = ({
 	const libraryReady = useLibraryReady();
 	const cache = useBookCache();
 	const staleSnapshot = useStaleBookSnapshot();
+	const pageOutcome = usePageOutcome();
 	const libraryTotal = useLibraryTotal();
 	const authors = useAuthors();
 	const seriesList = useSeriesList();
@@ -195,14 +199,6 @@ export const Books = ({
 		() => shownBookItems(cache, staleSnapshot),
 		[cache, staleSnapshot],
 	);
-	const total = queryResolved ? cache.total : (staleSnapshot?.total ?? 0);
-
-	// True loading = no resolved data at all (fresh library open, no stale
-	// snapshot to show). During a search transition we are "searching", not
-	// "loading" — the stale grid stays visible.
-	const loading = !libraryReady || (!queryResolved && staleSnapshot === null);
-	// Dimming hint shown over the stale grid while the new query fetches.
-	const isSearching = libraryReady && !queryResolved && staleSnapshot !== null;
 
 	const navigate = useNavigate();
 	const onClearDeepLinkFilter = useCallback(() => {
@@ -250,6 +246,15 @@ export const Books = ({
 		entryKey,
 	});
 	const { selectedCount, isSelected } = useBookSelection();
+	// The rules of the grid status and the empty states are in bookGridView.
+	const gridView = bookGridView({
+		libraryReady,
+		cache,
+		staleSnapshot,
+		pageOutcome,
+		libraryTotal,
+		selectedCount,
+	});
 	const grid = useBookGridInteraction(books);
 
 	const searchInputRef = useRef<HTMLInputElement>(null);
@@ -306,12 +311,7 @@ export const Books = ({
 	// A genuinely empty library (including first-run with the bundled library)
 	// teaches the two ways to populate it; an empty result against a non-empty
 	// library is a zero-result filter.
-	const emptyLibrary = !loading && (libraryTotal ?? 0) === 0;
-	// Only show the zero-result state once the active query has resolved to 0
-	// results — never transiently while a new search is still in flight.
-	const noMatches =
-		!loading && queryResolved && total === 0 && (libraryTotal ?? 0) > 0;
-	const showGrid = !emptyLibrary && !noMatches;
+	const showGrid = !gridView.emptyLibrary && !gridView.noMatches;
 	const regionProps = {
 		ref: gridContainerRef,
 		...scrollRegionAttributes(SCROLL_REGION.libraryGrid),
@@ -319,10 +319,16 @@ export const Books = ({
 		className: clsx(
 			styles.gridArea,
 			"ctd-scroller",
-			isSearching && styles.gridAreaSearching,
+			// Dimming hint shown over the stale grid while the new query
+			// fetches. No dimming while the last answer for the filter is an
+			// error.
+			gridView.status === "searching" && styles.gridAreaSearching,
 		),
 	};
 	const trimmedQuery = query.trim();
+
+	const { menu: scopeMenu, button: scopeButton } =
+		useSearchScopeMenu(searchInputRef);
 
 	const searchTokens = [
 		...(authorTokenName !== undefined
@@ -376,8 +382,14 @@ export const Books = ({
 					<span className={styles.searchWrap}>
 						<SearchField
 							ref={searchInputRef}
-							placeholder={searchTokens.length > 0 ? undefined : "Search"}
-							aria-label="Search book titles and authors"
+							placeholder={
+								searchTokens.length > 0
+									? undefined
+									: searchPlaceholder(searchScope)
+							}
+							aria-label="Search books"
+							message={gridView.callout ?? undefined}
+							scopeButton={scopeButton}
 							value={query}
 							onChange={(event) => setQuery(event.currentTarget.value)}
 							className={styles.searchInput}
@@ -426,7 +438,8 @@ export const Books = ({
 				>
 					<BookGrid
 						bookList={books}
-						loading={loading}
+						loading={gridView.status === "loading"}
+						pendingSlots={gridView.status === "stale" ? "hidden" : "loading"}
 						bookActions={grid.bookActions}
 						isSelected={isSelected}
 						scrollElementRef={gridContainerRef}
@@ -438,13 +451,13 @@ export const Books = ({
 				</div>
 			) : (
 				<div {...regionProps} tabIndex={-1}>
-					{emptyLibrary ? (
+					{gridView.emptyLibrary ? (
 						<EmptyLibrary />
 					) : trimmedQuery.length > 0 ? (
 						<EmptyState
 							art="search"
 							title={`No books match “${trimmedQuery}”`}
-							description="Search looks at titles and authors. Check the spelling, or try fewer words."
+							description={noMatchesText(searchScope)}
 						>
 							<Button variant="default" onClick={() => setQuery("")}>
 								Clear Search
@@ -470,12 +483,7 @@ export const Books = ({
 			)}
 			<div className={styles.footer}>
 				<span className={styles.footerText} aria-live="polite">
-					{bookCountStatus({
-						loading,
-						total,
-						libraryTotal,
-						selectedCount,
-					})}
+					{gridView.footer}
 				</span>
 			</div>
 			<BookDetailsDrawer
@@ -489,6 +497,11 @@ export const Books = ({
 				menu={grid.menu.menu}
 				returnFocusRef={gridContainerRef}
 				onClose={grid.menu.close}
+			/>
+			<ContextMenu
+				menu={scopeMenu.menu}
+				returnFocusRef={scopeMenu.returnFocusRef}
+				onClose={scopeMenu.close}
 			/>
 			<DeleteBooksDialogs />
 		</div>

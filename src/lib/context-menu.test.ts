@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
 	type ContextMenuEntry,
 	matchTypeahead,
+	menuItemAria,
 	moveHighlight,
+	opensMenuFromButton,
 	placeMenu,
+	pressClosesMenu,
 	tidyEntries,
+	toggleMenu,
 } from "./context-menu";
 
 const item = (id: string, extra: Partial<ContextMenuEntry> = {}) =>
@@ -102,5 +106,94 @@ describe("placeMenu", () => {
 		expect(
 			placeMenu({ x: 4, y: 4, width: 900, height: 900, ...viewport }),
 		).toEqual({ left: 8, top: 8 });
+	});
+});
+
+describe("menuItemAria", () => {
+	const entry = { id: "a", label: "a", onSelect: () => {} };
+
+	it("gives a plain item the menuitem role and no checked state", () => {
+		expect(menuItemAria(entry)).toEqual({
+			role: "menuitem",
+			"aria-checked": undefined,
+		});
+	});
+
+	it("gives a checked item the menuitemradio role", () => {
+		expect(menuItemAria({ ...entry, checked: true })).toEqual({
+			role: "menuitemradio",
+			"aria-checked": true,
+		});
+		expect(menuItemAria({ ...entry, checked: false })).toEqual({
+			role: "menuitemradio",
+			"aria-checked": false,
+		});
+	});
+});
+
+describe("pressClosesMenu", () => {
+	const element = (...nodes: unknown[]) => ({
+		contains: (node: Node | null) => nodes.includes(node),
+	});
+	const inMenu = {} as Node;
+	const onAnchor = {} as Node;
+	const elsewhere = {} as Node;
+
+	it("keeps the menu open for a press on the menu or on its anchor", () => {
+		const parts = [element(inMenu), element(onAnchor)];
+		expect(pressClosesMenu(inMenu, parts)).toBe(false);
+		expect(pressClosesMenu(onAnchor, parts)).toBe(false);
+	});
+
+	it("closes the menu for a press anywhere else", () => {
+		expect(pressClosesMenu(elsewhere, [element(inMenu), null])).toBe(true);
+		expect(pressClosesMenu(null, [element(inMenu)])).toBe(true);
+	});
+});
+
+describe("opensMenuFromButton", () => {
+	it("opens the menu on ArrowDown, Enter and Space", () => {
+		expect(["ArrowDown", "Enter", " "].map(opensMenuFromButton)).toEqual([
+			true,
+			true,
+			true,
+		]);
+	});
+
+	it("leaves the other keys to the page", () => {
+		expect(["ArrowUp", "Escape", "Tab", "a"].map(opensMenuFromButton)).toEqual([
+			false,
+			false,
+			false,
+			false,
+		]);
+	});
+});
+
+describe("toggleMenu", () => {
+	const button = {} as HTMLElement;
+	const otherButton = {} as HTMLElement;
+	const under = (anchor: HTMLElement) => ({
+		x: 40,
+		y: 72,
+		items: ENTRIES,
+		label: "Search scope",
+		anchor,
+	});
+
+	it("opens the menu of the button when no menu is open", () => {
+		expect(toggleMenu(null, under(button))).toEqual(under(button));
+	});
+
+	it("closes the menu on a second click of its button", () => {
+		expect(toggleMenu(under(button), under(button))).toBeNull();
+	});
+
+	it("opens the menu of the button over a menu from another place", () => {
+		const contextMenu = { x: 5, y: 5, items: ENTRIES };
+		expect(toggleMenu(under(otherButton), under(button))).toEqual(
+			under(button),
+		);
+		expect(toggleMenu(contextMenu, under(button))).toEqual(under(button));
 	});
 });
