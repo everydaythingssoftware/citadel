@@ -3,6 +3,9 @@
 
 mod lexer;
 mod parser;
+mod sql;
+
+use crate::queries::books::SqlFragment;
 
 /// The most terms that a search can hold.
 pub(crate) const MAX_TERMS: usize = 100;
@@ -12,6 +15,59 @@ pub(crate) const MAX_TERMS: usize = 100;
 /// a search with 25 levels overflows it. macOS and Debian 12 ship such a
 /// version.
 pub(crate) const MAX_DEPTH: usize = 16;
+
+/// The most bytes that a search text can hold, after the trim. With an
+/// escape on each character, a LIKE pattern then stays below the limit of
+/// 50,000 bytes that SQLite puts on a pattern.
+pub(crate) const MAX_TEXT_BYTES: usize = 20_000;
+
+/// The SQL of a search text, with the hints about the text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CompiledSearch {
+    /// The `WHERE` condition on the outer table `books`, with its binds.
+    pub(crate) fragment: SqlFragment,
+    /// The notes about the text. A hint does not stop the query.
+    pub(crate) hints: Vec<Spanned<SearchHint>>,
+}
+
+/// Compile a search text to SQL.
+///
+/// Returns `Ok(None)` when the text is blank. The scope selects the fields
+/// that a bare word searches. The ranges of the errors and the hints count
+/// from the start of `text`, before the trim.
+pub(crate) fn compile(
+    text: &str,
+    scope: SearchScope,
+) -> Result<Option<CompiledSearch>, Spanned<SearchError>> {
+    let trimmed = text.trim();
+    if trimmed.len() > MAX_TEXT_BYTES {
+        let start = text.len() - text.trim_start().len();
+        return Err(Spanned {
+            value: SearchError::TooLong,
+            span: start..start + trimmed.len(),
+        });
+    }
+    let Some(parsed) = parser::parse(text)? else {
+        return Ok(None);
+    };
+    Ok(Some(CompiledSearch {
+        fragment: sql::to_sql(&parsed.expr, scope),
+        hints: parsed.hints,
+    }))
+}
+
+/// The fields that a bare word searches. A field prefix works the same in
+/// each scope.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SearchScope {
+    /// The title, the author names and the series name.
+    #[default]
+    TitlesAuthorsSeries,
+    /// The title, the author names, the series name, the tags, the publisher
+    /// and the identifier values.
+    AllFields,
+}
 
 /// An operator word of the search language.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -275,6 +331,52 @@ mod tests {
             }
             .to_string(),
             r#"No field named "titel". Searched as text."#
+        );
+    }
+
+    #[test]
+    fn a_text_longer_than_the_byte_limit_is_too_long() {
+        let scope = SearchScope::TitlesAuthorsSeries;
+        let too_long = |text: &str| {
+            compile(text, scope)
+                .map(|_| ())
+                .map_err(|e| (e.value, e.span))
+        };
+        assert!(compile(&"a".repeat(MAX_TEXT_BYTES), scope).is_ok());
+        assert_eq!(
+            too_long(&"a".repeat(MAX_TEXT_BYTES + 1)),
+            Err((SearchError::TooLong, 0..MAX_TEXT_BYTES + 1))
+        );
+        assert!(
+            compile(&format!("  {}  ", "a".repeat(MAX_TEXT_BYTES)), scope).is_ok(),
+            "the limit applies after the trim"
+        );
+        assert_eq!(
+            too_long(&format!("  {}  ", "a".repeat(MAX_TEXT_BYTES + 1))),
+            Err((SearchError::TooLong, 2..MAX_TEXT_BYTES + 3)),
+            "the range covers the trimmed text"
+        );
+        assert_eq!(
+            too_long(&"é".repeat(MAX_TEXT_BYTES / 2 + 1)),
+            Err((SearchError::TooLong, 0..MAX_TEXT_BYTES + 2)),
+            "the limit counts bytes, not characters"
+        );
+    }
+
+    #[test]
+    fn ranges_count_from_the_start_of_the_untrimmed_text() {
+        let compiled = compile("  dune titel:x", SearchScope::TitlesAuthorsSeries)
+            .unwrap()
+            .unwrap();
+        assert_eq!(compiled.hints[0].span, 7..14);
+        assert_eq!(
+            compile("  x and", SearchScope::TitlesAuthorsSeries).map(|_| ()),
+            Err(Spanned {
+                value: SearchError::MissingTerm {
+                    operator: SearchOperator::And
+                },
+                span: 4..7
+            })
         );
     }
 }

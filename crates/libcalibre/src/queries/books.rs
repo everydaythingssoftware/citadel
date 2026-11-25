@@ -194,7 +194,9 @@ pub(crate) struct AcquisitionCandidate {
     pub name: String,
 }
 
-fn like_pattern(text: &str) -> String {
+/// Wraps `text` in `%` wildcards for a LIKE match. A backslash escapes each
+/// `%`, `_` and `\` of `text`.
+pub(crate) fn like_pattern(text: &str) -> String {
     let escaped = text
         .replace('\\', "\\\\")
         .replace('%', "\\%")
