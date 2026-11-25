@@ -98,19 +98,26 @@ pub(crate) fn cover_sources_for(
 
 /// Filters shared by the paged id query and its COUNT twin. Both build their
 /// WHERE clause from [`filter_where_sql`] so the page and total cannot drift.
-pub(crate) struct BookPageFilters<'a> {
-    /// Case-insensitive substring match (LIKE wildcards escaped) across the
-    /// book title, linked author names, and linked series names.
-    pub text: Option<&'a str>,
+pub(crate) struct BookPageFilters {
+    /// The compiled search text: a condition on `books`, with its binds.
+    pub search: Option<SqlFragment>,
     pub author_id: Option<AuthorId>,
     pub series_id: Option<i32>,
     pub tag_id: Option<i32>,
     pub publisher_id: Option<i32>,
-    /// `(custom column id, value id)`: only books linked to that value.
-    pub custom_value: Option<(i32, i32)>,
+    /// Only books linked to one value of a custom column.
+    pub custom_value: Option<ResolvedCustomValue>,
     /// Id of the read-state bool custom column. When set, books marked read are
     /// excluded.
     pub hide_read_column: Option<i32>,
+}
+
+/// A [`crate::CustomValueFilter`] after the lookup of its column.
+pub(crate) enum ResolvedCustomValue {
+    /// Only books linked to the value `value_id` of the column `column_id`.
+    Value { column_id: i32, value_id: i32 },
+    /// The library has no column with the label, so no book matches.
+    MissingColumn,
 }
 
 /// A piece of SQL with the text values that its `?` placeholders bind, in
@@ -205,24 +212,13 @@ pub(crate) fn like_pattern(text: &str) -> String {
 }
 
 /// WHERE clause shared by [`query_page`] and [`query_count`], returned with
-/// its binds. The text filter uses three `?` placeholders (title, author name,
-/// series name) and pushes one bind for each; all other filters interpolate
-/// plain integers.
+/// its binds. The search filter uses one `?` placeholder for each of its
+/// binds; all other filters interpolate plain integers.
 fn filter_where_sql(filters: &BookPageFilters) -> SqlFragment {
     let mut clauses: Vec<SqlFragment> = vec![SqlFragment::plain("1=1")];
 
-    if let Some(text) = filters.text {
-        let pattern = like_pattern(text);
-        clauses.push(SqlFragment::new(
-            "(books.title LIKE ? ESCAPE '\\' \
-              OR EXISTS (SELECT 1 FROM books_authors_link bal \
-                         JOIN authors a ON a.id = bal.author \
-                         WHERE bal.book = books.id AND a.name LIKE ? ESCAPE '\\') \
-              OR EXISTS (SELECT 1 FROM books_series_link bsl \
-                         JOIN series s ON s.id = bsl.series \
-                         WHERE bsl.book = books.id AND s.name LIKE ? ESCAPE '\\'))",
-            vec![pattern.clone(), pattern.clone(), pattern],
-        ));
+    if let Some(search) = &filters.search {
+        clauses.push(search.clone().wrap("(", ")"));
     }
 
     if let Some(author_id) = filters.author_id {
@@ -254,11 +250,16 @@ fn filter_where_sql(filters: &BookPageFilters) -> SqlFragment {
         )));
     }
 
-    if let Some((column_id, value_id)) = filters.custom_value {
-        clauses.push(SqlFragment::plain(format!(
+    match filters.custom_value {
+        Some(ResolvedCustomValue::Value {
+            column_id,
+            value_id,
+        }) => clauses.push(SqlFragment::plain(format!(
             "EXISTS (SELECT 1 FROM books_custom_column_{column_id}_link cvl \
              WHERE cvl.book = books.id AND cvl.value = {value_id})"
-        )));
+        ))),
+        Some(ResolvedCustomValue::MissingColumn) => clauses.push(SqlFragment::plain("0 = 1")),
+        None => {}
     }
 
     if let Some(n) = filters.hide_read_column {
@@ -510,6 +511,40 @@ pub(crate) fn acquisition_candidates(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::search::{compile, SearchScope};
+
+    /// A filter set with no filter except the given search.
+    fn filters_with(search: Option<SqlFragment>) -> BookPageFilters {
+        BookPageFilters {
+            search,
+            author_id: None,
+            series_id: None,
+            tag_id: None,
+            publisher_id: None,
+            custom_value: None,
+            hide_read_column: None,
+        }
+    }
+
+    #[test]
+    fn placeholders_match_binds_with_a_search() {
+        let compiled = compile(
+            "tolkien tags:fantasy or title:\"the hobbit\"",
+            SearchScope::AllFields,
+        )
+        .unwrap()
+        .unwrap();
+        let fragment = filter_where_sql(&filters_with(Some(compiled.fragment)));
+        assert!(!fragment.binds().is_empty());
+        assert_eq!(fragment.sql().matches('?').count(), fragment.binds().len());
+    }
+
+    #[test]
+    fn placeholders_match_binds_without_a_search() {
+        let fragment = filter_where_sql(&filters_with(None));
+        assert!(fragment.binds().is_empty());
+        assert_eq!(fragment.sql().matches('?').count(), 0);
+    }
 
     #[test]
     fn join_and_wrap_keep_the_binds_in_sequence() {

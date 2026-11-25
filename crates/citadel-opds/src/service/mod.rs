@@ -1021,6 +1021,7 @@ mod tests {
                 libcalibre::BookPage {
                     items: Vec::new(),
                     total: 0,
+                    hints: Vec::new(),
                 },
             ))
         }

@@ -25,6 +25,12 @@ pub enum CalibreError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
+    /// The search text of a book query does not parse, is over a limit, or
+    /// uses a feature that is not supported. The span is the byte range of
+    /// the text that causes the error.
+    #[error("{0}")]
+    InvalidSearch(crate::Spanned<crate::SearchError>),
+
     /// Book with given ID was not found.
     #[error("Book not found: {0}")]
     BookNotFound(BookId),

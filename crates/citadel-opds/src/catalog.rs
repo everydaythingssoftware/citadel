@@ -1078,6 +1078,7 @@ mod tests {
                 BookPage {
                     items,
                     total: self.books.len() as u64,
+                    hints: Vec::new(),
                 },
             ))
         }
@@ -1110,6 +1111,7 @@ mod tests {
                 BookPage {
                     items: Vec::new(),
                     total: 0,
+                    hints: Vec::new(),
                 },
             ))
         }
@@ -1468,6 +1470,7 @@ mod tests {
         let page = BookPage {
             items: vec![legacy_book],
             total: 1,
+            hints: Vec::new(),
         };
         let xml = String::from_utf8(
             acquisition_feed("bad-library", None, &page, 1, 1, "/opds", "All Books").unwrap(),
@@ -1495,6 +1498,7 @@ mod tests {
         let page = BookPage {
             items: Vec::new(),
             total: 101,
+            hints: Vec::new(),
         };
         for route in [
             "/opds/all",
@@ -1534,6 +1538,7 @@ mod tests {
         let page = BookPage {
             items: Vec::new(),
             total: 101,
+            hints: Vec::new(),
         };
         let first = String::from_utf8(
             acquisition_feed("id", None, &page, 1, 3, "/opds/all", "All Books").unwrap(),
@@ -2156,6 +2161,7 @@ mod tests {
         let page = BookPage {
             items: Vec::new(),
             total: 101,
+            hints: Vec::new(),
         };
         let identity = |route, number| {
             parsed_feed(

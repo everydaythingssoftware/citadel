@@ -37,7 +37,7 @@ pub use schema_versions::{
     backups as upgrade_backups, peek_schema_version, SchemaUpgrade, MINIMUM_SCHEMA_VERSION,
     SCHEMA_VERSION,
 };
-pub use search::{SearchError, SearchHint, SearchKind, SearchOperator, Spanned};
+pub use search::{SearchError, SearchHint, SearchKind, SearchOperator, SearchScope, Spanned};
 pub use stats::{library_stats, LibraryStats};
 pub use types::{AuthorId, BookId};
 pub use util::is_library;

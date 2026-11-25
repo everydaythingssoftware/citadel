@@ -14,6 +14,7 @@ use crate::{
     persistence::{establish_connection, establish_read_only_connection},
     queries::{authors as author_queries, book_files, books as book_queries},
     schema_versions::{self, SchemaUpgrade},
+    search::{self, SearchHint, SearchScope, Spanned},
     sorting,
     types::{AuthorId, BookId},
     util::ValidDbPath,
@@ -275,12 +276,17 @@ pub enum BookSortOrder {
 /// A paged, sorted, filtered book query. All filters compose (AND).
 #[derive(Clone, Debug, Default)]
 pub struct BookQuery {
-    /// Case-insensitive substring match across the book title, linked author
-    /// names, and linked series names, with LIKE wildcards escaped — the
-    /// same semantics as [`Library::search_books`], EXCEPT that `None` or
-    /// empty/whitespace text matches ALL books (where `search_books` returns
-    /// no books).
+    /// Case-insensitive search in a subset of the Calibre search language,
+    /// which the README of this crate describes. A bare word matches across
+    /// the fields of [`BookQuery::search_scope`], with LIKE wildcards
+    /// escaped — the same language as [`Library::search_books`], EXCEPT that
+    /// `None` or empty/whitespace text matches ALL books (where
+    /// `search_books` returns no books). Text that does not parse or is not
+    /// supported gives [`CalibreError::InvalidSearch`].
     pub text: Option<String>,
+    /// The fields that a bare word searches. A field prefix works the same in
+    /// each scope.
+    pub search_scope: SearchScope,
     /// Only books linked to this author.
     pub author_id: Option<AuthorId>,
     /// Only books linked to this series.
@@ -312,6 +318,19 @@ pub struct BookPage {
     /// Total number of books matching the query's filters, ignoring
     /// limit/offset.
     pub total: u64,
+    /// Notes about the search text, for example an unknown field prefix. A
+    /// hint does not stop the query. The span of a hint is the byte range of
+    /// its text in [`BookQuery::text`].
+    pub hints: Vec<Spanned<SearchHint>>,
+}
+
+/// The filters of a page query, with the hints about its search text.
+struct PageFilters {
+    /// The filters. A missing custom column gives a filter that matches no
+    /// book.
+    filters: book_queries::BookPageFilters,
+    /// The notes about the search text.
+    hints: Vec<Spanned<SearchHint>>,
 }
 
 /// One series in the library, with its linked-book count. Returned by
@@ -1183,13 +1202,7 @@ impl Library {
     /// Run a paged, sorted, filtered book query. Returns one page of
     /// hydrated books plus the total match count (ignoring limit/offset).
     pub fn query_books(&mut self, query: BookQuery) -> Result<BookPage, CalibreError> {
-        let Some(filters) = self.page_filters(&query)? else {
-            return Ok(BookPage {
-                items: Vec::new(),
-                total: 0,
-            });
-        };
-
+        let PageFilters { filters, hints } = self.page_filters(&query)?;
         let total = book_queries::query_count(&mut self.conn, &filters)?;
         let book_ids = book_queries::query_page(
             &mut self.conn,
@@ -1200,7 +1213,11 @@ impl Library {
         )?;
         let items = self.get_books_with_read_states(book_ids)?;
 
-        Ok(BookPage { items, total })
+        Ok(BookPage {
+            items,
+            total,
+            hints,
+        })
     }
 
     /// Query books that have at least one safely resolvable acquisition file.
@@ -1226,12 +1243,7 @@ impl Library {
         &mut self,
         query: BookQuery,
     ) -> Result<BookPage, CalibreError> {
-        let Some(filters) = self.page_filters(&query)? else {
-            return Ok(BookPage {
-                items: Vec::new(),
-                total: 0,
-            });
-        };
+        let PageFilters { filters, hints } = self.page_filters(&query)?;
         let mut resolvable_ids = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for candidate in book_queries::acquisition_candidates(&mut self.conn, &filters, query.sort)?
@@ -1277,7 +1289,11 @@ impl Library {
                     &book.book_dir_path,
                 );
         }
-        Ok(BookPage { items, total })
+        Ok(BookPage {
+            items,
+            total,
+            hints,
+        })
     }
 
     /// List every series in the library with its linked-book count, sorted
@@ -1337,12 +1353,18 @@ impl Library {
         Ok(Some(column))
     }
 
-    /// `None` when the query can match no books (its custom column is
-    /// missing).
-    fn page_filters<'q>(
-        &mut self,
-        query: &'q BookQuery,
-    ) -> Result<Option<book_queries::BookPageFilters<'q>>, CalibreError> {
+    /// The filters of the page query for `query`, with the hints about its
+    /// search text.
+    fn page_filters(&mut self, query: &BookQuery) -> Result<PageFilters, CalibreError> {
+        let (search, hints) = match search::compile(
+            query.text.as_deref().unwrap_or_default(),
+            query.search_scope,
+        )
+        .map_err(CalibreError::InvalidSearch)?
+        {
+            Some(compiled) => (Some(compiled.fragment), compiled.hints),
+            None => (None, Vec::new()),
+        };
         // Without a read column, no book has been marked read, so there is
         // nothing to hide.
         let hide_read_column = if query.hide_read {
@@ -1351,33 +1373,39 @@ impl Library {
             None
         };
         let custom_value = match &query.custom_value {
-            Some(filter) => match self.value_column(&filter.column_label)? {
-                Some(column) => Some((column.id, filter.value_id)),
-                None => return Ok(None),
-            },
+            Some(filter) => Some(match self.value_column(&filter.column_label)? {
+                Some(column) => book_queries::ResolvedCustomValue::Value {
+                    column_id: column.id,
+                    value_id: filter.value_id,
+                },
+                None => book_queries::ResolvedCustomValue::MissingColumn,
+            }),
             None => None,
         };
-        Ok(Some(book_queries::BookPageFilters {
-            text: query
-                .text
-                .as_deref()
-                .map(str::trim)
-                .filter(|text| !text.is_empty()),
-            author_id: query.author_id,
-            series_id: query.series_id,
-            tag_id: query.tag_id,
-            publisher_id: query.publisher_id,
-            custom_value,
-            hide_read_column,
-        }))
+        Ok(PageFilters {
+            filters: book_queries::BookPageFilters {
+                search,
+                author_id: query.author_id,
+                series_id: query.series_id,
+                tag_id: query.tag_id,
+                publisher_id: query.publisher_id,
+                custom_value,
+                hide_read_column,
+            },
+            hints,
+        })
     }
 
-    /// Every book whose title, author names or series name contains `query`
-    /// (trimmed), case-insensitively, sorted by title. An empty or blank
-    /// query returns no books; see [`BookQuery::text`].
+    /// Every book that matches the search text `query`,
+    /// case-insensitively, sorted by title. A bare word matches the title,
+    /// author names and series name. The README of this crate describes the
+    /// search language. An empty or blank query returns no books; see
+    /// [`BookQuery::text`]. Text that does not parse or is not supported gives
+    /// [`CalibreError::InvalidSearch`], with a range that counts from the start
+    /// of `query`. This method drops the hints about the search text.
+    /// [`Library::query_books`] returns them.
     pub fn search_books(&mut self, query: &str) -> Result<Vec<Book>, CalibreError> {
-        let query = query.trim();
-        if query.is_empty() {
+        if query.trim().is_empty() {
             return Ok(vec![]);
         }
 
@@ -1522,7 +1550,7 @@ impl Library {
         };
         let rows: Vec<Link> = sql_query(format!("SELECT f.id AS id, f.{name} AS name, l.book AS book FROM {table} f JOIN {links} l ON l.{value} = f.id ORDER BY f.{name} COLLATE NOCASE, f.{name}, f.id")).load(&mut self.conn)?;
         let filters = book_queries::BookPageFilters {
-            text: None,
+            search: None,
             author_id: None,
             series_id: None,
             tag_id: None,
