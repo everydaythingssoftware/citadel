@@ -16,6 +16,9 @@ pub(crate) fn write_feed(feed: &Feed) -> Result<Vec<u8>, quick_xml::Error> {
     writer.write_event(Event::Start(element))?;
     text_element(&mut writer, "id", &feed.id)?;
     text_element(&mut writer, "title", &feed.title)?;
+    if let Some(subtitle) = &feed.subtitle {
+        text_element(&mut writer, "subtitle", subtitle)?;
+    }
     text_element(&mut writer, "updated", &feed.updated)?;
     writer.write_event(Event::Start(BytesStart::new("author")))?;
     text_element(&mut writer, "name", "Citadel")?;
@@ -124,6 +127,7 @@ mod tests {
         Feed {
             id: "urn:test:feed".to_string(),
             title: title.to_string(),
+            subtitle: None,
             updated: "2024-01-01T00:00:00Z".to_string(),
             links: Vec::new(),
             entries: vec![FeedEntry {

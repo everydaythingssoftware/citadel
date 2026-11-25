@@ -143,7 +143,7 @@ async clbCmdImportLegacyLibraries(entries: LibraryEntry[]) : Promise<Result<Lega
     else return { status: "error", error: e  as any };
 }
 },
-async clbQuerySearchBooks(query: string) : Promise<Result<LibraryBook[], string>> {
+async clbQuerySearchBooks(query: string) : Promise<Result<LibraryBook[], LibraryError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_search_books", { query }) };
 } catch (e) {
@@ -822,13 +822,24 @@ export type LibraryBookPage = { items: LibraryBook[];
 /**
  * Total number of books matching the filters, ignoring limit/offset.
  */
-total: number }
+total: number; 
+/**
+ * Notes about the search text, for example an unknown field name.
+ */
+search_hints: LibrarySearchHint[] }
 export type LibraryBookQuery = { 
 /**
- * Substring match across title, author names, and series names.
- * `None` or empty text matches all books.
+ * Search text in a subset of the Calibre search language, for example
+ * `tags:fantasy`, `and`, `or`, `not` and quoted phrases. `search_scope`
+ * selects the fields of a bare word. `None` or empty text matches all
+ * books.
  */
-text: string | null; author_id: string | null; series_id: number | null; tag_id: number | null; publisher_id: number | null; hide_read: boolean; sort: BookSortOrder; 
+text: string | null; 
+/**
+ * The fields that a bare word searches. The default is
+ * `titlesAuthorsSeries`.
+ */
+search_scope?: SearchScope; author_id: string | null; series_id: number | null; tag_id: number | null; publisher_id: number | null; hide_read: boolean; sort: BookSortOrder; 
 /**
  * Page size. `None` returns all matches.
  */
@@ -851,7 +862,12 @@ export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited
 /**
  * The server has no room to store more.
  */
-"storageFull" | "internal"
+"storageFull" | 
+/**
+ * The search text does not parse, is over a limit, or uses a search
+ * feature that is not supported. The message says what is wrong.
+ */
+"invalidSearch" | "internal"
 /**
  * What a folder picked for "Add Library…" holds, so the app can offer the
  * right next step instead of refusing the folder.
@@ -875,6 +891,22 @@ export type LibraryFolderContents =
 { kind: "otherFiles"; suggested_name: string }
 export type LibraryIdChange = { previousId: string; id: string }
 export type LibraryPublisher = { id: number; name: string; book_count: number }
+/**
+ * A note about the search text. A hint does not stop the query. The field
+ * `kind` on the wire selects the variant, and each variant has only its own
+ * fields.
+ */
+export type LibrarySearchHint = 
+/**
+ * A word has a prefix that is not a field name. The search treats the
+ * word as text.
+ */
+{ kind: "unknownField"; name: string; message: string } | 
+/**
+ * A hint that this contract does not name yet. A client shows only its
+ * message.
+ */
+{ kind: "other"; message: string }
 export type LibrarySeries = { id: number; name: string; book_count: number }
 /**
  * Headline counts for the post-open reveal. i64 mirrors SQLite's COUNT;
@@ -963,6 +995,20 @@ export type RecoveryStep =
  */
 "update" | "restoreBackup" | "startFresh" | "tryAgain" | "quit"
 export type RemoteFile = { url: string }
+/**
+ * The fields that a bare word of the search text searches. A field prefix
+ * works the same in each scope.
+ */
+export type SearchScope = 
+/**
+ * The title, the author names and the series name.
+ */
+"titlesAuthorsSeries" | 
+/**
+ * The title, the author names, the series name, the tags, the publisher
+ * and the identifier values.
+ */
+"allFields"
 /**
  * Asks an open Settings window to show General → Software Update.
  */

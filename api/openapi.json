@@ -4939,7 +4939,8 @@
         "type": "object",
         "required": [
           "items",
-          "total"
+          "total",
+          "search_hints"
         ],
         "properties": {
           "items": {
@@ -4947,6 +4948,13 @@
             "items": {
               "$ref": "#/components/schemas/LibraryBook"
             }
+          },
+          "search_hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibrarySearchHint"
+            },
+            "description": "Notes about the search text, for example an unknown field name."
           },
           "total": {
             "type": "integer",
@@ -4994,6 +5002,11 @@
             ],
             "format": "int32"
           },
+          "search_scope": {
+            "$ref": "#/components/schemas/SearchScope",
+            "description": "The fields that a bare word searches. The default is\n`titlesAuthorsSeries`.",
+            "default": "titlesAuthorsSeries"
+          },
           "series_id": {
             "type": [
               "integer",
@@ -5016,7 +5029,7 @@
               "string",
               "null"
             ],
-            "description": "Substring match across title, author names, and series names.\n`None` or empty text matches all books."
+            "description": "Search text in a subset of the Calibre search language, for example\n`tags:fantasy`, `and`, `or`, `not` and quoted phrases. `search_scope`\nselects the fields of a bare word. `None` or empty text matches all\nbooks."
           }
         }
       },
@@ -5072,6 +5085,7 @@
           "tooLarge",
           "conflict",
           "storageFull",
+          "invalidSearch",
           "internal"
         ]
       },
@@ -5096,6 +5110,56 @@
             "type": "string"
           }
         }
+      },
+      "LibrarySearchHint": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A word has a prefix that is not a field name. The search treats the\nword as text.",
+            "required": [
+              "name",
+              "message",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unknownField"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "description": "The text of the hint for the user."
+              },
+              "name": {
+                "type": "string",
+                "description": "The prefix that the hint is about, as the user typed it."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A hint that this contract does not name yet. A client shows only its\nmessage.",
+            "required": [
+              "message",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "other"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "description": "The text of the hint for the user."
+              }
+            }
+          }
+        ],
+        "description": "A note about the search text. A hint does not stop the query. The field\n`kind` on the wire selects the variant, and each variant has only its own\nfields."
       },
       "LibrarySeries": {
         "type": "object",
@@ -5435,6 +5499,14 @@
             "format": "int32"
           }
         }
+      },
+      "SearchScope": {
+        "type": "string",
+        "description": "The fields that a bare word of the search text searches. A field prefix\nworks the same in each scope.",
+        "enum": [
+          "titlesAuthorsSeries",
+          "allFields"
+        ]
       },
       "ServedLibraryInfo": {
         "type": "object",

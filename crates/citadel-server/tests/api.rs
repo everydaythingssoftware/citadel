@@ -238,7 +238,7 @@ async fn request(
 }
 
 fn query(limit: Value) -> Value {
-    json!({"text":null,"author_id":null,"series_id":null,"tag_id":null,"publisher_id":null,"hide_read":false,"sort":"TitleAsc","limit":limit,"offset":0})
+    json!({"text":null,"author_id":null,"series_id":null,"tag_id":null,"publisher_id":null,"hide_read":false,"search_scope":"titlesAuthorsSeries","sort":"TitleAsc","limit":limit,"offset":0})
 }
 
 #[tokio::test]
@@ -284,6 +284,77 @@ async fn http_reads_match_shared_operations_without_changing_database() {
 }
 
 #[tokio::test]
+async fn a_search_error_and_a_hint_keep_their_messages_on_the_wire() {
+    let (_directory, service, router, _, cookie) = fixture().await;
+    let mut bad = query(json!(50));
+    bad["text"] = json!("tags:\"x");
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        "/api/books/query",
+        bad.to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+    assert_eq!(error["code"], "invalidSearch");
+    assert_eq!(error["message"], "Missing closing quote.");
+
+    let mut hinted = query(json!(50));
+    hinted["text"] = json!("titel:x");
+    let (status, _, page) = request(
+        &router,
+        "POST",
+        "/api/books/query",
+        hinted.to_string(),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(
+        page["search_hints"],
+        json!([{
+            "kind": "unknownField",
+            "name": "titel",
+            "message": "No field named \"titel\". Searched as text.",
+        }])
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_query_body_without_search_scope_uses_the_default_scope() {
+    let (_directory, service, router, _, cookie) = fixture().await;
+    let total = |scope: Option<&str>| {
+        let mut input = query(json!(50));
+        let body = input.as_object_mut().unwrap();
+        body.insert("text".into(), json!("reference"));
+        match scope {
+            Some(scope) => body.insert("search_scope".into(), json!(scope)),
+            None => body.remove("search_scope"),
+        };
+        let router = router.clone();
+        let cookie = cookie.clone();
+        async move {
+            let (status, _, actual) = request(
+                &router,
+                "POST",
+                "/api/books/query",
+                input.to_string(),
+                Some(&cookie),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{actual}");
+            actual["total"].as_u64().unwrap()
+        }
+    };
+    assert_eq!(total(None).await, 0, "the tag is not a default field");
+    assert_eq!(total(Some("titlesAuthorsSeries")).await, 0);
+    assert_eq!(total(Some("allFields")).await, 1);
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn api_auth_errors_bounds_and_schema_are_consistent() {
     let (_directory, service, router, _, cookie) = fixture().await;
     let (status, headers, error) =
@@ -321,7 +392,16 @@ async fn api_auth_errors_bounds_and_schema_are_consistent() {
         schema["components"]["securitySchemes"]["session"],
         json!({"type": "apiKey", "in": "cookie", "name": "citadel_session"})
     );
+    let mut bad_search = query(json!(50));
+    bad_search["text"] = json!("tags:\"x");
     for (method, path, body, expected, code) in [
+        (
+            "POST",
+            "/api/books/query",
+            bad_search.to_string(),
+            400,
+            "invalidSearch",
+        ),
         (
             "GET",
             "/api/books/bad",

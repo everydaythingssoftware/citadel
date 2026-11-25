@@ -37,17 +37,27 @@ describe("generated HTTP client", () => {
 					limit: 50,
 					offset: 0,
 					hide_read: false,
+					search_scope: "titlesAuthorsSeries",
 					sort: "TitleAsc",
 				});
-				return new Response(JSON.stringify({ items: [], total: 0 }), {
-					headers: { "content-type": "application/json" },
-				});
+				return new Response(
+					JSON.stringify({ items: [], total: 0, search_hints: [] }),
+					{
+						headers: { "content-type": "application/json" },
+					},
+				);
 			},
 		});
 		const result = await client.POST("/api/books/query", {
-			body: { limit: 50, offset: 0, hide_read: false, sort: "TitleAsc" },
+			body: {
+				limit: 50,
+				offset: 0,
+				hide_read: false,
+				search_scope: "titlesAuthorsSeries",
+				sort: "TitleAsc",
+			},
 		});
-		expect(result.data).toEqual({ items: [], total: 0 });
+		expect(result.data).toEqual({ items: [], total: 0, search_hints: [] });
 	});
 	it("returns structured application errors", async () => {
 		const client = createCitadelHttpClient({

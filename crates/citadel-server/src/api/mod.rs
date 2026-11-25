@@ -157,7 +157,9 @@ impl From<LibraryError> for ApiFailure {
 impl IntoResponse for ApiFailure {
     fn into_response(mut self) -> Response {
         let status = match self.0.code {
-            LibraryErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
+            LibraryErrorCode::InvalidArgument | LibraryErrorCode::InvalidSearch => {
+                StatusCode::BAD_REQUEST
+            }
             LibraryErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
             LibraryErrorCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             LibraryErrorCode::NotFound => StatusCode::NOT_FOUND,

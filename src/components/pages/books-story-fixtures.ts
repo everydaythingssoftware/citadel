@@ -154,7 +154,7 @@ export const fakeStoryLibrary = (
 					? matching.slice(offset)
 					: matching.slice(offset, offset + query.limit);
 			await new Promise((resolve) => setTimeout(resolve, 30));
-			return { items, total: matching.length };
+			return { items, total: matching.length, search_hints: [] };
 		},
 		ensureCoverThumbnails: async () => [],
 		listCoverThumbnails: async () => [],

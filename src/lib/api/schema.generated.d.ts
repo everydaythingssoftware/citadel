@@ -1082,6 +1082,8 @@ export interface components {
         };
         LibraryBookPage: {
             items: components["schemas"]["LibraryBook"][];
+            /** @description Notes about the search text, for example an unknown field name. */
+            search_hints: components["schemas"]["LibrarySearchHint"][];
             /**
              * Format: int32
              * @description Total number of books matching the filters, ignoring limit/offset.
@@ -1100,14 +1102,22 @@ export interface components {
             offset: number;
             /** Format: int32 */
             publisher_id?: number | null;
+            /**
+             * @description The fields that a bare word searches. The default is
+             *     `titlesAuthorsSeries`.
+             * @default titlesAuthorsSeries
+             */
+            search_scope?: components["schemas"]["SearchScope"];
             /** Format: int32 */
             series_id?: number | null;
             sort: components["schemas"]["BookSortOrder"];
             /** Format: int32 */
             tag_id?: number | null;
             /**
-             * @description Substring match across title, author names, and series names.
-             *     `None` or empty text matches all books.
+             * @description Search text in a subset of the Calibre search language, for example
+             *     `tags:fantasy`, `and`, `or`, `not` and quoted phrases. `search_scope`
+             *     selects the fields of a bare word. `None` or empty text matches all
+             *     books.
              */
             text?: string | null;
         };
@@ -1127,13 +1137,31 @@ export interface components {
             message: string;
         };
         /** @enum {string} */
-        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "readOnly" | "unavailable" | "tooLarge" | "conflict" | "storageFull" | "internal";
+        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "readOnly" | "unavailable" | "tooLarge" | "conflict" | "storageFull" | "invalidSearch" | "internal";
         LibraryPublisher: {
             /** Format: int32 */
             book_count: number;
             /** Format: int32 */
             id: number;
             name: string;
+        };
+        /**
+         * @description A note about the search text. A hint does not stop the query. The field
+         *     `kind` on the wire selects the variant, and each variant has only its own
+         *     fields.
+         */
+        LibrarySearchHint: {
+            /** @enum {string} */
+            kind: "unknownField";
+            /** @description The text of the hint for the user. */
+            message: string;
+            /** @description The prefix that the hint is about, as the user typed it. */
+            name: string;
+        } | {
+            /** @enum {string} */
+            kind: "other";
+            /** @description The text of the hint for the user. */
+            message: string;
         };
         LibrarySeries: {
             /** Format: int32 */
@@ -1255,6 +1283,12 @@ export interface components {
             /** Format: int32 */
             to: number;
         };
+        /**
+         * @description The fields that a bare word of the search text searches. A field prefix
+         *     works the same in each scope.
+         * @enum {string}
+         */
+        SearchScope: "titlesAuthorsSeries" | "allFields";
         /** @description What the administrator sees about the served library. */
         ServedLibraryInfo: {
             /** @description False when the registered folder can't be opened right now; see `problem`. */

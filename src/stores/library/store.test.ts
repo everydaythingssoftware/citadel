@@ -33,6 +33,19 @@ const openedPaths = () =>
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+type QueryPage = Awaited<ReturnType<Library["queryBooks"]>>;
+
+/** An empty result page that carries hints with the given messages. */
+const pageWith = (messages: string[], total = 0): QueryPage => ({
+	items: [],
+	total,
+	search_hints: messages.map((message) => ({
+		kind: "unknownField",
+		name: "x",
+		message,
+	})),
+});
+
 const fakeLibrary = () => {
 	const fake = {
 		listCustomColumns: vi.fn(async () => []),
@@ -45,7 +58,7 @@ const fakeLibrary = () => {
 			async (_id: string, _coverId: string) => undefined,
 		),
 		setBookCoverFromFile: vi.fn(async (_id: string, _image: Blob) => undefined),
-		queryBooks: vi.fn(async () => ({ items: [], total: 250 })),
+		queryBooks: vi.fn(async (): Promise<QueryPage> => pageWith([], 250)),
 		listAuthors: vi.fn(async () => []),
 		listSeries: vi.fn(async () => []),
 		listCoverThumbnails: vi.fn(async () => []),
@@ -329,6 +342,7 @@ describe("initial browser thumbnails", () => {
 		remote.fake.queryBooks.mockResolvedValue({
 			items: [book] as never[],
 			total: 1,
+			search_hints: [],
 		});
 		initClient.mockResolvedValueOnce(remote.library);
 		await useLibraryStore.getState().actions.initialize({

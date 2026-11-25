@@ -12,6 +12,7 @@ use bytes::Bytes;
 use chrono::{NaiveDateTime, SecondsFormat};
 use libcalibre::{
     AuthorId, BookId, BookPage, BookQuery, BookSortOrder, CalibreError, ResolvedBookAsset,
+    SearchScope,
 };
 use serde::Deserialize;
 
@@ -81,7 +82,10 @@ impl CatalogBookQuery {
             CatalogFilter::Series(id) => query.series_id = Some(id),
             CatalogFilter::Tag(id) => query.tag_id = Some(id),
             CatalogFilter::Genre(id) => query.custom_value = Some(citadel_core::genres::filter(id)),
-            CatalogFilter::Search(text) => query.text = Some(text),
+            CatalogFilter::Search(text) => {
+                query.text = Some(text);
+                query.search_scope = SearchScope::AllFields;
+            }
         }
         query
     }
@@ -131,6 +135,8 @@ struct PageQuery {
 pub(crate) struct Feed {
     pub(crate) id: String,
     pub(crate) title: String,
+    /// The Atom `subtitle` of the feed, or `None` when the feed has none.
+    pub(crate) subtitle: Option<String>,
     pub(crate) updated: String,
     pub(crate) links: Vec<FeedLink>,
     pub(crate) entries: Vec<FeedEntry>,
@@ -384,16 +390,36 @@ async fn acquisition_handler(
 
     let source = state.source.clone();
     let result = run_work(&state.limits, move || {
-        source.book_page(CatalogBookQuery {
+        let query = CatalogBookQuery {
             filter,
             sort,
             limit: PAGE_SIZE as i64,
             offset,
-        })
+        };
+        match source.book_page(query) {
+            Ok((library_uuid, updated_at, page)) => Ok(Acquisition::Page {
+                library_uuid,
+                updated_at,
+                page,
+            }),
+            Err(CalibreError::InvalidSearch(error)) => Ok(Acquisition::SearchError {
+                library_uuid: source.active_library_id()?,
+                message: error.to_string(),
+            }),
+            Err(error) => Err(error),
+        }
     })
     .await;
     let (library_uuid, updated_at, page) = match result {
-        Ok(Ok(page)) => page,
+        Ok(Ok(Acquisition::Page {
+            library_uuid,
+            updated_at,
+            page,
+        })) => (library_uuid, updated_at, page),
+        Ok(Ok(Acquisition::SearchError {
+            library_uuid,
+            message,
+        })) => return search_error_feed(&library_uuid, route, &message),
         Ok(Err(error)) => return calibre_error(error),
         Err(response) => return response.into_response(),
     };
@@ -403,7 +429,7 @@ async fn acquisition_handler(
         return public_error(StatusCode::NOT_FOUND, "Page not found");
     }
 
-    match acquisition_feed(
+    atom_response(acquisition_feed(
         &library_uuid,
         updated_at,
         &page,
@@ -411,7 +437,52 @@ async fn acquisition_handler(
         last_page,
         route,
         title,
-    ) {
+    ))
+}
+
+/// The result of the work of an acquisition feed.
+enum Acquisition {
+    /// A page of books.
+    Page {
+        /// The id of the library.
+        library_uuid: String,
+        /// The time of the last change.
+        updated_at: Option<NaiveDateTime>,
+        /// The page.
+        page: BookPage,
+    },
+    /// A search text that does not run. The same work reads the library id,
+    /// so that the feed needs no second work permit.
+    SearchError {
+        /// The id of the library.
+        library_uuid: String,
+        /// The message of the search error.
+        message: String,
+    },
+}
+
+/// A feed with no entries for a search text that does not run. An e-reader
+/// shows the title of a feed, so the title gives the reason.
+fn search_error_feed(library_uuid: &str, route: &str, message: &str) -> Response {
+    let page = BookPage {
+        items: Vec::new(),
+        total: 0,
+        hints: Vec::new(),
+    };
+    atom_response(acquisition_feed(
+        library_uuid,
+        None,
+        &page,
+        1,
+        1,
+        route,
+        message,
+    ))
+}
+
+/// The response for a written acquisition feed.
+fn atom_response(xml: Result<Vec<u8>, quick_xml::Error>) -> Response {
+    match xml {
         Ok(xml) => (
             [(
                 header::CONTENT_TYPE,
@@ -784,9 +855,12 @@ fn acquisition_feed(
         })
         .collect();
 
+    // The subtitle of a search feed gives the hints about its search text.
+    let hints: Vec<String> = page.hints.iter().map(ToString::to_string).collect();
     let feed = Feed {
         id: navigation_identity(library_uuid, route),
         title: format!("Citadel — {title}"),
+        subtitle: (!hints.is_empty()).then(|| hints.join(" ")),
         updated: feed_updated(updated_at),
         links,
         entries,
@@ -807,6 +881,7 @@ fn root_navigation_feed(library_uuid: &str) -> Result<Vec<u8>, quick_xml::Error>
     let feed = Feed {
         id: navigation_identity(library_uuid, "/opds"),
         title: "Citadel — Citadel".to_string(),
+        subtitle: None,
         updated: feed_updated(None),
         links: vec![
             FeedLink {
@@ -876,6 +951,7 @@ fn facet_navigation_feed(
     let feed = Feed {
         id: navigation_identity(library_uuid, &page_href(kind.route(), page_number)),
         title: format!("Citadel — {}", kind.title()),
+        subtitle: None,
         updated: feed_updated(None),
         links,
         entries: facets
@@ -1004,7 +1080,7 @@ mod tests {
         Author as LibraryAuthor, Book, BookAdd, BookFileInfo, BookIdentifier, BookUpdate, Library,
     };
     use quick_xml::{events::Event, name::ResolveResult, NsReader};
-    use std::{collections::HashMap, path::PathBuf, sync::Mutex};
+    use std::{collections::HashMap, sync::Mutex};
     use tempfile::TempDir;
 
     fn book(title: &str, uuid: &str, id: i32) -> Book {
@@ -1320,6 +1396,7 @@ mod tests {
     struct ParsedFeed {
         feed_id: Option<String>,
         feed_title: Option<String>,
+        feed_subtitle: Option<String>,
         feed_updated: Option<String>,
         ids: Vec<String>,
         titles: Vec<String>,
@@ -1349,7 +1426,8 @@ mod tests {
                         in_entry = true;
                     } else if in_entry && matches!(name.as_slice(), b"id" | b"title" | b"content") {
                         current = Some((name, String::new()));
-                    } else if !in_entry && matches!(name.as_slice(), b"id" | b"title" | b"updated")
+                    } else if !in_entry
+                        && matches!(name.as_slice(), b"id" | b"title" | b"subtitle" | b"updated")
                     {
                         current = Some((name, String::new()));
                     }
@@ -1440,6 +1518,7 @@ mod tests {
                                     }
                                 }
                                 b"content" => parsed.content.push(value),
+                                b"subtitle" => parsed.feed_subtitle = Some(value),
                                 b"updated" => parsed.feed_updated = Some(value),
                                 _ => {}
                             }
@@ -2000,6 +2079,123 @@ mod tests {
         ids.sort();
         ids.dedup();
         assert_eq!(ids.len(), 51);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn real_library_search_finds_a_book_by_its_only_tag() {
+        let (directory, mut library) = test_library();
+        let source_path = directory.path().join("shared.epub");
+        std::fs::write(&source_path, b"book").unwrap();
+        for (title, tag) in [("Tagged Book", "Zanzibar"), ("Plain Book", "Other")] {
+            library
+                .add_book(BookAdd {
+                    title: title.to_string(),
+                    author_names: vec!["Author".to_string()],
+                    tags: Some(vec![tag.to_string()]),
+                    series: None,
+                    series_index: None,
+                    publisher: None,
+                    publication_date: None,
+                    rating: None,
+                    description: None,
+                    identifiers: HashMap::new(),
+                    language: None,
+                    file_paths: vec![source_path.clone()],
+                })
+                .unwrap();
+        }
+
+        let (base, server) = loopback(Arc::new(LibrarySource {
+            library: Mutex::new(library),
+        }))
+        .await;
+        let response = reqwest::get(format!("{base}/opds/search?q=zanzibar"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let feed = parsed_feed(&response.bytes().await.unwrap());
+        assert_eq!(feed.titles, ["Tagged Book"]);
+        assert_eq!(feed.feed_subtitle, None);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_search_error_and_a_hint_reach_the_reader_in_a_feed() {
+        let (directory, mut library) = test_library();
+        let source_path = directory.path().join("shared.epub");
+        std::fs::write(&source_path, b"book").unwrap();
+        library
+            .add_book(BookAdd {
+                title: "Dune".to_string(),
+                author_names: vec!["Frank Herbert".to_string()],
+                tags: None,
+                series: None,
+                series_index: None,
+                publisher: None,
+                publication_date: None,
+                rating: None,
+                description: None,
+                identifiers: HashMap::new(),
+                language: None,
+                file_paths: vec![source_path],
+            })
+            .unwrap();
+        let rezero_path = directory.path().join("rezero.epub");
+        std::fs::write(&rezero_path, b"book").unwrap();
+        library
+            .add_book(BookAdd {
+                title: "Re:Zero".to_string(),
+                author_names: vec!["Tappei Nagatsuki".to_string()],
+                tags: None,
+                series: None,
+                series_index: None,
+                publisher: None,
+                publication_date: None,
+                rating: None,
+                description: None,
+                identifiers: HashMap::new(),
+                language: None,
+                file_paths: vec![rezero_path],
+            })
+            .unwrap();
+        let (base, server) = loopback(Arc::new(LibrarySource {
+            library: Mutex::new(library),
+        }))
+        .await;
+
+        let response = reqwest::get(format!("{base}/opds/search?q=%22dune"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let feed = parsed_feed(&response.bytes().await.unwrap());
+        assert_eq!(
+            feed.feed_title.as_deref(),
+            Some("Citadel — Missing closing quote.")
+        );
+        assert!(feed.titles.is_empty());
+
+        let response = reqwest::get(format!("{base}/opds/search?q=titel:dune"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let feed = parsed_feed(&response.bytes().await.unwrap());
+        assert!(feed.titles.is_empty());
+        assert_eq!(
+            feed.feed_subtitle.as_deref(),
+            Some(r#"No field named "titel". Searched as text."#)
+        );
+
+        let response = reqwest::get(format!("{base}/opds/search?q=re%3Azero"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let feed = parsed_feed(&response.bytes().await.unwrap());
+        assert_eq!(feed.titles, ["Re:Zero"], "a hint does not stop the query");
+        assert_eq!(
+            feed.feed_subtitle.as_deref(),
+            Some(r#"No field named "re". Searched as text."#)
+        );
         server.abort();
     }
 

@@ -10,6 +10,7 @@ const query: LibraryBookQuery = {
 	tag_id: 2,
 	publisher_id: null,
 	hide_read: false,
+	search_scope: "titlesAuthorsSeries",
 	sort: "AuthorAsc",
 	limit: 100,
 	offset: 200,

@@ -1,5 +1,9 @@
 import type { ClientOptions } from "openapi-fetch";
-import type { CoverThumbnail, LibraryBook } from "@/bindings";
+import type {
+	CoverThumbnail,
+	LibraryBook,
+	LibrarySearchHint,
+} from "@/bindings";
 import { createCitadelHttpClient } from "@/lib/api/client";
 import { BookDeletion, CoverExpiredError, type Library } from "./types";
 import { createHttpUploads } from "./uploads-http";
@@ -76,6 +80,7 @@ export const createHttpLibrary = (
 			const offset = query.offset ?? 0;
 			const requestedLimit = query.limit ?? Number.POSITIVE_INFINITY;
 			let total = 0;
+			let searchHints: LibrarySearchHint[] = [];
 			while (items.length < requestedLimit) {
 				const page = await unwrap(
 					client.POST("/api/books/query", {
@@ -87,10 +92,11 @@ export const createHttpLibrary = (
 					}),
 				);
 				total = page.total;
+				searchHints = page.search_hints;
 				items.push(...page.items.map(rememberBook));
 				if (page.items.length === 0 || offset + items.length >= total) break;
 			}
-			return { items, total };
+			return { items, total, search_hints: searchHints };
 		},
 		getBook: async (bookId) =>
 			rememberBook(
