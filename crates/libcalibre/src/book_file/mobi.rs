@@ -6,7 +6,7 @@ use mobi::{
     Mobi,
 };
 
-use super::{non_empty, BookFileMetadata, MAX_COVER_BYTES};
+use super::{guarded, non_empty, BookFileMetadata, MAX_COVER_BYTES};
 use crate::mime_type::MimeType;
 
 fn language_to_string(lang: &Language) -> String {
@@ -98,12 +98,6 @@ fn language_to_string(lang: &Language) -> String {
 fn with_mobi<T>(path: &Path, read: impl FnOnce(&Mobi) -> Option<T>) -> Option<T> {
     let mobi = Mobi::from_path(path).ok()?;
     guarded(|| read(&mobi))
-}
-
-fn guarded<T>(read: impl FnOnce() -> Option<T>) -> Option<T> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(read))
-        .ok()
-        .flatten()
 }
 
 /// The cover named by the EXTH cover offset (or, failing that, the thumbnail
