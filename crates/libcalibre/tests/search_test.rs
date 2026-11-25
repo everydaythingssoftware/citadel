@@ -855,3 +855,51 @@ fn hints_and_errors_have_the_byte_range_of_their_text() {
         other => panic!("expected InvalidSearch, got {other:?}"),
     }
 }
+
+#[derive(diesel::QueryableByName)]
+struct PlanRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    detail: String,
+}
+
+/// The details of the plan of the page query that `text` runs in `scope`.
+fn page_plan(lib: &mut Library, text: &str, scope: SearchScope) -> Vec<String> {
+    let (sql, binds) = lib
+        .page_sql(&BookQuery {
+            search_scope: scope,
+            limit: Some(100),
+            ..text_query(text)
+        })
+        .unwrap();
+    let mut conn = libcalibre::__internals::establish_connection(lib.database_path()).unwrap();
+    let mut statement =
+        sql_query(format!("EXPLAIN QUERY PLAN {sql}")).into_boxed::<diesel::sqlite::Sqlite>();
+    for value in binds {
+        statement = statement.bind::<diesel::sql_types::Text, _>(value);
+    }
+    statement
+        .load::<PlanRow>(&mut conn)
+        .unwrap()
+        .into_iter()
+        .map(|row| row.detail)
+        .collect()
+}
+
+/// ADR 0016 selects a correlated subquery for each linked field, because the
+/// page query can then stop after 100 rows. A list subquery finds the same
+/// books, but it reads the full link table first.
+#[test]
+fn linked_fields_compile_to_correlated_subqueries() {
+    let (_temp, mut lib) = fixture();
+    for (text, scope) in [("tags:x", DEFAULT), ("dune", DEFAULT), ("dune", ALL)] {
+        let plan = page_plan(&mut lib, text, scope);
+        assert!(
+            plan.iter().any(|detail| detail.contains("CORRELATED")),
+            "{text} in {scope:?}: {plan:?}"
+        );
+        assert!(
+            !plan.iter().any(|detail| detail.contains("LIST SUBQUERY")),
+            "{text} in {scope:?}: {plan:?}"
+        );
+    }
+}

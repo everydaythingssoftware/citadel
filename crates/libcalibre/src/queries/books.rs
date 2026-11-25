@@ -175,6 +175,12 @@ impl SqlFragment {
     pub(crate) fn binds(&self) -> &[String] {
         &self.binds
     }
+
+    /// The SQL text and the binds.
+    #[cfg(feature = "__internals")]
+    pub(crate) fn into_parts(self) -> (String, Vec<String>) {
+        (self.sql, self.binds)
+    }
 }
 
 #[derive(QueryableByName)]

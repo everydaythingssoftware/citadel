@@ -1220,6 +1220,26 @@ impl Library {
         })
     }
 
+    /// The SQL and the binds of the page query that [`Library::query_books`]
+    /// runs for `query`. Not part of the public API: the benchmark uses it to
+    /// explain the real SQL.
+    #[cfg(feature = "__internals")]
+    #[doc(hidden)]
+    pub fn page_sql(&mut self, query: &BookQuery) -> Result<(String, Vec<String>), CalibreError> {
+        let PageFilters { filters, .. } = self.page_filters(query)?;
+        Ok(book_queries::page_sql(&filters, query.sort, query.limit, query.offset).into_parts())
+    }
+
+    /// The SQL and the binds of the count query that [`Library::query_books`]
+    /// runs for `query`. Not part of the public API: the benchmark uses it to
+    /// explain the real SQL.
+    #[cfg(feature = "__internals")]
+    #[doc(hidden)]
+    pub fn count_sql(&mut self, query: &BookQuery) -> Result<(String, Vec<String>), CalibreError> {
+        let PageFilters { filters, .. } = self.page_filters(query)?;
+        Ok(book_queries::count_sql(&filters).into_parts())
+    }
+
     /// Query books that have at least one safely resolvable acquisition file.
     /// Candidate rows are scanned before paging so missing or escaping backing
     /// files cannot create dead-only entries or pagination holes.
