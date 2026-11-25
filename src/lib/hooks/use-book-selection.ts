@@ -27,6 +27,7 @@ import {
 	restorableSelection,
 	selectedBookCount,
 	selectedBooks,
+	selectionIsLoaded,
 	unresolvedRange,
 } from "@/lib/book-selection";
 import { downloadFile } from "@/lib/download";
@@ -51,7 +52,9 @@ export const currentShownBooks = () => {
 
 /**
  * Every selected book, fetching the pages Select All or a long ⇧-range
- * covers but the grid never loaded.
+ * covers but the grid never loaded. It throws when a page does not load,
+ * for example under the last results of a search error, so that a command
+ * does not act on only the loaded part.
  */
 export const resolveSelectedBooks = async (): Promise<LibraryBook[]> => {
 	const range = unresolvedRange(
@@ -64,6 +67,10 @@ export const resolveSelectedBooks = async (): Promise<LibraryBook[]> => {
 			.actions.ensureBookRange(range.start, range.end);
 	const books = currentShownBooks();
 	const { selection } = useBookSelectionStore.getState();
+	if (!selectionIsLoaded(selection, books))
+		throw new Error(
+			"Some of the selected books did not load, so nothing changed.",
+		);
 	return selectedBooks(materializePending(selection, books), books);
 };
 

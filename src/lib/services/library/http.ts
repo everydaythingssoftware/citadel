@@ -5,35 +5,60 @@ import type {
 	LibrarySearchHint,
 } from "@/bindings";
 import { createCitadelHttpClient } from "@/lib/api/client";
-import { BookDeletion, CoverExpiredError, type Library } from "./types";
+import {
+	BookDeletion,
+	CoverExpiredError,
+	failure,
+	type Library,
+	type LibraryFailure,
+} from "./types";
 import { createHttpUploads } from "./uploads-http";
 
 const unsupported = async (): Promise<never> => {
 	throw new Error("This isn't available in the browser");
 };
 
+/** The error for a response with no usable body, from its HTTP status. */
+const statusFailure = (response: Response): Error =>
+	new Error(`Library request failed (${response.status})`);
+
+/**
+ * The error of a failed response. openapi-fetch gives the raw text when the
+ * body is not JSON, for example the HTML page of a proxy. That text is not a
+ * message for the user, so the HTTP status replaces it. The status also
+ * replaces a JSON body with no message, which a proxy can send too.
+ */
+const responseFailure = (
+	error: LibraryFailure | string,
+	response: Response,
+): Error =>
+	typeof error !== "string" && typeof error.message === "string"
+		? failure(error)
+		: statusFailure(response);
+
 const unwrap = async <T>(
 	request: Promise<{
 		data?: T;
-		error?: { message: string };
+		error?: LibraryFailure | string;
 		response: Response;
 	}>,
 ): Promise<T> => {
 	const { data, error, response } = await request;
-	if (error) throw new Error(error.message);
-	if (!response.ok || data === undefined)
-		throw new Error(`Library request failed (${response.status})`);
+	if (error) throw responseFailure(error, response);
+	if (!response.ok || data === undefined) throw statusFailure(response);
 	return data;
 };
 
 /** For writes that answer 204 No Content, where openapi-fetch has no data. */
 const succeed = async (
-	request: Promise<{ error?: { message: string }; response: Response }>,
+	request: Promise<{
+		error?: LibraryFailure | string;
+		response: Response;
+	}>,
 ): Promise<void> => {
 	const { error, response } = await request;
-	if (error) throw new Error(error.message);
-	if (!response.ok)
-		throw new Error(`Library request failed (${response.status})`);
+	if (error) throw responseFailure(error, response);
+	if (!response.ok) throw statusFailure(response);
 };
 
 export const createHttpLibrary = (

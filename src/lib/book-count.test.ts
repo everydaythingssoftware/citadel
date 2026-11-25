@@ -79,5 +79,6 @@ describe("bookCountStatus", () => {
 
 	it("says it is loading", () => {
 		expect(bookCountStatus({ ...base, loading: true })).toBe("Loading books…");
+		expect(bookCountStatus({ ...base, total: null })).toBe("Loading books…");
 	});
 });

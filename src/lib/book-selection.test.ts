@@ -16,6 +16,7 @@ import {
 	selectedBookCount,
 	selectedBooks,
 	selectForContextMenu,
+	selectionIsLoaded,
 	selectOnly,
 	toggleBook,
 	unresolvedRange,
@@ -219,6 +220,33 @@ describe("selectedBooks", () => {
 
 	it("returns nothing for an empty selection", () => {
 		expect(selectedBooks(emptySelection, shelf(3))).toEqual([]);
+	});
+});
+
+describe("selectionIsLoaded", () => {
+	const withHole = (count: number, hole: number) => {
+		const books = shelf(count);
+		books[hole] = undefined;
+		return books;
+	};
+
+	it("is false under Select All while a page of the result is missing", () => {
+		const selection = selectAll(emptySelection);
+		expect(selectionIsLoaded(selection, withHole(4, 2))).toBe(false);
+		expect(selectionIsLoaded(selection, new Array(4))).toBe(false);
+		expect(selectionIsLoaded(selection, shelf(4))).toBe(true);
+	});
+
+	it("is false while a selected range covers a missing book", () => {
+		const books = withHole(6, 3);
+		const selection = extendSelection(selectOnly(1, "b1"), 4, books);
+		expect(selectionIsLoaded(selection, books)).toBe(false);
+		expect(selectionIsLoaded(selection, shelf(6))).toBe(true);
+	});
+
+	it("ignores a missing book outside the selection", () => {
+		const selection = toggleBook(selectOnly(0, "b0"), 1, "b1");
+		expect(selectionIsLoaded(selection, withHole(6, 4))).toBe(true);
 	});
 });
 

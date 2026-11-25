@@ -10,6 +10,7 @@ import type {
 	LibraryBook,
 	LibraryBookPage,
 	LibraryBookQuery,
+	LibraryErrorCode,
 	LibraryPublisher,
 	LibrarySeries,
 	LibraryTag,
@@ -151,7 +152,8 @@ export interface Library {
 	/**
 	 * One page of a filtered, sorted book query (the cover grid's data
 	 * source). `query.text = null` matches all books; `total` counts the
-	 * filtered set ignoring paging.
+	 * filtered set ignoring paging. Rejects with `InvalidSearchError` when the
+	 * search text does not parse or is not supported.
 	 */
 	queryBooks(query: LibraryBookQuery): Promise<LibraryBookPage>;
 	/**
@@ -252,6 +254,26 @@ export interface RemoteConnectionOptions {
 export type Options = {
 	libraryType: "calibre";
 } & (LocalConnectionOptions | RemoteConnectionOptions);
+
+/** The search text does not parse or is not supported. The message says why. */
+export class InvalidSearchError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "InvalidSearchError";
+	}
+}
+
+/** The error body of a failed library request, from either adapter. */
+export interface LibraryFailure {
+	code?: LibraryErrorCode;
+	message: string;
+}
+
+/** The error to throw for a failed library request. */
+export const failure = (error: LibraryFailure): Error =>
+	error.code === "invalidSearch"
+		? new InvalidSearchError(error.message)
+		: new Error(error.message);
 
 /** A metadata result's cover ID expired; search again for a fresh one. */
 export class CoverExpiredError extends Error {
