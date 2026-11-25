@@ -26,10 +26,12 @@ enum Source {
 }
 
 /// The fields that a bare word searches in the `TitlesAuthorsSeries` scope.
+/// The section "Search text" of the crate README names them for clients.
 const DEFAULT_BARE_FIELDS: [Field; 3] = [Field::Title, Field::Authors, Field::Series];
 
 /// The fields that a bare word searches in the `AllFields` scope.
-/// The identifiers field compares the value only.
+/// The identifiers field compares the value only. The section "Search
+/// text" of the crate README names them for clients.
 const ALL_BARE_FIELDS: [Field; 6] = [
     Field::Title,
     Field::Authors,

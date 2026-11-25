@@ -30,7 +30,9 @@ pub(crate) enum Token {
     #[regex(r#"([^\s"()\\]|\\(?s:.))+"#, |lex| pieces(lex.slice()))]
     #[token("\\", |_| vec![Piece { ch: '\\', escaped: false }])]
     Word(Vec<Piece>),
-    /// A phrase between two quotes. It can have no pieces.
+    /// A phrase between two quotes. It can have no pieces. The section "Search
+    /// text" of the crate README gives its escape rule to the clients that
+    /// write such a phrase.
     #[regex(r#""([^"\\]|\\(?s:.))*""#, |lex| {
         let slice = lex.slice();
         pieces(&slice[1..slice.len() - 1])
