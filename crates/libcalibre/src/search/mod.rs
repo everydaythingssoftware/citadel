@@ -2,6 +2,7 @@
 //! language.
 
 mod lexer;
+mod parser;
 
 /// The most terms that a search can hold.
 pub(crate) const MAX_TERMS: usize = 100;

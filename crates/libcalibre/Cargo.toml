@@ -14,6 +14,7 @@ exclude = ["diesel.toml", "tests/fixtures/"]
 
 [dependencies]
 chrono = "0.4.31"
+chumsky = { version = "0.14", default-features = false, features = ["std"] }
 diesel = { version = "2.2.4", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
 epub = { version = "2.1.1", optional = true }
 libsqlite3-sys = { version = "0.30", optional = true, features = ["bundled"] }
