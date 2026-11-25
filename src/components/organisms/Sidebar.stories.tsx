@@ -19,7 +19,12 @@ import styles from "./Sidebar.module.css";
 const shelf = (id: string, name: string): SmartShelf => ({
 	id,
 	name,
-	filter: { query: "", sortOrder: "authorAz", hideRead: true },
+	filter: {
+		query: "",
+		sortOrder: "authorAz",
+		hideRead: true,
+		searchScope: "titlesAuthorsSeries",
+	},
 });
 
 const noop = () => {};

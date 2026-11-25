@@ -32,12 +32,14 @@ import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
 import { useShownEntryKey } from "@/lib/hooks/use-shown-entry-key";
+import { SORT_LABELS } from "@/lib/library-sort-options";
 import { SCROLL_REGION, scrollRegionAttributes } from "@/lib/navigation";
+import type { ShelfViewFields } from "@/lib/platform/settings/types";
 import {
 	type BookRouteFilters,
 	deepLinkClearsQuery,
-	hasRouteFilters,
-	routeFiltersToShelf,
+	shelfFilterFromView,
+	shelfViewSummary,
 } from "@/lib/shelves";
 import { closeBookDetails } from "@/stores/book-selection/store";
 import {
@@ -79,15 +81,6 @@ interface BookSearchOptions {
 	publisher_id?: number;
 }
 
-const SORT_LABELS: Record<LibraryBookSortOrderKey, string> = {
-	nameAz: "Name (A–Z)",
-	nameZa: "Name (Z–A)",
-	authorAz: "Author (A–Z)",
-	authorZa: "Author (Z–A)",
-	addedNewest: "Recently added",
-	addedOldest: "Oldest added",
-};
-
 /**
  * How long the search text must sit still before it becomes a new paged
  * cache key (each distinct key costs backend fetches). The field itself
@@ -104,6 +97,7 @@ export const Books = ({
 	const query = useLibraryView((s) => s.query);
 	const sortOrder = useLibraryView((s) => s.sortOrder);
 	const hideRead = useLibraryView((s) => s.hideRead);
+	const searchScope = useLibraryView((s) => s.searchScope);
 	const setQuery = useLibraryView((s) => s.setQuery);
 	const setSortOrder = useLibraryView((s) => s.setSortOrder);
 	const setHideRead = useLibraryView((s) => s.setHideRead);
@@ -142,7 +136,7 @@ export const Books = ({
 			tagId: tag_id ?? null,
 			publisherId: publisher_id ?? null,
 			hideRead,
-			searchScope: "titlesAuthorsSeries",
+			searchScope,
 			sortOrder,
 		}),
 		[
@@ -152,6 +146,7 @@ export const Books = ({
 			tag_id,
 			publisher_id,
 			hideRead,
+			searchScope,
 			sortOrder,
 		],
 	);
@@ -410,9 +405,7 @@ export const Books = ({
 						/>
 					</span>
 					<SaveAsShelfControl
-						query={query}
-						sortOrder={sortOrder}
-						hideRead={hideRead}
+						view={{ query, sortOrder, hideRead, searchScope }}
 						routeFilters={{ author_id, series_id, tag_id, publisher_id }}
 					/>
 				</div>
@@ -535,16 +528,12 @@ const DeleteBooksDialogs = () => {
 };
 
 interface SaveAsShelfControlProps {
-	query: string;
-	sortOrder: LibraryBookSortOrderKey;
-	hideRead: boolean;
+	view: ShelfViewFields;
 	routeFilters: BookRouteFilters;
 }
 
 const SaveAsShelfControl = ({
-	query,
-	sortOrder,
-	hideRead,
+	view,
 	routeFilters,
 }: SaveAsShelfControlProps) => {
 	const applyShelf = useLibraryView((s) => s.applyShelf);
@@ -565,12 +554,7 @@ const SaveAsShelfControl = ({
 		setError(null);
 	};
 
-	const summary = [
-		...(hasRouteFilters(routeFilters) ? ["this view's filter"] : []),
-		query.trim().length > 0 ? `search "${query.trim()}"` : "no search",
-		`sorted by ${SORT_LABELS[sortOrder]}`,
-		hideRead ? "hiding read books" : "showing read books",
-	].join(", ");
+	const summary = shelfViewSummary(view, routeFilters);
 
 	const save = async () => {
 		const trimmed = name.trim();
@@ -579,12 +563,10 @@ const SaveAsShelfControl = ({
 		}
 
 		try {
-			const shelf = await createSmartShelf(trimmed, {
-				query,
-				sortOrder,
-				hideRead,
-				...routeFiltersToShelf(routeFilters, libraryId),
-			});
+			const shelf = await createSmartShelf(
+				trimmed,
+				shelfFilterFromView(view, routeFilters, libraryId),
+			);
 			applyShelf(shelf);
 			close();
 		} catch (e) {

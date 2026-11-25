@@ -5,17 +5,66 @@ import {
 	hasRouteFilters,
 	routeFiltersFromSearch,
 	routeFiltersToShelf,
+	shelfFilterFromView,
 	shelfInLibrary,
 	shelfLeftRoute,
 	shelfMatchesRoute,
 	shelfRouteFilters,
+	shelfViewSummary,
 } from "./shelves";
 
 const baseFilter: SmartShelfFilter = {
 	query: "",
 	sortOrder: "authorAz",
 	hideRead: false,
+	searchScope: "titlesAuthorsSeries",
 };
+
+describe("shelfFilterFromView", () => {
+	it("keeps the search scope of the view", () => {
+		for (const searchScope of ["titlesAuthorsSeries", "allFields"] as const) {
+			const view = {
+				query: "dune",
+				sortOrder: "nameAz",
+				hideRead: true,
+				searchScope,
+			} as const;
+			expect(shelfFilterFromView(view, {}, "lib")).toEqual(view);
+		}
+	});
+
+	it("adds the route filters with their library", () => {
+		expect(shelfFilterFromView(baseFilter, { author_id: "7" }, "lib")).toEqual({
+			...baseFilter,
+			authorId: "7",
+			libraryId: "lib",
+		});
+	});
+});
+
+describe("shelfViewSummary", () => {
+	it("names the search scope of the view", () => {
+		expect(
+			shelfViewSummary(
+				{
+					query: " dune ",
+					sortOrder: "nameAz",
+					hideRead: true,
+					searchScope: "allFields",
+				},
+				{},
+			),
+		).toBe(
+			'search "dune", search scope "All Fields", sorted by Name (A–Z), hiding read books',
+		);
+	});
+
+	it("names the default scope also when the view has no search", () => {
+		expect(shelfViewSummary(baseFilter, { tag_id: 7 })).toBe(
+			`this view's filter, no search, search scope "Titles, Authors & Series", sorted by Author (A–Z), showing read books`,
+		);
+	});
+});
 
 describe("shelf route filters", () => {
 	it("round-trips a tag view through a shelf back to route params", () => {

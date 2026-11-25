@@ -1,8 +1,14 @@
+import { isSearchScope, SEARCH_SCOPE } from "@/lib/search-scope";
 import { defaultSettings } from "./types";
-import type { MetadataProvidersSettings, SettingsSchema } from "./types";
+import type {
+	MetadataProvidersSettings,
+	SettingsSchema,
+	SmartShelf,
+	SmartShelfFilter,
+} from "./types";
 
 /** The current settings schema version. Bump when the shape changes. */
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 /**
  * v0 -> v1: fold the flat `hardcoverApiKey` / `hardcoverAutoLookup` keys into
@@ -91,6 +97,42 @@ const migrateV3toV4 = (raw: SettingsSchema): SettingsSchema => {
 };
 
 /**
+ * A search text as one quoted phrase: `\` and `"` get a backslash. The rule
+ * is the rule of `Token::Quoted` in `crates/libcalibre/src/search/lexer.rs`.
+ */
+const quotedPhrase = (text: string): string =>
+	`"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
+/**
+ * v4 -> v5: give each shelf a search scope. A shelf with no scope field is
+ * from before the search language, when its text was one plain substring.
+ * In quotes, the text gives the same books with the search language. A shelf
+ * with a scope keeps its query, so that a second run changes nothing. A shelf
+ * with a query that is not a string stays as it is.
+ */
+const migrateV4toV5 = (raw: SettingsSchema): SettingsSchema => {
+	const smartShelves = raw.smartShelves.map((shelf): SmartShelf => {
+		const filter = shelf.filter as Partial<SmartShelfFilter> | undefined;
+		if (
+			typeof filter?.query !== "string" ||
+			isSearchScope(filter.searchScope)
+		) {
+			return shelf;
+		}
+		const text = filter.query.trim();
+		return {
+			...shelf,
+			filter: {
+				...shelf.filter,
+				query: text.length > 0 ? quotedPhrase(text) : "",
+				searchScope: SEARCH_SCOPE.titlesAuthorsSeries,
+			},
+		};
+	});
+	return { ...raw, settingsSchemaVersion: 5, smartShelves };
+};
+
+/**
  * Bring a loaded settings object up to the current schema version by applying
  * each step in order. Gated on an explicit version, not value-equality with
  * defaults — the very defaults these changes introduce would otherwise make the
@@ -109,6 +151,9 @@ export const migrateSettings = (raw: SettingsSchema): SettingsSchema => {
 	}
 	if (settings.settingsSchemaVersion < 4) {
 		settings = migrateV3toV4(settings);
+	}
+	if (settings.settingsSchemaVersion < 5) {
+		settings = migrateV4toV5(settings);
 	}
 	return settings;
 };

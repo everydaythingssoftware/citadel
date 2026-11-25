@@ -3,7 +3,8 @@ import {
 	type LibraryBookSortOrderKey,
 } from "@/stores/library-view/store";
 
-const SORT_LABELS: Record<LibraryBookSortOrderKey, string> = {
+/** The name of each sort order, as the sort menu shows it. */
+export const SORT_LABELS: Record<LibraryBookSortOrderKey, string> = {
 	nameAz: "Name (A–Z)",
 	nameZa: "Name (Z–A)",
 	authorAz: "Author (A–Z)",
