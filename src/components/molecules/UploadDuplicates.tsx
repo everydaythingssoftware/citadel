@@ -45,15 +45,7 @@ export const UploadDuplicates = ({
 		};
 
 	return (
-		<ul
-			ref={listRef}
-			className={styles.list}
-			aria-label="Duplicates"
-			// Holding Return decides one row, not all of them.
-			onKeyDown={(event) =>
-				event.repeat && event.key === "Enter" && event.preventDefault()
-			}
-		>
+		<ul ref={listRef} className={styles.list} aria-label="Duplicates">
 			{groups.map(({ key, items, message }, row) => {
 				const item = items[0];
 				if (!item) return null;

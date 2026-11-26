@@ -124,13 +124,39 @@ export const UploadSheet = ({
 		? "Hold to stop adding these books"
 		: "Hold to cancel all uploads";
 	useFollowNewest(bodyRef, reviewing ? 0 : rows);
+	const view = reviewing
+		? "review"
+		: pending
+			? "reading"
+			: asking
+				? "duplicates"
+				: "queue";
 	const primaryRef = useRef<HTMLButtonElement>(null);
+	const skipAllRef = useRef<HTMLButtonElement>(null);
+	const defaultButton = () =>
+		view === "duplicates"
+			? skipAllRef.current
+			: view === "queue"
+				? primaryRef.current
+				: null;
+	// Focus goes back where it was when the sheet opened, like other sheets.
+	const opener = useRef<Element | null>(null);
+	useLayoutEffect(() => {
+		if (open) opener.current = document.activeElement;
+	}, [open]);
+	// Each step's default button takes focus as it shows, so Return presses
+	// it rather than the close button, which drops the batch.
+	const shownView = useRef(view);
+	useLayoutEffect(() => {
+		if (view === shownView.current) return;
+		if (shownView.current !== "review") defaultButton()?.focus();
+		shownView.current = view;
+	});
 	const shownCount = useRef(0);
 	const changedAt = useRef(Number.NEGATIVE_INFINITY);
 	useLayoutEffect(() => {
 		if (undecided.length === shownCount.current) return;
 		changedAt.current = performance.now();
-		if (undecided.length === 0) primaryRef.current?.focus();
 		shownCount.current = undecided.length;
 	}, [undecided.length]);
 	const guardClick = (event: MouseEvent) => {
@@ -160,6 +186,24 @@ export const UploadSheet = ({
 					style={{ "--rows": rows } as CSSProperties}
 					aria-describedby={undefined}
 					onInteractOutside={(event) => event.preventDefault()}
+					onOpenAutoFocus={(event) => {
+						const target = defaultButton();
+						if (!target || target.disabled) return;
+						event.preventDefault();
+						target.focus();
+					}}
+					onCloseAutoFocus={(event) => {
+						const target = opener.current;
+						if (!(target instanceof HTMLElement) || !target.isConnected) return;
+						event.preventDefault();
+						target.focus();
+					}}
+					// Holding Return presses one button, not each one that takes its
+					// place as rows and steps go by.
+					onKeyDown={(event) => {
+						if (!reviewing && event.repeat && event.key === "Enter")
+							event.preventDefault();
+					}}
 				>
 					{/* Phones get an iOS navigation bar: Done, the title, and +. */}
 					<div
@@ -308,6 +352,7 @@ export const UploadSheet = ({
 										Add All Anyway
 									</Button>
 									<Button
+										ref={skipAllRef}
 										variant="primary"
 										onClick={() => onSkipDuplicates(undecided)}
 									>
