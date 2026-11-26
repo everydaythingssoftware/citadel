@@ -166,6 +166,7 @@ impl IntoResponse for ApiFailure {
             LibraryErrorCode::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             LibraryErrorCode::Conflict => StatusCode::CONFLICT,
             LibraryErrorCode::StorageFull => StatusCode::INSUFFICIENT_STORAGE,
+            LibraryErrorCode::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
             LibraryErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
         if self.0.code == LibraryErrorCode::Internal {

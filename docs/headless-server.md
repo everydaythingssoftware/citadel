@@ -483,6 +483,11 @@ maxUploadsPerUser = 100
 reviewHours = 24             # how long a finished upload waits to be added
 ```
 
+**Refused EPUBs.** An EPUB past the reader's limits ([ADR 0016](adr/0016-epub-package-reader.md)),
+such as a package file over 8 MiB or elements nested more than 256 deep, is
+refused with 422 and the reason, and the upload is discarded. A damaged EPUB
+that can't be read is still accepted, titled by its file name.
+
 Starting an upload reserves its declared size, so uploads in progress can't
 exceed `maxStagedBytes`; when they would, or a user already has
 `maxUploadsPerUser` uploads, the server answers 507.

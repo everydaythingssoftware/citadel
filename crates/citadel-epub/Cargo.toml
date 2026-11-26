@@ -1,0 +1,32 @@
+[package]
+name = "citadel-epub"
+version = "0.1.0"
+publish = false
+edition = "2021"
+rust-version.workspace = true
+description = "Reads an EPUB's package metadata within fixed limits, without recursing on its structure"
+license = "MIT"
+repository = "https://github.com/everydaythingssoftware/citadel"
+
+# Reads only META-INF/container.xml and the package document (EPUB 3.3 §4,
+# §5). Hostile files are refused at named limits instead of exhausting the
+# stack or the heap; see docs/adr/0016-epub-package-reader.md.
+
+[dependencies]
+# Documents are transcoded to UTF-8 before parsing. quick-xml's `encoding`
+# feature can't parse UTF-16, and enabling it would change quick-xml's API for
+# every crate in the workspace (feature unification).
+encoding_rs = "0.8"
+percent-encoding = "2.3"
+quick-xml = "0.38"
+thiserror = "1.0"
+# Same major and features as libcalibre's, so both share one archive reader.
+zip = { version = "3", default-features = false, features = ["deflate"] }
+
+[features]
+# Builders for valid and hostile EPUBs, for other crates' tests. Not public API.
+fixtures = []
+
+[dev-dependencies]
+citadel-epub = { path = ".", features = ["fixtures"] }
+proptest = "1.4"

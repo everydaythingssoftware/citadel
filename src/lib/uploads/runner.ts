@@ -72,6 +72,16 @@ const messageFor = (error: unknown): string => {
 const failureOf = (error: unknown) =>
 	error instanceof UploadError ? error.failure : undefined;
 
+/** Failures that are the file's own: shown on its row until dismissed. */
+const rejectsTheFile = (error: unknown) => {
+	const failure = failureOf(error);
+	return (
+		failure === UploadFailure.invalid ||
+		failure === UploadFailure.tooLarge ||
+		failure === UploadFailure.refused
+	);
+};
+
 const retryable = (error: unknown) => {
 	const failure = failureOf(error);
 	return failure === UploadFailure.network || failure === UploadFailure.server;
@@ -118,7 +128,8 @@ export const createUploadRunner = ({
 			const message =
 				error instanceof Error ? error.message : "Something went wrong";
 			dispatch(
-				failureOf(error) === UploadFailure.invalid
+				failureOf(error) === UploadFailure.invalid ||
+					failureOf(error) === UploadFailure.refused
 					? { type: "rejected", key: item.key, message }
 					: { type: "failed", key: item.key, message },
 			);
@@ -152,10 +163,7 @@ export const createUploadRunner = ({
 				dispatch({ type: "paused", key: item.key, message: PAUSED_MESSAGE });
 				return undefined;
 			}
-			if (
-				failure === UploadFailure.invalid ||
-				failure === UploadFailure.tooLarge
-			) {
+			if (rejectsTheFile(error)) {
 				dispatch({
 					type: "rejected",
 					key: item.key,

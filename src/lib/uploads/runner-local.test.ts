@@ -4,6 +4,7 @@ import {
 	type LocalBookImports,
 	type ReviewedBook,
 	type StagedUpload,
+	type TUploadFailure,
 	UploadError,
 	UploadFailure,
 } from "@/lib/services/library";
@@ -32,7 +33,10 @@ const local = (path: string) => ({
 const createFakeImports = () => {
 	const staged = new Map<string, { path: string; upload: StagedUpload }>();
 	const committed: { path: string; book: ReviewedBook }[] = [];
-	const refused = new Map<string, string>();
+	const refused = new Map<
+		string,
+		{ reason: string; failure: TUploadFailure }
+	>();
 	let hold: Promise<void> | undefined;
 	let next = 0;
 	const imports: LocalBookImports = {
@@ -41,8 +45,8 @@ const createFakeImports = () => {
 		}),
 		stage: async (path) => {
 			await hold;
-			const reason = refused.get(path);
-			if (reason) throw new UploadError(UploadFailure.invalid, reason);
+			const refusal = refused.get(path);
+			if (refusal) throw new UploadError(refusal.failure, refusal.reason);
 			const id = `staged-${++next}`;
 			const fileName = path.split("/").pop() ?? path;
 			const upload: StagedUpload = {
@@ -77,7 +81,11 @@ const createFakeImports = () => {
 		imports,
 		staged,
 		committed,
-		refuse: (path: string, reason: string) => refused.set(path, reason),
+		refuse: (
+			path: string,
+			reason: string,
+			failure: TUploadFailure = UploadFailure.invalid,
+		) => refused.set(path, { reason, failure }),
 		/** Holds every stage call until the returned function is called. */
 		pause: () => {
 			let release = () => {};
@@ -161,17 +169,27 @@ describe("upload runner, files on this computer", () => {
 	it("rejects files that can't be books, and keeps going", async () => {
 		const queue = setup();
 		queue.fake.refuse("/books/fake.epub", "This isn't a book Citadel can add");
+		queue.fake.refuse(
+			"/books/deep.epub",
+			"This EPUB's package file nests elements more than 256 deep.",
+			UploadFailure.refused,
+		);
 		queue.runner.addFiles([
 			local("/books/notes.docx"),
 			local("/books/fake.epub"),
+			local("/books/deep.epub"),
 			local("/books/Walden.epub"),
 		]);
-		await until(() => queue.phases()[2] === UploadPhase.ready);
-		expect(queue.state().items.slice(0, 2)).toMatchObject([
+		await until(() => queue.phases()[3] === UploadPhase.ready);
+		expect(queue.state().items.slice(0, 3)).toMatchObject([
 			{ phase: UploadPhase.rejected },
 			{
 				phase: UploadPhase.rejected,
 				message: "This isn't a book Citadel can add",
+			},
+			{
+				phase: UploadPhase.rejected,
+				message: "This EPUB's package file nests elements more than 256 deep.",
 			},
 		]);
 	});

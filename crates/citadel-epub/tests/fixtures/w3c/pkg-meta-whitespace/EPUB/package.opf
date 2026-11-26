@@ -1,0 +1,27 @@
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:epub="http://www.idpf.org/2007/ops" version="3.0" xml:lang="en" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:coverage id="coverage">Package Documents</dc:coverage>
+    <meta refines="#coverage" property="schema:version">3.3</meta>
+    <dc:creator>  			           Dave    Cramer         </dc:creator>
+    <dc:date>2021-01-11</dc:date>
+    <dc:description>
+      The package document's title and creator contain leading and trailing spaces along with excess internal whitespace. The
+      reading system must render only a single space in all cases.
+    </dc:description>
+    <dc:identifier id="pub-id">pkg-meta-whitespace</dc:identifier>
+    <dc:language>en</dc:language>
+    <dc:publisher>W3C</dc:publisher>
+    <dc:title>pkg-meta-whitespace</dc:title>
+    <link rel="dcterms:rights" href="https://www.w3.org/Consortium/Legal/2015/copyright-software-and-document"/>
+    <link rel="dcterms:rightsHolder" href="https://www.w3.org"/>
+    <meta property="dcterms:isReferencedBy">https://www.w3.org/TR/epub-rs/#confreq-rs-pkg-whitespace</meta>
+    <meta property="dcterms:modified">2021-01-11T00:00:00Z</meta>
+  </metadata>
+  <manifest>
+    <item id="content_001" href="content_001.xhtml" media-type="application/xhtml+xml"/>
+    <item id="nav" properties="nav" href="nav.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="content_001"/>
+  </spine>
+</package>

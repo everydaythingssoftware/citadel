@@ -1,76 +1,63 @@
-use std::{fs::File, io::Read, path::Path, str::FromStr};
+use std::{fs::File, io::BufReader, path::Path, str::FromStr};
 
 use chrono::NaiveDate;
-use epub::doc::EpubDoc;
+use citadel_epub::{Epub, EpubError};
 
-use super::{non_empty, BookFileMetadata, MAX_COVER_BYTES};
+use super::{
+    guarded, isbn, non_empty, BookFileContents, BookFileMetadata, RefusedBookFile, MAX_COVER_BYTES,
+};
 use crate::mime_type::MimeType;
 
-pub(super) fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
-    let doc = EpubDoc::new(path).ok()?;
-    let values = |property: &str| -> Vec<String> {
-        doc.metadata
-            .iter()
-            .filter(|item| item.property == property)
-            .filter_map(|item| non_empty(&item.value))
-            .collect()
+/// Reads the EPUB at `path` with one pass over its archive. A panic or an
+/// unreadable file gives `Ok(None)`; a file past citadel-epub's limits is
+/// refused.
+pub(super) fn read_book(path: &Path) -> Result<Option<BookFileContents>, RefusedBookFile> {
+    let Ok(file) = File::open(path) else {
+        return Ok(None);
     };
-    let value = |property: &str| doc.mdata(property).and_then(|item| non_empty(&item.value));
-
-    Some(BookFileMetadata {
-        format: MimeType::EPUB,
-        title: value("title"),
-        author_names: values("creator"),
-        identifier: value("identifier"),
-        publisher: value("publisher"),
-        language: value("language"),
-        tags: values("subject"),
-        publication_date: value("date").and_then(|date| NaiveDate::from_str(&date).ok()),
-        has_cover: cover_from_doc(path, &doc).is_some(),
-    })
-}
-
-pub(super) fn cover_image_data(path: &Path) -> Option<Vec<u8>> {
-    let doc = EpubDoc::new(path).ok()?;
-    cover_from_doc(path, &doc)
-}
-
-/// Reads the cover entry straight from the archive so its size can be capped;
-/// the epub crate would read any entry to the end.
-fn cover_from_doc<R: Read + std::io::Seek>(path: &Path, doc: &EpubDoc<R>) -> Option<Vec<u8>> {
-    // EPUB3 marks the cover with `properties="cover-image"`; EPUB2 (and hybrid
-    // EPUB3 books) name its manifest item with `<meta name="cover">`.
-    let cover_path = [
-        doc.get_cover_id(),
-        doc.mdata("cover").map(|m| m.value.clone()),
-    ]
-    .into_iter()
-    .flatten()
-    .find_map(|id| doc.resources.get(&id))?
-    .path
-    .to_str()?
-    .to_string();
-
-    let mut archive = zip::ZipArchive::new(File::open(path).ok()?).ok()?;
-    let name = if archive.index_for_name(&cover_path).is_some() {
-        cover_path
-    } else {
-        percent_encoding::percent_decode_str(&cover_path)
-            .decode_utf8()
-            .ok()?
-            .into_owned()
-    };
-    let entry = archive.by_name(&name).ok()?;
-    if entry.size() > MAX_COVER_BYTES {
-        return None;
+    match guarded(|| Some(read_from(BufReader::new(file)))) {
+        Some(Ok(book)) => Ok(Some(book)),
+        Some(Err(EpubError::Refused(refusal))) => Err(RefusedBookFile::new(refusal.to_string())),
+        Some(Err(EpubError::Unreadable(_))) | None => Ok(None),
     }
-    // Declared sizes can lie; never read more than the cap allows.
-    let mut data = Vec::new();
-    entry
-        .take(MAX_COVER_BYTES + 1)
-        .read_to_end(&mut data)
-        .ok()?;
-    (!data.is_empty() && data.len() as u64 <= MAX_COVER_BYTES).then_some(data)
+}
+
+fn read_from(reader: BufReader<File>) -> Result<BookFileContents, EpubError> {
+    let mut epub = Epub::open(reader)?;
+    // A cover that can't be read leaves the book without one.
+    let cover = epub.cover(MAX_COVER_BYTES).ok().flatten();
+    let package = epub.package();
+    let metadata = BookFileMetadata {
+        format: MimeType::EPUB,
+        title: package.title.as_deref().and_then(non_empty),
+        author_names: package
+            .authors()
+            .filter_map(|author| non_empty(&author.name))
+            .collect(),
+        // Citadel only keeps an ISBN, so prefer one over the package's own
+        // unique identifier (often a UUID in books exported from Calibre).
+        identifier: package
+            .identifiers
+            .iter()
+            .find(|identifier| isbn(identifier).is_some())
+            .or(package.identifier.as_ref())
+            .and_then(|identifier| non_empty(identifier)),
+        publisher: package.publisher.as_deref().and_then(non_empty),
+        language: package.language().and_then(non_empty),
+        tags: package
+            .subjects
+            .iter()
+            .filter_map(|subject| non_empty(subject))
+            .collect(),
+        publication_date: package.published.as_deref().and_then(publication_date),
+        has_cover: cover.is_some(),
+    };
+    Ok(BookFileContents { metadata, cover })
+}
+
+/// The calendar date at the start of an ISO 8601 date or date-time.
+fn publication_date(date: &str) -> Option<NaiveDate> {
+    NaiveDate::from_str(date.trim().get(..10)?).ok()
 }
 
 #[cfg(test)]
@@ -80,6 +67,7 @@ mod tests {
     use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
     use super::*;
+    use crate::book_file::{cover_image_data, read_book, read_metadata};
 
     struct Epub<'a> {
         opf_metadata: &'a str,
@@ -199,6 +187,121 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("broken.epub");
         std::fs::write(&path, b"not a zip").unwrap();
+        assert_eq!(read_metadata(&path), None);
+        assert_eq!(cover_image_data(&path), None);
+        assert_eq!(read_book(&path), Ok(None));
+    }
+
+    #[test]
+    fn one_read_gives_metadata_and_cover() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            &dir,
+            Epub {
+                opf_metadata: r##"<dc:identifier id="id">x</dc:identifier><dc:title>T</dc:title><dc:creator id="t">Ann Translator</dc:creator><meta refines="#t" property="role" scheme="marc:relators">trl</meta><dc:creator>Author</dc:creator><dc:date>2018-11-06T00:00:00Z</dc:date>"##,
+                manifest: r#"<item id="c" href="c.png" media-type="image/png" properties="cover-image"/>"#,
+                files: vec![("OEBPS/c.png", b"png bytes".to_vec())],
+            },
+        );
+        let book = read_book(&path).unwrap().unwrap();
+        assert_eq!(book.cover.as_deref(), Some(&b"png bytes"[..]));
+        assert!(book.metadata.has_cover);
+        assert_eq!(book.metadata.author_names, vec!["Author"]);
+        assert_eq!(
+            book.metadata.publication_date,
+            NaiveDate::from_ymd_opt(2018, 11, 6)
+        );
+    }
+
+    #[test]
+    fn an_isbn_is_preferred_over_the_unique_identifier() {
+        // The shape Calibre exports: the ISBN first, a UUID as the package's
+        // unique identifier.
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            &dir,
+            Epub {
+                opf_metadata: r#"<dc:identifier xmlns:opf="http://www.idpf.org/2007/opf" opf:scheme="ISBN">9780140449136</dc:identifier><dc:identifier id="id" xmlns:opf="http://www.idpf.org/2007/opf" opf:scheme="uuid">urn:uuid:7f3c0b1e-0000-4000-8000-000000000000</dc:identifier><dc:title>T</dc:title>"#,
+                manifest: "",
+                files: vec![],
+            },
+        );
+        let metadata = read_metadata(&path).unwrap();
+        assert_eq!(metadata.identifier.as_deref(), Some("9780140449136"));
+
+        let path = write(
+            &dir,
+            Epub {
+                opf_metadata: r#"<dc:identifier id="id">urn:uuid:7f3c0b1e-0000-4000-8000-000000000000</dc:identifier><dc:title>T</dc:title>"#,
+                manifest: "",
+                files: vec![],
+            },
+        );
+        assert_eq!(
+            read_metadata(&path).unwrap().identifier.as_deref(),
+            Some("urn:uuid:7f3c0b1e-0000-4000-8000-000000000000"),
+            "without an ISBN, the unique identifier"
+        );
+    }
+
+    #[test]
+    fn original_publication_dates_count_and_modification_dates_dont() {
+        let dir = tempfile::tempdir().unwrap();
+        let dated = |dates: &str| {
+            let path = write(
+                &dir,
+                Epub {
+                    opf_metadata: &format!(
+                        r#"<dc:identifier id="id">x</dc:identifier><dc:title>T</dc:title>{dates}"#
+                    ),
+                    manifest: "",
+                    files: vec![],
+                },
+            );
+            read_metadata(&path).unwrap().publication_date
+        };
+        let date = |event: &str, value: &str| {
+            format!(
+                r#"<dc:date xmlns:opf="http://www.idpf.org/2007/opf" opf:event="{event}">{value}</dc:date>"#
+            )
+        };
+        assert_eq!(
+            dated(&date("original-publication", "2012-09-15")),
+            NaiveDate::from_ymd_opt(2012, 9, 15)
+        );
+        assert_eq!(
+            dated(&format!(
+                "{}{}",
+                date("original-publication", "2012-09-15"),
+                date("publication", "2013-01-02")
+            )),
+            NaiveDate::from_ymd_opt(2013, 1, 2),
+            "publication wins"
+        );
+        assert_eq!(dated(&date("modification", "2020-01-01")), None);
+    }
+
+    #[test]
+    fn files_past_the_limits_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = format!(
+            "{}{}<dc:title>T</dc:title>",
+            "<x>".repeat(1000),
+            "</x>".repeat(1000)
+        );
+        let path = write(
+            &dir,
+            Epub {
+                opf_metadata: &nested,
+                manifest: "",
+                files: vec![],
+            },
+        );
+        let refused = read_book(&path).unwrap_err();
+        assert_eq!(
+            refused.reason(),
+            "This EPUB's package file nests elements more than 256 deep."
+        );
         assert_eq!(read_metadata(&path), None);
         assert_eq!(cover_image_data(&path), None);
     }

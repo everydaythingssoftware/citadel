@@ -63,6 +63,7 @@ libsqlite3-sys = { version = "0.30.1", features = ["bundled"] }
 
 [dev-dependencies]
 axum = "0.8.9"
+citadel-epub = { path = "../crates/citadel-epub", features = ["fixtures"] }
 tempfile = "3.8"
 
 [features]

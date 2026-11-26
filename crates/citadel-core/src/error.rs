@@ -17,6 +17,9 @@ pub enum LibraryErrorCode {
     Conflict,
     /// The server has no room to store more.
     StorageFull,
+    /// A file Citadel refuses to read, such as an EPUB past its parsing
+    /// limits; the message says why.
+    Unprocessable,
     Internal,
 }
 
@@ -70,6 +73,12 @@ impl std::fmt::Display for LibraryError {
     }
 }
 impl std::error::Error for LibraryError {}
+
+impl From<libcalibre::book_file::RefusedBookFile> for LibraryError {
+    fn from(refused: libcalibre::book_file::RefusedBookFile) -> Self {
+        Self::new(LibraryErrorCode::Unprocessable, refused.reason())
+    }
+}
 
 impl From<libcalibre::CalibreError> for LibraryError {
     fn from(error: libcalibre::CalibreError) -> Self {

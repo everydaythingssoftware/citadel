@@ -62,6 +62,8 @@ export const UploadFailure = {
 	tooLarge: "tooLarge",
 	storageFull: "storageFull",
 	invalid: "invalid",
+	/** The file is one Citadel won't read (an EPUB past its parsing limits). */
+	refused: "refused",
 	readOnly: "readOnly",
 	server: "server",
 } as const;
