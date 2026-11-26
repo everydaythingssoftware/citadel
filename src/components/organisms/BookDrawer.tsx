@@ -1,4 +1,5 @@
 import { bookCoverProps } from "@/lib/covers/book-cover";
+import { isPdfOnly } from "@/lib/pdf-only";
 import { Link, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import DOMPurify from "dompurify";
@@ -132,6 +133,7 @@ export const BookDrawer = ({ book, onClose }: BookDrawerProps) => {
 						{...bookCoverProps(book)}
 						coverColors={thumb?.cover_colors}
 						finished={false}
+						flat={isPdfOnly(book.file_list)}
 					/>
 					{book.is_read && (
 						<span className={styles.seal} role="img" aria-label="Finished">

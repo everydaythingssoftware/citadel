@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
 import { BookCover } from "./BookCover";
+import styles from "./BookCover.module.css";
 import type { LibraryBook } from "@/bindings";
 
 const book = {
@@ -88,4 +89,32 @@ it.each([
 ])("uses geometric artwork without a usable title (%j)", (title) => {
 	const html = renderToStaticMarkup(createElement(BookCover, { title }));
 	expect(html).not.toContain("<img");
+});
+
+// The binding is drawn by two spans laid over the art: the spine crease and
+// the board edges. A flat cover is a page, so it has neither.
+const binding = (html: string) => ({
+	spine: html.includes(`class="${styles.spine}"`),
+	edges: html.includes(`class="${styles.edges}"`),
+});
+
+it.each([
+	["an image", { src: "/cover.jpg" }],
+	["the titled placeholder", { title: "Middlemarch", authors: "George Eliot" }],
+	["the untitled placeholder", { title: "Middlemarch", provisional: true }],
+])("draws %s flat, without the binding", (_, props) => {
+	const html = renderToStaticMarkup(
+		createElement(BookCover, { ...props, flat: true }),
+	);
+	expect(binding(html)).toEqual({ spine: false, edges: false });
+	expect(html).toContain(`class="${styles.readOverlay}"`);
+});
+
+it.each([
+	["an image", { src: "/cover.jpg" }],
+	["the titled placeholder", { title: "Middlemarch", authors: "George Eliot" }],
+	["the untitled placeholder", { title: "Middlemarch", provisional: true }],
+])("draws %s bound by default", (_, props) => {
+	const html = renderToStaticMarkup(createElement(BookCover, props));
+	expect(binding(html)).toEqual({ spine: true, edges: true });
 });
