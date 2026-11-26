@@ -105,22 +105,39 @@ type Story = StoryObj<typeof Deck>;
 /** Interactive: page with ‹ › or the arrow keys, then add or skip. */
 export const Reviewing: Story = {};
 
+const StaticReview = ({ items }: { items: QueueItem[] }) => (
+	<div
+		style={{
+			maxWidth: 520,
+			display: "flex",
+			height: 640,
+			background: "var(--ctd-surface)",
+			borderRadius: 10,
+		}}
+	>
+		<UploadReview onBack={() => {}} deck={staticDeck(items)} />
+	</div>
+);
+
 /** Static: the last ready book. */
 export const LastBook: Story = {
+	render: () => <StaticReview items={readyItems().slice(0, 1)} />,
+};
+
+/** Static: refused once because its title is already there. */
+export const AlreadyInTheLibrary: Story = {
+	name: "Already in the library",
 	render: () => (
-		<div
-			style={{
-				maxWidth: 520,
-				display: "flex",
-				height: 640,
-				background: "var(--ctd-surface)",
-				borderRadius: 10,
-			}}
-		>
-			<UploadReview
-				onBack={() => {}}
-				deck={staticDeck(readyItems().slice(0, 1))}
-			/>
-		</div>
+		<StaticReview
+			items={readyItems()
+				.slice(0, 1)
+				.map((item) => ({
+					...item,
+					duplicate: {
+						title: item.book?.title ?? "",
+						message: "Already in your library: Moby-Dick by Herman Melville",
+					},
+				}))}
+		/>
 	),
 };

@@ -31,7 +31,10 @@ const subtitle = (item: QueueItem): string => {
 			return "Added";
 		case UploadPhase.ready:
 			return (
-				item.message ?? (item.book?.authorNames.join(", ") || "Ready to add")
+				item.message ??
+				(item.duplicate
+					? "Already in your library"
+					: item.book?.authorNames.join(", ") || "Ready to add")
 			);
 		case UploadPhase.failed:
 		case UploadPhase.rejected:
@@ -39,7 +42,7 @@ const subtitle = (item: QueueItem): string => {
 	}
 };
 
-const Thumbnail = ({ item }: { item: QueueItem }) => {
+export const Thumbnail = ({ item }: { item: QueueItem }) => {
 	if (item.phase === UploadPhase.failed || item.phase === UploadPhase.rejected)
 		return (
 			<span className={clsx(styles.thumb, styles.problem)}>
@@ -71,7 +74,8 @@ export const UploadQueueRow = ({
 	const problem =
 		item.phase === UploadPhase.failed ||
 		item.phase === UploadPhase.rejected ||
-		(item.phase === UploadPhase.ready && item.message !== undefined);
+		(item.phase === UploadPhase.ready &&
+			(item.message !== undefined || item.duplicate !== undefined));
 	return (
 		<li className={styles.row} data-phase={item.phase}>
 			<Thumbnail item={item} />

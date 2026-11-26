@@ -34,6 +34,7 @@ export const createTauriBookImports = (): LocalBookImports => {
 			size: file.size,
 			receivedBytes: file.size,
 			book: file.book,
+			duplicate: file.duplicate,
 		};
 	};
 	const refused = (error: LibraryError) =>
@@ -66,8 +67,12 @@ export const createTauriBookImports = (): LocalBookImports => {
 				language: book.language ?? null,
 				tags: book.tags,
 				publicationDate: book.publicationDate ?? null,
+				allowDuplicate: book.allowDuplicate,
 			});
-			if (result.status === "error") throw new Error(result.error.message);
+			if (result.status === "error")
+				throw result.error.code === "duplicate"
+					? new UploadError(UploadFailure.duplicate, result.error.message)
+					: new Error(result.error.message);
 			covers.delete(id);
 			return result.data;
 		},

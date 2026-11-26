@@ -30,6 +30,8 @@ export interface FakeUploadsOptions {
 	now?: () => Date;
 	/** Whether read books report a cover (stories have no image to serve). */
 	withCovers?: boolean;
+	/** Reported on every read book, as when the library has its title. */
+	duplicate?: string;
 }
 
 /**
@@ -43,6 +45,7 @@ export const createFakeUploads = ({
 	chunkDelay,
 	now = () => new Date(),
 	withCovers = true,
+	duplicate,
 }: FakeUploadsOptions = {}) => {
 	const staged = new Map<string, FakeUpload>();
 	const committed: { uploadId: string; book: ReviewedBook }[] = [];
@@ -77,6 +80,7 @@ export const createFakeUploads = ({
 			? {
 					format: upload.fileName.split(".").pop() ?? "",
 					title: `${displayName(upload.fileName)} (read)`,
+					titleKey: displayName(upload.fileName).toLowerCase(),
 					authorNames: ["An Author"],
 					identifier: null,
 					publisher: null,
@@ -86,6 +90,7 @@ export const createFakeUploads = ({
 					coverUrl: withCovers ? `/api/uploads/${upload.id}/cover` : null,
 				}
 			: null,
+		duplicate: upload.ready ? duplicate : undefined,
 	});
 	const expiry = (hours: number) =>
 		new Date(now().getTime() + hours * 60 * 60 * 1000).toISOString();

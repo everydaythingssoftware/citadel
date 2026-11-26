@@ -12,6 +12,7 @@ import {
 const book = {
 	format: "epub",
 	title: "Walden",
+	titleKey: "walden",
 	authorNames: ["Henry David Thoreau"],
 	identifier: "urn:isbn:0141439513",
 	publisher: "Ticknor and Fields",

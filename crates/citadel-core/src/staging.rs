@@ -10,7 +10,7 @@ use chrono::NaiveDate;
 use libcalibre::{book_file, mime_type::MimeType};
 use serde::{Deserialize, Serialize};
 
-use crate::error::LibraryError;
+use crate::{error::LibraryError, library::title_key};
 
 /// What the uploaded file says about itself, for the user to review.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -21,6 +21,8 @@ pub struct StagedBook {
     pub format: String,
     /// The file's own title, or its name when it has none.
     pub title: String,
+    /// The same for titles that match as duplicates.
+    pub title_key: String,
     pub author_names: Vec<String>,
     pub identifier: Option<String>,
     pub publisher: Option<String>,
@@ -46,6 +48,9 @@ pub struct CommitUpload {
     #[serde(default)]
     pub tags: Vec<String>,
     pub publication_date: Option<NaiveDate>,
+    /// Add the book even if its title is already in the library.
+    #[serde(default)]
+    pub allow_duplicate: bool,
 }
 
 fn trimmed(value: Option<String>) -> Option<String> {
@@ -141,10 +146,12 @@ pub fn read_book_file(path: &Path, file_name: &str, extension: String) -> ReadBo
         MimeType::PDF | MimeType::TXT => None,
         _ => metadata.title,
     };
+    let title = title.unwrap_or(fallback_title);
     ReadBook {
         book: StagedBook {
             format: extension,
-            title: title.unwrap_or(fallback_title),
+            title_key: title_key(&title),
+            title,
             author_names: metadata.author_names,
             identifier: metadata.identifier,
             publisher: metadata.publisher,
@@ -170,6 +177,7 @@ mod tests {
             language: Some(" fra ".into()),
             tags: vec![" ".into()],
             publication_date: None,
+            allow_duplicate: false,
         }
     }
 
@@ -217,6 +225,7 @@ mod tests {
         std::fs::write(&path, "Call me Ishmael.").unwrap();
         let read = read_book_file(&path, "Moby Dick.txt", "txt".into());
         assert_eq!(read.book.title, "Moby Dick");
+        assert_eq!(read.book.title_key, "moby dick");
         assert_eq!(read.book.format, "txt");
         assert!(read.cover.is_none());
     }

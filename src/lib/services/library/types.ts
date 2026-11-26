@@ -57,6 +57,8 @@ export const UploadFailure = {
 	aborted: "aborted",
 	/** The server's offset moved on; resume from its `receivedBytes`. */
 	conflict: "conflict",
+	/** Its title is already in the library; it can be added anyway. */
+	duplicate: "duplicate",
 	unauthorized: "unauthorized",
 	notFound: "notFound",
 	tooLarge: "tooLarge",

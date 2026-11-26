@@ -848,6 +848,8 @@ export interface components {
         };
         /** @description The metadata the user reviewed, to add the upload to the library with. */
         CommitUpload: {
+            /** @description Add the book even if its title is already in the library. */
+            allowDuplicate?: boolean;
             authorNames?: string[];
             /**
              * @description Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`
@@ -1127,7 +1129,7 @@ export interface components {
             message: string;
         };
         /** @enum {string} */
-        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "readOnly" | "unavailable" | "tooLarge" | "conflict" | "storageFull" | "internal";
+        LibraryErrorCode: "invalidArgument" | "unauthorized" | "rateLimited" | "notFound" | "readOnly" | "unavailable" | "tooLarge" | "conflict" | "duplicate" | "storageFull" | "internal";
         LibraryPublisher: {
             /** Format: int32 */
             book_count: number;
@@ -1357,9 +1359,16 @@ export interface components {
             tags: string[];
             /** @description The file's own title, or its name when it has none. */
             title: string;
+            /** @description The same for titles that match as duplicates. */
+            titleKey: string;
         };
         StagedUpload: {
             book?: components["schemas"]["StagedBook"] | null;
+            /**
+             * @description Present when the library already has the book's title: which books, as
+             *     a commit would be refused.
+             */
+            duplicate?: string | null;
             /**
              * Format: date-time
              * @description When the server discards the upload: a fixed review deadline once the

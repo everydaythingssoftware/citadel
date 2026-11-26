@@ -7,6 +7,7 @@ import { formForBook } from "./review";
 export const sampleBook = (title: string, author: string): StagedBook => ({
 	format: "epub",
 	title,
+	titleKey: title.toLowerCase(),
 	authorNames: [author],
 	identifier: null,
 	publisher: null,

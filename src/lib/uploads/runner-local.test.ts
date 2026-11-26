@@ -53,6 +53,7 @@ const createFakeImports = () => {
 				book: {
 					format: "epub",
 					title: `${fileName} (read)`,
+					titleKey: fileName,
 					authorNames: ["Ann Author"],
 					tags: [],
 					coverUrl: `asset://covers/${id}.jpg`,

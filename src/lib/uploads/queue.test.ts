@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { StagedUpload } from "@/lib/services/library";
 import {
 	displayName,
+	duplicateGroups,
 	emptyQueue,
+	isBatchRead,
 	isSending,
 	itemsForFiles,
 	nextToUpload,
@@ -10,10 +12,12 @@ import {
 	type QueueState,
 	queueReducer,
 	RejectReason,
+	readQueue,
 	readyItems,
 	rejectionFor,
 	reviewedFromStaged,
 	summarize,
+	undecidedDuplicates,
 	UploadPhase,
 	visibleItems,
 } from "./queue";
@@ -34,6 +38,7 @@ const staged = (overrides: Partial<StagedUpload> = {}): StagedUpload => ({
 	book: {
 		format: "epub",
 		title: "Moby-Dick; or, The Whale",
+		titleKey: "moby dick or the whale",
 		authorNames: ["Herman Melville"],
 		identifier: "urn:isbn:9780000000002",
 		publisher: "Harper",
@@ -180,6 +185,186 @@ describe("upload queue", () => {
 			phase: UploadPhase.ready,
 		});
 		expect(state.items[0]?.file).toBeUndefined();
+	});
+
+	it("flags a received upload whose title is already in the library", () => {
+		const message = "Already in your library: Moby-Dick";
+		const state = reduce(emptyQueue, {
+			type: "restored",
+			uploads: [
+				staged({
+					duplicate: message,
+					book: {
+						format: "epub",
+						title: " Moby-Dick ",
+						titleKey: "moby dick",
+						authorNames: [],
+						identifier: null,
+						publisher: null,
+						language: null,
+						tags: [],
+						publicationDate: null,
+						coverUrl: null,
+					},
+				}),
+			],
+			coverUrl,
+		});
+		expect(state.items[0]).toMatchObject({
+			phase: UploadPhase.ready,
+			duplicate: { title: "Moby-Dick", message },
+		});
+		expect(state.items[0]?.message).toBeUndefined();
+	});
+
+	const read = (...books: [id: string, title: string, duplicate?: string][]) =>
+		reduce(emptyQueue, {
+			type: "restored",
+			uploads: books.map(([id, title, duplicate]) =>
+				staged({
+					id,
+					duplicate,
+					book: {
+						format: "epub",
+						title,
+						titleKey: title.toLowerCase(),
+						authorNames: [],
+						tags: [],
+					},
+				}),
+			),
+			coverUrl,
+		});
+	const keyOf = (state: QueueState, id: string) =>
+		state.items.find((item) => item.uploadId === id)?.key ?? "";
+	const asked = (state: QueueState) =>
+		undecidedDuplicates(state).map((item) => item.uploadId);
+
+	it("asks about books in the library and later copies in the queue", () => {
+		const state = read(
+			["a", "Germinal", "Already in your library: Germinal"],
+			["b", "Nana"],
+			["c", "La Débâcle"],
+			["d", "LA DÉBÂCLE"],
+			["e", "La Débâcle"],
+		);
+		const skipping = (...ids: string[]) =>
+			asked({
+				items: state.items.filter((item) => !ids.includes(item.uploadId ?? "")),
+			});
+		expect(skipping()).toEqual(["a", "d", "e"]);
+		expect(skipping("d")).toEqual(["a", "e"]);
+		expect(skipping("c")).toEqual(["a", "e"]);
+		expect(skipping("a", "c", "d")).toEqual([]);
+	});
+
+	it("asks once per book, saying how many copies", () => {
+		const library = "Already in your library: Germinal by Émile Zola";
+		const state = read(
+			["a", "Germinal", library],
+			["b", "La Débâcle"],
+			["c", "Germinal", library],
+			["d", "Nana", "Already in your library: Nana by Émile Zola"],
+			["e", "LA DÉBÂCLE"],
+			["f", "La Débâcle"],
+			["g", "Kim"],
+			["h", "Kim"],
+			["i", "Bel-Ami"],
+		);
+		expect(
+			duplicateGroups(undecidedDuplicates(state)).map((group) => [
+				group.items.map((item) => item.uploadId),
+				group.message,
+			]),
+		).toEqual([
+			[["a", "c"], "Already in your library, 2 copies"],
+			[["d"], "Already in your library: Nana by Émile Zola"],
+			[["e", "f"], "2 extra copies in the books you are adding"],
+			[["h"], "1 extra copy in the books you are adding"],
+		]);
+	});
+
+	it("never asks about a duplicate again once it's accepted or refused", () => {
+		const state = read(
+			["a", " Germinal ", "Already in your library: Germinal"],
+			["b", "Nana"],
+			["c", "Nana"],
+			["d", "Kim"],
+		);
+		const accepted = reduce(
+			state,
+			{ type: "accepted", key: keyOf(state, "a") },
+			{ type: "accepted", key: keyOf(state, "c") },
+		);
+		expect(asked(accepted)).toEqual([]);
+		expect(accepted.items[0]).toMatchObject({
+			phase: UploadPhase.ready,
+			duplicate: undefined,
+			acceptedTitle: "Germinal",
+		});
+		const refused = reduce(accepted, {
+			type: "addFailed",
+			key: keyOf(state, "d"),
+			duplicate: { title: "Kim", message: "Already in your library: Kim" },
+		});
+		expect(asked(refused)).toEqual([]);
+		expect(refused.items[3]?.duplicate?.title).toBe("Kim");
+	});
+
+	it("asks about a copy of a book added since, while its batch lasts", () => {
+		const state = read(["a", "Nana"], ["b", "Nana"]);
+		const added = reduce(state, { type: "added", key: keyOf(state, "a") });
+		expect(asked(added)).toEqual(["b"]);
+		const later = reduce(
+			added,
+			{ type: "removed", key: keyOf(state, "b") },
+			{ type: "filesAdded", items: [] },
+		);
+		expect(later.items).toEqual([]);
+	});
+
+	it("is read once no file is on its way, or a full server holds the rest back", () => {
+		const [item] = itemsForFiles([new File(["a"], "a.epub")], limits, keys());
+		if (!item) throw new Error("no item");
+		expect(isBatchRead({ items: [item] })).toBe(false);
+		expect(isBatchRead({ items: [item], paused: "Full" })).toBe(true);
+		const reading = { ...item, phase: UploadPhase.reading };
+		expect(isBatchRead({ items: [reading], paused: "Full" })).toBe(false);
+		expect(isBatchRead(read(["a", "Nana"]))).toBe(true);
+	});
+
+	it("holds back a batch on this computer until all of it is read", () => {
+		const items = itemsForFiles(
+			[
+				{ path: "/a.epub", name: "a.epub" },
+				{ path: "/b.epub", name: "b.epub" },
+				new File(["c"], "c.epub"),
+			],
+			limits,
+			keys(),
+		);
+		const decided = read(["z", "Nana"]);
+		const reading = reduce(
+			decided,
+			{ type: "filesAdded", items: items.slice(0, 2) },
+			{ type: "received", key: "k1", upload: staged(), coverUrl },
+		);
+		const shown = (state: QueueState) =>
+			visibleItems(readQueue(state)).map((item) => item.name);
+		expect(shown(reading)).toEqual(["Nana"]);
+		expect(readyItems(reading)).toHaveLength(1);
+		const done = reduce(reading, {
+			type: "rejected",
+			key: "k2",
+			message: "No book",
+		});
+		expect(shown(done)).toEqual(["Nana", "Moby-Dick; or, The Whale", "b"]);
+		expect(readyItems(done)).toHaveLength(2);
+		const uploading = reduce(done, {
+			type: "filesAdded",
+			items: items.slice(2),
+		});
+		expect(shown(uploading)).toContain("c");
 	});
 
 	it("only retries failed uploads it still has the file for", () => {

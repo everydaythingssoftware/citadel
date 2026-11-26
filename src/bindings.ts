@@ -671,7 +671,11 @@ export type CommitUpload = { title: string; authorNames?: string[];
  * Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`
  * prefixes are accepted); other identifiers are ignored.
  */
-identifier: string | null; publisher: string | null; language: string | null; tags?: string[]; publicationDate: string | null }
+identifier: string | null; publisher: string | null; language: string | null; tags?: string[]; publicationDate: string | null; 
+/**
+ * Add the book even if its title is already in the library.
+ */
+allowDuplicate?: boolean }
 /**
  * What a cover looks like before it loads.
  */
@@ -849,6 +853,10 @@ export type LibraryErrorCode = "invalidArgument" | "unauthorized" | "rateLimited
  */
 "conflict" | 
 /**
+ * A book with this title is already in the library.
+ */
+"duplicate" | 
+/**
  * The server has no room to store more.
  */
 "storageFull" | "internal"
@@ -993,11 +1001,20 @@ format: string;
 /**
  * The file's own title, or its name when it has none.
  */
-title: string; authorNames: string[]; identifier: string | null; publisher: string | null; language: string | null; tags: string[]; publicationDate: string | null; coverUrl: string | null }
+title: string; 
+/**
+ * The same for titles that match as duplicates.
+ */
+titleKey: string; authorNames: string[]; identifier: string | null; publisher: string | null; language: string | null; tags: string[]; publicationDate: string | null; coverUrl: string | null }
 /**
  * A book file read for review, ready to add or skip.
  */
-export type StagedFile = { id: string; fileName: string; size: number; book: StagedBook }
+export type StagedFile = { id: string; fileName: string; size: number; book: StagedBook; 
+/**
+ * Present when the library already has the book's title: which books, as
+ * adding it would be refused.
+ */
+duplicate: string | null }
 /**
  * Best-effort cloud-sync verdict for a candidate library path. Informational
  * only — the UX warns, it never blocks. Unknown providers (Seafile, Syncthing,

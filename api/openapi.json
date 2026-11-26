@@ -4168,6 +4168,10 @@
           "title"
         ],
         "properties": {
+          "allowDuplicate": {
+            "type": "boolean",
+            "description": "Add the book even if its title is already in the library."
+          },
           "authorNames": {
             "type": "array",
             "items": {
@@ -5071,6 +5075,7 @@
           "unavailable",
           "tooLarge",
           "conflict",
+          "duplicate",
           "storageFull",
           "internal"
         ]
@@ -5682,6 +5687,7 @@
         "required": [
           "format",
           "title",
+          "titleKey",
           "authorNames",
           "tags"
         ],
@@ -5736,6 +5742,10 @@
           "title": {
             "type": "string",
             "description": "The file's own title, or its name when it has none."
+          },
+          "titleKey": {
+            "type": "string",
+            "description": "The same for titles that match as duplicates."
           }
         }
       },
@@ -5759,6 +5769,13 @@
                 "type": "null"
               }
             ]
+          },
+          "duplicate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Present when the library already has the book's title: which books, as\na commit would be refused."
           },
           "expiresAt": {
             "type": "string",

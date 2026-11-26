@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLocalImports } from "@/lib/services/library";
-import { readyItems, summarize, visibleItems } from "@/lib/uploads/queue";
+import {
+	isActive,
+	isBatchRead,
+	type QueueItem,
+	readQueue,
+	readyItems,
+	summarize,
+	undecidedDuplicates,
+	visibleItems,
+} from "@/lib/uploads/queue";
 import {
 	LibraryState,
 	useAuthors,
@@ -14,6 +23,9 @@ import { useBookUploads } from "./use-book-uploads";
 import { useChooseBookFiles } from "./use-choose-book-files";
 import { useFileDrag } from "./use-file-drag";
 import { useReviewDeck } from "./use-review-deck";
+
+/** Reading for longer than this shows its progress. */
+const SLOW_READ_MS = 300;
 
 /**
  * After a book is added or skipped: the sheet closes once nothing is left at
@@ -49,11 +61,28 @@ export const useUploadController = () => {
 		onDrop: (files) => useUploadsStore.getState().addFiles(files),
 	});
 
-	const items = useMemo(() => visibleItems(queue), [queue]);
+	const read = useMemo(() => readQueue(queue), [queue]);
+	const items = useMemo(() => visibleItems(read), [read]);
 	const ready = useMemo(() => readyItems(queue), [queue]);
 	const summary = useMemo(() => summarize(queue), [queue]);
 	// Stays true while the sheet closes over the last book; reopening resets it.
 	const reviewing = reviewKey !== null;
+	const unread = queue.items.filter((item) => item.unread);
+	const reading = unread.length > 0;
+	const [slow, setSlow] = useState(false);
+	useEffect(() => {
+		if (!reading) return;
+		const timer = setTimeout(() => setSlow(true), SLOW_READ_MS);
+		return () => {
+			clearTimeout(timer);
+			setSlow(false);
+		};
+	}, [reading]);
+	const undecided = useMemo(() => undecidedDuplicates(read), [read]);
+	// Once the step shows, files dropped meanwhile don't take it away.
+	const asking = useRef(false);
+	asking.current =
+		!reviewing && undecided.length > 0 && (asking.current || isBatchRead(read));
 	const deck = useReviewDeck({
 		ready,
 		reviewKey,
@@ -100,6 +129,14 @@ export const useUploadController = () => {
 					? useUploadsStore.getState().openSheet()
 					: useUploadsStore.getState().closeSheet(),
 			items,
+			reading: reading
+				? {
+						done: unread.filter((item) => !isActive(item)).length,
+						total: unread.length,
+						slow,
+					}
+				: undefined,
+			duplicates: asking.current ? undecided : [],
 			summary,
 			paused: queue.paused,
 			reviewing,
@@ -111,9 +148,20 @@ export const useUploadController = () => {
 			onBackToQueue: () => useUploadsStore.getState().review(null),
 			onRetry: (key: string) => useUploadsStore.getState().retry(key),
 			onRemove: (key: string) => void useUploadsStore.getState().remove(key),
+			onSkipDuplicates: (duplicates: QueueItem[]) => {
+				for (const item of duplicates)
+					void useUploadsStore.getState().remove(item.key);
+				settleAfterReview();
+			},
+			onAddDuplicates: (duplicates: QueueItem[]) => {
+				for (const item of duplicates)
+					useUploadsStore
+						.getState()
+						.dispatch({ type: "accepted", key: item.key });
+			},
 			onAddAll: () => void addAll(),
 			onCancelAll: () => {
-				for (const item of items)
+				for (const item of visibleItems(queue))
 					void useUploadsStore.getState().remove(item.key);
 				useUploadsStore.getState().closeSheet();
 			},

@@ -37,6 +37,8 @@ export interface QueueItem {
 	file?: File;
 	/** The file on this computer, for a book added on the desktop. */
 	path?: string;
+	/** Its batch is still being read on this computer. */
+	unread?: boolean;
 	uploadId?: string;
 	phase: TUploadPhase;
 	/** Bytes the server has, plus those in flight for the current chunk. */
@@ -46,6 +48,15 @@ export interface QueueItem {
 	expiresAt?: string;
 	/** Why the item failed, was rejected, or couldn't be added. */
 	message?: string;
+	/**
+	 * The title it is already in the library under, and what it matches;
+	 * adding it again under that title adds it anyway.
+	 */
+	duplicate?: { title: string; message: string };
+	/** The title it was accepted under in the duplicates step. */
+	acceptedTitle?: string;
+	/** Adding it was refused as a duplicate, so its review card asks instead. */
+	refused?: boolean;
 }
 
 export interface QueueState {
@@ -87,9 +98,16 @@ export type QueueAction =
 	| { type: "retried"; key: string }
 	| { type: "paused"; key: string; message: string }
 	| { type: "resumed" }
+	/** Add Anyway, in the duplicates step. */
+	| { type: "accepted"; key: string }
 	| { type: "adding"; key: string }
 	| { type: "added"; key: string }
-	| { type: "addFailed"; key: string; message: string }
+	| {
+			type: "addFailed";
+			key: string;
+			message?: string;
+			duplicate?: { title: string; message: string };
+	  }
 	| { type: "removed"; key: string }
 	| { type: "cleared" };
 
@@ -150,7 +168,7 @@ export const itemsForFiles = (
 			name: displayName(source.name),
 			fileName: source.name,
 			size: local ? 0 : source.size,
-			...(local ? { path: source.path } : { file: source }),
+			...(local ? { path: source.path, unread: true } : { file: source }),
 			phase: message ? UploadPhase.rejected : UploadPhase.waiting,
 			sentBytes: 0,
 			message,
@@ -176,6 +194,10 @@ const fromStaged = (
 	coverUrl: upload.book?.coverUrl ? coverUrl(upload.id) : undefined,
 	phase: upload.book ? UploadPhase.ready : item.phase,
 	message: undefined,
+	duplicate:
+		upload.book && upload.duplicate
+			? { title: upload.book.title.trim(), message: upload.duplicate }
+			: undefined,
 });
 
 const update = (
@@ -187,15 +209,15 @@ const update = (
 	items: state.items.map((item) => (item.key === key ? change(item) : item)),
 });
 
-export const queueReducer = (
-	state: QueueState,
-	action: QueueAction,
-): QueueState => {
+const reduceQueue = (state: QueueState, action: QueueAction): QueueState => {
 	switch (action.type) {
 		case "limits":
 			return { ...state, limits: action.limits };
-		case "filesAdded":
-			return { ...state, items: [...state.items, ...action.items] };
+		case "filesAdded": {
+			// Books added earlier matter to duplicates only while their batch lasts.
+			const before = visibleItems(state).length > 0 ? state.items : [];
+			return { ...state, items: [...before, ...action.items] };
+		}
 		case "restored": {
 			const known = new Set(state.items.map((item) => item.uploadId));
 			const restored = action.uploads
@@ -291,6 +313,12 @@ export const queueReducer = (
 			};
 		case "resumed":
 			return { ...state, paused: undefined };
+		case "accepted":
+			return update(state, action.key, (item) => ({
+				...item,
+				duplicate: undefined,
+				acceptedTitle: item.book?.title.trim(),
+			}));
 		case "adding":
 			return update(state, action.key, (item) => ({
 				...item,
@@ -307,6 +335,8 @@ export const queueReducer = (
 				...item,
 				phase: UploadPhase.ready,
 				message: action.message,
+				duplicate: action.duplicate ?? item.duplicate,
+				refused: action.duplicate ? true : item.refused,
 			}));
 		case "removed":
 			return {
@@ -316,6 +346,20 @@ export const queueReducer = (
 		case "cleared":
 			return { ...state, items: [], paused: undefined };
 	}
+};
+
+/** A batch's books come out together, once the last of them is read. */
+export const queueReducer = (
+	state: QueueState,
+	action: QueueAction,
+): QueueState => {
+	const next = reduceQueue(state, action);
+	return isBatchRead(next) && next.items.some((item) => item.unread)
+		? {
+				...next,
+				items: next.items.map((item) => ({ ...item, unread: undefined })),
+			}
+		: next;
 };
 
 /* --- Selectors --- */
@@ -334,10 +378,76 @@ export const nextToUpload = (state: QueueState): QueueItem | undefined =>
 				(item) => item.phase === UploadPhase.waiting && hasSource(item),
 			);
 
+/** The queue without the books of a batch still being read. */
+export const readQueue = (state: QueueState): QueueState => ({
+	...state,
+	items: state.items.filter((item) => !item.unread),
+});
+
 export const readyItems = (state: QueueState): QueueItem[] =>
-	state.items.filter(
+	readQueue(state).items.filter(
 		(item) =>
 			item.phase === UploadPhase.ready || item.phase === UploadPhase.adding,
+	);
+
+/**
+ * Books to ask about before the rest: already in the library, or repeating
+ * an earlier book of the queue.
+ */
+export const undecidedDuplicates = (state: QueueState): QueueItem[] => {
+	const seen = new Set<string>();
+	return state.items.filter((item) => {
+		if (!item.book) return false;
+		const repeat = seen.has(item.book.titleKey);
+		seen.add(item.book.titleKey);
+		return (
+			item.phase === UploadPhase.ready &&
+			item.acceptedTitle === undefined &&
+			!item.refused &&
+			(item.duplicate !== undefined || repeat)
+		);
+	});
+};
+
+/** The duplicates of one book, decided on together. */
+export interface DuplicateGroup {
+	/** The book's title key, shared by every file of the group. */
+	key: string;
+	items: QueueItem[];
+	message: string;
+}
+
+const duplicateMessage = (items: QueueItem[]): string => {
+	const inLibrary = items.find((item) => item.duplicate);
+	if (items.length === 1)
+		return (
+			inLibrary?.duplicate?.message ??
+			"1 extra copy in the books you are adding"
+		);
+	return inLibrary
+		? `Already in your library, ${items.length} copies`
+		: `${items.length} extra copies in the books you are adding`;
+};
+
+/** The undecided duplicates, one group per book, in the order first seen. */
+export const duplicateGroups = (items: QueueItem[]): DuplicateGroup[] => {
+	const byKey = new Map<string, QueueItem[]>();
+	for (const item of items) {
+		const key = item.book?.titleKey ?? item.key;
+		byKey.set(key, [...(byKey.get(key) ?? []), item]);
+	}
+	return [...byKey].map(([key, group]) => ({
+		key,
+		items: group,
+		message: duplicateMessage(group),
+	}));
+};
+
+/** Every file that can be read has been; a full server holds the others back. */
+export const isBatchRead = (state: QueueState): boolean =>
+	!state.items.some(
+		(item) =>
+			isActive(item) && !(state.paused && item.phase === UploadPhase.waiting),
 	);
 
 /** Items still shown in the queue: added books leave once acknowledged. */

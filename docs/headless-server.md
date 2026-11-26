@@ -465,12 +465,21 @@ user who started an upload can see it. Upload routes:
 
 - `POST /api/uploads/{upload_id}/commit` with the reviewed metadata
   (`{"title": "…", "authorNames": […], "identifier": "…", "publisher": "…",
-  "language": "en", "tags": […], "publicationDate": "2021-03-04"}`; only `title`
-  is required): adds the finished upload to the library with the cover from
-  its file, records the signed-in user as the one who added it, and deletes the
-  staged copy. Answers 201 with the new book, or 409 when the upload isn't
-  finished or is busy, and 403 `readOnly` when the library is open read-only. An identifier is kept
+  "language": "en", "tags": […], "publicationDate": "2021-03-04",
+  "allowDuplicate": false}`; only `title` is required): adds the finished
+  upload to the library with the cover from its file, records the signed-in
+  user as the one who added it, and deletes the staged copy. Answers 201 with
+  the new book, or 409 when the upload isn't finished or is busy, 409
+  `duplicate` when a book with the same title is already in the library (the
+  upload is kept; resend with `"allowDuplicate": true` to add it anyway), and
+  403 `readOnly` when the library is open read-only. An identifier is kept
   when it is an ISBN.
+
+Every view of an upload that has a `book` (the list, `GET` and the final chunk's
+answer) also carries `duplicate` when the library already has that title: the
+books it matches, as a commit would be refused. It is best effort, so its
+absence doesn't mean the title is new; the commit still checks. Books with the
+same `titleKey` repeat each other's title.
 
 Limits can be tuned in an optional `[api.uploads]` table (defaults shown):
 

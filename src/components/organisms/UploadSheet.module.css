@@ -39,6 +39,12 @@
 	animation: upload-sheet-out 160ms ease-in forwards;
 }
 
+/* As tall as the queue of these books: reading them, then deciding on the
+   duplicates, changes nothing around them. */
+.sized {
+	min-height: min(calc(var(--rows) * 73px + 180px), 560px, 100vh - 112px);
+}
+
 .header {
 	display: flex;
 	align-items: center;
@@ -86,6 +92,15 @@
 	/* The review scrolls inside; no gutter to inset its edges. */
 	scrollbar-gutter: auto;
 	padding: 0;
+}
+
+.sized .body {
+	display: flex;
+	flex-direction: column;
+}
+
+.sized .body > ul {
+	flex: 1 0 auto;
 }
 
 .list {
@@ -367,6 +382,10 @@
 		/* Like the review's Skip / Add: the secondary action, then the main one. */
 		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
 		gap: 10px;
+	}
+
+	.footerEven {
+		grid-template-columns: 1fr 1fr;
 	}
 
 	.cancelAll,

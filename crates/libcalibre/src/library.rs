@@ -786,6 +786,12 @@ impl Library {
         })
     }
 
+    /// `(id, title)` for every book, ordered by id, read straight from the
+    /// `books` table with no hydration.
+    pub fn book_titles(&mut self) -> Result<Vec<(BookId, String)>, CalibreError> {
+        operations::books::titles(&mut self.conn)
+    }
+
     /// `(id, book_dir_path)` for every book with a cover, read straight from
     /// the `books` table with no hydration of authors/tags/series/files/
     /// read-state. Feeds the cover-thumbnail warm path, where only the cover's

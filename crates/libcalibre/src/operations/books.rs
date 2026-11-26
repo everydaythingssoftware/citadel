@@ -283,6 +283,11 @@ pub fn get_many(
     hydrate(conn, book_rows)
 }
 
+/// `(id, title)` for every book, ordered by id, without hydration.
+pub fn titles(conn: &mut SqliteConnection) -> Result<Vec<(BookId, String)>, CalibreError> {
+    books::titles(conn)
+}
+
 /// `(id, book_dir_path)` for every book with a cover, without hydration.
 /// Backs the cover-thumbnail warm path.
 pub fn cover_sources(conn: &mut SqliteConnection) -> Result<Vec<(BookId, String)>, CalibreError> {

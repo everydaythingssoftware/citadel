@@ -1,0 +1,25 @@
+.list {
+	margin: 0;
+	padding: 0;
+}
+
+/* Wraps rather than clips. */
+.list .message {
+	overflow: visible;
+}
+
+/* Phones: the buttons go under the text, sharing its width. */
+@media (max-width: 36em) {
+	.list .row {
+		align-items: start;
+	}
+
+	.actions {
+		grid-column: 2 / -1;
+		gap: 8px;
+	}
+
+	.actions > * {
+		flex: 1;
+	}
+}

@@ -19,6 +19,7 @@ import {
 	type QueueState,
 	readyItems,
 	reviewedFromStaged,
+	undecidedDuplicates,
 } from "./queue";
 
 const DEFAULT_CHUNK_BYTES = 8 * 1024 * 1024;
@@ -45,7 +46,7 @@ export interface UploadRunner {
 	remove(key: string): Promise<void>;
 	/** Adds a ready book with the reviewed metadata; true when it landed. */
 	add(key: string, book: ReviewedBook): Promise<boolean>;
-	/** Adds every ready book with the metadata read from its file. */
+	/** Adds every ready book with its file's metadata, except duplicates not accepted. */
 	addAllReady(): Promise<void>;
 	/** Stops in-flight transfers; staged uploads stay on the server. */
 	dispose(): void;
@@ -290,10 +291,25 @@ export const createUploadRunner = ({
 		const item = current(key);
 		if (!item?.uploadId) return false;
 		dispatch({ type: "adding", key });
+		const title = book.title.trim();
 		try {
-			await uploads.commit(item.uploadId, book);
+			await uploads.commit(
+				item.uploadId,
+				item.duplicate?.title === title || item.acceptedTitle === title
+					? { ...book, allowDuplicate: true }
+					: book,
+			);
 		} catch (error) {
-			dispatch({ type: "addFailed", key, message: messageFor(error) });
+			const message = messageFor(error);
+			dispatch(
+				failureOf(error) === UploadFailure.duplicate
+					? {
+							type: "addFailed",
+							key,
+							duplicate: { title, message },
+						}
+					: { type: "addFailed", key, message },
+			);
 			return false;
 		}
 		dispatch({ type: "added", key });
@@ -347,8 +363,14 @@ export const createUploadRunner = ({
 		},
 		add,
 		addAllReady: async () => {
+			const undecided = new Set(undecidedDuplicates(getState()));
 			for (const item of readyItems(getState())) {
-				if (item.book && item.phase === "ready")
+				if (
+					item.book &&
+					item.phase === "ready" &&
+					!item.duplicate &&
+					!undecided.has(item)
+				)
 					await add(item.key, reviewedFromStaged(item.book));
 			}
 		},

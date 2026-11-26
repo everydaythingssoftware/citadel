@@ -52,6 +52,9 @@ pub struct StagedFile {
     file_name: String,
     size: u64,
     book: StagedBook,
+    /// Present when the library already has the book's title: which books, as
+    /// adding it would be refused.
+    duplicate: Option<String>,
 }
 
 impl Staged {
@@ -61,6 +64,7 @@ impl Staged {
             file_name: self.file_name.clone(),
             size: self.size,
             book: self.book.clone(),
+            duplicate: None,
         }
     }
 }
@@ -240,7 +244,24 @@ pub fn clb_query_staged_books(
     state: tauri::State<CitadelState>,
     staging: tauri::State<DesktopStaging>,
 ) -> Result<Vec<StagedFile>, LibraryError> {
-    staging.list(&library_id(&state)?)
+    let mut files = staging.list(&library_id(&state)?)?;
+    flag_duplicates(&state, &mut files);
+    Ok(files)
+}
+
+/// Flags the files whose title is already in the library, with one library
+/// read for all; a library that can't be read leaves them unflagged.
+fn flag_duplicates(state: &CitadelState, files: &mut [StagedFile]) {
+    if files.is_empty() {
+        return;
+    }
+    let titles: Vec<&str> = files.iter().map(|file| file.book.title.as_str()).collect();
+    let found = state
+        .with_library_service(|service| service.duplicates(&titles))
+        .unwrap_or_default();
+    for (file, duplicate) in files.iter_mut().zip(found) {
+        file.duplicate = duplicate;
+    }
 }
 
 /// Reads a book file where it is, for review before it's added.
@@ -254,10 +275,13 @@ pub async fn clb_cmd_stage_book(
     use tauri::Manager;
 
     let library_id = library_id(&state)?;
+    let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        handle
+        let mut staged = handle
             .state::<DesktopStaging>()
-            .stage(library_id, PathBuf::from(path))
+            .stage(library_id, PathBuf::from(path))?;
+        flag_duplicates(&state, std::slice::from_mut(&mut staged));
+        Ok(staged)
     })
     .await
     .map_err(unavailable)?
@@ -282,8 +306,12 @@ pub async fn clb_cmd_add_staged_book(
     tauri::async_runtime::spawn_blocking(move || {
         let staging = handle.state::<DesktopStaging>();
         let path = staging.claim(&staged_id, &library_id)?;
+        let allow_duplicate = book.allow_duplicate;
         let added = book.into_book_add(path).and_then(|book| {
             state.with_library_service(|service| {
+                if !allow_duplicate {
+                    service.refuse_duplicate(&book.title)?;
+                }
                 let id = service.create_book(&actor, book)?;
                 service.get_book(&id)
             })
@@ -365,5 +393,53 @@ mod tests {
         staging.discard(&staged.id);
         assert!(staging.list("one").unwrap().is_empty());
         assert!(path.exists(), "skipping leaves the file alone");
+    }
+
+    #[test]
+    fn titles_already_in_the_library_are_flagged() {
+        let library = tempfile::tempdir().unwrap();
+        libcalibre::Library::create_library_at(library.path().to_str().unwrap()).unwrap();
+        let state = CitadelState::new();
+        state
+            .init_library(library.path().to_string_lossy().into_owned())
+            .unwrap();
+        state
+            .with_library_service(|service| {
+                service.create_book(
+                    &citadel_core::Actor::User { id: "test".into() },
+                    libcalibre::BookAdd {
+                        title: "Moby Dick".into(),
+                        author_names: vec!["Herman Melville".into()],
+                        tags: None,
+                        series: None,
+                        series_index: None,
+                        publisher: None,
+                        publication_date: None,
+                        rating: None,
+                        description: None,
+                        identifiers: HashMap::new(),
+                        language: None,
+                        file_paths: vec![],
+                    },
+                )
+            })
+            .unwrap();
+        let (directory, staging) = staging();
+        let mut files = ["moby dick.txt", "Walden.txt"]
+            .map(|name| {
+                let path = book_at(directory.path(), name, "Call me Ishmael.");
+                staging.stage("one".into(), path).unwrap()
+            })
+            .to_vec();
+        flag_duplicates(&state, &mut files);
+        assert_eq!(
+            files[0].duplicate.as_deref(),
+            Some("Already in your library: Moby Dick by Herman Melville")
+        );
+        assert_eq!(files[1].duplicate, None);
+
+        let mut files = staging.list("one").unwrap();
+        flag_duplicates(&CitadelState::new(), &mut files);
+        assert!(files.iter().all(|file| file.duplicate.is_none()));
     }
 }

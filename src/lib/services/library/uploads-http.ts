@@ -13,6 +13,7 @@ type LibraryErrorCode = components["schemas"]["LibraryErrorCode"];
 
 const failureForCode: Partial<Record<LibraryErrorCode, TUploadFailure>> = {
 	conflict: UploadFailure.conflict,
+	duplicate: UploadFailure.duplicate,
 	unauthorized: UploadFailure.unauthorized,
 	notFound: UploadFailure.notFound,
 	tooLarge: UploadFailure.tooLarge,

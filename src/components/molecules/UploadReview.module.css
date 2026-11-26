@@ -117,6 +117,19 @@
 	background: var(--ctd-surface);
 }
 
+/* Keeps the button as wide as its longest label, so swapping labels doesn't
+   resize it. */
+.primaryLabel {
+	display: inline-grid;
+	justify-items: center;
+}
+
+.primaryLabel::after {
+	content: attr(data-widest);
+	height: 0;
+	visibility: hidden;
+}
+
 /* Touch screens: every control is at least 44 × 44 pt (Apple HIG). */
 @media (pointer: coarse) {
 	.back,

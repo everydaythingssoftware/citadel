@@ -54,6 +54,18 @@ pub(crate) fn get_by_ids(
         .map_err(CalibreError::from)
 }
 
+/// `(id, title)` for every book, ordered by id, without any hydration.
+pub(crate) fn titles(conn: &mut SqliteConnection) -> Result<Vec<(BookId, String)>, CalibreError> {
+    use crate::schema::books::dsl::*;
+
+    books
+        .order(id.asc())
+        .select((id, title))
+        .load::<(i32, String)>(conn)
+        .map(|rows| rows.into_iter().map(|(i, t)| (BookId(i), t)).collect())
+        .map_err(CalibreError::from)
+}
+
 /// `(id, path)` for every book with a cover, without any hydration. Selects
 /// only the `books` table — no authors/tags/series/files/read-state — so the
 /// cover-thumbnail warm path can read each cover's folder cheaply. A NULL

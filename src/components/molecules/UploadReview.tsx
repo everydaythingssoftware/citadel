@@ -17,6 +17,9 @@ import { UploadReviewCard } from "./UploadReviewCard";
 /** Beyond this many books the dots would wrap; the position says it instead. */
 const MAX_DOTS = 15;
 
+/** The primary button's longest label, whose width it keeps. */
+const ADD_LABEL = "Add to Library";
+
 export interface UploadReviewProps {
 	deck: ReviewDeck;
 	authorSuggestions?: string[];
@@ -45,6 +48,13 @@ export const UploadReview = ({
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const scrolled = useScrolled(scrollRef);
 	const busy = current?.phase === UploadPhase.adding || deck.leaving;
+	const refused =
+		current?.duplicate?.title === deck.form.title.trim()
+			? current?.duplicate
+			: undefined;
+	// Kept for the whole review, so the card doesn't shrink as duplicates go.
+	const reserveMessage = useRef(false);
+	reserveMessage.current ||= deck.items.some((item) => item.duplicate);
 	// With a mouse or trackpad, the row moves with Cover Flow's physics;
 	// touch screens scroll natively.
 	const physics = useMediaQuery("(pointer: fine)");
@@ -58,7 +68,13 @@ export const UploadReview = ({
 				disabled={!current || busy || deck.form.title.trim() === ""}
 				onClick={() => void deck.add()}
 			>
-				{current?.phase === UploadPhase.adding ? "Adding…" : "Add to Library"}
+				<span className={styles.primaryLabel} data-widest={ADD_LABEL}>
+					{current?.phase === UploadPhase.adding
+						? "Adding…"
+						: refused
+							? "Add Anyway"
+							: ADD_LABEL}
+				</span>
 			</Button>
 		</>
 	);
@@ -138,7 +154,8 @@ export const UploadReview = ({
 						bookKey={current.key}
 						form={deck.form}
 						errors={deck.errors}
-						message={current.message}
+						message={current.message ?? refused?.message}
+						reserveMessage={reserveMessage.current}
 						onChange={deck.updateForm}
 						onLeaveField={deck.leaveField}
 						detailsOpen={deck.detailsOpen}

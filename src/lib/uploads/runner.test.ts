@@ -44,6 +44,9 @@ const setup = (options: FakeUploadsOptions = {}) => {
 	return {
 		fake,
 		runner,
+		dispatch: (action: QueueAction) => {
+			state = queueReducer(state, action);
+		},
 		actions,
 		sleeps,
 		state: () => state,
@@ -239,6 +242,110 @@ describe("upload runner", () => {
 			"Two (read)",
 		]);
 		expect(queue.fake.committed[0]?.book.authorNames).toEqual(["An Author"]);
+	});
+
+	it("adds a refused duplicate anyway only under the title it was refused under", async () => {
+		const queue = setup();
+		queue.runner.addFiles([file("One.epub", "abcd"), file("Two.epub", "efgh")]);
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
+		const message = "Already in your library: One";
+		const refuse = () =>
+			queue.fake.failNext(
+				"commit",
+				new UploadError(UploadFailure.duplicate, message),
+			);
+		const [one, two] = queue.state().items.map((item) => item.key);
+		refuse();
+		expect(await queue.runner.add(one ?? "", { title: "One" })).toBe(false);
+		refuse();
+		expect(await queue.runner.add(two ?? "", { title: " Two " })).toBe(false);
+		expect(queue.state().items.map((item) => item.duplicate?.title)).toEqual([
+			"One",
+			"Two",
+		]);
+		expect(queue.state().items[0]).toMatchObject({
+			phase: UploadPhase.ready,
+			message: undefined,
+			duplicate: { title: "One", message },
+		});
+		await queue.runner.addAllReady();
+		expect(queue.fake.committed).toHaveLength(0);
+		expect(await queue.runner.add(one ?? "", { title: "One, again" })).toBe(
+			true,
+		);
+		queue.fake.failNext(
+			"commit",
+			new UploadError(UploadFailure.network, "Offline"),
+		);
+		expect(await queue.runner.add(two ?? "", { title: "Two" })).toBe(false);
+		expect(queue.state().items[1]?.message).toBeDefined();
+		expect(queue.state().items[1]?.duplicate).toEqual({
+			title: "Two",
+			message,
+		});
+		expect(await queue.runner.add(two ?? "", { title: "Two" })).toBe(true);
+		const [retitled, anyway] = queue.fake.committed.map(({ book }) => book);
+		expect(retitled).toEqual({ title: "One, again" });
+		expect(retitled).not.toHaveProperty("allowDuplicate");
+		expect(anyway).toEqual({ title: "Two", allowDuplicate: true });
+	});
+
+	it("adds accepted duplicates with the rest, and re-checks an edited title", async () => {
+		const queue = setup({ duplicate: "Already in your library: One" });
+		queue.runner.addFiles([file("One.epub", "abcd"), file("Two.epub", "efgh")]);
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
+		const [one = "", two = ""] = queue.state().items.map((item) => item.key);
+		queue.dispatch({ type: "accepted", key: one });
+		queue.dispatch({ type: "accepted", key: two });
+		await queue.runner.add(two, { title: "Two, again" });
+		await queue.runner.addAllReady();
+		const [retitled, accepted] = queue.fake.committed.map(({ book }) => book);
+		expect(retitled).toEqual({ title: "Two, again" });
+		expect(accepted).toMatchObject({
+			title: "One (read)",
+			allowDuplicate: true,
+		});
+	});
+
+	it("leaves later copies out of Add All until they're accepted", async () => {
+		const queue = setup();
+		queue.runner.addFiles([file("One.epub", "abcd"), file("ONE.epub", "efgh")]);
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
+		await queue.runner.addAllReady();
+		expect(queue.phases()).toEqual([UploadPhase.added, UploadPhase.ready]);
+		const copy = queue.state().items[1]?.key ?? "";
+		queue.dispatch({ type: "accepted", key: copy });
+		await queue.runner.addAllReady();
+		expect(queue.fake.committed.map(({ book }) => book.allowDuplicate)).toEqual(
+			[undefined, true],
+		);
+	});
+
+	it("leaves a book flagged on arrival out of Add All", async () => {
+		const message = "Already in your library: One";
+		const queue = setup({ duplicate: message });
+		queue.runner.addFiles([file("One.epub", "abcd")]);
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
+		expect(queue.state().items[0]?.duplicate).toEqual({
+			title: "One (read)",
+			message,
+		});
+		await queue.runner.addAllReady();
+		expect(queue.fake.committed).toHaveLength(0);
+		const key = queue.state().items[0]?.key ?? "";
+		expect(await queue.runner.add(key, { title: "One (read)" })).toBe(true);
+		expect(queue.fake.committed[0]?.book).toEqual({
+			title: "One (read)",
+			allowDuplicate: true,
+		});
 	});
 
 	it("removes an upload mid-transfer and discards it on the server", async () => {

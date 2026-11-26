@@ -41,6 +41,8 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_FILE_NAME_CHARS: usize = 255;
 const UPLOAD_OFFSET: &str = "upload-offset";
+/// The longest a view waits for the library to say which titles it already has.
+const FLAG_WAIT: Duration = Duration::from_secs(2);
 
 /// `api.uploads` in the server config. Chunks stay well under reverse-proxy
 /// body limits so the total size is Citadel's own choice.
@@ -162,6 +164,9 @@ pub(super) struct StagedUpload {
     received_bytes: u64,
     /// Present once every byte has arrived and the file has been read.
     book: Option<StagedBook>,
+    /// Present when the library already has the book's title: which books, as
+    /// a commit would be refused.
+    duplicate: Option<String>,
     /// When the server discards the upload: a fixed review deadline once the
     /// file has been read, otherwise an hour after its last chunk.
     expires_at: DateTime<Utc>,
@@ -445,6 +450,7 @@ impl Upload {
             size: self.size,
             received_bytes: self.received,
             book: self.book.clone(),
+            duplicate: None,
             expires_at: self.expires_at(config).into(),
         }
     }
@@ -474,7 +480,7 @@ pub(super) async fn list(
 ) -> Result<Json<UploadList>, ApiFailure> {
     let staging = &state.uploads;
     let owner = Owner::new(&state, &user);
-    let uploads = staging
+    let mut uploads: Vec<StagedUpload> = staging
         .uploads
         .lock()
         .map_err(|_| LibraryError::unavailable())?
@@ -482,6 +488,7 @@ pub(super) async fn list(
         .filter(|(_, upload)| owner.owns(upload))
         .map(|(id, upload)| upload.view(id, &staging.config))
         .collect();
+    flag_duplicates(&state, &mut uploads).await;
     Ok(Json(UploadList {
         max_file_bytes: staging.config.max_file_bytes,
         chunk_bytes: staging.config.chunk_bytes,
@@ -571,7 +578,9 @@ pub(super) async fn get(
 ) -> Result<Json<StagedUpload>, ApiFailure> {
     let owner = Owner::new(&state, &user);
     let staging = &state.uploads;
-    let view = staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id, &staging.config)))?;
+    let mut view =
+        staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id, &staging.config)))?;
+    flag_duplicates(&state, std::slice::from_mut(&mut view)).await;
     Ok(Json(view))
 }
 
@@ -703,8 +712,12 @@ pub(super) async fn commit(
     };
 
     let actor = user.0.actor();
+    let allow_duplicate = input.allow_duplicate;
     let book = input.into_book_add(path)?;
     let book = super::write(state.clone(), permission, move |service| {
+        if !allow_duplicate {
+            service.refuse_duplicate(&book.title)?;
+        }
         let id = service.create_book(&actor, book)?;
         service.get_book(&id)
     })
@@ -907,8 +920,37 @@ async fn receive_chunk(
     }
     transfer.received = Some(received);
     drop(transfer);
-    let view = staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id, &staging.config)))?;
+    let mut view =
+        staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id, &staging.config)))?;
+    flag_duplicates(&state, std::slice::from_mut(&mut view)).await;
     Ok(Json(view))
+}
+
+/// Best effort: flags the views whose book's title is already in the library,
+/// with one library read for all, waiting at most `FLAG_WAIT`. A busy,
+/// slow or unavailable library leaves them unflagged, and the commit checks
+/// again.
+async fn flag_duplicates(state: &ApiState, views: &mut [StagedUpload]) {
+    let titles: Vec<String> = views
+        .iter()
+        .filter_map(|view| view.book.as_ref().map(|book| book.title.clone()))
+        .collect();
+    if titles.is_empty() {
+        return;
+    }
+    let found = tokio::time::timeout(
+        FLAG_WAIT,
+        super::run(state.clone(), move |service| {
+            let titles: Vec<&str> = titles.iter().map(String::as_str).collect();
+            service.duplicates(&titles)
+        }),
+    )
+    .await;
+    let Ok(Ok(found)) = found else { return };
+    let with_book = views.iter_mut().filter(|view| view.book.is_some());
+    for (view, duplicate) in with_book.zip(found) {
+        view.duplicate = duplicate;
+    }
 }
 
 async fn open_staged_file(path: &FsPath, offset: u64) -> Result<tokio::fs::File, ApiFailure> {
@@ -997,6 +1039,7 @@ mod tests {
         StagedBook {
             format: "txt".into(),
             title: "Book".into(),
+            title_key: "book".into(),
             author_names: vec!["Author".into()],
             identifier: None,
             publisher: None,

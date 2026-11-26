@@ -8,12 +8,18 @@ const ipc = vi.hoisted(() => ({
 	clbQueryLibraryStats: vi.fn(),
 	clbQueryPathSyncStatus: vi.fn(),
 	clbCmdSetCustomValue: vi.fn(),
+	clbCmdAddStagedBook: vi.fn(),
 	clbCmdSetBookCoverFromMetadata: vi.fn(),
 }));
 vi.mock("@/bindings", () => ({ commands: ipc }));
 import { tauriLibraryCatalog } from "./tauri";
 import { webLibraryCatalog } from "./web";
-import { CoverExpiredError } from "../library/types";
+import { createTauriBookImports } from "../library/tauri";
+import {
+	CoverExpiredError,
+	UploadError,
+	UploadFailure,
+} from "../library/types";
 
 describe("catalog and library transports", () => {
 	it("rejects unavailable remote connections before issuing desktop commands", async () => {
@@ -27,6 +33,29 @@ describe("catalog and library transports", () => {
 		expect(ipc.initClient).not.toHaveBeenCalled();
 	});
 	beforeEach(() => vi.resetAllMocks());
+	it("reports a refused duplicate as such, and forwards allowDuplicate", async () => {
+		const message = "Already in your library: Kim";
+		const imports = createTauriBookImports();
+		ipc.clbCmdAddStagedBook.mockResolvedValueOnce({
+			status: "error",
+			error: { code: "duplicate", message },
+		});
+		await expect(imports.commit("1", { title: "Kim" })).rejects.toEqual(
+			new UploadError(UploadFailure.duplicate, message),
+		);
+		expect(ipc.clbCmdAddStagedBook).toHaveBeenLastCalledWith(
+			"1",
+			expect.not.objectContaining({ allowDuplicate: true }),
+		);
+		ipc.clbCmdAddStagedBook.mockResolvedValueOnce({ status: "ok", data: {} });
+		await expect(
+			imports.commit("1", { title: "Kim", allowDuplicate: true }),
+		).resolves.toEqual({});
+		expect(ipc.clbCmdAddStagedBook).toHaveBeenLastCalledWith(
+			"1",
+			expect.objectContaining({ allowDuplicate: true }),
+		);
+	});
 	it("opens the selected path before returning a Library and propagates mutation errors", async () => {
 		ipc.initClient.mockResolvedValue({
 			status: "ok",

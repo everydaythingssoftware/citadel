@@ -2185,6 +2185,47 @@ async fn finished_uploads_wait_a_review_window_and_survive_a_restart() {
 }
 
 #[tokio::test]
+async fn a_duplicate_commit_is_refused_until_allowed_and_keeps_the_upload() {
+    let (directory, service, router, _, cookie) =
+        fixture_opened(CalibreCatalogSource::open_writable, small_uploads()).await;
+    let first = upload_whole(&router, &cookie, "uploaded.epub", &epub_bytes()).await;
+    assert!(first["duplicate"].is_null());
+    let first = format!("/api/uploads/{}/commit", first["id"].as_str().unwrap());
+    let (status, _) = send(
+        &router,
+        &cookie,
+        "POST",
+        &first,
+        json!({"title": "Uploaded Book"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let staged = upload_whole(&router, &cookie, "uploaded.epub", &epub_bytes()).await;
+    let upload = format!("/api/uploads/{}", staged["id"].as_str().unwrap());
+    let flagged = "Already in your library: Uploaded Book by Unknown";
+    assert_eq!(staged["duplicate"], flagged);
+    assert_eq!(staged["book"]["titleKey"], "uploaded book");
+    let (_, fetched) = send(&router, &cookie, "GET", &upload, Value::Null).await;
+    assert_eq!(fetched["duplicate"], flagged);
+    let (_, listed) = send(&router, &cookie, "GET", "/api/uploads", Value::Null).await;
+    assert_eq!(listed["uploads"][0]["duplicate"], flagged);
+    let commit = format!("{upload}/commit");
+    let title = "shared contract";
+    let (status, error) = send(&router, &cookie, "POST", &commit, json!({"title": title})).await;
+    assert_eq!(
+        (status, error["code"].as_str()),
+        (StatusCode::CONFLICT, Some("duplicate"))
+    );
+    let (status, _) = send(&router, &cookie, "GET", &upload, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    let allowed = json!({"title": title, "allowDuplicate": true});
+    let (status, added) = send(&router, &cookie, "POST", &commit, allowed).await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(book_count(directory.path()), 3);
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn commits_need_a_finished_upload_a_title_its_owner_and_a_writable_library() {
     let (directory, service, router, _, cookie) =
         fixture_opened(CalibreCatalogSource::open_writable, small_uploads()).await;

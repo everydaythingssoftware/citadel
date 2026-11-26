@@ -12,6 +12,7 @@ import { UploadReviewCard } from "./UploadReviewCard";
 const FORM = formForBook({
 	format: "epub",
 	title: "Moby-Dick",
+	titleKey: "moby dick",
 	authorNames: ["Herman Melville"],
 	identifier: "urn:isbn:9780142437247",
 	publisher: "Harper & Brothers",

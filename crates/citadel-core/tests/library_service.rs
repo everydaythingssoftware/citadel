@@ -1,6 +1,6 @@
 use citadel_core::{
     contracts::{BookSortOrder, BookUpdate, LibraryBookQuery},
-    error::LibraryErrorCode,
+    error::{LibraryError, LibraryErrorCode},
     library::LibraryService,
     Actor, AssetUrlBuilder, BookFile, HttpUrlBuilder,
 };
@@ -100,6 +100,69 @@ fn shared_mutation_read_state_and_genres_use_existing_library_behavior() {
         .iter()
         .any(|column| column.label == "citadel_genres"));
     assert!(!service.get_custom_values(&id).unwrap().is_empty());
+}
+
+#[test]
+fn a_title_already_in_the_library_is_refused_unless_allowed() {
+    let (directory, mut library, _) = fixture();
+    let source = directory.path().join("source.txt");
+    let mut service = LibraryService::new(&mut library, &AssetUrlBuilder);
+    let mut create =
+        |title: &str, author: &str, allow_duplicate: bool| -> Result<String, LibraryError> {
+            let book = BookAdd {
+                title: title.into(),
+                author_names: vec![author.into()],
+                tags: None,
+                series: None,
+                series_index: None,
+                publisher: None,
+                publication_date: None,
+                rating: None,
+                description: None,
+                identifiers: Default::default(),
+                language: None,
+                file_paths: vec![source.clone()],
+            };
+            if !allow_duplicate {
+                service.refuse_duplicate(&book.title)?;
+            }
+            service.create_book(&actor(), book)
+        };
+
+    let error = create("  contract:  BOOK!", "Other Author", false).unwrap_err();
+    assert_eq!(error.code, LibraryErrorCode::Duplicate);
+    assert_eq!(
+        error.message,
+        "Already in your library: Contract Book by Contract Author"
+    );
+    create("Contract Book Two", "Other Author", false).unwrap();
+    create("Contract Book", "Other Author", true).unwrap();
+    assert_eq!(
+        create("Contract Book", "Third Author", false)
+            .unwrap_err()
+            .message,
+        "Already in your library: Contract Book by Contract Author; Contract Book by Other Author"
+    );
+    create("?", "Other Author", false).unwrap();
+    create("!", "Other Author", false).unwrap();
+    assert_eq!(
+        create(" ? ", "Third Author", false).unwrap_err().message,
+        "Already in your library: ? by Other Author"
+    );
+
+    assert_eq!(
+        service
+            .duplicates(&["Contract Book", "Unknown", "!"])
+            .unwrap(),
+        vec![
+            Some(
+                "Already in your library: Contract Book by Contract Author; Contract Book by Other Author"
+                    .to_string()
+            ),
+            None,
+            Some("Already in your library: ! by Other Author".to_string()),
+        ]
+    );
 }
 
 #[test]

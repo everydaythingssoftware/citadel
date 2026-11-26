@@ -133,6 +133,46 @@ impl<'a> LibraryService<'a> {
         Ok(self.library.add_book(book)?.id.as_i32().to_string())
     }
 
+    /// Refused as a duplicate when a book with the same title, ignoring case
+    /// and punctuation, is already in the library.
+    pub fn refuse_duplicate(&mut self, title: &str) -> Result<()> {
+        match self.duplicates(&[title])?.remove(0) {
+            Some(message) => Err(LibraryError::new(LibraryErrorCode::Duplicate, message)),
+            None => Ok(()),
+        }
+    }
+
+    /// For each title, what the library already holds under it, or `None`.
+    /// At most the first ten matches per title are listed.
+    pub fn duplicates(&mut self, titles: &[&str]) -> Result<Vec<Option<String>>> {
+        const MAX_LISTED: usize = 10;
+        let existing: Vec<_> = self
+            .library
+            .book_titles()?
+            .into_iter()
+            .map(|(id, title)| (id, title_key(&title)))
+            .collect();
+        titles
+            .iter()
+            .map(|title| {
+                let key = title_key(title);
+                let mut entries = Vec::new();
+                for (id, _) in existing
+                    .iter()
+                    .filter(|(_, existing)| *existing == key)
+                    .take(MAX_LISTED)
+                {
+                    let entry = book_entry(&self.library.get_book(*id)?);
+                    if !entries.contains(&entry) {
+                        entries.push(entry);
+                    }
+                }
+                Ok((!entries.is_empty())
+                    .then(|| format!("Already in your library: {}", entries.join("; "))))
+            })
+            .collect()
+    }
+
     pub fn update_book(&mut self, _actor: &Actor, id: &str, updates: BookUpdate) -> Result<i32> {
         if updates
             .title
@@ -379,6 +419,31 @@ fn required_name(name: &str) -> Result<&str> {
     } else {
         Ok(name)
     }
+}
+
+/// Titles with the same key are duplicates: case and punctuation don't count.
+pub(crate) fn title_key(title: &str) -> String {
+    let lowercase = title.to_lowercase();
+    let words: Vec<&str> = lowercase
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect();
+    if words.is_empty() {
+        return lowercase.trim().to_string();
+    }
+    words.join(" ")
+}
+
+fn book_entry(book: &libcalibre::Book) -> String {
+    if book.authors.is_empty() {
+        return book.title.clone();
+    }
+    let authors: Vec<&str> = book
+        .authors
+        .iter()
+        .map(|author| author.name.as_str())
+        .collect();
+    format!("{} by {}", book.title, authors.join(" & "))
 }
 
 fn author_id(raw: &str) -> Result<libcalibre::AuthorId> {

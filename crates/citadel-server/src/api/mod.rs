@@ -164,7 +164,7 @@ impl IntoResponse for ApiFailure {
             LibraryErrorCode::ReadOnly => StatusCode::FORBIDDEN,
             LibraryErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
             LibraryErrorCode::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
-            LibraryErrorCode::Conflict => StatusCode::CONFLICT,
+            LibraryErrorCode::Conflict | LibraryErrorCode::Duplicate => StatusCode::CONFLICT,
             LibraryErrorCode::StorageFull => StatusCode::INSUFFICIENT_STORAGE,
             LibraryErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
