@@ -71,7 +71,9 @@ export interface UploadSheetProps {
 
 /**
  * The upload queue and review, as a sheet on wide screens and a full-screen
- * page on phones. Closing it leaves uploads running.
+ * page on phones. Closing it drops every book not yet added, as Cancel All
+ * does, except while files are being sent to the server: then it only
+ * hides, and the uploads carry on.
  */
 export const UploadSheet = ({
 	local = false,

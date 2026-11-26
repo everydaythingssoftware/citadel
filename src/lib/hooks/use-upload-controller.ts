@@ -127,7 +127,7 @@ export const useUploadController = () => {
 			onOpenChange: (open: boolean) =>
 				open
 					? useUploadsStore.getState().openSheet()
-					: useUploadsStore.getState().closeSheet(),
+					: useUploadsStore.getState().dismissSheet(),
 			items,
 			reading: reading
 				? {
@@ -160,11 +160,7 @@ export const useUploadController = () => {
 						.dispatch({ type: "accepted", key: item.key });
 			},
 			onAddAll: () => void addAll(),
-			onCancelAll: () => {
-				for (const item of visibleItems(queue))
-					void useUploadsStore.getState().remove(item.key);
-				useUploadsStore.getState().closeSheet();
-			},
+			onCancelAll: () => useUploadsStore.getState().cancelAll(),
 		},
 	};
 };

@@ -3,16 +3,18 @@ import type { BookIntake, ReviewedBook } from "@/lib/services/library";
 import {
 	type BookSource,
 	emptyQueue,
+	isSending,
 	type QueueAction,
 	type QueueState,
 	queueReducer,
+	visibleItems,
 } from "@/lib/uploads/queue";
 import { createUploadRunner, type UploadRunner } from "@/lib/uploads/runner";
 import { clearUndoHistory } from "@/stores/undo/store";
 
 interface UploadsState {
 	queue: QueueState;
-	/** The upload sheet is showing (uploads carry on while it's closed). */
+	/** The upload sheet is showing (files being sent carry on while closed). */
 	sheetOpen: boolean;
 	/** The ready book shown in the review card, when reviewing. */
 	reviewKey: string | null;
@@ -33,6 +35,16 @@ interface UploadsActions {
 	addAllReady: () => Promise<void>;
 	openSheet: () => void;
 	closeSheet: () => void;
+	/**
+	 * The sheet's own close (Escape, its close button): drops every book not
+	 * yet added, as Cancel All does, so the next add starts afresh. While
+	 * files are being sent to the server it only hides the sheet: dropping
+	 * would throw away uploads in flight, and the toolbar status brings
+	 * them back.
+	 */
+	dismissSheet: () => void;
+	/** Drops every book not yet added, and closes the sheet. */
+	cancelAll: () => void;
 	review: (key: string | null) => void;
 }
 
@@ -95,6 +107,14 @@ export const useUploadsStore = create<UploadsState & UploadsActions>()(
 		// What was on screen stays while the sheet animates away; the next
 		// open starts from the queue.
 		closeSheet: () => set({ sheetOpen: false }),
+		// The one exception is on the web, while bytes are on their way: the
+		// desktop reads files where they are and never sends any.
+		dismissSheet: () =>
+			isSending(get().queue) ? get().closeSheet() : get().cancelAll(),
+		cancelAll: () => {
+			for (const item of visibleItems(get().queue)) void get().remove(item.key);
+			get().closeSheet();
+		},
 		review: (key) => set({ reviewKey: key }),
 	}),
 );
