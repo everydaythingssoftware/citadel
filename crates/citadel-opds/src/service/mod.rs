@@ -14,14 +14,14 @@ use tokio::{sync::oneshot, task::JoinHandle};
 
 use super::{
     auth::OpdsBasicAuth,
-    catalog::router_with,
     client::ClientResolver,
     credential_store::OpdsCredentialStore,
+    limits::Limits,
     network::{
         advertised_url, plan_bindings, BindPolicy, InterfaceProvider, InterfaceSnapshot,
         NetdevInterfaceProvider, WaitingReason,
     },
-    CatalogSource,
+    router_with, CatalogSource,
 };
 
 const LISTENER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -129,15 +129,11 @@ impl ListenerFactory for TcpListenerFactory {
         listener.set_nonblocking(true)?;
         let listener = tokio::net::TcpListener::from_std(listener)?;
         let (shutdown, shutdown_receiver) = oneshot::channel();
-        let app = router_with(source, auth, clients);
+        // Each address gets its own admission limits.
+        let app = router_with(source, auth, clients.clone(), Limits::opds());
         let task = tokio::spawn(async move {
             let _ = tokio::spawn(async move {
-                // The peer's address decides whether its forwarded headers count.
-                let _ = axum::serve(
-                    listener,
-                    app.into_make_service_with_connect_info::<SocketAddr>(),
-                )
-                .with_graceful_shutdown(async move {
+                let _ = crate::listener::serve(listener, app, clients, async move {
                     let _ = shutdown_receiver.await;
                 })
                 .await;
@@ -482,22 +478,6 @@ enum BindOutcome {
 }
 
 impl OpdsService {
-    /// Admit additional routes through this service's shared request budget.
-    /// The host authenticates them and owns their body and deadline limits;
-    /// hosts must start the service before accepting requests on those routes.
-    pub fn limit_http_routes(&self, router: axum::Router) -> axum::Router {
-        router.layer(axum::middleware::from_fn_with_state(
-            self.inner.auth.limits(),
-            crate::limits::admit,
-        ))
-    }
-
-    /// Unprotected book asset routes for hosts that wrap the combined router with
-    /// `limit_http_routes`. Streaming shares this service's blocking-work budget.
-    pub fn book_asset_routes(&self, source: Arc<dyn CatalogSource>, prefix: &str) -> axum::Router {
-        crate::catalog::asset_routes(source, self.inner.auth.limits(), prefix)
-    }
-
     /// How listeners started from now on decide who a request is from. The
     /// desktop keeps the default, which believes forwarded addresses from
     /// this machine only; the server passes its `trustedProxies` and header.

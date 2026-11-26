@@ -49,7 +49,6 @@ pub struct OpdsBasicAuth {
 }
 
 struct AuthInner {
-    limits: crate::limits::Limits,
     required: AtomicBool,
     credentials: Mutex<Option<Arc<Vec<DeviceKeyVerifier>>>>,
     guard: SignInGuard,
@@ -69,7 +68,6 @@ impl OpdsBasicAuth {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(AuthInner {
-                limits: crate::limits::Limits::default(),
                 required: AtomicBool::new(false),
                 credentials: Mutex::new(None),
                 guard: SignInGuard::new(),
@@ -77,10 +75,6 @@ impl OpdsBasicAuth {
                 reported: Mutex::new(HashMap::new()),
             }),
         }
-    }
-
-    pub(crate) fn limits(&self) -> crate::limits::Limits {
-        self.inner.limits.clone()
     }
 
     /// The guard every OPDS guess goes through; hosts share it with their

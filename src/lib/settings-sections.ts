@@ -1,6 +1,7 @@
 /** The sections of the web app's Settings page. */
 export const SettingsSection = {
 	general: "general",
+	server: "server",
 	metadata: "metadata",
 } as const;
 export type TSettingsSection =
@@ -8,5 +9,6 @@ export type TSettingsSection =
 
 export const SETTINGS_SECTION_LABELS: Record<TSettingsSection, string> = {
 	general: "General",
+	server: "Server",
 	metadata: "Sources",
 };

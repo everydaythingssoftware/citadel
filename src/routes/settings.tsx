@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SettingsPage } from "@/components/organisms/SettingsPage";
 import {
-	BROWSER_SETTINGS_SECTIONS,
+	browserSettingsSections,
 	SettingsSectionContent,
 } from "@/components/organisms/SettingsPanes";
 import { SettingsWindow } from "@/components/pages/SettingsWindow";
+import { useBrowserSessionControls } from "@/lib/hooks/use-browser-session";
 import { usePlatform } from "@/lib/platform/context";
 
 export const Route = createFileRoute("/settings")({
@@ -14,11 +15,12 @@ export const Route = createFileRoute("/settings")({
 /** The desktop app opens Settings in its own window; the web shows a page. */
 function Settings() {
 	const platform = usePlatform();
+	const administrator = useBrowserSessionControls()?.administrator ?? false;
 	return platform.capabilities.supportsNativeWindows ? (
 		<SettingsWindow />
 	) : (
 		<SettingsPage
-			sections={BROWSER_SETTINGS_SECTIONS}
+			sections={browserSettingsSections(administrator)}
 			renderSection={(section) => <SettingsSectionContent section={section} />}
 		/>
 	);

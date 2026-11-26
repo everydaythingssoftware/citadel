@@ -7,13 +7,16 @@ pub mod client;
 pub mod credential_store;
 pub mod guard;
 mod identity;
-mod limits;
+pub mod limits;
+pub mod listener;
 pub mod network;
 pub mod service;
 pub mod verifier;
 mod xml;
 
-pub use catalog::{router, CatalogBookQuery, CatalogFacet, CatalogSource};
+pub use catalog::{
+    asset_routes, router, router_with, CatalogBookQuery, CatalogFacet, CatalogSource,
+};
 pub use service::{
     OpdsBindTarget, OpdsErrorCode, OpdsLifecycleState, OpdsService, OpdsServiceStatus,
     OpdsStartConfig, OpdsStatusError,

@@ -83,7 +83,9 @@ The container reports its health to Docker through `citadel-server health`.
 ### Health
 
 `GET /api/health` says how each part of the server is doing, at any address
-and without signing in, so Docker, Uptime Kuma and similar can ask it:
+and without signing in, so Docker, Uptime Kuma and similar can ask it.
+Without a session cookie it is answered outside request limits, from a result
+refreshed every 2 seconds, so a busy server still reports itself up:
 
 ```json
 {"status": "degraded", "checks": [
@@ -249,6 +251,15 @@ slowed by an attack on their username. To get back in as an administrator,
 use a browser you signed in with before, or the `users` commands.
 
 ## State and listeners
+
+Listeners speak HTTP/1.1 only. They close a connection whose headers take
+over 10 seconds or that sits idle for 60, and hold at most 1,024 connections
+(32 kept for this machine, 32 per peer unless it's a trusted proxy). Each
+listener has its own request limits: the API serves 32 public, 64 short and
+32 stream requests at once, each OPDS address 48 short and 24 stream, and one
+client may have 8, 16 and 4 in flight. Past these Citadel answers 503 with
+`Retry-After: 1`. A response averaging under 1 KiB/s over a minute ends
+([ADR 0018](adr/0018-listener-and-admission-limits.md)).
 
 `stateDirectory` is optional. On Unix it defaults to `$XDG_STATE_HOME/citadel`
 when XDG_STATE_HOME is absolute, otherwise `~/.local/state/citadel`. On Windows
@@ -475,7 +486,7 @@ required nullable fields; request `Option` fields may be omitted or null.
 API request bodies are limited to 1 MiB, and requests must be answered within
 30 seconds (downloads only need to start within it). Upload chunks are the
 exception: they stream to disk, bounded by `chunkBytes` and a 30-second idle
-timeout. The API shares OPDS's request slots; OPDS keeps its own smaller limits.
+timeout.
 
 ### Uploads
 

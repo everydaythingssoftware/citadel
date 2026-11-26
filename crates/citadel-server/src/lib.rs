@@ -756,7 +756,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         staging,
         metadata,
     );
-    let mut api = match api::start(&config.api, router).await {
+    let mut api = match api::start(&config.api, router, clients).await {
         Ok(api) => {
             let known: Vec<String> = addresses
                 .all()
@@ -829,7 +829,7 @@ async fn serve_unavailable(config: &ServerConfig, reason: String) -> Result<(), 
          keeps answering so health checks and the browser show this; fix it and restart.\""
     );
     let router = api::unavailable_router(reason.clone(), config.api.web_directory.as_deref());
-    let mut api = api::start(&config.api, router).await?;
+    let mut api = api::start(&config.api, router, config.api.client_resolver()?).await?;
     println!(
         "citadel_server api=http://{} health=failing",
         config.api.listen

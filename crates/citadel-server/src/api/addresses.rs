@@ -7,13 +7,15 @@ use std::{net::IpAddr, sync::Arc};
 
 use axum::{
     extract::{Request, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode, Uri},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
 use citadel_core::error::{LibraryError, LibraryErrorCode};
-use citadel_opds::client::{peer_of, ClientResolver, ForwardedHeader, ProxyTrust};
+use citadel_opds::client::{
+    peer_of, split_from_right, ClientResolver, ForwardedHeader, ProxyTrust,
+};
 
 use super::{session::PublicUrl, ApiState};
 
@@ -103,10 +105,10 @@ impl Addresses {
         all
     }
 
-    /// Whether the list limits anything: it names an address other than
-    /// this machine's own.
+    /// Whether any public URLs are set. When they are, other hosts are
+    /// refused; this machine's own names still work.
     pub fn restricted(&self) -> bool {
-        self.configured.iter().any(|url| !url.is_loopback())
+        !self.configured.is_empty()
     }
 
     pub fn standing(&self, origin: &PublicUrl) -> Standing {
@@ -121,20 +123,27 @@ impl Addresses {
         }
     }
 
-    /// What the browser used to reach this request: `Host`, or the
+    /// What the browser used to reach this request: `Host` (or the
+    /// request target's authority, for absolute-form requests), or the
     /// forwarded headers when a trusted proxy sent it. No peer means the
-    /// router was called in-process, which is trusted. Without `Host` there
-    /// is no origin, and state-changing browser requests are refused.
-    pub fn origin_of(&self, headers: &HeaderMap, peer: Option<IpAddr>) -> Option<PublicUrl> {
+    /// router was called in-process, which is trusted. Without any of them
+    /// there is no origin, and state-changing browser requests are refused.
+    pub fn origin_of(
+        &self,
+        headers: &HeaderMap,
+        uri: &Uri,
+        peer: Option<IpAddr>,
+    ) -> Option<PublicUrl> {
         let trusted = peer.is_none_or(|peer| self.clients.trust().origin_trusts(peer));
         let forwarded = if trusted {
-            forwarded(headers)
+            forwarded(headers, self.clients.header())
         } else {
             Forwarded::default()
         };
         let host = forwarded
             .host
-            .or_else(|| header_text(headers, header::HOST.as_str()))?;
+            .or_else(|| header_text(headers, header::HOST.as_str()))
+            .or_else(|| uri.authority().map(|authority| authority.to_string()))?;
         let scheme = forwarded.proto.unwrap_or_else(|| "http".into());
         PublicUrl::parse(&format!("{scheme}://{host}")).ok()
     }
@@ -154,33 +163,43 @@ struct Forwarded {
     host: Option<String>,
 }
 
-/// The nearest proxy's view: the standard `Forwarded` header, else the
-/// common `X-Forwarded-Proto` and `X-Forwarded-Host`.
-fn forwarded(headers: &HeaderMap) -> Forwarded {
-    if let Some(value) = header_text(headers, "forwarded") {
-        let first = value.split(',').next().unwrap_or_default();
-        let mut found = Forwarded::default();
-        for pair in first.split(';') {
-            if let Some((key, value)) = pair.trim().split_once('=') {
-                let value = value.trim().trim_matches('"').to_string();
-                match key.trim().to_ascii_lowercase().as_str() {
-                    "proto" => found.proto = Some(value.to_ascii_lowercase()),
-                    "host" => found.host = Some(value),
-                    _ => {}
+/// The nearest proxy's view, from the one header family `api.forwardedHeader`
+/// names (a client's own `Forwarded` must not outrank the proxy's
+/// `X-Forwarded-*`), taking the rightmost value: what the nearest proxy
+/// added, not what the client sent.
+fn forwarded(headers: &HeaderMap, header: ForwardedHeader) -> Forwarded {
+    let rightmost = |name: &str| {
+        headers
+            .get_all(name)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .flat_map(|value| split_from_right(value, ','))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .last()
+            .map(str::to_string)
+    };
+    match header {
+        ForwardedHeader::Forwarded => {
+            let mut found = Forwarded::default();
+            if let Some(element) = rightmost("forwarded") {
+                for pair in split_from_right(&element, ';') {
+                    if let Some((key, value)) = pair.trim().split_once('=') {
+                        let value = value.trim().trim_matches('"').to_string();
+                        match key.trim().to_ascii_lowercase().as_str() {
+                            "proto" => found.proto = Some(value.to_ascii_lowercase()),
+                            "host" => found.host = Some(value),
+                            _ => {}
+                        }
+                    }
                 }
             }
+            found
         }
-        if found.proto.is_some() || found.host.is_some() {
-            return found;
-        }
-    }
-    let first = |name| {
-        header_text(headers, name)
-            .and_then(|value| value.split(',').next().map(|part| part.trim().to_string()))
-    };
-    Forwarded {
-        proto: first("x-forwarded-proto").map(|proto| proto.to_ascii_lowercase()),
-        host: first("x-forwarded-host"),
+        ForwardedHeader::XForwardedFor => Forwarded {
+            proto: rightmost("x-forwarded-proto").map(|proto| proto.to_ascii_lowercase()),
+            host: rightmost("x-forwarded-host"),
+        },
     }
 }
 
@@ -195,21 +214,35 @@ pub(super) async fn check_address(
 ) -> Response {
     let peer = peer_of(request.extensions()).map(|peer| peer.ip().to_canonical());
     let addresses = &state.access.addresses;
-    let origin = addresses.origin_of(request.headers(), peer);
+    let origin = addresses.origin_of(request.headers(), request.uri(), peer);
     let path = request.uri().path();
     let checked = (path == "/api" || path.starts_with("/api/"))
         && !matches!(path, "/api/version" | "/api/health");
     if checked {
-        if let Some(origin) = &origin {
-            if addresses.standing(origin) == Standing::Refused {
+        match &origin {
+            Some(origin) if addresses.standing(origin) == Standing::Refused => {
                 return not_this_address(origin);
             }
+            // With public URLs set, a request that names no host can't be
+            // checked against them; this machine's own requests still can.
+            None if addresses.restricted() && !peer.is_none_or(|peer| peer.is_loopback()) => {
+                return missing_host();
+            }
+            _ => {}
         }
     }
     if let Some(origin) = origin {
         request.extensions_mut().insert(RequestOrigin(origin));
     }
     next.run(request).await
+}
+
+fn missing_host() -> Response {
+    let error = LibraryError {
+        code: LibraryErrorCode::InvalidArgument,
+        message: "Missing Host".into(),
+    };
+    (StatusCode::BAD_REQUEST, Json(error)).into_response()
 }
 
 fn not_this_address(origin: &PublicUrl) -> Response {
@@ -272,18 +305,33 @@ mod tests {
 
     #[test]
     fn with_no_public_urls_configured_every_address_is_answered() {
-        for configured in [vec![], vec![url("http://localhost:8081")]] {
-            let addresses = Addresses::fixed(configured);
-            assert!(!addresses.restricted());
-            assert_eq!(
-                addresses.standing(&url("http://nas.local:8081")),
-                Standing::Unrestricted
-            );
-            assert_eq!(
-                addresses.standing(&url("http://127.0.0.1:8081")),
-                Standing::Loopback
-            );
-        }
+        let addresses = Addresses::fixed(vec![]);
+        assert!(!addresses.restricted());
+        assert_eq!(
+            addresses.standing(&url("http://nas.local:8081")),
+            Standing::Unrestricted
+        );
+        assert_eq!(
+            addresses.standing(&url("http://127.0.0.1:8081")),
+            Standing::Loopback
+        );
+
+        // A list naming only this machine still restricts: other hosts are
+        // refused, and this machine's names keep working.
+        let local_only = Addresses::fixed(vec![url("https://localhost:8443")]);
+        assert!(local_only.restricted());
+        assert_eq!(
+            local_only.standing(&url("http://evil.example")),
+            Standing::Refused
+        );
+        assert_eq!(
+            local_only.standing(&url("https://localhost:8443")),
+            Standing::Listed
+        );
+        assert_eq!(
+            local_only.standing(&url("http://127.0.0.1:8081")),
+            Standing::Loopback
+        );
         let configured = Addresses::new(
             vec![
                 url("https://books.example.com"),
@@ -311,7 +359,11 @@ mod tests {
         let addresses = Addresses::fixed(vec![]);
         let plain = headers(&[("host", "nas.local:8081")]);
         assert_eq!(
-            addresses.origin_of(&plain, Some("192.168.1.20".parse().unwrap())),
+            addresses.origin_of(
+                &plain,
+                &Uri::default(),
+                Some("192.168.1.20".parse().unwrap())
+            ),
             Some(url("http://nas.local:8081"))
         );
         let proxied = headers(&[
@@ -320,34 +372,84 @@ mod tests {
             ("x-forwarded-host", "books.example.com"),
         ]);
         let from_proxy = addresses
-            .origin_of(&proxied, Some("172.18.0.3".parse().unwrap()))
+            .origin_of(
+                &proxied,
+                &Uri::default(),
+                Some("172.18.0.3".parse().unwrap()),
+            )
             .unwrap();
         assert_eq!(from_proxy, url("https://books.example.com"));
         assert!(from_proxy.secure());
         assert_eq!(
-            addresses.origin_of(&proxied, Some("203.0.113.9".parse().unwrap())),
+            addresses.origin_of(
+                &proxied,
+                &Uri::default(),
+                Some("203.0.113.9".parse().unwrap())
+            ),
             Some(url("http://citadel:8081")),
             "a stranger can't claim to be a proxy"
+        );
+        // With Forwarded chosen, the nearest proxy's element (the rightmost)
+        // names the address, not one a client sent ahead of it.
+        let standard_proxy = Addresses::new(
+            vec![],
+            ClientResolver::new(ProxyTrust::new(None), ForwardedHeader::Forwarded),
+            None,
+            None,
         );
         let standard = headers(&[
             ("host", "citadel:8081"),
             (
                 "forwarded",
-                "for=192.0.2.60;proto=https;host=\"books.example.com\", for=10.0.0.1",
+                "for=192.0.2.60;proto=http;host=evil.example, for=10.0.0.1;proto=https;host=\"books.example.com\"",
             ),
         ]);
         assert_eq!(
-            addresses.origin_of(&standard, Some("127.0.0.1".parse().unwrap())),
+            standard_proxy.origin_of(
+                &standard,
+                &Uri::default(),
+                Some("127.0.0.1".parse().unwrap())
+            ),
+            Some(url("https://books.example.com"))
+        );
+        // With X-Forwarded-For (the default), a client's own Forwarded header,
+        // passed along by a proxy that only sets X-Forwarded-*, is ignored.
+        let smuggled = headers(&[
+            ("host", "citadel:8081"),
+            ("x-forwarded-proto", "https"),
+            ("x-forwarded-host", "books.example.com"),
+            ("forwarded", "proto=http;host=localhost:8081"),
+        ]);
+        assert_eq!(
+            addresses.origin_of(
+                &smuggled,
+                &Uri::default(),
+                Some("172.18.0.3".parse().unwrap())
+            ),
+            Some(url("https://books.example.com"))
+        );
+        // A proxy that appends: its own value is the rightmost.
+        let appended = headers(&[
+            ("host", "citadel:8081"),
+            ("x-forwarded-proto", "http, https"),
+            ("x-forwarded-host", "evil.example, books.example.com"),
+        ]);
+        assert_eq!(
+            addresses.origin_of(
+                &appended,
+                &Uri::default(),
+                Some("172.18.0.3".parse().unwrap())
+            ),
             Some(url("https://books.example.com"))
         );
         let no_host = headers(&[("origin", "https://books.example.com")]);
         assert_eq!(
-            addresses.origin_of(&no_host, None),
+            addresses.origin_of(&no_host, &Uri::default(), None),
             None,
             "Origin alone names the page, not the server it reached"
         );
         assert_eq!(
-            addresses.origin_of(&proxied, None),
+            addresses.origin_of(&proxied, &Uri::default(), None),
             Some(url("https://books.example.com")),
             "in-process callers are trusted"
         );
@@ -361,7 +463,7 @@ mod tests {
             ("x-forwarded-host", "books.example.com"),
         ]);
         let from = |addresses: &Addresses, peer: &str| {
-            addresses.origin_of(&proxied, Some(peer.parse().unwrap()))
+            addresses.origin_of(&proxied, &Uri::default(), Some(peer.parse().unwrap()))
         };
         let default = Addresses::fixed(vec![]);
         assert_eq!(
