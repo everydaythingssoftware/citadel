@@ -19,17 +19,41 @@ export class WrongAddressError extends Error {
 }
 
 const MISDIRECTED = 421;
+const TOO_MANY_REQUESTS = 429;
+const SECONDS_PER_MINUTE = 60;
+const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE;
+
+/** "in 30 seconds", "in 2 minutes", "in 1 hour", from `Retry-After`. */
+const waitPhrase = (seconds: number): string => {
+	const plural = (count: number, unit: string) =>
+		`${count} ${unit}${count === 1 ? "" : "s"}`;
+	if (seconds < SECONDS_PER_MINUTE) return `in ${plural(seconds, "second")}`;
+	if (seconds < SECONDS_PER_HOUR)
+		return `in ${plural(Math.ceil(seconds / SECONDS_PER_MINUTE), "minute")}`;
+	return `in ${plural(Math.ceil(seconds / SECONDS_PER_HOUR), "hour")}`;
+};
+
+/** How long the server asked a refused sign-in to wait, if it said. */
+const retryAfter = (response: Response): number | null => {
+	const seconds = Number(response.headers.get("retry-after"));
+	return Number.isInteger(seconds) && seconds > 0 ? seconds : null;
+};
 
 const failure = (
 	error: { message?: string } | undefined,
 	response: Response,
 	fallback: string,
-): Error =>
-	response.status === MISDIRECTED
-		? new WrongAddressError(
-				error?.message ?? "Citadel isn't set up for this address.",
-			)
-		: new Error(error?.message ?? `${fallback} (${response.status})`);
+): Error => {
+	if (response.status === MISDIRECTED)
+		return new WrongAddressError(
+			error?.message ?? "Citadel isn't set up for this address.",
+		);
+	const message = error?.message ?? `${fallback} (${response.status})`;
+	const wait = retryAfter(response);
+	return response.status === TOO_MANY_REQUESTS && wait !== null
+		? new Error(`${message}. Try again ${waitPhrase(wait)}.`)
+		: new Error(message);
+};
 
 /** Browser sign-in against the serving origin; the session lives in an HttpOnly cookie. */
 export interface BrowserSession {

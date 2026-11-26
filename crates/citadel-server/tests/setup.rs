@@ -1,10 +1,11 @@
 //! First-run setup through the API: the setup code makes the administrator,
 //! the administrator chooses a library, readers stay out of the server's
 //! folders, and the choice survives a restart.
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     body::{to_bytes, Body},
+    extract::connect_info::MockConnectInfo,
     http::{Request, StatusCode},
     Router,
 };
@@ -18,6 +19,8 @@ use citadel_server::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+/// The reverse proxy in front of the test server, as its TCP peer.
+const PROXY_PEER: ([u8; 4], u16) = ([172, 18, 0, 2], 443);
 const PUBLIC_URL: &str = "https://books.example.com";
 const SETUP_CODE: &str = "K7QD-M2XV-H9RW";
 
@@ -75,6 +78,7 @@ fn fresh_with(
         ),
         setup_code: code.map(String::from),
         updates: citadel_server::updates::Updates::off(),
+        verifier: citadel_opds::verifier::VerifierPool::start(),
     };
     let staging = api::Staging::open(state.join("uploads"), api::UploadConfig::default()).unwrap();
     let metadata = Arc::new(
@@ -217,26 +221,47 @@ async fn a_fresh_server_bootstraps_its_administrator_with_the_setup_code() {
 }
 
 #[tokio::test]
-async fn wrong_setup_codes_back_off_like_sign_in() {
+async fn wrong_setup_codes_are_limited_per_address() {
     let directory = tempfile::tempdir().unwrap();
     let server = fresh(directory.path(), Some(SETUP_CODE));
-    let attempt = || {
-        request(
-            &server.router,
-            "POST",
-            "/api/setup/administrator",
-            Some(
-                json!({"setupCode": "AAAA-AAAA-AAAA", "username": "phil", "password": "a long password"}),
-            ),
-            None,
-        )
+    // Through a proxy on this machine, which names each client.
+    let attempt = |client: &str, code: &str| {
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/setup/administrator")
+            .header("origin", PUBLIC_URL)
+            .header("x-forwarded-for", client)
+            .header("content-type", "application/json")
+            .extension(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40_000))))
+            .body(Body::from(
+                json!({"setupCode": code, "username": "phil", "password": "a long password"})
+                    .to_string(),
+            ))
+            .unwrap();
+        let router = server.router.clone();
+        async move {
+            let response = router.oneshot(request).await.unwrap();
+            (response.status(), response.headers().clone())
+        }
     };
-    for _ in 0..3 {
-        assert_eq!(attempt().await.0, StatusCode::UNAUTHORIZED);
+    for guess in 0..100 {
+        let (status, _) = attempt("198.51.100.7", &format!("AAAA-AAAA-{guess:04}")).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{guess}");
     }
-    let (status, headers, _) = attempt().await;
+    let (status, headers) = attempt("198.51.100.7", SETUP_CODE).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(headers["retry-after"], "2");
+    assert_eq!(headers["retry-after"], "3600", "the real wait");
+    assert!(!server.accounts.administrator_exists().unwrap());
+
+    let (status, _) = attempt("198.51.100.8", "AAAA-AAAA-AAAA").await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "other addresses aren't affected"
+    );
+    let (status, _) = attempt("198.51.100.8", SETUP_CODE).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(server.accounts.administrator_exists().unwrap());
 }
 
 #[tokio::test]
@@ -927,9 +952,22 @@ async fn a_library_can_be_served_read_only_and_stays_so_after_a_restart() {
 
 /// How a browser reaches the test server: through a TLS proxy at
 /// `PUBLIC_URL`, which sends `Host` and `X-Forwarded-Proto` on every request.
+/// Requests carry the proxy as their peer.
 fn through_proxy(router: axum::Router) -> axum::Router {
     router.layer(axum::middleware::map_request(
         |mut request: axum::http::Request<Body>| async move {
+            // The proxy is the TCP peer: on a private network, so its scheme
+            // and host are believed by default, but not who the client is.
+            // A test that stands a different peer up keeps its own.
+            if request
+                .extensions()
+                .get::<MockConnectInfo<SocketAddr>>()
+                .is_none()
+            {
+                request
+                    .extensions_mut()
+                    .insert(MockConnectInfo(SocketAddr::from(PROXY_PEER)));
+            }
             let headers = request.headers_mut();
             let url = PUBLIC_URL.split_once("://").unwrap();
             headers
@@ -958,7 +996,8 @@ async fn from_address(
         .uri(path)
         .header("host", host)
         .header("x-forwarded-proto", scheme)
-        .header("origin", origin);
+        .header("origin", origin)
+        .extension(MockConnectInfo(SocketAddr::from(PROXY_PEER)));
     if let Some(cookie) = cookie {
         builder = builder.header("cookie", cookie);
     }

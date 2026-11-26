@@ -541,6 +541,7 @@ pub(crate) fn validate_config(config: &ServerConfig) -> Result<(), String> {
     }
     api.public_addresses()?;
     api.proxies()?;
+    api.forwarded_header()?;
     api.uploads.validate()?;
     api.metadata.validate()?;
     if let Some(directory) = &api.web_directory {
@@ -645,9 +646,10 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
         ServedLibrary::new(accounts.clone(), source.clone(), state_directory.clone())
             .with_library_roots(config.library_roots.clone()),
     );
+    let clients = config.api.client_resolver()?;
     let addresses = api::addresses::Addresses::new(
         config.api.public_addresses()?,
-        config.api.proxies()?,
+        clients.clone(),
         api::PublicUrl::parse(&format!("http://localhost:{}", config.api.listen.port())).ok(),
         config
             .config_file
@@ -684,6 +686,8 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
 
     let users = opds_users(&accounts, served.library_id().as_deref())?;
     let service = OpdsService::with_ephemeral_credentials(source.clone(), users.clone());
+    // OPDS believes the same proxies.
+    service.use_client_addresses(clients.clone());
     let touched = accounts.clone();
     service.on_device_key_used(move |key_id| {
         if let Err(error) = touched.touch_device_key(key_id) {
@@ -724,6 +728,7 @@ pub async fn run(config: ServerConfig) -> Result<(), String> {
                 !cfg!(debug_assertions),
             ),
         ),
+        verifier: citadel_opds::verifier::VerifierPool::start(),
     };
     access.updates.spawn();
     let staging = match api::Staging::open(

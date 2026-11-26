@@ -1,9 +1,6 @@
 //! Browser sign-in. Sessions are server-side rows keyed by an opaque cookie;
 //! the user and their library grant are looked up on every request.
-use std::{
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
-};
+use std::sync::{Arc, Mutex};
 
 use axum::{
     extract::{rejection::JsonRejection, Extension, Request, State},
@@ -13,6 +10,11 @@ use axum::{
     Json,
 };
 use citadel_core::error::{LibraryError, LibraryErrorCode};
+use citadel_opds::{
+    client::ClientAddress,
+    guard::{Credential, DeviceCookies, Outcome, Refusal, SignInGuard, DEVICE_COOKIE_LIFETIME},
+    verifier::{Lane, VerifierPool},
+};
 use serde::{Deserialize, Serialize};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -24,6 +26,9 @@ use crate::served::{no_library_yet, ServedLibrary};
 use citadel_core::store::{CitadelStore, LibraryPermission, User, SESSION_TTL_SECONDS};
 
 pub const SESSION_COOKIE: &str = "citadel_session";
+/// Marks a browser that signed in before, so an attack on its username
+/// doesn't lock it out (ADR 0017). Sent only to sign-in.
+pub const DEVICE_COOKIE: &str = "citadel_device";
 
 /// An origin browsers use to reach Citadel, such as
 /// `https://books.example.com`. Its scheme decides whether the session
@@ -96,8 +101,12 @@ pub(super) struct Access {
     pub accounts: Arc<CitadelStore>,
     pub served: Arc<ServedLibrary>,
     pub addresses: Arc<Addresses>,
-    /// Shared by sign-in and the setup code: a guess at either is a guess.
-    backoff: Mutex<Backoff>,
+    /// Every guess at a password, setup code or OPDS device key goes
+    /// through it.
+    pub guard: SignInGuard,
+    /// The only threads that check passwords.
+    pub verifier: VerifierPool,
+    devices: DeviceCookies,
     /// Printed at startup while no administrator exists; cleared once used.
     setup_code: Mutex<Option<String>>,
 }
@@ -108,28 +117,28 @@ impl Access {
         served: Arc<ServedLibrary>,
         addresses: Arc<Addresses>,
         setup_code: Option<String>,
+        guard: SignInGuard,
+        verifier: VerifierPool,
     ) -> Self {
+        let secret = accounts.device_cookie_secret().unwrap_or_else(|error| {
+            eprintln!(
+                "citadel_server warning=\"could not read the known-device key, so browsers are \
+                 known only until the server restarts: {error}\""
+            );
+            let mut secret = [0u8; 32];
+            secret[..16].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+            secret[16..].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+            secret
+        });
         Self {
             accounts,
             served,
             addresses,
-            backoff: Mutex::default(),
+            guard,
+            verifier,
+            devices: DeviceCookies::new(secret),
             setup_code: Mutex::new(setup_code),
         }
-    }
-
-    pub fn backoff_refused(&self) -> bool {
-        self.backoff
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .refused(Instant::now())
-    }
-
-    pub fn note_attempt(&self, success: bool) {
-        self.backoff
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .note(success, Instant::now());
     }
 
     pub fn setup_code(&self) -> Option<String> {
@@ -154,31 +163,6 @@ pub(super) enum LibraryAccess {
     Denied,
     /// No library is set up yet, so there is nothing to grant.
     NoLibrary,
-}
-
-/// Consecutive failed sign-ins back off exponentially, as OPDS Basic does.
-#[derive(Default)]
-struct Backoff {
-    consecutive_failures: u32,
-    until: Option<Instant>,
-}
-
-impl Backoff {
-    fn refused(&self, now: Instant) -> bool {
-        self.until.is_some_and(|until| until > now)
-    }
-
-    fn note(&mut self, success: bool, now: Instant) {
-        if success {
-            *self = Self::default();
-            return;
-        }
-        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
-        if self.consecutive_failures >= 3 {
-            let shift = (self.consecutive_failures - 3).min(5);
-            self.until = Some(now + Duration::from_secs(2 << shift).min(Duration::from_secs(60)));
-        }
-    }
 }
 
 /// The signed-in user, available to handlers behind [`require_session`]; write
@@ -244,14 +228,39 @@ pub(super) fn signed_out() -> ApiFailure {
 }
 
 fn session_token(headers: &HeaderMap) -> Option<String> {
+    cookie(headers, SESSION_COOKIE)
+}
+
+fn cookie(headers: &HeaderMap, wanted: &str) -> Option<String> {
     headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|value| value.to_str().ok())
         .flat_map(|value| value.split(';'))
         .filter_map(|pair| pair.trim().split_once('='))
-        .find(|(name, value)| *name == SESSION_COOKIE && !value.is_empty())
+        .find(|(name, value)| *name == wanted && !value.is_empty())
         .map(|(_, value)| value.to_string())
+}
+
+/// 429 with how long until the guess could be checked.
+pub(super) fn too_many_attempts(refusal: Refusal, message: &str) -> Response {
+    let mut response = failure(LibraryErrorCode::RateLimited, message).into_response();
+    response.headers_mut().insert(
+        header::RETRY_AFTER,
+        HeaderValue::from(refusal.retry_after_seconds()),
+    );
+    response
+}
+
+/// The known-device cookie, sent back to sign-in only.
+fn device_cookie(origin: Option<&RequestOrigin>, value: &str) -> HeaderValue {
+    let secure = origin.is_some_and(|RequestOrigin(origin)| origin.secure);
+    let secure = if secure { "; Secure" } else { "" };
+    HeaderValue::from_str(&format!(
+        "{DEVICE_COOKIE}={value}; Path=/api/session; HttpOnly; SameSite=Lax; Max-Age={}{secure}",
+        DEVICE_COOKIE_LIFETIME.as_secs()
+    ))
+    .expect("device cookies are ASCII")
 }
 
 /// Cookie-authenticated requests that change state must come from the page
@@ -412,6 +421,7 @@ async fn get_session(
 async fn sign_in(
     State(state): State<ApiState>,
     origin: Option<Extension<RequestOrigin>>,
+    client: ClientAddress,
     method: Method,
     headers: HeaderMap,
     input: Result<Json<SignInRequest>, JsonRejection>,
@@ -423,35 +433,72 @@ async fn sign_in(
     let Ok(Json(input)) = input else {
         return ApiFailure::from(LibraryError::invalid("Invalid sign-in JSON")).into_response();
     };
-    if state.access.backoff_refused() {
-        let mut response =
-            failure(LibraryErrorCode::RateLimited, "Too many sign-in attempts").into_response();
-        response
-            .headers_mut()
-            .insert(header::RETRY_AFTER, HeaderValue::from_static("2"));
-        return response;
-    }
-    let library_id = state.access.served.library_id();
-    let result = blocking(&state, move |accounts| {
-        let Some(user) = accounts.verify_password(&input.username, &input.password)? else {
-            return Ok(None);
-        };
-        let token = accounts.create_session(&user.id)?;
-        let access = library_access(accounts, &user, library_id.as_deref())?;
-        Ok(Some((user, access, token)))
-    })
-    .await;
-    let result = match result {
-        Ok(result) => result,
-        Err(error) => return error.into_response(),
+    let access = &state.access;
+    let now = chrono::Utc::now().timestamp();
+    let device = cookie(&headers, DEVICE_COOKIE)
+        .and_then(|value| access.devices.recognise(&value, &input.username, now));
+    let ticket = match access.guard.reserve(
+        &client,
+        Credential::Password {
+            username: &input.username,
+            password: input.password.as_bytes(),
+            device,
+        },
+    ) {
+        Ok(ticket) => ticket,
+        Err(refusal) if refusal.is_repeat() => {
+            return failure(
+                LibraryErrorCode::Unauthorized,
+                "Incorrect username or password",
+            )
+            .into_response();
+        }
+        Err(refusal) => return too_many_attempts(refusal, "Too many sign-in attempts"),
     };
-    state.access.note_attempt(result.is_some());
-    let Some((user, library_access, token)) = result else {
+    let username = input.username.clone();
+    let stored = match blocking(&state, move |accounts| accounts.lookup_hash(&username)).await {
+        Ok(stored) => stored,
+        Err(error) => {
+            ticket.refund();
+            return error.into_response();
+        }
+    };
+    let lane = Lane::of(&ticket, &client);
+    let password = input.password;
+    let checked = access.verifier.submit(lane, ticket, move |ticket| {
+        let user = stored.verify(&password);
+        ticket.settle(if user.is_some() {
+            Outcome::Success
+        } else {
+            Outcome::Failure
+        });
+        user
+    });
+    let user = match checked {
+        Ok(checked) => checked.await,
+        Err(_) => return ApiFailure::from(LibraryError::unavailable()).into_response(),
+    };
+    let Ok(user) = user else {
+        return ApiFailure::from(LibraryError::unavailable()).into_response();
+    };
+    let Some(user) = user else {
         return failure(
             LibraryErrorCode::Unauthorized,
             "Incorrect username or password",
         )
         .into_response();
+    };
+    let library_id = state.access.served.library_id();
+    let signed_in = user.clone();
+    let created = blocking(&state, move |accounts| {
+        let token = accounts.create_session(&signed_in.id)?;
+        let access = library_access(accounts, &signed_in, library_id.as_deref())?;
+        Ok((token, access))
+    })
+    .await;
+    let (token, library_access) = match created {
+        Ok(created) => created,
+        Err(error) => return error.into_response(),
     };
     let mut response = Json(SessionInfo::new(
         &user,
@@ -461,6 +508,10 @@ async fn sign_in(
     response.headers_mut().insert(
         header::SET_COOKIE,
         session_cookie(origin.as_ref(), &token, SESSION_TTL_SECONDS),
+    );
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        device_cookie(origin.as_ref(), &access.devices.issue(&user.username, now)),
     );
     response
 }
@@ -550,16 +601,22 @@ mod tests {
     }
 
     #[test]
-    fn sign_in_failures_back_off() {
-        let now = Instant::now();
-        let mut backoff = Backoff::default();
-        backoff.note(false, now);
-        backoff.note(false, now);
-        assert!(!backoff.refused(now));
-        backoff.note(false, now);
-        assert!(backoff.refused(now));
-        assert!(!backoff.refused(now + Duration::from_secs(3)));
-        backoff.note(true, now);
-        assert!(!backoff.refused(now));
+    fn the_device_cookie_goes_only_to_sign_in_and_follows_the_scheme() {
+        let https = RequestOrigin(PublicUrl::parse("https://books.example.com").unwrap());
+        let cookie = device_cookie(Some(&https), "value");
+        let cookie = cookie.to_str().unwrap();
+        for attribute in [
+            "citadel_device=value",
+            "Path=/api/session",
+            "HttpOnly",
+            "SameSite=Lax",
+            "Secure",
+        ] {
+            assert!(cookie.contains(attribute), "{cookie}");
+        }
+        assert!(!device_cookie(None, "value")
+            .to_str()
+            .unwrap()
+            .contains("Secure"));
     }
 }
