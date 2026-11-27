@@ -284,6 +284,30 @@ fn main() {
 
 `Library::open` gives a writable handle: `add_book`, `update_book`, `set_custom_value`, `delete_books`. Opening for writing switches the database to WAL mode and installs Calibre's triggers. Nothing enforces a single writer; do not write while Calibre has the library open.
 
+`add_book_files` adds files to a book that already exists, replacing a format it already has.
+
+## Possible duplicates
+
+`matching` recognizes a book the library may already hold: the same ISBN (ISBN-10 or 13, any formatting), or the same title (ignoring case and punctuation) with an author in common and no clashing language, or the same title where one side has no author. The same title by different authors is not a match. `Library::find_duplicates` checks many candidates in one read; nothing is ever refused.
+
+```rust,no_run
+use libcalibre::{matching::Candidate, CalibreError, Library};
+
+fn main() -> Result<(), CalibreError> {
+    let mut library = Library::open_read_only("/Users/me/Calibre Library")?;
+    let candidate = Candidate {
+        title: "Nana".into(),
+        author_names: vec!["Émile Zola".into()],
+        isbn: Some("978-0-14-044913-6".into()),
+        languages: vec!["en".into()],
+    };
+    for found in library.find_duplicates(&[candidate])?.remove(0) {
+        println!("book {} ({:?})", found.book_id, found.reason);
+    }
+    Ok(())
+}
+```
+
 libcalibre does not write `metadata.opf` files. Each changed book is queued in `metadata_dirtied`; Calibre writes the backups for queued books the next time it opens the library.
 
 ## Supported versions
