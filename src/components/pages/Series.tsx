@@ -18,7 +18,7 @@ export const Series = () => {
 			items={seriesList}
 			kind="series"
 			noun={SERIES_NOUN}
-			toSearch={(series) => ({ series_id: series.id })}
+			toSearch={(series) => ({ series_id: series.id, from: "series" })}
 		/>
 	);
 };

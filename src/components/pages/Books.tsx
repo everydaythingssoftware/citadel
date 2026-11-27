@@ -19,6 +19,12 @@ import {
 	serializeBookFilter,
 	shownBookItems,
 } from "@/lib/book-page-cache";
+import {
+	DRILL_SOURCE,
+	DRILL_SOURCE_LABEL,
+	drillFilterPresent,
+	type TDrillSource,
+} from "@/lib/drill-down";
 import { useBookGridInteraction } from "@/lib/hooks/use-book-grid-interaction";
 import {
 	useBookDetails,
@@ -27,6 +33,7 @@ import {
 } from "@/lib/hooks/use-book-selection";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useDeleteBooksDialog } from "@/lib/hooks/use-delete-books-dialog";
+import { useDrillBack } from "@/lib/hooks/use-drill-down";
 import { useEntryScroll } from "@/lib/hooks/use-entry-scroll";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
@@ -77,6 +84,8 @@ interface BookSearchOptions {
 	tag_id?: number;
 	/** Deep-link: only books from this publisher (LibraryPublisher id). */
 	publisher_id?: number;
+	/** The list page these books were drilled into from. */
+	from?: TDrillSource;
 }
 
 const SORT_LABELS: Record<LibraryBookSortOrderKey, string> = {
@@ -100,6 +109,7 @@ export const Books = ({
 	series_id,
 	tag_id,
 	publisher_id,
+	from,
 }: BookSearchOptions) => {
 	const query = useLibraryView((s) => s.query);
 	const sortOrder = useLibraryView((s) => s.sortOrder);
@@ -243,6 +253,25 @@ export const Books = ({
 		}
 	}, [libraryReady, tag_id, publisher_id, tags, publishers, actions]);
 
+	// Drilled down from a list page: a breadcrumb names the row and leads
+	// back to the list, and its filter needs no token of its own.
+	const drillSource =
+		from !== undefined &&
+		drillFilterPresent(from, { author_id, series_id, tag_id, publisher_id })
+			? from
+			: undefined;
+	const drillBack = useDrillBack(drillSource);
+	const drillName =
+		drillSource === DRILL_SOURCE.authors
+			? authorTokenName
+			: drillSource === DRILL_SOURCE.series
+				? seriesTokenName
+				: drillSource === DRILL_SOURCE.tags
+					? tagTokenName
+					: drillSource === DRILL_SOURCE.publishers
+						? publisherTokenName
+						: undefined;
+
 	const details = useBookDetails(books);
 
 	// Coming Back to this entry finds the selection and details as left.
@@ -305,6 +334,7 @@ export const Books = ({
 		gridContainerRef,
 		gridRef: gridHandleRef,
 		onClearSearch: () => setQuery(""),
+		onEscapeBack: drillBack,
 	});
 
 	// A genuinely empty library (including first-run with the bundled library)
@@ -329,7 +359,7 @@ export const Books = ({
 	const trimmedQuery = query.trim();
 
 	const searchTokens = [
-		...(authorTokenName !== undefined
+		...(authorTokenName !== undefined && drillSource !== DRILL_SOURCE.authors
 			? [
 					{
 						label: `Author: ${authorTokenName}`,
@@ -338,7 +368,7 @@ export const Books = ({
 					},
 				]
 			: []),
-		...(seriesTokenName !== undefined
+		...(seriesTokenName !== undefined && drillSource !== DRILL_SOURCE.series
 			? [
 					{
 						label: `Series: ${seriesTokenName}`,
@@ -348,7 +378,7 @@ export const Books = ({
 					},
 				]
 			: []),
-		...(tagTokenName !== undefined
+		...(tagTokenName !== undefined && drillSource !== DRILL_SOURCE.tags
 			? [
 					{
 						label: `Tag: ${tagTokenName}`,
@@ -357,7 +387,8 @@ export const Books = ({
 					},
 				]
 			: []),
-		...(publisherTokenName !== undefined
+		...(publisherTokenName !== undefined &&
+		drillSource !== DRILL_SOURCE.publishers
 			? [
 					{
 						label: `Publisher: ${publisherTokenName}`,
@@ -376,6 +407,23 @@ export const Books = ({
 			 * width, so its controls reflow on the bar's own width.
 			 */}
 			<div className={styles.scopeBar}>
+				{drillSource !== undefined && drillBack !== undefined && (
+					<nav aria-label="Breadcrumb" className={styles.breadcrumb}>
+						<button
+							type="button"
+							className={styles.breadcrumbBack}
+							onClick={drillBack}
+						>
+							{DRILL_SOURCE_LABEL[drillSource]}
+						</button>
+						<span aria-hidden="true" className={styles.breadcrumbSeparator}>
+							›
+						</span>
+						<span aria-current="page" className={styles.breadcrumbCurrent}>
+							{drillName}
+						</span>
+					</nav>
+				)}
 				<div className={styles.scopeControls}>
 					<span className={styles.searchWrap}>
 						<SearchField

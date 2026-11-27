@@ -56,6 +56,51 @@
 	border-bottom: 1px solid var(--ctd-border);
 }
 
+/* Drilled down from a list page: "Series › L'Archipel du Goulag", the
+ * first step going back to the list. */
+.breadcrumb {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+	margin-bottom: 8px;
+	font-size: var(--ctd-text-body);
+	color: var(--ctd-ink-soft);
+}
+
+.breadcrumbBack {
+	flex-shrink: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	color: inherit;
+}
+
+.breadcrumbBack:hover {
+	color: var(--ctd-ink);
+	text-decoration: underline;
+}
+
+.breadcrumbBack:focus-visible {
+	outline: 2px solid var(--ctd-focus-ring);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.breadcrumbSeparator {
+	flex-shrink: 0;
+}
+
+.breadcrumbCurrent {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
 /* One row: the search field fills what the other controls leave, down to a
  * floor where "Search" and the magnifier still read whole. */
 .scopeControls {

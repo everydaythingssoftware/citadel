@@ -7,6 +7,7 @@ import {
 	clearSelection,
 	extendSelection,
 	selectAll,
+	selectedBookCount,
 	selectOnly,
 } from "@/lib/book-selection";
 import { useKeymap } from "@/lib/hooks/use-keymap";
@@ -38,6 +39,11 @@ interface LibraryKeymapOptions {
 	 */
 	gridRef: RefObject<BookGridHandle | null>;
 	onClearSearch: () => void;
+	/**
+	 * Books drilled into from a list page: Escape with nothing selected
+	 * goes back to it.
+	 */
+	onEscapeBack?: () => void;
 }
 
 const ARROW_CHORDS: [string, SelectionDirection][] = [
@@ -76,6 +82,7 @@ export const useLibraryKeymap = ({
 	gridContainerRef,
 	gridRef,
 	onClearSearch,
+	onEscapeBack,
 }: LibraryKeymapOptions): void => {
 	const { quickLook } = usePlatform().fileOpener;
 	const selection = useBookSelectionStore((state) => state.selection);
@@ -160,9 +167,22 @@ export const useLibraryKeymap = ({
 				onMatch: () => updateBookSelection(selectAll),
 			},
 			{
+				// The first press clears the selection, the next goes back to
+				// the list the books were drilled into from.
 				chord: "escape",
-				when: gridOwnsKeyboard,
+				when: () =>
+					gridOwnsKeyboard() &&
+					(selectedBookCount(selection, books.length) > 0 ||
+						onEscapeBack === undefined),
 				onMatch: () => updateBookSelection(clearSelection),
+			},
+			{
+				chord: "escape",
+				when: () =>
+					gridOwnsKeyboard() &&
+					onEscapeBack !== undefined &&
+					selectedBookCount(selection, books.length) === 0,
+				onMatch: () => onEscapeBack?.(),
 			},
 		);
 		if (cursorBook !== undefined) {

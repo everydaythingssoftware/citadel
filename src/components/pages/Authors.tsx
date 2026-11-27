@@ -23,6 +23,7 @@ import {
 import { useAuthorFilters } from "@/lib/hooks/use-author-filters";
 import { useAuthorRowMenu } from "@/lib/hooks/use-author-row-menu";
 import type { ContextMenuTarget } from "@/lib/hooks/use-context-menu";
+import { useDrillDownList } from "@/lib/hooks/use-drill-down";
 import { useVirtualListRows } from "@/lib/hooks/use-virtual-list-rows";
 import {
 	useAuthors,
@@ -105,9 +106,11 @@ export const Authors = () => {
 		[filteredAuthors],
 	);
 
+	const drill = useDrillDownList("authors");
 	const rowMenu = useAuthorRowMenu({
 		onEdit: onOpenEditAuthorSheet,
 		onDelete: onOpenDeleteAuthorDialog,
+		onShowBooks: drill.noteDrill,
 	});
 
 	// The confirmation closes as soon as it's confirmed, so a delete that
@@ -235,6 +238,8 @@ export const Authors = () => {
 						onEditAuthor={onOpenEditAuthorSheet}
 						onDeleteAuthor={onOpenDeleteAuthorDialog}
 						menuTargetFor={rowMenu.targetFor}
+						currentAuthorId={drill.returnedRowId}
+						onDrill={drill.noteDrill}
 					/>
 					<ContextMenu
 						menu={rowMenu.menu.menu}
@@ -374,12 +379,17 @@ const AuthorRows = ({
 	onEditAuthor,
 	onDeleteAuthor,
 	menuTargetFor,
+	currentAuthorId,
+	onDrill,
 }: {
 	authors: LibraryAuthor[];
 	resetKey: string;
 	onEditAuthor: (authorId: string) => void;
 	onDeleteAuthor: (authorId: string) => void;
 	menuTargetFor: (author: LibraryAuthor) => ContextMenuTarget;
+	/** The author whose books were open before coming Back. */
+	currentAuthorId: string | null;
+	onDrill: (authorId: string) => void;
 }) => {
 	const { rowsRef, virtualizer, scrollMargin } = useVirtualListRows(
 		authors,
@@ -413,6 +423,8 @@ const AuthorRows = ({
 							onEditAuthor={onEditAuthor}
 							onDeleteAuthor={onDeleteAuthor}
 							menuTarget={menuTargetFor(author)}
+							current={currentAuthorId === author.id}
+							onDrill={() => onDrill(author.id)}
 						/>
 					</div>
 				);
@@ -426,11 +438,15 @@ const AuthorRow = ({
 	onEditAuthor,
 	onDeleteAuthor,
 	menuTarget,
+	current,
+	onDrill,
 }: {
 	author: LibraryAuthor;
 	onEditAuthor: (authorId: string) => void;
 	onDeleteAuthor: (authorId: string) => void;
 	menuTarget: ContextMenuTarget;
+	current: boolean;
+	onDrill: () => void;
 }) => {
 	const canEdit = useLibraryStore((state) => state.library?.readOnly === false);
 	return (
@@ -439,6 +455,7 @@ const AuthorRow = ({
 		// styles.css (.ctd-author-row / .ctd-author-row-link).
 		<div
 			className={clsx("ctd-author-row", styles.row, styles.grid)}
+			data-current={current || undefined}
 			{...menuTarget}
 		>
 			{/* Real anchor overlaying the row so middle-click / cmd-click /
@@ -447,9 +464,11 @@ const AuthorRow = ({
 			    own without stopPropagation. */}
 			<Link
 				to="/"
-				search={{ author_id: author.id }}
+				search={{ author_id: author.id, from: "authors" }}
 				className="ctd-author-row-link"
 				aria-label={`Show books by ${author.name}`}
+				aria-current={current || undefined}
+				onClick={onDrill}
 			/>
 
 			<span className={styles.cellText}>{author.name}</span>
@@ -468,8 +487,9 @@ const AuthorRow = ({
 
 			<Link
 				to="/"
-				search={{ author_id: author.id }}
+				search={{ author_id: author.id, from: "authors" }}
 				className={styles.countLink}
+				onClick={onDrill}
 			>
 				{author.book_count}
 			</Link>

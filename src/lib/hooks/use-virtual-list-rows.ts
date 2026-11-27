@@ -1,5 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLayoutEffect, useRef, useState } from "react";
+import { useEntryScroll } from "@/lib/hooks/use-entry-scroll";
+import { SCROLL_REGION } from "@/lib/navigation";
 
 const ROW_HEIGHT = 40;
 const OVERSCAN_ROWS = 10;
@@ -18,7 +20,8 @@ const findScrollParent = (element: HTMLElement): HTMLElement | null => {
  * publishers) inside the nearest scrolling ancestor, so the page's sticky
  * header and footer keep pinning to that same region.
  *
- * Scrolls back to the top when `resetKey` changes. It defaults to the list
+ * Coming Back to the page's history entry returns the list to where it was
+ * left. Scrolls back to the top when `resetKey` changes. It defaults to the list
  * itself (e.g. a new search term); pass a narrower key when the list also
  * changes for edits that should keep the reader's place.
  */
@@ -66,6 +69,17 @@ export const useVirtualListRows = <T extends { id: number | string }>(
 			previousResetKey.current = resetKey;
 		}
 	}, [resetKey, scrollElement]);
+
+	// After the reset above, so a restored offset wins when both land at once.
+	const scrollElementRef = useRef(scrollElement);
+	scrollElementRef.current = scrollElement;
+	useEntryScroll({
+		region: SCROLL_REGION.page,
+		elementRef: scrollElementRef,
+		viewKey: "list",
+		viewReady: scrollElement !== null && items.length > 0,
+		content: items,
+	});
 
 	return { rowsRef, virtualizer, scrollMargin };
 };
