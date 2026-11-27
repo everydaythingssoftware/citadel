@@ -1004,7 +1004,7 @@ mod tests {
         Author as LibraryAuthor, Book, BookAdd, BookFileInfo, BookIdentifier, BookUpdate, Library,
     };
     use quick_xml::{events::Event, name::ResolveResult, NsReader};
-    use std::{collections::HashMap, path::PathBuf, sync::Mutex};
+    use std::{collections::HashMap, sync::Mutex};
     use tempfile::TempDir;
 
     fn book(title: &str, uuid: &str, id: i32) -> Book {

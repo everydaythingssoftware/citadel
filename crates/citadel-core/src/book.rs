@@ -153,7 +153,7 @@ fn book_cover_url(
         return None;
     }
 
-    let cover_relative_path = format!("{}/cover.jpg", &book.book_dir_path);
+    let cover_relative_path = format!("{}/cover.jpg", book.book_dir_path);
     let cover_image_path = PathBuf::from(library_path).join(&cover_relative_path);
 
     Some(url_builder.cover_url(book, &cover_image_path, cache_bust))

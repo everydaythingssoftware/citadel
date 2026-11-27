@@ -71,7 +71,7 @@ impl DatabaseSnapshot {
             Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").unwrap();
         let timestamp_pattern = Regex::new(r"^\d{4}-\d{2}-\d{2}").unwrap();
 
-        for (_table_name, rows) in self.data.iter_mut() {
+        for rows in self.data.values_mut() {
             for row in rows.iter_mut() {
                 for (col_name, value) in row.iter_mut() {
                     let col_lower = col_name.to_lowercase();
@@ -99,13 +99,12 @@ impl DatabaseSnapshot {
                     }
 
                     // Normalize floating point timestamps
-                    if col_lower == "timestamp"
+                    if (col_lower == "timestamp"
                         || col_lower == "last_modified"
-                        || col_lower == "pubdate"
+                        || col_lower == "pubdate")
+                        && matches!(value, SqlValue::Real(_))
                     {
-                        if matches!(value, SqlValue::Real(_)) {
-                            *value = SqlValue::Text("<TIMESTAMP>".to_string());
-                        }
+                        *value = SqlValue::Text("<TIMESTAMP>".to_string());
                     }
                 }
             }
