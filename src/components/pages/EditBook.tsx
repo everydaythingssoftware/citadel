@@ -1,6 +1,5 @@
 import { usePlatform } from "@/lib/platform/context";
 import { bookCoverProps } from "@/lib/covers/book-cover";
-import { isPdfOnly } from "@/lib/pdf-only";
 import clsx from "clsx";
 import {
 	useCoverThumb,
@@ -1018,7 +1017,6 @@ const EditBookForm = ({
 						{...bookCoverProps(book)}
 						finished={false}
 						sizeHint={coverSize ?? coverThumb}
-						flat={isPdfOnly(book.file_list)}
 					/>
 					<BookActions
 						files={book.file_list}

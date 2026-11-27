@@ -21,7 +21,6 @@ import {
 import { useBookGridLayout } from "@/lib/hooks/use-book-grid-layout";
 import { useCoverThumbsMap } from "@/stores/library/store";
 import { bookCoverProps } from "@/lib/covers/book-cover";
-import { isPdfOnly } from "@/lib/pdf-only";
 import { formatAuthorList } from "@/lib/authors";
 import { bookDomId } from "@/lib/hooks/use-book-grid-interaction";
 import {
@@ -311,7 +310,6 @@ export const BookGrid = ({
 											{...bookCoverProps(book, coverThumbs.get(book.id))}
 											{...interactionProps(book, index)}
 											selected={selected}
-											flat={isPdfOnly(book.file_list)}
 										/>
 									</div>
 								);
