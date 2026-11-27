@@ -105,6 +105,15 @@ Calibre's cluttered chrome, generic web-app SaaS.
   Details", "Mark as Finished", "Delete 2 Books…"), and for the few buttons
   that already had it ("Add Book…").
 - A menu item or button that opens a dialog ends in "…".
+- **No user text in fixed-size chrome.** Book titles, author names, file
+  names and anything else people type or import can be any length, so they
+  never go in buttons, sheet or dialog titles, menu items or pills. Name the
+  thing by its role instead ("Add to Existing", not "Add EPUB to
+  “Dungeon Crawler Carl, Book 15: The Plague of Misanthropes”"), and show the
+  text itself in the content, where it can wrap or fade. In a sentence, a
+  title is cut at about 50 characters and names follow APA: one or two in
+  full, three or more as the first "et al." Alert titles that quote a name
+  ("Delete “Middlemarch”?", below) are a temporary exception.
 
 ## Controls
 
