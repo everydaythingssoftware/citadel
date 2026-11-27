@@ -5,6 +5,7 @@ import {
 	SettingsSectionContent,
 } from "@/components/organisms/SettingsPanes";
 import { SettingsWindow } from "@/components/pages/SettingsWindow";
+import { useSettingsEscape } from "@/lib/hooks/use-settings-escape";
 import { usePlatform } from "@/lib/platform/context";
 
 export const Route = createFileRoute("/settings")({
@@ -14,6 +15,7 @@ export const Route = createFileRoute("/settings")({
 /** The desktop app opens Settings in its own window; the web shows a page. */
 function Settings() {
 	const platform = usePlatform();
+	useSettingsEscape();
 	return platform.capabilities.supportsNativeWindows ? (
 		<SettingsWindow />
 	) : (
