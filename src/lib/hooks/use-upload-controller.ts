@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { isLocalImports } from "@/lib/services/library";
 import {
-	isActive,
-	isBatchRead,
-	type QueueItem,
-	readQueue,
+	queueSections,
 	readyItems,
+	reviewRows,
+	rowFormats,
 	summarize,
-	undecidedDuplicates,
 	visibleItems,
 } from "@/lib/uploads/queue";
 import {
@@ -23,9 +21,9 @@ import { useBookUploads } from "./use-book-uploads";
 import { useChooseBookFiles } from "./use-choose-book-files";
 import { useFileDrag } from "./use-file-drag";
 import { useReviewDeck } from "./use-review-deck";
+import { useLiveMatches, useMatchChoice } from "./use-review-matches";
 
-/** Reading for longer than this shows its progress. */
-const SLOW_READ_MS = 300;
+const NO_MATCHES: never[] = [];
 
 /**
  * After a book is added or skipped: the sheet closes once nothing is left at
@@ -61,28 +59,12 @@ export const useUploadController = () => {
 		onDrop: (files) => useUploadsStore.getState().addFiles(files),
 	});
 
-	const read = useMemo(() => readQueue(queue), [queue]);
-	const items = useMemo(() => visibleItems(read), [read]);
-	const ready = useMemo(() => readyItems(queue), [queue]);
+	const sections = useMemo(() => queueSections(queue), [queue]);
+	const rows = useMemo(() => reviewRows(queue), [queue]);
+	const ready = useMemo(() => rows.map((row) => row.lead), [rows]);
 	const summary = useMemo(() => summarize(queue), [queue]);
 	// Stays true while the sheet closes over the last book; reopening resets it.
 	const reviewing = reviewKey !== null;
-	const unread = queue.items.filter((item) => item.unread);
-	const reading = unread.length > 0;
-	const [slow, setSlow] = useState(false);
-	useEffect(() => {
-		if (!reading) return;
-		const timer = setTimeout(() => setSlow(true), SLOW_READ_MS);
-		return () => {
-			clearTimeout(timer);
-			setSlow(false);
-		};
-	}, [reading]);
-	const undecided = useMemo(() => undecidedDuplicates(read), [read]);
-	// Once the step shows, files dropped meanwhile don't take it away.
-	const asking = useRef(false);
-	asking.current =
-		!reviewing && undecided.length > 0 && (asking.current || isBatchRead(read));
 	const deck = useReviewDeck({
 		ready,
 		reviewKey,
@@ -93,10 +75,29 @@ export const useUploadController = () => {
 			return added;
 		},
 		onSkip: async (key) => {
-			await useUploadsStore.getState().remove(key);
+			await useUploadsStore.getState().skip(key);
 			settleAfterReview();
 		},
 		keyboard: sheetOpen && reviewing,
+	});
+
+	const currentRow = rows.find((row) => row.key === deck.current?.key);
+	const formats = useMemo(
+		() => (currentRow ? rowFormats(currentRow) : []),
+		[currentRow],
+	);
+	const staged = currentRow?.matches ?? NO_MATCHES;
+	const matches = useLiveMatches({
+		intake,
+		bookKey: deck.current?.key,
+		form: deck.form,
+		staged,
+	});
+	const choice = useMatchChoice({
+		bookKey: deck.current?.key,
+		staged,
+		matches,
+		formats,
 	});
 
 	// Nothing left to review and nothing leaving (an upload expired, say):
@@ -111,9 +112,9 @@ export const useUploadController = () => {
 		if (reviewing && tags === null) void libraryActions.loadTags();
 	}, [reviewing, tags, libraryActions]);
 
-	const addAll = useCallback(async () => {
+	const addNewBooks = useCallback(async () => {
 		const count = readyItems(useUploadsStore.getState().queue).length;
-		await useUploadsStore.getState().addAllReady();
+		await useUploadsStore.getState().addNewBooks();
 		const added = count - readyItems(useUploadsStore.getState().queue).length;
 		if (added > 0) settleAfterReview();
 	}, []);
@@ -127,40 +128,36 @@ export const useUploadController = () => {
 			onOpenChange: (open: boolean) =>
 				open
 					? useUploadsStore.getState().openSheet()
-					: useUploadsStore.getState().dismissSheet(),
-			items,
-			reading: reading
-				? {
-						done: unread.filter((item) => !isActive(item)).length,
-						total: unread.length,
-						slow,
-					}
-				: undefined,
-			duplicates: asking.current ? undecided : [],
+					: useUploadsStore.getState().closeSheet(),
+			sections,
 			summary,
 			paused: queue.paused,
 			reviewing,
 			deck,
+			matches,
+			choice,
+			formats,
+			onSplit:
+				currentRow && currentRow.items.length > 1
+					? () =>
+							useUploadsStore.getState().dispatch({
+								type: "split",
+								keys: currentRow.items.map((item) => item.key),
+							})
+					: undefined,
 			authorSuggestions: authors.map((author) => author.name),
 			tagSuggestions: (tags ?? []).map((tag) => tag.name),
 			onChooseFiles: chooseFiles,
 			onReview: (key: string) => useUploadsStore.getState().review(key),
+			onReviewBooks: () => {
+				const first = reviewRows(useUploadsStore.getState().queue)[0];
+				if (first) useUploadsStore.getState().review(first.key);
+			},
 			onBackToQueue: () => useUploadsStore.getState().review(null),
 			onRetry: (key: string) => useUploadsStore.getState().retry(key),
 			onRemove: (key: string) => void useUploadsStore.getState().remove(key),
-			onSkipDuplicates: (duplicates: QueueItem[]) => {
-				for (const item of duplicates)
-					void useUploadsStore.getState().remove(item.key);
-				settleAfterReview();
-			},
-			onAddDuplicates: (duplicates: QueueItem[]) => {
-				for (const item of duplicates)
-					useUploadsStore
-						.getState()
-						.dispatch({ type: "accepted", key: item.key });
-			},
-			onAddAll: () => void addAll(),
-			onCancelAll: () => useUploadsStore.getState().cancelAll(),
+			onAddNewBooks: () => void addNewBooks(),
+			onDiscardAll: () => useUploadsStore.getState().discardAll(),
 		},
 	};
 };

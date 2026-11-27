@@ -53,16 +53,18 @@ const createFakeImports = () => {
 				book: {
 					format: "epub",
 					title: `${fileName} (read)`,
-					titleKey: fileName,
 					authorNames: ["Ann Author"],
 					tags: [],
 					coverUrl: `asset://covers/${id}.jpg`,
+					matchKeys: { isbn: null, titleAuthors: null },
 				},
+				matches: [],
 			};
 			staged.set(id, { path, upload });
 			return upload;
 		},
 		coverUrl: (id) => `asset://covers/${id}.jpg`,
+		findMatches: async () => [],
 		commit: async (id, book) => {
 			const entry = staged.get(id);
 			if (!entry) throw new Error("This book is no longer waiting");
@@ -153,7 +155,7 @@ describe("upload runner, files on this computer", () => {
 		};
 		expect(await queue.runner.add(key, book)).toBe(true);
 		expect(queue.fake.committed).toEqual([
-			{ path: "/books/Walden.epub", book },
+			{ path: "/books/Walden.epub", book: { ...book, also: [] } },
 		]);
 		expect(queue.phases()).toEqual([UploadPhase.added]);
 		expect(queue.added()).toBe(1);

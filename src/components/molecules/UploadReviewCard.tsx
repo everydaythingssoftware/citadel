@@ -12,8 +12,6 @@ export interface UploadReviewCardProps {
 	errors?: Partial<Record<ReviewField, string>>;
 	/** Why the book couldn't be added, from the server. */
 	message?: string;
-	/** Keeps the message's line even without one, so cards page at one height. */
-	reserveMessage?: boolean;
 	onChange?: (patch: Partial<ReviewForm>) => void;
 	onLeaveField?: (field: ReviewField) => void;
 	/** Publisher, language, date, tags and ISBN are showing. */
@@ -35,7 +33,6 @@ export const UploadReviewCard = ({
 	form,
 	errors = {},
 	message,
-	reserveMessage,
 	onChange,
 	onLeaveField,
 	detailsOpen = false,
@@ -144,13 +141,9 @@ export const UploadReviewCard = ({
 					</div>
 				</div>
 			</div>
-			{(message || reserveMessage) && (
-				<p
-					className={styles.error}
-					role={message ? "alert" : undefined}
-					aria-hidden={message ? undefined : true}
-				>
-					{message ?? "\u00a0"}
+			{message && (
+				<p className={styles.error} role="alert">
+					{message}
 				</p>
 			)}
 		</div>

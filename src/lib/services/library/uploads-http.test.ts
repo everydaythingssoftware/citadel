@@ -170,7 +170,6 @@ describe("HTTP uploads", () => {
 			);
 		const cases = [
 			[409, "conflict", UploadFailure.conflict],
-			[409, "duplicate", UploadFailure.duplicate],
 			[413, "tooLarge", UploadFailure.tooLarge],
 			[507, "storageFull", UploadFailure.storageFull],
 			[401, "unauthorized", UploadFailure.unauthorized],

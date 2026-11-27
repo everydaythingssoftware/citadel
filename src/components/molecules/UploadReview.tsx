@@ -7,18 +7,19 @@ import {
 import { Button, IconButton } from "@/components/ui";
 import { useMediaQuery } from "@/lib/hooks/use-breakpoint";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
+import type { MatchChoice } from "@/lib/hooks/use-review-matches";
 import { useScrolled } from "@/lib/hooks/use-scrolled";
+import type { BookMatch } from "@/lib/services/library";
+import { Destination } from "@/lib/uploads/matches";
 import { UploadPhase } from "@/lib/uploads/queue";
 import { CoverCarousel } from "./CoverCarousel";
 import { CoverRow } from "./CoverRow";
 import styles from "./UploadReview.module.css";
+import { UploadMatches } from "./UploadMatches";
 import { UploadReviewCard } from "./UploadReviewCard";
 
 /** Beyond this many books the dots would wrap; the position says it instead. */
 const MAX_DOTS = 15;
-
-/** The primary button's longest label, whose width it keeps. */
-const ADD_LABEL = "Add to Library";
 
 export interface UploadReviewProps {
 	deck: ReviewDeck;
@@ -30,7 +31,20 @@ export interface UploadReviewProps {
 	onDone?: () => void;
 	/** Books are read from this computer rather than uploaded. */
 	local?: boolean;
+	/** Books already in the library the current book may duplicate. */
+	matches?: BookMatch[];
+	/** Where the current book goes, when it may be a duplicate. */
+	choice?: MatchChoice;
+	/** The current book's formats ("EPUB"); more than one can be split. */
+	formats?: readonly string[];
+	/** Makes each of the current book's files a book of its own. */
+	onSplit?: () => void;
 }
+
+const formatList = (formats: readonly string[]): string =>
+	formats.length <= 1
+		? (formats[0] ?? "")
+		: `${formats.slice(0, -1).join(", ")} and ${formats.at(-1)}`;
 
 /**
  * Reviews ready books: their covers in a row to swipe through, the current
@@ -43,18 +57,17 @@ export const UploadReview = ({
 	onBack,
 	onDone,
 	local = false,
+	matches = [],
+	choice,
+	formats = [],
+	onSplit,
 }: UploadReviewProps) => {
+	const toExisting =
+		matches.length > 0 && choice?.destination === Destination.existing;
 	const { current } = deck;
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const scrolled = useScrolled(scrollRef);
 	const busy = current?.phase === UploadPhase.adding || deck.leaving;
-	const refused =
-		current?.duplicate?.title === deck.form.title.trim()
-			? current?.duplicate
-			: undefined;
-	// Kept for the whole review, so the card doesn't shrink as duplicates go.
-	const reserveMessage = useRef(false);
-	reserveMessage.current ||= deck.items.some((item) => item.duplicate);
 	// With a mouse or trackpad, the row moves with Cover Flow's physics;
 	// touch screens scroll natively.
 	const physics = useMediaQuery("(pointer: fine)");
@@ -65,16 +78,14 @@ export const UploadReview = ({
 			</Button>
 			<Button
 				variant="primary"
-				disabled={!current || busy || deck.form.title.trim() === ""}
-				onClick={() => void deck.add()}
+				disabled={
+					!current || busy || (!toExisting && deck.form.title.trim() === "")
+				}
+				onClick={() => void deck.add(choice?.addTo)}
 			>
-				<span className={styles.primaryLabel} data-widest={ADD_LABEL}>
-					{current?.phase === UploadPhase.adding
-						? "Adding…"
-						: refused
-							? "Add Anyway"
-							: ADD_LABEL}
-				</span>
+				{current?.phase === UploadPhase.adding
+					? "Adding…"
+					: (choice?.addLabel ?? "Add to Library")}
 			</Button>
 		</>
 	);
@@ -149,13 +160,32 @@ export const UploadReview = ({
 							/>
 						))}
 				</div>
-				{current && (
+				{current && formats.length > 1 && (
+					<p className={styles.files}>
+						{formatList(formats)} files, added as one book
+						{onSplit && (
+							<button type="button" className={styles.split} onClick={onSplit}>
+								Split
+							</button>
+						)}
+					</p>
+				)}
+				{current && choice && (
+					<UploadMatches
+						matches={matches}
+						formats={formats}
+						destination={choice.destination}
+						onDestinationChange={choice.setDestination}
+						selectedId={choice.selected?.id}
+						onSelect={choice.select}
+					/>
+				)}
+				{current && !toExisting && (
 					<UploadReviewCard
 						bookKey={current.key}
 						form={deck.form}
 						errors={deck.errors}
-						message={current.message ?? refused?.message}
-						reserveMessage={reserveMessage.current}
+						message={current.message}
 						onChange={deck.updateForm}
 						onLeaveField={deck.leaveField}
 						detailsOpen={deck.detailsOpen}

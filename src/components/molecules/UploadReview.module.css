@@ -117,19 +117,6 @@
 	background: var(--ctd-surface);
 }
 
-/* Keeps the button as wide as its longest label, so swapping labels doesn't
-   resize it. */
-.primaryLabel {
-	display: inline-grid;
-	justify-items: center;
-}
-
-.primaryLabel::after {
-	content: attr(data-widest);
-	height: 0;
-	visibility: hidden;
-}
-
 /* Touch screens: every control is at least 44 × 44 pt (Apple HIG). */
 @media (pointer: coarse) {
 	.back,
@@ -219,4 +206,38 @@
 		border-radius: 14px;
 		font-weight: 600;
 	}
+}
+
+/* A book made of several files says so under its cover, and can split. */
+.files {
+	display: flex;
+	align-items: baseline;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0 0 10px;
+	font-size: var(--ctd-text-callout);
+	color: var(--ctd-ink-soft);
+	text-align: center;
+}
+
+.split {
+	padding: 0 4px;
+	border: 0;
+	border-radius: var(--ctd-radius-control);
+	background: transparent;
+	font: inherit;
+	color: var(--ctd-ink);
+	text-decoration: underline;
+	text-decoration-color: color-mix(in oklch, var(--ctd-ink) 30%, transparent);
+	text-underline-offset: 2px;
+}
+
+.split:hover {
+	background: var(--ctd-nav-hover-bg);
+}
+
+.split:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
 }

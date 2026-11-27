@@ -26,6 +26,7 @@ export const commandsByAdapter: Record<string, readonly string[]> = {
 		"clbCmdSetBookCoverFromMetadata",
 		"clbCmdSetBookCoverFromFile",
 		"clbQueryStagedBooks",
+		"clbQueryBookMatches",
 		"clbCmdStageBook",
 		"clbCmdAddStagedBook",
 		"clbCmdDiscardStagedBook",

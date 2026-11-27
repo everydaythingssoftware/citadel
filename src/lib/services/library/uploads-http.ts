@@ -3,6 +3,7 @@ import type { createCitadelHttpClient } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema.generated";
 import { sendUploadChunk } from "@/lib/api/upload-chunk";
 import {
+	type BookMatch,
 	type BookUploads,
 	UploadError,
 	UploadFailure,
@@ -13,7 +14,6 @@ type LibraryErrorCode = components["schemas"]["LibraryErrorCode"];
 
 const failureForCode: Partial<Record<LibraryErrorCode, TUploadFailure>> = {
 	conflict: UploadFailure.conflict,
-	duplicate: UploadFailure.duplicate,
 	unauthorized: UploadFailure.unauthorized,
 	notFound: UploadFailure.notFound,
 	tooLarge: UploadFailure.tooLarge,
@@ -117,6 +117,10 @@ export const createHttpUploads = (
 					}),
 				)) as LibraryBook,
 			),
+		findMatches: async (candidate) =>
+			(await settle(
+				client.POST("/api/books/matches", { body: candidate }),
+			)) as BookMatch[],
 		cancel: async (uploadId) => {
 			let response: Response;
 			let error: { code: LibraryErrorCode; message: string } | undefined;

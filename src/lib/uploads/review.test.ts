@@ -12,7 +12,6 @@ import {
 const book = {
 	format: "epub",
 	title: "Walden",
-	titleKey: "walden",
 	authorNames: ["Henry David Thoreau"],
 	identifier: "urn:isbn:0141439513",
 	publisher: "Ticknor and Fields",
@@ -20,6 +19,7 @@ const book = {
 	tags: ["Nature"],
 	publicationDate: "1854-08-09",
 	coverUrl: null,
+	matchKeys: { isbn: null, titleAuthors: null },
 };
 
 describe("review form", () => {

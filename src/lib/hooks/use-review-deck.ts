@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReviewedBook } from "@/lib/services/library";
+import type { AddTo, ReviewedBook } from "@/lib/services/library";
 import type { QueueItem } from "@/lib/uploads/queue";
 import {
 	canAddForm,
@@ -57,7 +57,8 @@ export interface ReviewDeck {
 	previous: () => void;
 	next: () => void;
 	select: (index: number) => void;
-	add: () => Promise<void>;
+	/** Adds the current book, as a new book unless `addTo` says otherwise. */
+	add: (addTo?: AddTo) => Promise<void>;
 	skip: () => Promise<void>;
 }
 
@@ -180,20 +181,30 @@ export const useReviewDeck = ({
 		return () => clearTimeout(timer.current);
 	}, [departingGone, departing]);
 
-	const add = useCallback(async () => {
-		if (!current) return;
-		if (!canAddForm(draft.form)) {
-			saveDraft((before) => ({ ...before, touched: ALL_FIELDS }));
-			return;
-		}
-		const item = current;
-		const after = depart(item, CoverExit.added);
-		if (await onAdd(item.key, reviewedFromForm(draft.form))) {
-			setReviewKey(after);
-		} else {
-			setDeparting(undefined);
-		}
-	}, [current, draft, onAdd, depart, saveDraft, setReviewKey]);
+	const add = useCallback(
+		async (addTo?: AddTo) => {
+			if (!current) return;
+			const existing = addTo?.kind === "existingBook";
+			// Added to a book already there, the form isn't used.
+			if (!existing && !canAddForm(draft.form)) {
+				saveDraft((before) => ({ ...before, touched: ALL_FIELDS }));
+				return;
+			}
+			const item = current;
+			const after = depart(item, CoverExit.added);
+			if (
+				await onAdd(item.key, {
+					...reviewedFromForm(draft.form),
+					...(addTo ? { addTo } : {}),
+				})
+			) {
+				setReviewKey(after);
+			} else {
+				setDeparting(undefined);
+			}
+		},
+		[current, draft, onAdd, depart, saveDraft, setReviewKey],
+	);
 
 	const skip = useCallback(async () => {
 		if (!current) return;

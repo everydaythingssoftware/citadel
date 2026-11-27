@@ -11,7 +11,11 @@ import { hasSource, type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import styles from "./UploadQueueRow.module.css";
 
 export interface UploadQueueRowProps {
+	/** The book's file, or the first of its files. */
 	item: QueueItem;
+	/** How many files make up the book; more than one stacks the cover. */
+	files?: number;
+	/** Opens the review at this book; the whole row is its target. */
 	onReview?: () => void;
 	onRetry?: () => void;
 	onRemove?: () => void;
@@ -31,10 +35,7 @@ const subtitle = (item: QueueItem): string => {
 			return "Added";
 		case UploadPhase.ready:
 			return (
-				item.message ??
-				(item.duplicate
-					? "Already in your library"
-					: item.book?.authorNames.join(", ") || "Ready to add")
+				item.message ?? (item.book?.authorNames.join(", ") || "Ready to add")
 			);
 		case UploadPhase.failed:
 		case UploadPhase.rejected:
@@ -42,7 +43,13 @@ const subtitle = (item: QueueItem): string => {
 	}
 };
 
-export const Thumbnail = ({ item }: { item: QueueItem }) => {
+const Thumbnail = ({
+	item,
+	stacked = false,
+}: {
+	item: QueueItem;
+	stacked?: boolean;
+}) => {
 	if (item.phase === UploadPhase.failed || item.phase === UploadPhase.rejected)
 		return (
 			<span className={clsx(styles.thumb, styles.problem)}>
@@ -51,7 +58,13 @@ export const Thumbnail = ({ item }: { item: QueueItem }) => {
 		);
 	if (item.book)
 		return (
-			<span className={clsx(styles.thumb, styles.coverSlot)}>
+			<span
+				className={clsx(
+					styles.thumb,
+					styles.coverSlot,
+					stacked && styles.stacked,
+				)}
+			>
 				<BookCover
 					alt=""
 					provisional
@@ -64,9 +77,14 @@ export const Thumbnail = ({ item }: { item: QueueItem }) => {
 	return <span className={clsx(styles.thumb, styles.pending)} />;
 };
 
-/** One file in the upload queue, with what's happening to it and what you can do. */
+/**
+ * One book in the upload queue: its cover, title and author. A ready book is
+ * one big target that opens its review; a file still on its way shows its
+ * progress, and a problem what you can do about it.
+ */
 export const UploadQueueRow = ({
 	item,
+	files = 1,
 	onReview,
 	onRetry,
 	onRemove,
@@ -74,11 +92,18 @@ export const UploadQueueRow = ({
 	const problem =
 		item.phase === UploadPhase.failed ||
 		item.phase === UploadPhase.rejected ||
-		(item.phase === UploadPhase.ready &&
-			(item.message !== undefined || item.duplicate !== undefined));
+		(item.phase === UploadPhase.ready && item.message !== undefined);
 	return (
 		<li className={styles.row} data-phase={item.phase}>
-			<Thumbnail item={item} />
+			{item.phase === UploadPhase.ready && onReview && (
+				<button
+					type="button"
+					className={styles.target}
+					aria-label={`Review ${item.name}`}
+					onClick={onReview}
+				/>
+			)}
+			<Thumbnail item={item} stacked={files > 1} />
 			<div className={styles.text}>
 				<span className={styles.name}>{item.name}</span>
 				<span className={clsx(styles.subtitle, problem && styles.danger)}>
@@ -109,17 +134,9 @@ export const UploadQueueRow = ({
 				{item.phase === UploadPhase.adding && (
 					<Spinner size={18} aria-label={subtitle(item)} />
 				)}
-				{item.phase === UploadPhase.ready && (
-					// On phones the whole row taps through to review (the button
-					// stretches over it) and shows a chevron instead.
-					<Button
-						className={styles.review}
-						onClick={onReview}
-						aria-label={`Review ${item.name}`}
-					>
-						<span className={styles.reviewLabel}>Review</span>
-						<ChevronRightGlyph className={styles.chevron} />
-					</Button>
+				{item.phase === UploadPhase.ready && onReview && (
+					// Phones end a row that opens something in a disclosure chevron.
+					<ChevronRightGlyph className={styles.chevron} aria-hidden />
 				)}
 				{item.phase === UploadPhase.failed && hasSource(item) && (
 					<Button onClick={onRetry}>Try Again</Button>

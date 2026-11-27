@@ -1,5 +1,6 @@
 import type { LibraryBook } from "@/bindings";
 import {
+	type BookMatch,
 	type BookUploads,
 	type ReviewedBook,
 	type StagedUpload,
@@ -30,8 +31,10 @@ export interface FakeUploadsOptions {
 	now?: () => Date;
 	/** Whether read books report a cover (stories have no image to serve). */
 	withCovers?: boolean;
-	/** Reported on every read book, as when the library has its title. */
-	duplicate?: string;
+	/** Library books a title matches, as possible duplicates. */
+	matchesFor?: (title: string) => BookMatch[];
+	/** What a file says about itself; by default "<name> (read)" by An Author. */
+	describe?: (fileName: string) => { title: string; authorNames: string[] };
 }
 
 /**
@@ -45,7 +48,11 @@ export const createFakeUploads = ({
 	chunkDelay,
 	now = () => new Date(),
 	withCovers = true,
-	duplicate,
+	matchesFor,
+	describe = (fileName) => ({
+		title: `${displayName(fileName)} (read)`,
+		authorNames: ["An Author"],
+	}),
 }: FakeUploadsOptions = {}) => {
 	const staged = new Map<string, FakeUpload>();
 	const committed: { uploadId: string; book: ReviewedBook }[] = [];
@@ -70,28 +77,37 @@ export const createFakeUploads = ({
 			throw new UploadError(UploadFailure.notFound, "Upload not found");
 		return upload;
 	};
-	const view = (upload: FakeUpload): StagedUpload => ({
-		id: upload.id,
-		fileName: upload.fileName,
-		size: upload.size,
-		receivedBytes: upload.received,
-		expiresAt: upload.expiresAt,
-		book: upload.ready
-			? {
-					format: upload.fileName.split(".").pop() ?? "",
-					title: `${displayName(upload.fileName)} (read)`,
-					titleKey: displayName(upload.fileName).toLowerCase(),
-					authorNames: ["An Author"],
-					identifier: null,
-					publisher: null,
-					language: "en",
-					tags: [],
-					publicationDate: null,
-					coverUrl: withCovers ? `/api/uploads/${upload.id}/cover` : null,
-				}
-			: null,
-		duplicate: upload.ready ? duplicate : undefined,
-	});
+	const view = (upload: FakeUpload): StagedUpload => {
+		const { title, authorNames } = describe(upload.fileName);
+		return {
+			id: upload.id,
+			fileName: upload.fileName,
+			size: upload.size,
+			receivedBytes: upload.received,
+			expiresAt: upload.expiresAt,
+			book: upload.ready
+				? {
+						format: upload.fileName.split(".").pop() ?? "",
+						title,
+						authorNames,
+						identifier: null,
+						publisher: null,
+						language: "en",
+						tags: [],
+						publicationDate: null,
+						coverUrl: withCovers ? `/api/uploads/${upload.id}/cover` : null,
+						matchKeys: {
+							isbn: null,
+							titleAuthors: [
+								title.toLowerCase(),
+								...authorNames.map((name) => name.toLowerCase()).sort(),
+							].join("|"),
+						},
+					}
+				: null,
+			matches: upload.ready ? (matchesFor?.(title) ?? []) : [],
+		};
+	};
 	const expiry = (hours: number) =>
 		new Date(now().getTime() + hours * 60 * 60 * 1000).toISOString();
 
@@ -166,12 +182,17 @@ export const createFakeUploads = ({
 					"The upload hasn't finished",
 				);
 			staged.delete(uploadId);
+			for (const other of book.also ?? []) staged.delete(other);
 			committed.push({ uploadId, book });
 			return { id: String(committed.length), title: book.title } as LibraryBook;
 		},
 		cancel: async (uploadId) => {
 			fail("cancel");
 			staged.delete(uploadId);
+		},
+		findMatches: async (candidate) => {
+			fail("findMatches");
+			return matchesFor?.(candidate.title) ?? [];
 		},
 	};
 

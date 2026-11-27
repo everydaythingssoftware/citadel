@@ -5,13 +5,54 @@
 	gap: 12px;
 	align-items: center;
 	min-height: 54px;
-	padding: 9px 0;
-	border-bottom: 1px solid color-mix(in oklch, var(--ctd-ink) 10%, transparent);
+	margin: 0 -8px;
+	padding: 8px;
+	border-radius: 8px;
 	list-style: none;
 }
 
-.row:last-child {
-	border-bottom: 0;
+/* A ready book: the whole row opens its review. It sits under the row's
+   content, which lets clicks through to it, so the trailing controls of
+   other phases stay their own targets. */
+.target {
+	position: absolute;
+	inset: 0;
+	padding: 0;
+	border: 0;
+	border-radius: inherit;
+	background: transparent;
+	font: inherit;
+}
+
+.row:has(.target) > :not(.target) {
+	pointer-events: none;
+}
+
+.target:hover {
+	background: var(--ctd-nav-hover-bg);
+}
+
+.target:active {
+	background: var(--ctd-nav-active-bg, var(--ctd-nav-hover-bg));
+}
+
+.target:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+/* A book of several files: a second sheet peeks out behind its cover. */
+.stacked {
+	position: relative;
+}
+
+.stacked::before {
+	content: "";
+	position: absolute;
+	inset: 3px -3px -3px 3px;
+	border-radius: 2px;
+	background: var(--ctd-surface-muted);
+	box-shadow: 0 0 0 1px var(--ctd-border);
 }
 
 .thumb {
@@ -98,36 +139,11 @@
 		height: 60px;
 	}
 
-	/* The whole row is the review target, ending in a disclosure chevron. */
-	.review {
-		position: static;
-		border: 0;
-		background: transparent;
-		box-shadow: none;
-		padding: 0;
-		color: var(--ctd-ink-soft);
-	}
-
-	.review::after {
-		content: "";
-		position: absolute;
-		inset: 0;
-	}
-
-	.review:active::after {
-		background: var(--ctd-nav-hover-bg);
-	}
-
-	.reviewLabel {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-	}
-
 	.chevron {
 		display: block;
+		width: 14px;
+		height: 14px;
+		color: var(--ctd-ink-soft);
 	}
 }
 

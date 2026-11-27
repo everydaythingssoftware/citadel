@@ -1,0 +1,182 @@
+.matches {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-bottom: 14px;
+}
+
+/* The whole line is the target that opens the matching book. */
+.note {
+	align-self: center;
+	max-width: 100%;
+	padding: 4px 8px;
+	border: 0;
+	border-radius: var(--ctd-radius-control);
+	background: transparent;
+	font: inherit;
+	font-size: var(--ctd-text-callout);
+	color: var(--ctd-ink-soft);
+	text-align: center;
+}
+
+.note:hover,
+.note[data-state="open"] {
+	background: var(--ctd-nav-hover-bg);
+}
+
+.note:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.noteLabel {
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
+.noteMatch {
+	color: var(--ctd-ink);
+	text-decoration: underline;
+	text-decoration-color: color-mix(in oklch, var(--ctd-ink) 30%, transparent);
+	text-underline-offset: 2px;
+}
+
+.popover {
+	display: grid;
+	gap: 12px;
+	width: min(320px, calc(100vw - 24px));
+	padding: 12px;
+	background-color: var(--ctd-surface-strong);
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-panel);
+	box-shadow: var(--ctd-popover-shadow);
+	color: var(--ctd-ink);
+	font-size: var(--ctd-text-body);
+	/* Above the upload sheet. */
+	z-index: 120;
+	animation: match-popover-in 140ms ease-out;
+}
+
+@keyframes match-popover-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+}
+
+.popoverBook {
+	display: grid;
+	grid-template-columns: 52px minmax(0, 1fr);
+	gap: 12px;
+}
+
+.popoverBook + .popoverBook {
+	padding-top: 12px;
+	border-top: 1px solid var(--ctd-border);
+}
+
+.destination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	font-size: var(--ctd-text-callout);
+}
+
+.chooser {
+	display: grid;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	min-width: 0;
+}
+
+.choice {
+	position: relative;
+	display: grid;
+	grid-template-columns: 52px minmax(0, 1fr);
+	gap: 12px;
+	padding: 12px;
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-panel);
+	background: var(--ctd-surface-strong);
+}
+
+.choice[data-selected] {
+	border-color: var(--ctd-accent);
+	box-shadow: 0 0 0 1px var(--ctd-accent);
+}
+
+.choice:has(.radio:focus-visible) {
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.radio {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	margin: 0;
+	accent-color: var(--ctd-accent);
+}
+
+.matchCover {
+	display: flex;
+	justify-content: center;
+}
+
+.matchText {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.matchTitle {
+	font-weight: 600;
+}
+
+.facts {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	column-gap: 8px;
+	margin: 6px 0 0;
+	font-size: var(--ctd-text-callout);
+}
+
+.facts dt {
+	color: var(--ctd-ink-soft);
+}
+
+.facts dd {
+	margin: 0;
+}
+
+.same {
+	color: var(--ctd-ink);
+	font-weight: 600;
+}
+
+.soft {
+	color: var(--ctd-ink-soft);
+}
+
+.hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+}
+
+@media (pointer: coarse) {
+	.note {
+		min-height: 44px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.popover {
+		animation: none;
+	}
+}

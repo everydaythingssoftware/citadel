@@ -1,231 +1,191 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import clsx from "clsx";
-import {
-	type CSSProperties,
-	Fragment,
-	type MouseEvent,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-} from "react";
+import { useRef, useState } from "react";
 import { PlusGlyph, UploadGlyph } from "@/components/icons/UploadGlyphs";
-import { UploadDuplicates } from "@/components/molecules/UploadDuplicates";
 import { UploadQueueRow } from "@/components/molecules/UploadQueueRow";
 import { UploadReview } from "@/components/molecules/UploadReview";
 import {
+	AlertDialog,
 	Button,
 	DialogCloseButton,
 	HoldButton,
 	IconButton,
 	Tooltip,
 } from "@/components/ui";
-import { pluralize } from "@/lib/book-count";
 import { useFollowNewest } from "@/lib/hooks/use-follow-newest";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
-import {
-	type DuplicateGroup,
-	duplicateGroups,
-	type QueueItem,
-	type QueueSummary,
-	UploadPhase,
-} from "@/lib/uploads/queue";
+import type { MatchChoice } from "@/lib/hooks/use-review-matches";
+import { useScrollEdges } from "@/lib/hooks/use-scroll-edges";
+import { useSheetHeight } from "@/lib/hooks/use-sheet-height";
+import type { BookMatch } from "@/lib/services/library";
+import type { BookRow, QueueSections, QueueSummary } from "@/lib/uploads/queue";
 import styles from "./UploadSheet.module.css";
 
-/** Clicks this soon after a duplicate leaves were aimed at what it replaced. */
-const CLICK_GUARD_MS = 400;
-
-const duplicatesTitle = (
-	duplicates: QueueItem[],
-	groups: DuplicateGroup[],
-): string =>
-	`${pluralize(duplicates.length, "duplicate")} of ${pluralize(groups.length, "book")}`;
+/** The review's height on wide screens: room for the covers and the form. */
+const REVIEW_HEIGHT = 680;
+/** Space the sheet leaves below the toolbar and above the window's bottom. */
+const SHEET_MARGIN = 112;
 
 export interface UploadSheetProps {
 	/** Books are read from this computer rather than uploaded. */
 	local?: boolean;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	items: QueueItem[];
-	/** A batch being read here, whose books aren't in `items` yet. */
-	reading?: { done: number; total: number; slow: boolean };
-	/** Duplicates to decide on first, shown alone; empty for none. */
-	duplicates?: QueueItem[];
+	/** New books (and files on their way), then possible duplicates. */
+	sections: QueueSections;
 	summary: QueueSummary;
 	/** Why the queue is holding back, e.g. the server is full. */
 	paused?: string;
 	/** Review one book at a time instead of showing the whole queue. */
 	reviewing: boolean;
 	deck: ReviewDeck;
+	/** The book under review's possible duplicates, formats and destination. */
+	matches?: BookMatch[];
+	choice?: MatchChoice;
+	formats?: readonly string[];
+	onSplit?: () => void;
 	authorSuggestions?: string[];
 	tagSuggestions?: string[];
 	onChooseFiles: () => void;
+	/** Opens the review at a book. */
 	onReview: (key: string) => void;
+	/** Opens the review at the first book. */
+	onReviewBooks: () => void;
 	onBackToQueue: () => void;
 	onRetry: (key: string) => void;
 	onRemove: (key: string) => void;
-	onSkipDuplicates: (items: QueueItem[]) => void;
-	onAddDuplicates: (items: QueueItem[]) => void;
-	onAddAll: () => void;
-	onCancelAll: () => void;
+	/** Adds every new book as its file describes it; possible duplicates stay. */
+	onAddNewBooks: () => void;
+	/** Throws away every book not yet added, and closes. */
+	onDiscardAll: () => void;
 }
 
+const Rows = ({
+	rows,
+	onReview,
+	onRetry,
+	onRemove,
+}: {
+	rows: BookRow[];
+	onReview: (key: string) => void;
+	onRetry: (key: string) => void;
+	onRemove: (key: string) => void;
+}) =>
+	rows.map((row) => (
+		<UploadQueueRow
+			key={row.key}
+			item={row.lead}
+			files={row.items.length}
+			onReview={() => onReview(row.key)}
+			onRetry={() => onRetry(row.key)}
+			onRemove={() => onRemove(row.key)}
+		/>
+	));
+
 /**
- * The upload queue and review, as a sheet on wide screens and a full-screen
- * page on phones. Closing it drops every book not yet added, as Cancel All
- * does, except while files are being sent to the server: then it only
- * hides, and the uploads carry on.
+ * The books being added, and their review, as a sheet on wide screens and a
+ * full-screen page on phones. A ready book is one target that opens its
+ * review; possible duplicates wait in their own section, after the rest, for
+ * Review Books, while Add New Books adds the others as their files describe
+ * them. Closing leaves the books waiting (uploads carry on); Cancel All, or
+ * Discard Books on a phone, throws them away.
  */
 export const UploadSheet = ({
 	local = false,
 	open,
 	onOpenChange,
-	items: currentItems,
-	reading: currentReading,
-	duplicates: currentDuplicates = [],
+	sections,
 	summary,
 	paused,
 	reviewing,
 	deck,
+	matches,
+	choice,
+	formats,
+	onSplit,
 	authorSuggestions,
 	tagSuggestions,
 	onChooseFiles,
 	onReview,
+	onReviewBooks,
 	onBackToQueue,
 	onRetry,
 	onRemove,
-	onSkipDuplicates,
-	onAddDuplicates,
-	onAddAll,
-	onCancelAll,
+	onAddNewBooks,
+	onDiscardAll,
 }: UploadSheetProps) => {
+	const sheetRef = useRef<HTMLDivElement>(null);
 	const bodyRef = useRef<HTMLDivElement>(null);
-	const current = {
-		items: currentItems,
-		reading: currentReading,
-		undecided: currentDuplicates,
-	};
-	// What it lists stays put while the sheet closes over it.
-	const last = useRef(current);
-	if (open) last.current = current;
-	const { items, reading, undecided } = last.current;
-	const asking = undecided.length > 0;
-	const groups = useMemo(() => duplicateGroups(undecided), [undecided]);
-	// Nothing shows until a first batch is read, duplicates coming first.
-	const pending = !asking && items.length === 0 ? reading : undefined;
-	const rows = pending?.total ?? items.length;
-	const status = reading?.slow
-		? `Reading ${Math.min(reading.done + 1, reading.total)} of ${pluralize(reading.total, "book")}`
-		: summary.ready > 0 && `${summary.ready} of ${items.length} ready`;
-	const firstReady = items.find((item) => item.phase === UploadPhase.ready);
-	const canAddAll = items.some(
-		(item) => item.phase === UploadPhase.ready && !item.duplicate,
-	);
+	const listRef = useRef<HTMLDivElement>(null);
+	const reviewBooksRef = useRef<HTMLButtonElement>(null);
+	const [confirming, setConfirming] = useState(false);
+	// The list slides back in when it returns from a review.
+	const wasReviewing = useRef(reviewing);
+	const returned = useRef(false);
+	if (wasReviewing.current && !reviewing) returned.current = true;
+	if (reviewing || !open) returned.current = false;
+	wasReviewing.current = reviewing;
+	const returning = returned.current;
+	const discarding = useRef(false);
+	const { books, possibleDuplicates } = sections;
+	const count = books.length + possibleDuplicates.length;
+	const ready = summary.ready > 0;
+	const canAddNew = books.some((row) => row.lead.phase === "ready");
 	const cancelHint = local
 		? "Hold to stop adding these books"
 		: "Hold to cancel all uploads";
-	useFollowNewest(bodyRef, reviewing ? 0 : rows);
-	const view = reviewing
-		? "review"
-		: pending
-			? "reading"
-			: asking
-				? "duplicates"
-				: "queue";
-	const primaryRef = useRef<HTMLButtonElement>(null);
-	const skipAllRef = useRef<HTMLButtonElement>(null);
-	const defaultButton = () =>
-		view === "duplicates"
-			? skipAllRef.current
-			: view === "queue"
-				? primaryRef.current
-				: null;
-	// Focus goes back where it was when the sheet opened, like other sheets.
-	const opener = useRef<Element | null>(null);
-	useLayoutEffect(() => {
-		if (open) opener.current = document.activeElement;
-	}, [open]);
-	// Each step's default button takes focus as it shows, so Return presses
-	// it rather than the close button, which drops the batch.
-	const shownView = useRef(view);
-	useLayoutEffect(() => {
-		if (view === shownView.current) return;
-		if (shownView.current !== "review") defaultButton()?.focus();
-		shownView.current = view;
+	const edges = useScrollEdges(bodyRef);
+	useFollowNewest(bodyRef, reviewing ? 0 : count);
+	useSheetHeight({
+		sheet: sheetRef,
+		scroller: bodyRef,
+		content: listRef,
+		fixed: reviewing
+			? Math.min(REVIEW_HEIGHT, window.innerHeight - SHEET_MARGIN)
+			: undefined,
 	});
-	const shownCount = useRef(0);
-	const changedAt = useRef(Number.NEGATIVE_INFINITY);
-	useLayoutEffect(() => {
-		if (undecided.length === shownCount.current) return;
-		changedAt.current = performance.now();
-		shownCount.current = undecided.length;
-	}, [undecided.length]);
-	const guardClick = (event: MouseEvent) => {
-		if (
-			event.detail > 0 &&
-			event.timeStamp - changedAt.current < CLICK_GUARD_MS
-		)
-			event.stopPropagation();
-	};
-	const cancelRow = (
-		<HoldButton
-			className={styles.cancelRow}
-			label={local ? "Cancel Adding Books" : "Cancel All Uploads"}
-			hint={cancelHint}
-			onConfirm={onCancelAll}
-		/>
-	);
 	return (
 		<Dialog.Root open={open} onOpenChange={onOpenChange}>
 			<Dialog.Portal>
 				<Dialog.Overlay className={styles.overlay} />
 				<Dialog.Content
-					className={clsx(
-						styles.content,
-						local && !reviewing && (pending || asking) && styles.sized,
-					)}
-					style={{ "--rows": rows } as CSSProperties}
+					ref={sheetRef}
+					className={styles.content}
+					data-reviewing={reviewing || undefined}
 					aria-describedby={undefined}
 					onInteractOutside={(event) => event.preventDefault()}
+					// Return reviews the books, rather than the first control in the
+					// header taking focus (and showing its tooltip).
 					onOpenAutoFocus={(event) => {
-						const target = defaultButton();
-						if (!target || target.disabled) return;
+						const target = reviewBooksRef.current;
 						event.preventDefault();
-						target.focus();
-					}}
-					onCloseAutoFocus={(event) => {
-						const target = opener.current;
-						if (!(target instanceof HTMLElement) || !target.isConnected) return;
-						event.preventDefault();
-						target.focus();
-					}}
-					// Holding Return presses one button, not each one that takes its
-					// place as rows and steps go by.
-					onKeyDown={(event) => {
-						if (!reviewing && event.repeat && event.key === "Enter")
-							event.preventDefault();
+						if (target && !target.disabled) target.focus();
 					}}
 				>
-					{/* Phones get an iOS navigation bar: Done, the title, and +. */}
+					{/* Phones get an iOS navigation bar: Cancel, the title, and +. */}
 					<div
-						className={styles.header}
+						className={clsx(styles.header, edges.above && styles.lifted)}
 						data-reviewing={reviewing || undefined}
 					>
-						<Dialog.Close asChild>
-							<button type="button" className={styles.done}>
-								Done
+						{count > 0 ? (
+							<button
+								type="button"
+								className={styles.done}
+								onClick={() => setConfirming(true)}
+							>
+								Cancel
 							</button>
-						</Dialog.Close>
-						<Dialog.Title className={styles.title}>
-							{reviewing
-								? "Review Book"
-								: asking
-									? duplicatesTitle(undecided, groups)
-									: "Add Books"}
-						</Dialog.Title>
-						{!reviewing && !asking && status && (
-							<span className={styles.status}>{status}</span>
+						) : (
+							<Dialog.Close asChild>
+								<button type="button" className={styles.done}>
+									Done
+								</button>
+							</Dialog.Close>
 						)}
-						{!reviewing && !asking && items.length > 0 && (
+						<Dialog.Title className={styles.title}>
+							{reviewing ? "Review Book" : "Add Books"}
+						</Dialog.Title>
+						{!reviewing && count > 0 && (
 							<Tooltip label="Choose more books…">
 								<IconButton
 									className={styles.addMore}
@@ -241,68 +201,68 @@ export const UploadSheet = ({
 						</Dialog.Close>
 					</div>
 					<div
-						key={asking ? "duplicates" : "queue"}
-						ref={asking ? undefined : bodyRef}
-						className={clsx(styles.body, reviewing && styles.bodyReview)}
-						onClickCapture={guardClick}
+						ref={bodyRef}
+						className={clsx(
+							styles.body,
+							"ctd-scroller",
+							reviewing && styles.bodyReview,
+						)}
 					>
 						{reviewing ? (
 							<UploadReview
 								deck={deck}
 								local={local}
+								matches={matches}
+								choice={choice}
+								formats={formats}
+								onSplit={onSplit}
 								authorSuggestions={authorSuggestions}
 								tagSuggestions={tagSuggestions}
 								onBack={onBackToQueue}
 								onDone={() => onOpenChange(false)}
 							/>
-						) : pending ? (
-							cancelRow
-						) : asking ? (
-							<>
-								<UploadDuplicates
-									groups={groups}
-									onSkip={onSkipDuplicates}
-									onAddAnyway={onAddDuplicates}
-								/>
-								{cancelRow}
-							</>
 						) : (
-							<>
-								{items.length > 0 && (
-									<ul
-										className={styles.list}
-										aria-label={local ? "Books to add" : "Uploads"}
-									>
-										{items.map((item) => (
-											<UploadQueueRow
-												key={item.key}
-												item={item}
-												onReview={() => onReview(item.key)}
-												onRetry={() => onRetry(item.key)}
-												onRemove={() => onRemove(item.key)}
-											/>
-										))}
-									</ul>
-								)}
-								{paused && (
-									<p className={styles.paused} role="status">
-										{paused}
-									</p>
-								)}
-								{items.length > 0 ? (
+							<div
+								ref={listRef}
+								className={styles.stage}
+								data-returning={returning || undefined}
+							>
+								{count > 0 ? (
 									<>
-										<button
-											type="button"
-											className={styles.dropzone}
-											onClick={onChooseFiles}
+										<ul
+											className={styles.list}
+											aria-label={local ? "Books to add" : "Uploads"}
 										>
-											<PlusGlyph className={styles.plus} />
-											<span>
-												Drop more books here or{" "}
-												<span className={styles.link}>choose files</span>
-											</span>
-										</button>
-										{cancelRow}
+											<Rows
+												rows={books}
+												onReview={onReview}
+												onRetry={onRetry}
+												onRemove={onRemove}
+											/>
+										</ul>
+										{possibleDuplicates.length > 0 && (
+											<section aria-labelledby="possible-duplicates">
+												<h3
+													id="possible-duplicates"
+													className={styles.sectionLabel}
+												>
+													Possible duplicates
+												</h3>
+												<ul className={styles.list}>
+													<Rows
+														rows={possibleDuplicates}
+														onReview={onReview}
+														onRetry={onRetry}
+														onRemove={onRemove}
+													/>
+												</ul>
+											</section>
+										)}
+										{paused && (
+											<p className={styles.paused} role="status">
+												{paused}
+											</p>
+										)}
 									</>
 								) : (
 									<div className={styles.empty}>
@@ -329,70 +289,61 @@ export const UploadSheet = ({
 										</Button>
 									</div>
 								)}
-							</>
+							</div>
 						)}
 					</div>
 					{/* Outside the scrolling list, so the list can bounce without it. */}
-					{!reviewing && (pending || asking || items.length > 0) && (
-						<div
-							className={clsx(styles.footer, asking && styles.footerEven)}
-							onClickCapture={guardClick}
-						>
+					{!reviewing && count > 0 && (
+						<div className={clsx(styles.footer, edges.below && styles.lifted)}>
 							{/* Held, not clicked: it throws away everything uploaded. */}
 							<HoldButton
 								className={styles.cancelAll}
 								label="Cancel All"
 								hint={cancelHint}
-								onConfirm={onCancelAll}
+								onConfirm={onDiscardAll}
 							/>
 							<span className={styles.spacer} />
-							{pending ? null : asking ? (
-								<Fragment key="duplicates">
-									<Button onClick={() => onAddDuplicates(undecided)}>
-										Add All Anyway
-									</Button>
-									<Button
-										ref={skipAllRef}
-										variant="primary"
-										onClick={() => onSkipDuplicates(undecided)}
-									>
-										Skip All
-									</Button>
-								</Fragment>
-							) : (
-								<Fragment key="queue">
-									{/* Reviewing first is the way in; adding everything as the
-							    files describe it is the shortcut. */}
-									<Button disabled={!canAddAll} onClick={onAddAll}>
-										Add All
-									</Button>
-									<Button
-										ref={primaryRef}
-										variant="primary"
-										disabled={firstReady === undefined}
-										onClick={() => firstReady && onReview(firstReady.key)}
-									>
-										{summary.ready === 0
-											? "Review Books"
-											: summary.ready === 1
-												? "Review 1 Book"
-												: `Review ${summary.ready} Books`}
-									</Button>
-								</Fragment>
+							{canAddNew && (
+								<Button onClick={onAddNewBooks}>Add New Books</Button>
 							)}
+							<Button
+								ref={reviewBooksRef}
+								variant="primary"
+								disabled={!ready}
+								onClick={onReviewBooks}
+							>
+								Review Books
+							</Button>
 						</div>
 					)}
 					<p className={styles.live} aria-live="polite">
 						{summary.active > 0
 							? `${local ? "Reading" : "Uploading"} ${summary.active} ${summary.active === 1 ? "book" : "books"}`
-							: asking
-								? duplicatesTitle(undecided, groups)
-								: summary.ready > 0
-									? `${summary.ready} ready to review`
-									: ""}
+							: summary.ready > 0
+								? `${summary.ready} ready to review`
+								: ""}
 					</p>
 				</Dialog.Content>
 			</Dialog.Portal>
+			<AlertDialog
+				open={confirming}
+				onOpenChange={(next) => {
+					setConfirming(next);
+					if (next) return;
+					// Review Later: the books wait, the sheet goes.
+					if (!discarding.current) onOpenChange(false);
+					discarding.current = false;
+				}}
+				title="Discard the books you haven't added?"
+				description="Review Later keeps them here until you come back."
+				confirmLabel="Discard Books"
+				cancelLabel="Review Later"
+				destructive
+				onConfirm={() => {
+					discarding.current = true;
+					onDiscardAll();
+				}}
+			/>
 		</Dialog.Root>
 	);
 };

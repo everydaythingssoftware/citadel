@@ -1,5 +1,8 @@
 export type {
+	AddTo,
+	BookCandidate,
 	BookIntake,
+	BookMatch,
 	BookUploads,
 	Library,
 	LocalBookImports,
