@@ -21,7 +21,8 @@ export const useSheetHeight = ({
 	fixed,
 	fill = "(max-width: 36em)",
 }: {
-	sheet: RefObject<HTMLElement | null>;
+	/** The sheet, once mounted (it mounts after its parent when it opens). */
+	sheet: HTMLElement | null;
 	/** The scrolling middle, whose padding counts. */
 	scroller: RefObject<HTMLElement | null>;
 	/** What the scroller holds, unstretched. */
@@ -31,7 +32,7 @@ export const useSheetHeight = ({
 	fill?: string;
 }) => {
 	useLayoutEffect(() => {
-		const element = sheet.current;
+		const element = sheet;
 		if (!element) return;
 		const fills = window.matchMedia(fill);
 		const fitHeight = () => {

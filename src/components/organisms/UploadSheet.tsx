@@ -114,7 +114,7 @@ export const UploadSheet = ({
 	onAddNewBooks,
 	onDiscardAll,
 }: UploadSheetProps) => {
-	const sheetRef = useRef<HTMLDivElement>(null);
+	const [sheet, setSheet] = useState<HTMLDivElement | null>(null);
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 	const reviewBooksRef = useRef<HTMLButtonElement>(null);
@@ -137,7 +137,7 @@ export const UploadSheet = ({
 	const edges = useScrollEdges(bodyRef);
 	useFollowNewest(bodyRef, reviewing ? 0 : count);
 	useSheetHeight({
-		sheet: sheetRef,
+		sheet,
 		scroller: bodyRef,
 		content: listRef,
 		fixed: reviewing
@@ -149,7 +149,7 @@ export const UploadSheet = ({
 			<Dialog.Portal>
 				<Dialog.Overlay className={styles.overlay} />
 				<Dialog.Content
-					ref={sheetRef}
+					ref={setSheet}
 					className={styles.content}
 					data-reviewing={reviewing || undefined}
 					aria-describedby={undefined}
@@ -308,6 +308,7 @@ export const UploadSheet = ({
 							)}
 							<Button
 								ref={reviewBooksRef}
+								className={styles.primary}
 								variant="primary"
 								disabled={!ready}
 								onClick={onReviewBooks}
