@@ -144,7 +144,7 @@ mod tests {
 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Contents 4 0 R >> endobj
-4 0 obj << /Length 24 >> stream
+4 0 obj << /Length 25 >> stream
 0 0 1 rg 0 0 300 150 re f
 endstream endobj
 trailer << /Root 1 0 R >>

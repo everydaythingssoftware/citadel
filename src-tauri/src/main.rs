@@ -15,6 +15,7 @@ mod account;
 mod app_updates;
 pub mod libs {
     pub mod cover_thumbs;
+    pub mod pdf_cover;
 }
 mod library;
 mod menu;
@@ -295,8 +296,6 @@ fn run_tauri_backend() -> std::io::Result<()> {
 }
 
 fn main() -> std::io::Result<()> {
-    libcalibre::book_file::run_pdf_cover_worker();
-
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--export-bindings") {
         command_builder()

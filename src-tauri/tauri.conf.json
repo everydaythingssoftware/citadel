@@ -36,7 +36,11 @@
     "shortDescription": "",
     "linux": {
       "deb": {
-        "depends": []
+        "depends": [],
+        "recommends": ["poppler-utils"]
+      },
+      "rpm": {
+        "recommends": ["poppler-utils"]
       }
     },
     "createUpdaterArtifacts": false

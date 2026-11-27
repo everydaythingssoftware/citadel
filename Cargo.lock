@@ -720,6 +720,7 @@ version = "0.7.2"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "block2",
  "chrono",
  "citadel-core",
  "citadel-metadata",
@@ -732,7 +733,9 @@ dependencies = [
  "netdev",
  "objc2",
  "objc2-app-kit",
+ "objc2-core-foundation",
  "objc2-foundation",
+ "objc2-quick-look-thumbnailing",
  "objc2-quick-look-ui",
  "quick-xml 0.38.4",
  "regex",
@@ -760,6 +763,7 @@ dependencies = [
  "trash",
  "urlencoding",
  "uuid",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -3410,6 +3414,20 @@ dependencies = [
  "bitflags 2.13.0",
  "objc2",
  "objc2-core-foundation",
+ "objc2-foundation",
+]
+
+[[package]]
+name = "objc2-quick-look-thumbnailing"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac8e00da1ca87ffe3ea8d20981026f013df91072a140432f0f88da9a356d9b3c"
+dependencies = [
+ "bitflags 2.13.0",
+ "block2",
+ "objc2",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation",
 ]
 
