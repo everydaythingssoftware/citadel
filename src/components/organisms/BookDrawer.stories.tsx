@@ -105,6 +105,7 @@ const book = (files: LibraryBook["file_list"]): LibraryBook => ({
 	is_read: false,
 	series: "Music Lives",
 	series_index: 2,
+	publisher: null,
 	language_list: ["eng"],
 	added_at: "2026-11-10T10:00:00Z",
 	identifier_list: [

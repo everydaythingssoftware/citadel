@@ -1,0 +1,54 @@
+.sheetFields {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.tagsField {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ctd-field-label-gap);
+}
+
+.tagsNote {
+	margin: 0;
+	color: var(--ctd-ink-soft);
+	font-size: var(--ctd-text-subheadline);
+	line-height: var(--ctd-leading-subheadline);
+}
+
+.sheetFailure {
+	margin: 12px 0 0;
+	color: var(--ctd-danger-ink);
+	font-size: var(--ctd-text-body);
+}
+
+.sheetFooter {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	margin-top: 18px;
+}
+
+/* The clear button sits level with the text field, below the label. */
+.nameRow {
+	display: flex;
+	align-items: flex-end;
+	gap: 6px;
+}
+
+.nameField {
+	flex: 1;
+	min-width: 0;
+}
+
+/* The slot keeps its width, so the field does not move when the button
+   disappears. */
+.clearSlot {
+	flex: none;
+	width: var(--ctd-control-height);
+}
+
+.clearButton {
+	font-size: var(--ctd-text-body);
+}

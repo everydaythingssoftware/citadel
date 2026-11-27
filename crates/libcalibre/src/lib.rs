@@ -32,6 +32,7 @@ pub use library::{
     CustomValueSummary, Library, PublisherSummary, ResolvedBookAsset, SeriesSummary, TagSummary,
     DEFAULT_READ_COLUMN,
 };
+pub use queries::languages::canonicalize_lang_code;
 pub use schema_versions::{
     backups as upgrade_backups, peek_schema_version, SchemaUpgrade, MINIMUM_SCHEMA_VERSION,
     SCHEMA_VERSION,

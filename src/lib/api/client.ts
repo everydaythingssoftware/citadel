@@ -16,6 +16,18 @@ export class ServerUnreachableError extends Error {
 	}
 }
 
+/**
+ * The message of a Citadel error body, else `fallback`. A body of another
+ * form, for example the HTML page of a proxy, has no message.
+ */
+export const errorBodyMessage = (error: unknown, fallback: string): string =>
+	typeof error === "object" &&
+	error !== null &&
+	"message" in error &&
+	typeof error.message === "string"
+		? error.message
+		: fallback;
+
 const isAbort = (error: unknown) =>
 	error instanceof DOMException && error.name === "AbortError";
 

@@ -229,6 +229,13 @@ export const createTauriLibrary = (): Library => {
 				throw new Error(result.error);
 			}
 		},
+		editBooks: async (edits) => {
+			const result = await commands.clbCmdEditBooks([...edits]);
+			if (result.status === "error") {
+				throw new Error(result.error);
+			}
+			return result.data;
+		},
 		updateAuthor: async (authorId, updates) => {
 			const result = await commands.clbCmdUpdateAuthor(authorId, updates);
 			if (result.status === "error") {

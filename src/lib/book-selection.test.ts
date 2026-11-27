@@ -35,6 +35,7 @@ const book = (id: string, isRead = false): LibraryBook => ({
 	is_read: isRead,
 	series: null,
 	series_index: null,
+	publisher: null,
 	language_list: [],
 	added_at: "2025-01-01T00:00:00Z",
 });

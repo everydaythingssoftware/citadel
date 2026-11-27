@@ -4,7 +4,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     body::{to_bytes, Body},
-    extract::{rejection::JsonRejection, Extension, Path, Request, State},
+    extract::{rejection::JsonRejection, DefaultBodyLimit, Extension, Path, Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -131,6 +131,20 @@ async fn write<T: Send + 'static>(
     run(state, operation).await
 }
 
+/// Refuses a write with the same error as `write`, before the route reads the
+/// body. It needs the permission that `session::require_session` adds.
+async fn require_edit(
+    State(state): State<ApiState>,
+    Extension(permission): Extension<LibraryPermission>,
+    request: Request,
+    next: Next,
+) -> Response {
+    match ensure_can_edit(&state, permission) {
+        Ok(()) => next.run(request).await,
+        Err(error) => ApiFailure(error).into_response(),
+    }
+}
+
 async fn run_library<T: Send + 'static>(
     state: ApiState,
     operation: impl FnOnce(&mut libcalibre::Library) -> Result<T, LibraryError> + Send + 'static,
@@ -162,7 +176,9 @@ impl IntoResponse for ApiFailure {
             LibraryErrorCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             LibraryErrorCode::NotFound => StatusCode::NOT_FOUND,
             LibraryErrorCode::ReadOnly => StatusCode::FORBIDDEN,
-            LibraryErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+            LibraryErrorCode::Unavailable | LibraryErrorCode::TimedOut => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             LibraryErrorCode::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             LibraryErrorCode::Conflict => StatusCode::CONFLICT,
             LibraryErrorCode::StorageFull => StatusCode::INSUFFICIENT_STORAGE,
@@ -483,9 +499,18 @@ fn chunk_routes() -> OpenApiRouter<ApiState> {
         .routes(routes!(set_cover_from_file))
 }
 
+/// A bulk edit sends one edit for each book that it changes. The request can
+/// be larger and slower than the other JSON requests, so it has its own bounds.
+fn bulk_routes() -> OpenApiRouter<ApiState> {
+    OpenApiRouter::new()
+        .routes(routes!(edits::edit_books))
+        .layer(DefaultBodyLimit::max(BULK_JSON_BODY_BYTES))
+}
+
 pub fn openapi() -> OpenApi {
     let (_, mut schema) = routes()
         .merge(chunk_routes())
+        .merge(bulk_routes())
         .merge(session::routes())
         .merge(setup::public_routes())
         .merge(setup::administrator_routes())
@@ -608,6 +633,25 @@ pub fn router(
             state.clone(),
             session::require_session,
         ));
+    // Axum runs the last layer first. The session check reads only the
+    // headers, so it refuses a request with no session before the bounds
+    // buffer up to 16 MiB of its body. The edit check then refuses a
+    // read-only library or a view-only grant, also before the bounds.
+    let (bulk, _) = bulk_routes().split_for_parts();
+    let bulk = bulk
+        .with_state(state.clone())
+        .layer(axum::middleware::from_fn_with_state(
+            BULK_BOUNDS,
+            bound_requests,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_edit,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            session::require_session,
+        ));
     let assets = service.book_asset_routes(source, "/api");
     let schema = openapi();
     let library = library
@@ -637,8 +681,12 @@ pub fn router(
     service
         .limit_http_routes(
             router
-                .layer(axum::middleware::from_fn(bound_requests))
-                .merge(chunks),
+                .layer(axum::middleware::from_fn_with_state(
+                    DEFAULT_BOUNDS,
+                    bound_requests,
+                ))
+                .merge(chunks)
+                .merge(bulk),
         )
         .layer(axum::middleware::from_fn(normalize_errors))
         .layer(axum::middleware::from_fn_with_state(
@@ -718,25 +766,49 @@ pub fn unavailable_router(reason: String, web_directory: Option<&std::path::Path
 
 const JSON_BODY_BYTES: usize = 1024 * 1024;
 const REQUEST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+const BULK_JSON_BODY_BYTES: usize = 16 * 1024 * 1024;
+const BULK_REQUEST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(300);
 
-// JSON requests are small: buffer the body (even when chunked) under the
-// deadline so slow clients can't hold handlers, then bound the handler too.
-// Asset responses only need their headers within the deadline.
-async fn bound_requests(request: Request, next: Next) -> Response {
+/// The largest body that a route buffers, and the time that it allows for the
+/// body. The handler then gets the same time again.
+#[derive(Clone, Copy)]
+struct RequestBounds {
+    body_bytes: usize,
+    deadline: std::time::Duration,
+}
+
+const DEFAULT_BOUNDS: RequestBounds = RequestBounds {
+    body_bytes: JSON_BODY_BYTES,
+    deadline: REQUEST_DEADLINE,
+};
+const BULK_BOUNDS: RequestBounds = RequestBounds {
+    body_bytes: BULK_JSON_BODY_BYTES,
+    deadline: BULK_REQUEST_DEADLINE,
+};
+
+// Buffer the body (even when chunked) within the route's bounds so slow
+// clients can't hold handlers, then bound the handler too. Asset responses
+// only need their headers within the deadline.
+async fn bound_requests(
+    State(bounds): State<RequestBounds>,
+    request: Request,
+    next: Next,
+) -> Response {
     let (parts, body) = request.into_parts();
-    let body = match tokio::time::timeout(REQUEST_DEADLINE, to_bytes(body, JSON_BODY_BYTES)).await {
+    let body = match tokio::time::timeout(bounds.deadline, to_bytes(body, bounds.body_bytes)).await
+    {
         Ok(Ok(bytes)) => bytes,
         Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
         Err(_) => return ApiFailure(LibraryError::unavailable()).into_response(),
     };
     match tokio::time::timeout(
-        REQUEST_DEADLINE,
+        bounds.deadline,
         next.run(Request::from_parts(parts, Body::from(body))),
     )
     .await
     {
         Ok(response) => response,
-        Err(_) => ApiFailure(LibraryError::unavailable()).into_response(),
+        Err(_) => ApiFailure(LibraryError::timed_out()).into_response(),
     }
 }
 
@@ -834,4 +906,87 @@ pub(crate) async fn start(config: &ApiConfig, router: Router) -> Result<RunningA
         shutdown: Some(shutdown),
         task,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use axum::{http, routing::post};
+    use tower::ServiceExt;
+
+    use super::*;
+
+    /// The status and the error code of a request with `body` to a handler that
+    /// answers after `delay`, behind `bound_requests` with `bounds`.
+    async fn answer_after(
+        bounds: RequestBounds,
+        body: Body,
+        delay: Duration,
+    ) -> (StatusCode, Option<LibraryErrorCode>) {
+        let router = Router::new()
+            .route(
+                "/slow",
+                post(move || async move {
+                    tokio::time::sleep(delay).await;
+                    StatusCode::NO_CONTENT
+                }),
+            )
+            .layer(axum::middleware::from_fn_with_state(bounds, bound_requests));
+        let request = http::Request::builder()
+            .method("POST")
+            .uri("/slow")
+            .body(body)
+            .unwrap();
+        let response = router.oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let code = (!bytes.is_empty())
+            .then(|| serde_json::from_slice::<LibraryError>(&bytes).unwrap().code);
+        (status, code)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_default_route_gives_up_after_30_seconds() {
+        assert_eq!(
+            answer_after(DEFAULT_BOUNDS, Body::empty(), Duration::from_secs(31)).await,
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Some(LibraryErrorCode::TimedOut)
+            )
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_body_that_takes_more_than_30_seconds_is_unavailable() {
+        let body = Body::from_stream(futures_util::stream::pending::<
+            Result<axum::body::Bytes, std::io::Error>,
+        >());
+        assert_eq!(
+            answer_after(DEFAULT_BOUNDS, body, Duration::ZERO).await,
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Some(LibraryErrorCode::Unavailable)
+            )
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_bulk_route_waits_for_a_handler_of_31_seconds() {
+        assert_eq!(
+            answer_after(BULK_BOUNDS, Body::empty(), Duration::from_secs(31)).await,
+            (StatusCode::NO_CONTENT, None)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_bulk_route_gives_up_after_300_seconds() {
+        assert_eq!(
+            answer_after(BULK_BOUNDS, Body::empty(), Duration::from_secs(301)).await,
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Some(LibraryErrorCode::TimedOut)
+            )
+        );
+    }
 }

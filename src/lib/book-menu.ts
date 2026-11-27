@@ -44,7 +44,7 @@ const labelFor = (
 		case BOOK_COMMAND.open:
 			return single ? "Open" : `Open ${booksTitle(count)}`;
 		case BOOK_COMMAND.edit:
-			return "Edit…";
+			return single ? "Edit…" : `Edit ${booksTitle(count)}…`;
 		case BOOK_COMMAND.quickLook:
 			return "Quick Look";
 		case BOOK_COMMAND.toggleFinished:
