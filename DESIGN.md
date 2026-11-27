@@ -185,8 +185,12 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   where the browser reads `DownloadURL` (Chromium).
 - The action that opens a book's file is **Open** ("Open 15 Books"), in the
   right-click menu, the Book menu and the drawer.
-- Bulk actions are Mark as Finished and Delete; one confirmation for delete
-  (ADR 0014). The status bar says "2 of 14 selected".
+- Bulk actions are Mark as Finished, Edit and Delete; one
+  confirmation for delete (ADR 0014). The status bar says "2 of 14 selected".
+- The Series and Publisher fields of the "Edit N books" sheet show "Mixed" when
+  the selected books have different values. A tag or language that only some
+  of the books have is a partial token with a count, such as "3 of 5". The
+  clear button is the only way to unlink a mixed value.
 - **Details drawer:** one non-modal panel (`Drawer`) over the right of the
   content panel, under the toolbar, with no scrim: toolbar, sidebar, search
   and the covers beside it stay live, and app-wide shortcuts keep working.
@@ -231,6 +235,9 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
 - Every action that changes the library either registers an undo entry or,
   if it can't be undone, clears the history, so Undo never reaches back
   across it. A new action picks a side deliberately.
+- The Undo of Edit N Books… is an exception to the rule "not a second create"
+  of ADR 0014: a series, a tag or a publisher that the edit deleted comes back
+  with a new id.
 - The book editor saves with ⌘S/Ctrl+S everywhere. While it is open, Undo
   outside text fields is its own ("Undo Edit"), with no Redo.
 - While a field or a sheet has the keyboard, the Book menu stands down, so

@@ -123,6 +123,7 @@ export const makeStoryBooks = (count: number, local: boolean): LibraryBook[] =>
 			is_read: index % 5 === 3,
 			series: index % 3 === 0 ? "Collected Novels" : null,
 			series_index: index % 3 === 0 ? 2 : null,
+			publisher: null,
 			language_list: ["eng"],
 			added_at: "2026-11-10T10:00:00Z",
 		};
@@ -163,6 +164,7 @@ export const fakeStoryLibrary = (
 		listSeries: async () => [],
 		listTags: async () => [],
 		listPublishers: async () => [],
+		editBooks: async () => ({ undo: [] }),
 		updateBook: async (id, update) => {
 			shelf = shelf.map((book) =>
 				book.id === id && update.is_read !== null

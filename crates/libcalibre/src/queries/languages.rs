@@ -14,7 +14,7 @@ use crate::CalibreError;
 /// Two-letter ISO 639-1 codes (`en`, `fr`) — what EPUB/OPF metadata usually
 /// carries — are mapped to their three-letter equivalent. Anything already
 /// three letters (or unrecognized) is passed through lowercased/trimmed.
-pub(crate) fn canonicalize_lang_code(code: &str) -> String {
+pub fn canonicalize_lang_code(code: &str) -> String {
     let normalized = code.trim().to_lowercase();
 
     let mapped = match normalized.as_str() {

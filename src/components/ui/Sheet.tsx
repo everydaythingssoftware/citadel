@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import type { ReactNode } from "react";
 import { DialogCloseButton } from "./DialogCloseButton";
+import { keepOpenForList } from "./popover-interop";
 import styles from "./Sheet.module.css";
 
 export interface SheetProps {
@@ -51,7 +52,7 @@ export const Sheet = ({
 				aria-describedby={undefined}
 				onOpenAutoFocus={onOpenAutoFocus}
 				onCloseAutoFocus={onCloseAutoFocus}
-				onEscapeKeyDown={dismissible ? undefined : preventClosing}
+				onEscapeKeyDown={dismissible ? keepOpenForList : preventClosing}
 				onInteractOutside={preventClosing}
 			>
 				<div className={styles.header}>

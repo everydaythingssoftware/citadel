@@ -77,6 +77,16 @@
 	white-space: nowrap;
 }
 
+.tokenDetail {
+	flex-shrink: 0;
+	white-space: nowrap;
+	color: var(--ctd-ink-soft);
+}
+
+.fieldDisabled .tokenDetail {
+	color: var(--ctd-control-disabled-text);
+}
+
 .tokenRemove {
 	display: inline-flex;
 	align-items: center;

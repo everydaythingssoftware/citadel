@@ -1268,3 +1268,222 @@ fn test_add_book_refuses_a_rating_out_of_range_before_writing() {
     assert!(matches!(error, libcalibre::CalibreError::InvalidRating(11)));
     assert!(lib.books().unwrap().is_empty());
 }
+
+#[test]
+fn test_update_books_writes_each_book() {
+    let (_temp, mut lib) = setup_with_library();
+    let first = lib.add_book(empty_book("First")).unwrap();
+    let second = lib.add_book(empty_book("Second")).unwrap();
+
+    lib.update_books(vec![
+        (
+            first.id,
+            BookUpdate {
+                tags: Some(vec!["a".to_string()]),
+                ..empty_update()
+            },
+        ),
+        (
+            second.id,
+            BookUpdate {
+                series: Some("S".to_string()),
+                ..empty_update()
+            },
+        ),
+    ])
+    .unwrap();
+
+    assert_eq!(lib.get_book(first.id).unwrap().tags, ["a".to_string()]);
+    assert_eq!(
+        lib.get_book(second.id).unwrap().series.as_deref(),
+        Some("S")
+    );
+}
+
+#[test]
+fn test_update_books_changes_nothing_when_a_book_is_missing() {
+    let (_temp, mut lib) = setup_with_library();
+    let first = lib.add_book(empty_book("First")).unwrap();
+    clear_dirtied(&lib);
+
+    let result = lib.update_books(vec![
+        (
+            first.id,
+            BookUpdate {
+                title: Some("Changed".to_string()),
+                ..empty_update()
+            },
+        ),
+        (
+            BookId::from(9999),
+            BookUpdate {
+                title: Some("X".to_string()),
+                ..empty_update()
+            },
+        ),
+    ]);
+
+    assert!(matches!(
+        result,
+        Err(libcalibre::CalibreError::BookNotFound(_))
+    ));
+    assert_eq!(lib.get_book(first.id).unwrap().title, "First");
+    assert!(dirtied(&lib).is_empty());
+}
+
+#[test]
+fn test_update_books_queues_each_changed_book_for_the_opf_backup() {
+    let (_temp, mut lib) = setup_with_library();
+    let first = lib.add_book(empty_book("First")).unwrap();
+    let second = lib.add_book(empty_book("Second")).unwrap();
+    clear_dirtied(&lib);
+
+    lib.update_books(vec![
+        (
+            first.id,
+            BookUpdate {
+                title: Some("One".to_string()),
+                ..empty_update()
+            },
+        ),
+        (
+            second.id,
+            BookUpdate {
+                title: Some("Two".to_string()),
+                ..empty_update()
+            },
+        ),
+    ])
+    .unwrap();
+
+    assert_eq!(dirtied(&lib), [first.id.as_i32(), second.id.as_i32()]);
+}
+
+#[test]
+fn test_update_books_deletes_a_tag_that_no_book_uses() {
+    let (_temp, mut lib) = setup_with_library();
+    let first = lib
+        .add_book(BookAdd {
+            tags: Some(vec!["Drop".to_string()]),
+            ..empty_book("First")
+        })
+        .unwrap();
+    let second = lib
+        .add_book(BookAdd {
+            tags: Some(vec!["Drop".to_string()]),
+            ..empty_book("Second")
+        })
+        .unwrap();
+    insert_unused(&lib, "tags");
+
+    lib.update_books(
+        [first.id, second.id]
+            .into_iter()
+            .map(|id| {
+                (
+                    id,
+                    BookUpdate {
+                        tags: Some(vec![]),
+                        ..empty_update()
+                    },
+                )
+            })
+            .collect(),
+    )
+    .unwrap();
+
+    let tags = lib.list_tags().unwrap();
+    let summary: Vec<(&str, i64)> = tags
+        .iter()
+        .map(|t| (t.name.as_str(), t.book_count))
+        .collect();
+    assert_eq!(summary, [("Previously unused", 0)]);
+}
+
+#[test]
+fn test_canonicalize_lang_code_maps_iso_639_1() {
+    assert_eq!(libcalibre::canonicalize_lang_code("en"), "eng");
+}
+
+#[test]
+fn test_update_books_rolls_back_the_earlier_updates_when_a_later_update_fails() {
+    let (_temp, mut lib) = setup_with_library();
+    let first = lib.add_book(empty_book("First")).unwrap();
+    let second = lib.add_book(empty_book("Second")).unwrap();
+    clear_dirtied(&lib);
+
+    let result = lib.update_books(vec![
+        (
+            first.id,
+            BookUpdate {
+                tags: Some(vec!["a".to_string()]),
+                ..empty_update()
+            },
+        ),
+        (
+            second.id,
+            BookUpdate {
+                author_names: Some(vec!["Name".to_string()]),
+                author_ids: Some(vec![]),
+                ..empty_update()
+            },
+        ),
+    ]);
+
+    assert!(matches!(
+        result,
+        Err(libcalibre::CalibreError::BannedFunctionInvocation(_))
+    ));
+    assert!(lib.get_book(first.id).unwrap().tags.is_empty());
+    assert!(dirtied(&lib).is_empty());
+}
+
+#[test]
+fn test_update_books_writes_the_read_state_of_each_book() {
+    let (_temp, mut lib) = setup_with_library();
+    let first = lib.add_book(empty_book("First")).unwrap();
+    let second = lib.add_book(empty_book("Second")).unwrap();
+
+    lib.update_books(
+        [first.id, second.id]
+            .into_iter()
+            .map(|id| {
+                (
+                    id,
+                    BookUpdate {
+                        is_read: Some(true),
+                        ..empty_update()
+                    },
+                )
+            })
+            .collect(),
+    )
+    .unwrap();
+
+    assert!(lib.get_book(first.id).unwrap().is_read);
+    assert!(lib.get_book(second.id).unwrap().is_read);
+}
+
+#[test]
+fn test_update_books_keeps_the_other_changes_when_the_read_state_fails() {
+    let (_temp, lib) = setup_with_library();
+    let mut lib = lib.without_read_column();
+    let book = lib.add_book(empty_book("Book")).unwrap();
+    clear_dirtied(&lib);
+
+    let result = lib.update_books(vec![(
+        book.id,
+        BookUpdate {
+            title: Some("Changed".to_string()),
+            is_read: Some(true),
+            ..empty_update()
+        },
+    )]);
+
+    assert!(matches!(
+        result,
+        Err(libcalibre::CalibreError::NoReadColumn)
+    ));
+    assert_eq!(lib.get_book(book.id).unwrap().title, "Changed");
+    assert_eq!(dirtied(&lib), [book.id.as_i32()]);
+}

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { LibraryBook, LibraryBookQuery } from "@/bindings";
+import type { BookEdit, LibraryBook, LibraryBookQuery } from "@/bindings";
+import { ServerUnreachableError } from "@/lib/api/client";
 import { createHttpLibrary } from "./http";
-import { CoverExpiredError, DeviceType } from "./types";
+import { CoverExpiredError, DeviceType, UnknownOutcomeError } from "./types";
 
 const query: LibraryBookQuery = {
 	text: "search",
@@ -32,13 +33,28 @@ const book: LibraryBook = {
 	is_read: false,
 	series: null,
 	series_index: null,
+	publisher: null,
 	language_list: [],
 	added_at: "2025-03-12T10:00:00Z",
+};
+const edit: BookEdit = {
+	book_id: "7",
+	series: null,
+	add_tags: ["Epic"],
+	remove_tags: [],
+	add_languages: [],
+	remove_languages: [],
+	publisher: null,
 };
 const json = (data: unknown, status = 200) =>
 	new Response(JSON.stringify(data), {
 		status,
 		headers: { "content-type": "application/json" },
+	});
+const html = (status: number) =>
+	new Response("<html><body>Proxy error</body></html>", {
+		status,
+		headers: { "content-type": "text/html" },
 	});
 
 describe("HTTP Library", () => {
@@ -343,6 +359,49 @@ describe("HTTP Library", () => {
 		);
 	});
 
+	it("reports the status when the error body of a write is not JSON", async () => {
+		const library = createHttpLibrary(
+			{ baseUrl: "https://citadel.test", fetch: async () => html(413) },
+			{ writable: true },
+		);
+		await expect(library.addBookGenres("7", ["Fiction"])).rejects.toThrow(
+			"Library request failed (413)",
+		);
+	});
+
+	it("reports the status when the error body of a cover write is not JSON", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => html(413),
+		});
+		await expect(
+			library.setBookCoverFromMetadata("7", "cover-1"),
+		).rejects.toThrow("Library request failed (413)");
+		await expect(
+			library.setBookCoverFromFile("7", new Blob([], { type: "image/jpeg" })),
+		).rejects.toThrow("Library request failed (413)");
+	});
+
+	it("reports an expired cover when the 410 body is not JSON", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => html(410),
+		});
+		await expect(
+			library.setBookCoverFromMetadata("7", "stale"),
+		).rejects.toThrow(new CoverExpiredError());
+	});
+
+	it("reports an expired cover with the default message when the 410 body has no text message", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => json({ code: "notFound", message: 42 }, 410),
+		});
+		await expect(
+			library.setBookCoverFromMetadata("7", "stale"),
+		).rejects.toThrow(new CoverExpiredError());
+	});
+
 	it("sets covers by cover ID or uploaded image, never by URL", async () => {
 		const requests: Request[] = [];
 		const library = createHttpLibrary({
@@ -417,5 +476,133 @@ describe("HTTP Library", () => {
 		await expect(library.deleteAuthor("3")).rejects.toThrow(
 			"This library is read-only",
 		);
+	});
+
+	it("sends every edit in one request and gives back the undo edits", async () => {
+		const requests: Request[] = [];
+		const undo: BookEdit[] = [{ ...edit, add_tags: [], remove_tags: ["Epic"] }];
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async (request) => {
+				requests.push(request);
+				return json({ undo });
+			},
+		});
+		expect(await library.editBooks([edit])).toEqual({ undo });
+		expect(requests).toHaveLength(1);
+		expect(requests[0]?.method).toBe("POST");
+		expect(requests[0]?.url).toBe("https://citadel.test/api/books/edit");
+		expect(await requests[0]?.json()).toEqual({ edits: [edit] });
+	});
+
+	it.each([
+		["a 502", () => html(502)],
+		["a 504", () => html(504)],
+		[
+			"a 503 that timed out",
+			() => json({ code: "timedOut", message: "Too slow" }, 503),
+		],
+		["a 503 with an HTML body", () => html(503)],
+	])("reports an unknown outcome for %s", async (_, answer) => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => answer(),
+		});
+		const failure = library.editBooks([edit]);
+		await expect(failure).rejects.toBeInstanceOf(UnknownOutcomeError);
+		await expect(failure).rejects.toThrow(
+			"No answer from the server. Some books may have changed.",
+		);
+	});
+
+	it("keeps the status as the cause of an unknown outcome", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => html(504),
+		});
+		const logged = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => undefined);
+		const failure = await library
+			.editBooks([edit])
+			.catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(UnknownOutcomeError);
+		const cause = (failure as Error).cause;
+		expect(cause).toEqual(new Error("Library request failed (504)"));
+		expect(logged).toHaveBeenCalledWith(expect.any(String), cause);
+		logged.mockRestore();
+	});
+
+	it("reports a 503 that refuses the edit before any work as a plain error", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () =>
+				json({ code: "unavailable", message: "Library unavailable" }, 503),
+		});
+		const failure = library.editBooks([edit]);
+		await expect(failure).rejects.toThrow("Library unavailable");
+		await expect(failure).rejects.not.toBeInstanceOf(UnknownOutcomeError);
+	});
+
+	it("reports an unknown outcome for a failed fetch", async () => {
+		const offline = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => {
+				throw new TypeError("Failed to fetch");
+			},
+		});
+		await expect(offline.editBooks([edit])).rejects.toBeInstanceOf(
+			UnknownOutcomeError,
+		);
+	});
+
+	it("keeps the error of a failed fetch as the cause of an unknown outcome", async () => {
+		const offlineError = new TypeError("Failed to fetch");
+		const offline = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => {
+				throw offlineError;
+			},
+		});
+		const logged = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => undefined);
+		const failure = await offline
+			.editBooks([edit])
+			.catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(UnknownOutcomeError);
+		expect((failure as Error).message).toBe(
+			"No answer from the server. Some books may have changed.",
+		);
+		const cause = (failure as Error).cause;
+		expect(cause).toBeInstanceOf(ServerUnreachableError);
+		expect((cause as Error).cause).toBe(offlineError);
+		expect(logged).toHaveBeenCalledWith(expect.any(String), cause);
+		logged.mockRestore();
+	});
+
+	it("reports the status of an edit refusal whose body is not JSON", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => html(413),
+		});
+		const failure = library.editBooks([edit]);
+		await expect(failure).rejects.toThrow("Library request failed (413)");
+		await expect(failure).rejects.not.toBeInstanceOf(UnknownOutcomeError);
+	});
+
+	it.each([
+		[400, "invalidArgument", "Unknown book id '99'"],
+		[403, "readOnly", "This library is read-only"],
+		[413, "tooLarge", "Payload Too Large"],
+		[500, "internal", "Library operation failed"],
+	])("reports a %i refusal of an edit as a plain error", async (status, code, message) => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => json({ code, message }, status),
+		});
+		const failure = library.editBooks([edit]);
+		await expect(failure).rejects.toThrow(message);
+		await expect(failure).rejects.not.toBeInstanceOf(UnknownOutcomeError);
 	});
 });

@@ -6,7 +6,10 @@ use axum::{
     Json,
 };
 use citadel_core::{
-    contracts::{custom_columns::CustomValueDto, AuthorUpdate, BookUpdate, NewAuthor},
+    contracts::{
+        custom_columns::CustomValueDto, AuthorUpdate, BookEdit, BookUpdate, EditBooksOutcome,
+        NewAuthor,
+    },
     error::LibraryError,
     store::LibraryPermission,
     LibraryAuthor,
@@ -220,4 +223,41 @@ pub(super) async fn update_author(
     })
     .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The body of `POST /api/books/edit`: one edit for each book.
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct EditBooks {
+    edits: Vec<BookEdit>,
+}
+
+#[utoipa::path(post, path = "/api/books/edit", operation_id = "editBooks",
+    request_body = EditBooks,
+    description = "Change the series, tags, languages and publisher of several books in one transaction. Nothing changes if any ID is invalid, repeated or unknown. The answer gives the undo edit of each book that changed.",
+    responses((status = 200, body = EditBooksOutcome), (status = 400, body = LibraryError),
+        (status = 401, body = LibraryError), (status = 403, body = LibraryError), (status = 404, body = LibraryError),
+        (status = 413, body = LibraryError), (status = 429, body = LibraryError), (status = 503, body = LibraryError),
+        (status = 500, body = LibraryError)),
+    security(("session" = [])))]
+pub(super) async fn edit_books(
+    State(state): State<ApiState>,
+    Extension(session::SignedIn(user)): Extension<session::SignedIn>,
+    Extension(permission): Extension<LibraryPermission>,
+    request: Result<Json<EditBooks>, JsonRejection>,
+) -> Result<Json<EditBooksOutcome>, ApiFailure> {
+    // A misspelt key in the body or in a `BookEdit` gets a refusal. The message
+    // names the problem, for example the unknown field, so that the client can
+    // find it.
+    let Json(request) = request.map_err(|rejection| {
+        LibraryError::invalid(format!(
+            "Invalid book edits JSON: {}",
+            rejection.body_text()
+        ))
+    })?;
+    let outcome = write(state, permission, move |service| {
+        service.edit_books(&user.actor(), request.edits)
+    })
+    .await?;
+    Ok(Json(outcome))
 }

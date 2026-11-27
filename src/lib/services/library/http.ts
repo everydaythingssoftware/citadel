@@ -1,35 +1,72 @@
 import type { ClientOptions } from "openapi-fetch";
 import type { CoverThumbnail, LibraryBook } from "@/bindings";
-import { createCitadelHttpClient } from "@/lib/api/client";
-import { BookDeletion, CoverExpiredError, type Library } from "./types";
+import { createCitadelHttpClient, errorBodyMessage } from "@/lib/api/client";
+import {
+	BookDeletion,
+	CoverExpiredError,
+	type Library,
+	UnknownOutcomeError,
+} from "./types";
 import { createHttpUploads } from "./uploads-http";
 
 const unsupported = async (): Promise<never> => {
 	throw new Error("This isn't available in the browser");
 };
 
+/**
+ * The message of a Citadel error body. Each other body, for example the HTML
+ * page of a proxy, gives the status of the response.
+ */
+const failureMessage = (error: unknown, status: number): string =>
+	errorBodyMessage(error, `Library request failed (${status})`);
+
 const unwrap = async <T>(
 	request: Promise<{
 		data?: T;
-		error?: { message: string };
+		error?: unknown;
 		response: Response;
 	}>,
 ): Promise<T> => {
 	const { data, error, response } = await request;
-	if (error) throw new Error(error.message);
-	if (!response.ok || data === undefined)
-		throw new Error(`Library request failed (${response.status})`);
+	if (error || !response.ok || data === undefined)
+		throw new Error(failureMessage(error, response.status));
 	return data;
+};
+
+/**
+ * The statuses of a proxy that does not wait for the end of a request. The
+ * server can still commit the request after this answer.
+ */
+const UNKNOWN_OUTCOME_STATUSES: ReadonlySet<number> = new Set([502, 504]);
+
+/**
+ * Whether a 503 body is the refusal that Citadel sends before any work. A 503
+ * with the code `timedOut` comes after the deadline of the handler, and a 503
+ * with no Citadel error body comes from a proxy. The server can still commit
+ * the request after each of these.
+ */
+const refusedBeforeWork = (error: unknown): boolean =>
+	typeof error === "object" &&
+	error !== null &&
+	"code" in error &&
+	error.code === "unavailable";
+
+/**
+ * The error of an edit that can still commit. The message of the error is
+ * fixed, thus the function writes the cause to the console.
+ */
+const unknownOutcome = (cause: unknown): UnknownOutcomeError => {
+	console.error("The outcome of the edit is unknown", cause);
+	return new UnknownOutcomeError({ cause });
 };
 
 /** For writes that answer 204 No Content, where openapi-fetch has no data. */
 const succeed = async (
-	request: Promise<{ error?: { message: string }; response: Response }>,
+	request: Promise<{ error?: unknown; response: Response }>,
 ): Promise<void> => {
 	const { error, response } = await request;
-	if (error) throw new Error(error.message);
-	if (!response.ok)
-		throw new Error(`Library request failed (${response.status})`);
+	if (error || !response.ok)
+		throw new Error(failureMessage(error, response.status));
 };
 
 export const createHttpLibrary = (
@@ -155,10 +192,12 @@ export const createHttpLibrary = (
 					body: { coverId },
 				},
 			);
-			if (response.status === 410) throw new CoverExpiredError(error?.message);
-			if (error) throw new Error(error.message);
-			if (!response.ok)
-				throw new Error(`Library request failed (${response.status})`);
+			if (response.status === 410)
+				throw new CoverExpiredError(
+					errorBodyMessage(error, new CoverExpiredError().message),
+				);
+			if (error || !response.ok)
+				throw new Error(failureMessage(error, response.status));
 		},
 		setBookCoverFromFile: async (bookId, image) => {
 			const { error, response } = await client.PUT(
@@ -170,9 +209,8 @@ export const createHttpLibrary = (
 					headers: { "content-type": image.type || "application/octet-stream" },
 				},
 			);
-			if (error) throw new Error(error.message);
-			if (!response.ok)
-				throw new Error(`Library request failed (${response.status})`);
+			if (error || !response.ok)
+				throw new Error(failureMessage(error, response.status));
 		},
 		createAuthors: (authors) =>
 			unwrap(client.POST("/api/authors", { body: { authors } })),
@@ -185,6 +223,23 @@ export const createHttpLibrary = (
 					body: updates,
 				}),
 			),
+		editBooks: async (edits) => {
+			const { data, error, response } = await client
+				.POST("/api/books/edit", { body: { edits: [...edits] } })
+				.catch((cause: unknown) => {
+					throw unknownOutcome(cause);
+				});
+			if (
+				UNKNOWN_OUTCOME_STATUSES.has(response.status) ||
+				(response.status === 503 && !refusedBeforeWork(error))
+			)
+				throw unknownOutcome(
+					new Error(`Library request failed (${response.status})`),
+				);
+			if (error || !response.ok || data === undefined)
+				throw new Error(failureMessage(error, response.status));
+			return data;
+		},
 		updateAuthor: (authorId, updates) =>
 			succeed(
 				client.PATCH("/api/authors/{author_id}", {

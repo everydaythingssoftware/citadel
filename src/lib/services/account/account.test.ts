@@ -6,6 +6,11 @@ const json = (data: unknown, status = 200) =>
 		status,
 		headers: { "content-type": "application/json" },
 	});
+const html = (status: number) =>
+	new Response("<html><body>Proxy error</body></html>", {
+		status,
+		headers: { "content-type": "text/html" },
+	});
 
 const info = {
 	provider: "hardcover",
@@ -56,5 +61,40 @@ describe("Web account service", () => {
 		);
 		expect(await requests[0]?.json()).toEqual({ secret: "token" });
 		expect(requests.at(-1)?.method).toBe("DELETE");
+	});
+
+	it("reports the status when an error body is not JSON", async () => {
+		const account = createWebAccountService({
+			baseUrl: "https://citadel.test",
+			fetch: async () => html(502),
+		});
+		await expect(account.listProviderCredentials()).rejects.toThrow(
+			"Account request failed (502)",
+		);
+		await expect(account.removeProviderCredential("hardcover")).rejects.toThrow(
+			"Account request failed (502)",
+		);
+		expect(await account.testProviderCredential("hardcover")).toEqual({
+			ok: false,
+			message: "Account request failed (502)",
+		});
+	});
+
+	it("reports a failed key removal whose body is empty, but not a missing key", async () => {
+		const account = createWebAccountService({
+			baseUrl: "https://citadel.test",
+			fetch: async (request) =>
+				new Response(null, {
+					status: new URL(request.url).pathname.endsWith("/openlibrary")
+						? 404
+						: 500,
+				}),
+		});
+		await expect(account.removeProviderCredential("hardcover")).rejects.toThrow(
+			"Account request failed (500)",
+		);
+		await expect(
+			account.removeProviderCredential("openlibrary"),
+		).resolves.toBeUndefined();
 	});
 });

@@ -66,6 +66,7 @@ import { F7Bookmark } from "../icons/F7Bookmark";
 import { BookGrid, type BookGridHandle } from "../molecules/BookGrid";
 import { EmptyLibrary, EmptyState } from "../molecules/EmptyState";
 import { BookDetailsDrawer } from "../organisms/BookDrawer";
+import { EditBooksSheet } from "../organisms/EditBooksSheet";
 import styles from "./Books.module.css";
 
 interface BookSearchOptions {
@@ -497,6 +498,7 @@ export const Books = ({
 				onClose={grid.menu.close}
 			/>
 			<DeleteBooksDialogs />
+			<EditBooksSheet returnFocusRef={gridContainerRef} />
 		</div>
 	);
 };

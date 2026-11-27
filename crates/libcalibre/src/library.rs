@@ -153,8 +153,8 @@ pub struct BookAdd {
     pub file_paths: Vec<PathBuf>,
 }
 
-/// Changes to make with [`Library::update_book`]. Fields left `None` are
-/// unchanged.
+/// Changes to make with [`Library::update_book`] or [`Library::update_books`].
+/// Fields left `None` are unchanged.
 #[derive(Clone, Debug, Default)]
 pub struct BookUpdate {
     /// Replaces the title.
@@ -753,6 +753,39 @@ impl Library {
         }
 
         self.get_book(book_id)
+    }
+
+    /// Applies each [`BookUpdate`] of `updates` in one transaction. Each book
+    /// gets the same changes as with [`Library::update_book`].
+    ///
+    /// First, the transaction checks that each book exists. A missing book
+    /// fails with [`CalibreError::BookNotFound`], and no book changes. Each
+    /// book of `updates` goes to the `metadata_dirtied` queue. A failure inside
+    /// the transaction queues no book. [`BookUpdate::is_read`] follows the rule
+    /// of `update_book`. `update_books` writes it after the transaction
+    /// commits, so a read-state failure leaves the other changes in place, and
+    /// the books stay in the queue. A read-state failure stops the loop of
+    /// read-state writes, and the later books keep their old read state.
+    pub fn update_books(&mut self, updates: Vec<(BookId, BookUpdate)>) -> Result<(), CalibreError> {
+        let read_states: Vec<(BookId, bool)> = updates
+            .iter()
+            .filter_map(|(book_id, update)| update.is_read.map(|is_read| (*book_id, is_read)))
+            .collect();
+
+        self.conn.transaction(|conn| {
+            for (book_id, _) in &updates {
+                book_queries::get(conn, *book_id)?.ok_or(CalibreError::BookNotFound(*book_id))?;
+            }
+            for (book_id, update) in updates {
+                operations::books::update_book(conn, book_id, update)?;
+            }
+            Ok::<(), CalibreError>(())
+        })?;
+
+        for (book_id, is_read) in read_states {
+            self.set_book_read_state(book_id, is_read)?;
+        }
+        Ok(())
     }
 
     /// Delete books from the library database, all-or-nothing in one

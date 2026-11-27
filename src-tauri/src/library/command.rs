@@ -5,7 +5,8 @@ use crate::libs::cover_thumbs::{self, CoverThumbnail};
 use crate::state::CitadelState;
 use citadel_core::{
     contracts::{
-        custom_columns::CustomValueDto, AuthorUpdate, BookUpdate, DeleteBooksOutcome, NewAuthor,
+        custom_columns::CustomValueDto, AuthorUpdate, BookEdit, BookUpdate, DeleteBooksOutcome,
+        EditBooksOutcome, NewAuthor,
     },
     Actor, LibraryAuthor,
 };
@@ -28,6 +29,25 @@ pub fn clb_cmd_update_book(
 ) -> Result<i32, String> {
     state
         .with_library_service(|service| service.update_book(&account.actor(), &book_id, updates))
+        .map_err(|error| error.to_string())
+}
+
+/// Applies series, tag, language and publisher edits to several books in one
+/// transaction, and returns the undo edits of the books that changed. A
+/// Tauri command has no deadline, so the result is always known: all edits
+/// apply, or no book changes. A sync command runs on the main thread in the
+/// order of arrival. Thus a library switch cannot come between the library
+/// check of the frontend and the edit. A large edit blocks the main thread for
+/// the full call, as `clb_cmd_delete_books` does.
+#[tauri::command]
+#[specta::specta]
+pub fn clb_cmd_edit_books(
+    state: tauri::State<'_, CitadelState>,
+    account: tauri::State<'_, LocalAccount>,
+    edits: Vec<BookEdit>,
+) -> Result<EditBooksOutcome, String> {
+    state
+        .with_library_service(|service| service.edit_books(&account.actor(), edits))
         .map_err(|error| error.to_string())
 }
 

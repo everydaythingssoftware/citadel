@@ -274,7 +274,7 @@ fn books(count: u32) -> String {
 }
 
 /// Labels for the Book menu, matching the book's right-click menu
-/// (`src/lib/book-menu.ts`). Open, Mark, Copy and Delete act on the whole
+/// (`src/lib/book-menu.ts`). Open, Edit, Mark, Copy and Delete act on the whole
 /// selection; the rest need exactly one book.
 pub fn book_menu_view(selected: u32, all_finished: bool, file_manager_name: &str) -> BookMenuView {
     let single = selected == 1;
@@ -295,7 +295,14 @@ pub fn book_menu_view(selected: u32, all_finished: bool, file_manager_name: &str
             },
             any,
         ),
-        edit: ItemView::new("Edit…", single),
+        edit: ItemView::new(
+            if plural {
+                format!("Edit {}…", books(selected))
+            } else {
+                "Edit…".to_string()
+            },
+            any,
+        ),
         mark_finished: ItemView::new(format!("Mark as {finished}"), any),
         show_in_file_manager: ItemView::new(format!("Show in {file_manager_name}"), single),
         copy_title: ItemView::new(
@@ -514,7 +521,8 @@ mod tests {
             ItemView::new("Show in Finder", true)
         );
         assert_eq!(view.delete, ItemView::new("Delete…", true));
-        assert!(view.edit.enabled && view.show_details.enabled && view.copy_title.enabled);
+        assert_eq!(view.edit, ItemView::new("Edit…", true));
+        assert!(view.show_details.enabled && view.copy_title.enabled);
     }
 
     #[test]
@@ -528,7 +536,7 @@ mod tests {
         assert_eq!(view.copy_title, ItemView::new("Copy 2 Titles", true));
         assert_eq!(view.delete, ItemView::new("Delete 2 Books…", true));
         assert!(!view.show_details.enabled);
-        assert!(!view.edit.enabled);
+        assert_eq!(view.edit, ItemView::new("Edit 2 Books…", true));
         assert!(!view.show_in_file_manager.enabled);
     }
 
