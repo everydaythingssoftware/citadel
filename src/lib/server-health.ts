@@ -8,6 +8,7 @@ export const HEALTH_CHECK_LABELS: Record<string, string> = {
 	webApp: "Web app",
 	opds: "E-readers (OPDS)",
 	metadata: "Book lookups",
+	pdfCovers: "PDF covers",
 	stateDisk: "Space for Citadel's data",
 	libraryDisk: "Space for the library",
 };

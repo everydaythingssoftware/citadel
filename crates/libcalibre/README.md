@@ -15,6 +15,7 @@ libcalibre = "0.1"
 | --- | --- | --- |
 | `epub` | on | Reads metadata and covers from EPUB files. |
 | `mobi` | on | Reads metadata and covers from MOBI, AZW and AZW3 files. |
+| `pdf` | off | Renders a PDF's first page as its cover with poppler's `pdftoppm`, when it is installed. |
 | `bundled-sqlite` | off | Compiles SQLite into your binary instead of linking the system library. |
 
 Database only, no ebook parsing:
@@ -266,6 +267,8 @@ fn main() -> Result<(), CalibreError> {
 ## Reading ebook files directly
 
 `book_file` reads embedded metadata from EPUB and MOBI files without a library (with the matching features enabled). Other formats yield the title from the file name.
+
+PDFs embed no cover. With the `pdf` feature, `book_file::render_pdf_cover` renders the first page as a JPEG by running poppler's `pdftoppm` from `PATH`, as Calibre does, under a 3-second timeout and (where the system enforces it) a 1 GiB memory ceiling. Adding a book never renders: render first, then store the cover with `Library::set_book_cover`. Without `pdftoppm`, PDFs have no cover.
 
 ```rust,no_run
 use std::path::Path;

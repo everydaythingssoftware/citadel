@@ -34,7 +34,7 @@ pub enum HealthStatus {
 #[serde(rename_all = "camelCase")]
 pub struct HealthCheck {
     /// `database`, `providerKeys`, `library`, `webApp`, `opds`, `metadata`,
-    /// `stateDisk` or `libraryDisk`.
+    /// `pdfCovers`, `stateDisk` or `libraryDisk`.
     pub name: String,
     pub status: HealthStatus,
     /// What is wrong or how it stands. Administrators only.
@@ -154,6 +154,16 @@ async fn checks(state: &ApiState) -> Vec<HealthCheck> {
             )
         });
     }
+
+    checks.push(if citadel_core::pdf_cover::pdftoppm_installed() {
+        check("pdfCovers", HealthStatus::Ok, "pdftoppm draws PDF covers")
+    } else {
+        check(
+            "pdfCovers",
+            HealthStatus::Degraded,
+            "PDFs get no cover: install poppler-utils for pdftoppm",
+        )
+    });
 
     let opds = state.opds.status().await;
     checks.push(match (opds.state, state.source.is_open()) {

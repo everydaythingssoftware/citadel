@@ -22,6 +22,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use citadel_core::{
     error::{LibraryError, LibraryErrorCode},
+    pdf_cover,
     staging::{book_format, read_book_file, CommitUpload, StagedBook},
     store::LibraryPermission,
 };
@@ -358,6 +359,11 @@ impl Staging {
         self.directory.join(format!("{id}.cover.jpg"))
     }
 
+    /// A PDF's rendered first page at full size, kept to add with the book.
+    fn rendered_cover_path(&self, id: &str) -> PathBuf {
+        self.directory.join(format!("{id}.page.jpg"))
+    }
+
     fn record_path(&self, id: &str) -> PathBuf {
         self.directory.join(format!("{id}.json"))
     }
@@ -366,6 +372,7 @@ impl Staging {
         let _ = std::fs::remove_file(self.record_path(id));
         let _ = std::fs::remove_file(self.book_path(id, extension));
         let _ = std::fs::remove_file(self.cover_path(id));
+        let _ = std::fs::remove_file(self.rendered_cover_path(id));
     }
 
     /// Runs `update` on an upload the user owns, marking it active. Activity
@@ -704,8 +711,9 @@ pub(super) async fn commit(
 
     let actor = user.0.actor();
     let book = input.into_book_add(path)?;
+    let cover = tokio::fs::read(staging.rendered_cover_path(&id)).await.ok();
     let book = super::write(state.clone(), permission, move |service| {
-        let id = service.create_book(&actor, book)?;
+        let id = service.create_book(&actor, book, cover)?;
         service.get_book(&id)
     })
     .await?;
@@ -953,10 +961,16 @@ async fn read_book(
         .map_err(|_| LibraryError::unavailable())?;
     let path = path.to_path_buf();
     let cover_path = staging.cover_path(id);
+    let rendered_cover_path = staging.rendered_cover_path(id);
     let cover_url = format!("/api/uploads/{id}/cover");
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let mut read = read_book_file(&path, &file_name, extension);
+        let mut read = read_book_file(&path, &file_name, extension, pdf_cover::pdftoppm);
+        if read.rendered_cover {
+            if let Some(cover) = &read.cover {
+                let _ = std::fs::write(&rendered_cover_path, cover);
+            }
+        }
         let has_cover = read
             .cover
             .take()
