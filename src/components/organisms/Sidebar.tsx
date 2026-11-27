@@ -21,8 +21,19 @@ import {
 	useSidebarModel,
 } from "@/lib/hooks/use-sidebar-model";
 import type { Option } from "@/lib/option";
+import { sidebarItemDigit } from "@/lib/sidebar-navigation";
 import { LibraryPicker } from "./LibraryPicker";
 import styles from "./Sidebar.module.css";
+
+/** The digit of an item's shortcut, shown while Ctrl (⌘) is held. */
+const ShortcutDigit = ({ position }: { position: number }) => {
+	const digit = sidebarItemDigit(position);
+	return digit === null ? null : (
+		<span className={styles.shortcutDigit} aria-hidden="true">
+			{digit}
+		</span>
+	);
+};
 
 const NAV_ITEMS = [
 	{ to: "/authors", label: "Authors" },
@@ -107,6 +118,7 @@ export const SidebarView = ({
 	settingsShowing,
 	onOpenSettings,
 	session,
+	shortcutHints,
 }: SidebarViewProps) => {
 	const footerBar = session !== null || showSettingsButton;
 	return (
@@ -121,8 +133,9 @@ export const SidebarView = ({
 						onClick={onAllBooks}
 					>
 						All Books
+						{shortcutHints && <ShortcutDigit position={0} />}
 					</Link>
-					{NAV_ITEMS.map(({ to, label }) => (
+					{NAV_ITEMS.map(({ to, label }, index) => (
 						<Link
 							key={to}
 							to={to}
@@ -130,18 +143,22 @@ export const SidebarView = ({
 							data-active={currentPathname === to || undefined}
 						>
 							{label}
+							{shortcutHints && <ShortcutDigit position={index + 1} />}
 						</Link>
 					))}
 				</div>
 				{shelves.length > 0 && (
 					<div className={styles.section}>
 						<h2 className={styles.sectionLabel}>Shelves</h2>
-						{shelves.map((row) => (
+						{shelves.map((row, index) => (
 							<ShelfRow
 								key={row.shelf.id}
 								row={row}
 								onOpen={() => onOpenShelf(row.shelf)}
 								rename={rename}
+								shortcutPosition={
+									shortcutHints ? NAV_ITEMS.length + 1 + index : null
+								}
 							/>
 						))}
 					</div>
@@ -189,12 +206,15 @@ interface ShelfRowProps {
 	row: SidebarShelf;
 	onOpen: () => void;
 	rename: SidebarViewModel["rename"];
+	/** Its place in the sidebar while the shortcut digits show. */
+	shortcutPosition: number | null;
 }
 
 const ShelfRow = ({
 	row: { shelf, active, keys },
 	onOpen,
 	rename,
+	shortcutPosition,
 }: ShelfRowProps) => {
 	const { editing } = rename;
 	if (editing.isSome && editing.value.shelfId === shelf.id) {
@@ -228,6 +248,9 @@ const ShelfRow = ({
 			{...keys}
 		>
 			<span className={styles.shelfName}>{shelf.name}</span>
+			{shortcutPosition !== null && (
+				<ShortcutDigit position={shortcutPosition} />
+			)}
 		</button>
 	);
 };

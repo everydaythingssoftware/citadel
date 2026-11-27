@@ -7,6 +7,7 @@ import {
 	formatChord,
 	menuBarOwnsChords,
 	pageShortcuts,
+	shelfShortcuts,
 	shortcutChord,
 } from "./app-shortcuts";
 import { BOOK_COMMAND } from "./book-menu";
@@ -122,6 +123,20 @@ describe("pageShortcuts", () => {
 			["tags", "mod+4"],
 			["publishers", "mod+5"],
 		]);
+	});
+});
+
+describe("shelfShortcuts", () => {
+	it("puts the first four shelves on mod+6…9 in the desktop app, the Mac included, not in a browser", () => {
+		for (const env of [macApp, windowsApp, linuxApp])
+			expect(shelfShortcuts(env)).toEqual([
+				{ index: 0, chord: "mod+6" },
+				{ index: 1, chord: "mod+7" },
+				{ index: 2, chord: "mod+8" },
+				{ index: 3, chord: "mod+9" },
+			]);
+		expect(shelfShortcuts(macBrowser)).toEqual([]);
+		expect(shelfShortcuts(windowsBrowser)).toEqual([]);
 	});
 });
 

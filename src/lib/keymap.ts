@@ -2,6 +2,8 @@ import type { OperatingSystem } from "@/lib/platform/os";
 
 export interface KeymapEventLike {
 	key: string;
+	/** The physical key ("Digit1"), for chords the layout respells. */
+	code?: string;
 	metaKey: boolean;
 	ctrlKey: boolean;
 	shiftKey: boolean;
@@ -65,6 +67,15 @@ const keyName = (key: string): string => {
 	return KEY_NAMES[lower] ?? lower;
 };
 
+/**
+ * A digit chord is the digit row's key, whatever it types: AZERTY's
+ * unshifted row types "&é\"'(", so Ctrl+1 arrives as Ctrl+&.
+ */
+const keyMatches = (event: KeymapEventLike, key: string): boolean =>
+	keyName(event.key) === key ||
+	(/^[0-9]$/.test(key) &&
+		(event.code === `Digit${key}` || event.code === `Numpad${key}`));
+
 export const eventMatchesChord = (
 	event: KeymapEventLike,
 	chord: string,
@@ -75,7 +86,7 @@ export const eventMatchesChord = (
 	const wantsMeta = command && parsed.mod;
 	const wantsCtrl = command ? parsed.ctrl : parsed.mod || parsed.ctrl;
 	return (
-		keyName(event.key) === parsed.key &&
+		keyMatches(event, parsed.key) &&
 		event.metaKey === wantsMeta &&
 		event.ctrlKey === wantsCtrl &&
 		event.shiftKey === parsed.shift &&

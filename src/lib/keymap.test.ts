@@ -123,6 +123,22 @@ describe("eventMatchesChord", () => {
 		);
 	});
 
+	it("matches a digit chord by its key on layouts that respell the digit row", () => {
+		const azerty = makeEvent({ key: "&", code: "Digit1", ctrlKey: true });
+		expect(eventMatchesChord(azerty, "mod+1", "windows")).toBe(true);
+		expect(eventMatchesChord(azerty, "mod+2", "windows")).toBe(false);
+		expect(
+			eventMatchesChord({ ...azerty, shiftKey: true }, "mod+1", "windows"),
+		).toBe(false);
+		expect(
+			eventMatchesChord(
+				makeEvent({ key: "&", code: "Digit1", ctrlKey: true }),
+				"mod+&",
+				"windows",
+			),
+		).toBe(true);
+	});
+
 	it("treats mod as ⌘ alone on macOS", () => {
 		const f = (overrides: Partial<KeymapDispatchEventLike>) =>
 			eventMatchesChord(

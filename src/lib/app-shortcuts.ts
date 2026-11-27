@@ -126,6 +126,62 @@ export const pageShortcuts = (env: ShortcutEnvironment): Shortcut[] => {
 	]);
 };
 
+/**
+ * Every menu chord that works here, whoever binds it: the menu bar on the
+ * Mac, the page elsewhere. For lists of shortcuts, not for binding them.
+ */
+export const boundShortcuts = (env: ShortcutEnvironment): Shortcut[] =>
+	menuBarOwnsChords(env) ? [...MENU_SHORTCUTS] : pageShortcuts(env);
+
+/**
+ * The sidebar's shelves follow its library sections (⌘1…5, Go menu) on the
+ * next digits, in display order. Only the desktop app binds them: a browser
+ * keeps Ctrl/⌘+digit for its tabs. The Mac's menu bar lists no shelves, so
+ * the page binds them there too.
+ */
+const SHELF_DIGITS = ["6", "7", "8", "9"] as const;
+
+export interface ShelfShortcut {
+	/** The shelf's place in the sidebar, from 0. */
+	index: number;
+	chord: string;
+}
+
+export const shelfShortcuts = (env: ShortcutEnvironment): ShelfShortcut[] =>
+	env.desktop
+		? SHELF_DIGITS.map((digit, index) => ({ index, chord: `mod+${digit}` }))
+		: [];
+
+export interface SidebarStepShortcut {
+	/** 1 for the next item, -1 for the previous; both wrap. */
+	step: 1 | -1;
+	chord: string;
+}
+
+/**
+ * Next and previous sidebar item, as each platform switches tab-like
+ * views: Ctrl+Tab and Ctrl+Shift+Tab everywhere (Safari, Finder and
+ * Terminal on the Mac, tabbed apps on Windows and Linux), and Ctrl+Page
+ * Down / Page Up on Windows and Linux. Only the desktop app binds them:
+ * a browser keeps them for its tabs.
+ */
+export const sidebarStepShortcuts = (
+	env: ShortcutEnvironment,
+): SidebarStepShortcut[] => {
+	if (!env.desktop) return [];
+	const tabs: SidebarStepShortcut[] = [
+		{ step: 1, chord: "ctrl+tab" },
+		{ step: -1, chord: "ctrl+shift+tab" },
+	];
+	return usesCommandKey(env.os)
+		? tabs
+		: [
+				{ step: 1, chord: "ctrl+pagedown" },
+				{ step: -1, chord: "ctrl+pageup" },
+				...tabs,
+			];
+};
+
 const MAC_MODIFIER_SYMBOLS: Record<string, string> = {
 	ctrl: "⌃",
 	alt: "⌥",
@@ -147,6 +203,9 @@ const MAC_KEY_SYMBOLS: Record<string, string> = {
 	enter: "↩",
 	escape: "⎋",
 	space: "Space",
+	tab: "⇥",
+	pageup: "⇞",
+	pagedown: "⇟",
 	arrowleft: "←",
 	arrowright: "→",
 	arrowup: "↑",
@@ -158,6 +217,9 @@ const OTHER_KEY_NAMES: Record<string, string> = {
 	enter: "Enter",
 	escape: "Esc",
 	space: "Space",
+	tab: "Tab",
+	pageup: "Page Up",
+	pagedown: "Page Down",
 	arrowleft: "Left",
 	arrowright: "Right",
 	arrowup: "Up",

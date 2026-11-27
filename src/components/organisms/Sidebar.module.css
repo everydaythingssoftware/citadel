@@ -59,6 +59,7 @@
 }
 
 .navLink {
+	position: relative;
 	display: flex;
 	align-items: center;
 	min-height: 28px;
@@ -88,6 +89,39 @@
 .navLink:focus-visible {
 	outline: none;
 	box-shadow: inset 0 0 0 2px var(--ctd-focus-ring);
+}
+
+/* The digit of a row's shortcut while Ctrl (⌘) is held: laid over the
+   row's trailing edge, so the title never moves. */
+.shortcutDigit {
+	position: absolute;
+	top: 50%;
+	right: 6px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	box-sizing: border-box;
+	transform: translateY(-50%);
+	border: 1px solid var(--ctd-border);
+	border-radius: 4px;
+	background-color: var(--ctd-content-bg);
+	color: var(--ctd-ink-soft);
+	font: inherit;
+	font-size: var(--ctd-text-caption-1);
+	font-weight: 500;
+	line-height: 14px;
+	text-align: center;
+	pointer-events: none;
+	animation: shortcut-digit-in 120ms ease-out;
+}
+
+@keyframes shortcut-digit-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }
 
 /* Shelf rows are <button>s sharing the .navLink look. */

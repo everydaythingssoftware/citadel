@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { F7BookFill } from "@/components/icons/F7BookFill";
 import { F7Gear } from "@/components/icons/F7Gear";
+import { F7Keyboard } from "@/components/icons/F7Keyboard";
 import { F7Wifi } from "@/components/icons/F7Wifi";
 import { FluentLibraryFilled } from "@/components/icons/FluentLibraryFilled";
 import { CurrentLibraryCard } from "@/components/molecules/CurrentLibraryCard";
@@ -32,6 +33,7 @@ import { useProviderCredential } from "@/lib/hooks/use-provider-credentials";
 import { useRemoveLibrary } from "@/lib/hooks/use-remove-library";
 import { useServerAddresses } from "@/lib/hooks/use-server-addresses";
 import { useServerHealth } from "@/lib/hooks/use-server-health";
+import { useShortcutGroups } from "@/lib/hooks/use-shortcut-groups";
 import { useSoftwareUpdate } from "@/lib/hooks/use-software-update";
 import { getAdapter, getDescriptor } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
@@ -55,6 +57,7 @@ const SETTINGS_TABS = [
 	"libraries",
 	"sharing",
 	"integrations",
+	"shortcuts",
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
@@ -77,6 +80,10 @@ const TAB_META: Record<
 	integrations: {
 		label: "Sources",
 		icon: (className) => <F7BookFill className={className} />,
+	},
+	shortcuts: {
+		label: "Shortcuts",
+		icon: (className) => <F7Keyboard className={className} />,
 	},
 };
 
@@ -194,6 +201,7 @@ export const SettingsPanes = () => {
 					{activeTab === "libraries" && <LibrariesTab />}
 					{activeTab === "sharing" && <SharingSettings />}
 					{activeTab === "integrations" && <IntegrationsTab />}
+					{activeTab === "shortcuts" && <ShortcutsTab />}
 				</div>
 			</div>
 		</div>
@@ -203,8 +211,12 @@ export const SettingsPanes = () => {
 /** The sections the browser's in-app Settings page offers. */
 export const BROWSER_SETTINGS_SECTIONS: readonly TSettingsSection[] =
 	providerKeysOnServer
-		? [SettingsSection.general, SettingsSection.metadata]
-		: [SettingsSection.general];
+		? [
+				SettingsSection.general,
+				SettingsSection.metadata,
+				SettingsSection.shortcuts,
+			]
+		: [SettingsSection.general, SettingsSection.shortcuts];
 
 interface SettingsSectionContentProps {
 	section: TSettingsSection;
@@ -219,7 +231,40 @@ export const SettingsSectionContent = ({
 			return <GeneralTab />;
 		case SettingsSection.metadata:
 			return <IntegrationsTab />;
+		case SettingsSection.shortcuts:
+			return <ShortcutsTab />;
 	}
+};
+
+/** Every shortcut that works here, read-only: action left, keys right. */
+const ShortcutsTab = () => {
+	const groups = useShortcutGroups();
+	return (
+		<div className={classes.groups}>
+			{groups.map((group) => (
+				<section key={group.title} aria-label={group.title}>
+					<h3 className={classes.sectionTitle}>{group.title}</h3>
+					<div className={classes.group}>
+						{group.rows.map((row) => (
+							<div key={row.action} className={classes.row}>
+								<span className={classes.rowLabel}>{row.action}</span>
+								<span className={classes.keys}>
+									{row.keys.map((key, index) => (
+										<span key={key} className={classes.keyRun}>
+											{index > 0 && (
+												<span className={classes.keyJoiner}>{row.joiner}</span>
+											)}
+											<kbd className={classes.key}>{key}</kbd>
+										</span>
+									))}
+								</span>
+							</div>
+						))}
+					</div>
+				</section>
+			))}
+		</div>
+	);
 };
 
 interface SettingsRowProps {
