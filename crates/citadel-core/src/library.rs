@@ -129,8 +129,19 @@ impl<'a> LibraryService<'a> {
             .collect())
     }
 
-    pub fn create_book(&mut self, _actor: &Actor, book: libcalibre::BookAdd) -> Result<String> {
-        Ok(self.library.add_book(book)?.id.as_i32().to_string())
+    /// Adds `book`. A `cover` replaces any the book's file embeds; failing to
+    /// store it doesn't fail the add.
+    pub fn create_book(
+        &mut self,
+        _actor: &Actor,
+        book: libcalibre::BookAdd,
+        cover: Option<Vec<u8>>,
+    ) -> Result<String> {
+        let id = self.library.add_book(book)?.id;
+        if let Some(cover) = cover {
+            let _ = self.library.set_book_cover(id, cover);
+        }
+        Ok(id.as_i32().to_string())
     }
 
     pub fn update_book(&mut self, _actor: &Actor, id: &str, updates: BookUpdate) -> Result<i32> {

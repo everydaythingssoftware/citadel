@@ -31,6 +31,7 @@ pub mod error;
 pub mod genres;
 pub mod library;
 pub mod password;
+pub mod pdf_cover;
 pub mod staging;
 pub mod store;
 pub mod vault;

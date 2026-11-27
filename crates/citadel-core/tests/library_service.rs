@@ -34,6 +34,7 @@ fn fixture() -> (tempfile::TempDir, Library, String) {
                 language: Some("en".into()),
                 file_paths: vec![source],
             },
+            None,
         )
         .unwrap();
     (directory, library, id)

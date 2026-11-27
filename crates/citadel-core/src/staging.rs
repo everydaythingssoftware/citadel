@@ -10,7 +10,10 @@ use chrono::NaiveDate;
 use libcalibre::{book_file, mime_type::MimeType};
 use serde::{Deserialize, Serialize};
 
-use crate::error::LibraryError;
+use crate::{
+    error::LibraryError,
+    pdf_cover::{self, RenderPdfCover},
+};
 
 /// What the uploaded file says about itself, for the user to review.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -104,23 +107,40 @@ pub fn book_format(file_name: &str) -> Result<(String, MimeType), LibraryError> 
     Ok((extension, format))
 }
 
-/// A book file read for review, with its embedded cover's bytes as stored.
+/// A book file read for review, with its cover's bytes as stored.
 pub struct ReadBook {
     pub book: StagedBook,
     pub cover: Option<Vec<u8>>,
+    /// The cover was rendered from a PDF's first page, which adding the book
+    /// doesn't do: keep it and pass it to `LibraryService::create_book`.
+    pub rendered_cover: bool,
 }
 
 /// Reads the book file at `path`. `file_name` is the name the person knows
 /// it by, which titles PDF and TXT files (and anything without a title of
 /// its own) whatever the file is called on disk. The cover URL is left for
-/// the host to fill in once it has stored a preview.
-pub fn read_book_file(path: &Path, file_name: &str, extension: String) -> ReadBook {
+/// the host to fill in once it has stored a preview. A PDF's cover is its
+/// first page, drawn by `render_pdf`.
+pub fn read_book_file(
+    path: &Path,
+    file_name: &str,
+    extension: String,
+    render_pdf: RenderPdfCover,
+) -> ReadBook {
     let metadata = book_file::read_metadata(path);
-    let cover = metadata
+    let rendered_cover = metadata
         .as_ref()
-        .is_some_and(|metadata| metadata.has_cover)
-        .then(|| book_file::cover_image_data(path))
-        .flatten();
+        .is_some_and(|metadata| metadata.format == MimeType::PDF);
+    let cover = if rendered_cover {
+        pdf_cover::render(render_pdf, path)
+    } else {
+        metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.has_cover)
+            .then(|| book_file::cover_image_data(path))
+            .flatten()
+    };
+    let rendered_cover = rendered_cover && cover.is_some();
     let fallback_title = Path::new(file_name)
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -154,6 +174,7 @@ pub fn read_book_file(path: &Path, file_name: &str, extension: String) -> ReadBo
             cover_url: None,
         },
         cover,
+        rendered_cover,
     }
 }
 
@@ -215,9 +236,28 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("0f3c.txt");
         std::fs::write(&path, "Call me Ishmael.").unwrap();
-        let read = read_book_file(&path, "Moby Dick.txt", "txt".into());
+        let read = read_book_file(&path, "Moby Dick.txt", "txt".into(), |_| {
+            unreachable!("only PDFs are rendered")
+        });
         assert_eq!(read.book.title, "Moby Dick");
         assert_eq!(read.book.format, "txt");
         assert!(read.cover.is_none());
+    }
+
+    #[test]
+    fn a_pdfs_cover_is_drawn_by_the_hosts_renderer() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("upload.pdf");
+        std::fs::write(&path, "%PDF-1.7").unwrap();
+        let read = read_book_file(&path, "Field Notes.pdf", "pdf".into(), |_| {
+            Some(b"page one".to_vec())
+        });
+        assert_eq!(read.book.title, "Field Notes");
+        assert_eq!(read.cover.as_deref(), Some(&b"page one"[..]));
+        assert!(read.rendered_cover);
+
+        let read = read_book_file(&path, "Field Notes.pdf", "pdf".into(), |_| None);
+        assert!(read.cover.is_none());
+        assert!(!read.rendered_cover);
     }
 }

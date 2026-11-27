@@ -993,7 +993,7 @@ export interface components {
             detail: string | null;
             /**
              * @description `database`, `providerKeys`, `library`, `webApp`, `opds`, `metadata`,
-             *     `stateDisk` or `libraryDisk`.
+             *     `pdfCovers`, `stateDisk` or `libraryDisk`.
              */
             name: string;
             status: components["schemas"]["HealthStatus"];
