@@ -155,7 +155,8 @@ mod windows_pdf {
 mod tests {
     use super::*;
 
-    /// A one-page PDF, 300 by 150 points, painted blue.
+    /// A one-page PDF, 300 by 150 points, painted blue. Windows.Data.Pdf
+    /// needs the cross-reference table; poppler and QuickLook do without.
     const BLUE_PAGE: &str = "%PDF-1.4
 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
@@ -163,7 +164,16 @@ mod tests {
 4 0 obj << /Length 25 >> stream
 0 0 1 rg 0 0 300 150 re f
 endstream endobj
-trailer << /Root 1 0 R >>
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000202 00000 n 
+trailer << /Size 5 /Root 1 0 R >>
+startxref
+277
 %%EOF
 ";
 
