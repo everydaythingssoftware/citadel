@@ -1,11 +1,15 @@
 //! Reads metadata and cover images from book files before they are added to a
 //! library. Every host shares this, so file-format quirks live in one place.
 //!
-//! EPUB and MOBI files are parsed with the `epub` and `mobi` features, and a
-//! PDF's first page is rendered as its cover with the `pdf` feature (all on by
-//! default). Without one, files of that format are read like TXT files: a
-//! title from the file name and no cover. PDF covers also need the host to
-//! call [`run_pdf_cover_worker`].
+//! EPUB and MOBI files are parsed with the `epub` and `mobi` features (both on
+//! by default). Without one, files of that format are read like PDFs: a title
+//! from the file name and no cover.
+//!
+//! PDFs embed no cover. With the `pdf` feature, [`render_pdf_cover`] renders
+//! a PDF's first page by running poppler's `pdftoppm`, when it is installed.
+//! Rendering is never implicit: [`cover_image_data`] and adding a book don't
+//! do it, so a host renders first and stores the result with
+//! [`crate::Library::set_book_cover`].
 use std::{ffi::OsStr, path::Path};
 
 use chrono::NaiveDate;
@@ -18,6 +22,9 @@ mod epub;
 mod mobi;
 #[cfg(feature = "pdf")]
 mod pdf;
+
+#[cfg(feature = "pdf")]
+pub use pdf::{pdftoppm, render_cover as render_pdf_cover, RENDER_TIMEOUT as PDF_RENDER_TIMEOUT};
 
 /// Covers larger than this are ignored rather than read into memory; a
 /// compressed EPUB entry can otherwise expand without bound.
@@ -48,8 +55,7 @@ pub struct BookFileMetadata {
     pub tags: Vec<String>,
     /// The publication date, when the file gives one that parses.
     pub publication_date: Option<NaiveDate>,
-    /// Whether [`cover_image_data`] can produce a cover: one the file embeds,
-    /// or for a PDF its first page.
+    /// Whether the file embeds a cover that [`cover_image_data`] can read.
     pub has_cover: bool,
 }
 
@@ -86,42 +92,21 @@ pub fn read_metadata(path: &Path) -> Option<BookFileMetadata> {
         format @ (MimeType::MOBI | MimeType::KF7 | MimeType::KF8) => {
             mobi::read_metadata(path, format)
         }
-        #[cfg(feature = "pdf")]
-        format @ MimeType::PDF => pdf::read_metadata(path, format),
         MimeType::UNKNOWN => None,
         format => BookFileMetadata::titled_from_file_name(format, path),
     }
 }
 
 /// The cover image embedded in the book file at `path`, if it has one no
-/// larger than 16 MiB. A PDF's cover is its first page as a JPEG, at most
-/// 1600 pixels on its longer side, rendered by a worker process (see
-/// [`run_pdf_cover_worker`]).
+/// larger than 16 MiB.
 pub fn cover_image_data(path: &Path) -> Option<Vec<u8>> {
     match format_of(path)? {
         #[cfg(feature = "epub")]
         MimeType::EPUB => epub::cover_image_data(path),
         #[cfg(feature = "mobi")]
         MimeType::MOBI | MimeType::KF7 | MimeType::KF8 => mobi::cover_image_data(path),
-        #[cfg(feature = "pdf")]
-        MimeType::PDF => pdf::cover_image_data(path),
         _ => None,
     }
-}
-
-/// Lets this executable render PDF covers. Call it first thing in `main`,
-/// before anything else starts.
-///
-/// A PDF's first page is rendered in a short-lived copy of the current
-/// executable, started with a reserved first argument, so that a hostile file
-/// costs at most a few seconds and never the host itself: the copy runs under
-/// a memory ceiling and is killed after 10 seconds, and the PDF then has no
-/// cover. Started that way, this function renders, writes the JPEG to stdout
-/// and exits the process. Otherwise it returns at once. Until a host calls
-/// it, PDFs have no cover. Does nothing without the `pdf` feature.
-pub fn run_pdf_cover_worker() {
-    #[cfg(feature = "pdf")]
-    pdf::run_worker();
 }
 
 /// Bytes [`content_matches`] needs from the start of a file to decide.
@@ -173,14 +158,6 @@ pub fn isbn(identifier: &str) -> Option<String> {
         _ => false,
     };
     valid.then(|| digits.into_iter().collect())
-}
-
-/// A panic in a third-party parser counts as an unreadable file.
-#[cfg(any(feature = "mobi", feature = "pdf"))]
-fn guarded<T>(read: impl FnOnce() -> Option<T>) -> Option<T> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(read))
-        .ok()
-        .flatten()
 }
 
 fn non_empty(value: &str) -> Option<String> {

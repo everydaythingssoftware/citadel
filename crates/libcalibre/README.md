@@ -15,7 +15,7 @@ libcalibre = "0.1"
 | --- | --- | --- |
 | `epub` | on | Reads metadata and covers from EPUB files. |
 | `mobi` | on | Reads metadata and covers from MOBI, AZW and AZW3 files. |
-| `pdf` | on | Renders a PDF's first page as its cover, once the host opts in (see below). |
+| `pdf` | off | Renders a PDF's first page as its cover with poppler's `pdftoppm`, when it is installed. |
 | `bundled-sqlite` | off | Compiles SQLite into your binary instead of linking the system library. |
 
 Database only, no ebook parsing:
@@ -266,9 +266,9 @@ fn main() -> Result<(), CalibreError> {
 
 ## Reading ebook files directly
 
-`book_file` reads embedded metadata from EPUB and MOBI files without a library (with the matching features enabled). Other formats yield the title from the file name. With the `pdf` feature, a PDF's cover is its first page, rendered as a JPEG.
+`book_file` reads embedded metadata from EPUB and MOBI files without a library (with the matching features enabled). Other formats yield the title from the file name.
 
-PDF covers are rendered in a short-lived copy of your own executable, under a memory ceiling and a 10-second timeout, so a hostile PDF costs a few seconds and yields no cover instead of crashing or stalling your process. Opt in by calling `book_file::run_pdf_cover_worker()` first thing in `main`: in the copy it renders and exits, in your process it returns at once. Until you call it, PDFs have no cover. On macOS the memory ceiling is not enforced, and the timeout is the only guard.
+PDFs embed no cover. With the `pdf` feature, `book_file::render_pdf_cover` renders the first page as a JPEG by running poppler's `pdftoppm` from `PATH`, as Calibre does, under a 3-second timeout and (where the system enforces it) a 1 GiB memory ceiling. Adding a book never renders: render first, then store the cover with `Library::set_book_cover`. Without `pdftoppm`, PDFs have no cover.
 
 ```rust,no_run
 use std::path::Path;
