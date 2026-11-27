@@ -21,8 +21,9 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use citadel_core::{
+    contracts::BookMatch,
     error::{LibraryError, LibraryErrorCode},
-    staging::{book_format, read_book_file, CommitUpload, StagedBook},
+    staging::{book_format, read_book_file, AddTo, CommitUpload, StagedBook},
     store::LibraryPermission,
 };
 use futures_util::StreamExt;
@@ -41,7 +42,8 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_FILE_NAME_CHARS: usize = 255;
 const UPLOAD_OFFSET: &str = "upload-offset";
-/// The longest a view waits for the library to say which titles it already has.
+/// The longest a view waits for the library to say which books it may
+/// already have.
 const FLAG_WAIT: Duration = Duration::from_secs(2);
 
 /// `api.uploads` in the server config. Chunks stay well under reverse-proxy
@@ -132,8 +134,27 @@ struct UploadRecord {
     file_name: String,
     extension: String,
     size: u64,
+    #[serde(deserialize_with = "recorded_book")]
     book: Option<StagedBook>,
     ready_at: Option<DateTime<Utc>>,
+}
+
+/// A recorded book, with its match keys worked out again: records written
+/// before books had them still restore.
+fn recorded_book<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<StagedBook>, D::Error> {
+    let Some(mut book) = Option::<serde_json::Value>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+    if let Some(fields) = book.as_object_mut() {
+        fields
+            .entry("matchKeys")
+            .or_insert_with(|| serde_json::json!({}));
+    }
+    serde_json::from_value::<StagedBook>(book)
+        .map(|book| Some(book.with_match_keys()))
+        .map_err(serde::de::Error::custom)
 }
 
 #[derive(Serialize, utoipa::ToSchema)]
@@ -164,9 +185,9 @@ pub(super) struct StagedUpload {
     received_bytes: u64,
     /// Present once every byte has arrived and the file has been read.
     book: Option<StagedBook>,
-    /// Present when the library already has the book's title: which books, as
-    /// a commit would be refused.
-    duplicate: Option<String>,
+    /// Books the library may already hold, strongest match first. Best
+    /// effort: empty when there are none or the library was too busy to say.
+    matches: Vec<BookMatch>,
     /// When the server discards the upload: a fixed review deadline once the
     /// file has been read, otherwise an hour after its last chunk.
     expires_at: DateTime<Utc>,
@@ -450,7 +471,7 @@ impl Upload {
             size: self.size,
             received_bytes: self.received,
             book: self.book.clone(),
-            duplicate: None,
+            matches: Vec::new(),
             expires_at: self.expires_at(config).into(),
         }
     }
@@ -488,7 +509,7 @@ pub(super) async fn list(
         .filter(|(_, upload)| owner.owns(upload))
         .map(|(id, upload)| upload.view(id, &staging.config))
         .collect();
-    flag_duplicates(&state, &mut uploads).await;
+    list_matches(&state, &mut uploads).await;
     Ok(Json(UploadList {
         max_file_bytes: staging.config.max_file_bytes,
         chunk_bytes: staging.config.chunk_bytes,
@@ -580,7 +601,7 @@ pub(super) async fn get(
     let staging = &state.uploads;
     let mut view =
         staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id, &staging.config)))?;
-    flag_duplicates(&state, std::slice::from_mut(&mut view)).await;
+    list_matches(&state, std::slice::from_mut(&mut view)).await;
     Ok(Json(view))
 }
 
@@ -652,26 +673,77 @@ pub(super) async fn cover(
         .into_response())
 }
 
-/// Releases an upload claimed for adding to the library, unless it was added.
+/// Releases uploads claimed for adding to the library, unless they were
+/// added.
 struct Committing {
     staging: Arc<Staging>,
-    id: String,
+    ids: Vec<String>,
 }
 
 impl Drop for Committing {
     fn drop(&mut self) {
         if let Ok(mut uploads) = self.staging.uploads.lock() {
-            if let Some(upload) = uploads.get_mut(&self.id) {
-                upload.busy = false;
-                upload.last_active = (self.staging.now)();
+            for id in &self.ids {
+                if let Some(upload) = uploads.get_mut(id) {
+                    upload.busy = false;
+                    upload.last_active = (self.staging.now)();
+                }
             }
         }
+    }
+}
+
+impl Staging {
+    /// Claims finished uploads the user owns for adding, all or none,
+    /// returning each one's file and extension in order.
+    fn claim(
+        self: &Arc<Self>,
+        ids: &[String],
+        owner: &Owner,
+    ) -> Result<(Committing, Vec<(PathBuf, String)>), ApiFailure> {
+        let mut uploads = self
+            .uploads
+            .lock()
+            .map_err(|_| LibraryError::unavailable())?;
+        let mut files = Vec::with_capacity(ids.len());
+        for id in ids {
+            let upload = uploads
+                .get(id)
+                .filter(|upload| owner.owns(upload))
+                .ok_or_else(not_found)?;
+            if upload.busy {
+                return Err(failure(LibraryErrorCode::Conflict, "The upload is busy"));
+            }
+            if upload.book.is_none() {
+                return Err(failure(
+                    LibraryErrorCode::Conflict,
+                    "The upload hasn't finished",
+                ));
+            }
+            files.push((
+                self.book_path(id, &upload.extension),
+                upload.extension.clone(),
+            ));
+        }
+        let now = (self.now)();
+        for id in ids {
+            if let Some(upload) = uploads.get_mut(id) {
+                upload.busy = true;
+                upload.last_active = now;
+            }
+        }
+        let claim = Committing {
+            staging: self.clone(),
+            ids: ids.to_vec(),
+        };
+        Ok((claim, files))
     }
 }
 
 #[utoipa::path(post, path = "/api/uploads/{upload_id}/commit", operation_id = "commitUpload",
     params(("upload_id" = String, Path, description = "Upload ID")),
     request_body = CommitUpload,
+    description = "Add a finished upload, and the uploads named in `also`, to the library: as one new book with the reviewed metadata, or (with `addTo` an existing book) as further formats of that book, replacing any it has. All are added or none. A possible duplicate is never refused.",
     responses((status = 201, body = citadel_core::LibraryBook), (status = 400, body = LibraryError),
         (status = 401, body = LibraryError), (status = 403, body = LibraryError),
         (status = 404, body = LibraryError), (status = 409, body = LibraryError)),
@@ -684,48 +756,32 @@ pub(super) async fn commit(
     input: Result<Json<CommitUpload>, JsonRejection>,
 ) -> Result<(StatusCode, Json<citadel_core::LibraryBook>), ApiFailure> {
     let Json(input) = input.map_err(|_| LibraryError::invalid("Invalid book JSON"))?;
-    if input.title.trim().is_empty() {
+    if input.add_to == AddTo::NewBook && input.title.trim().is_empty() {
         return Err(LibraryError::invalid("A book needs a title").into());
+    }
+    ensure_can_edit(&state, permission)?;
+    let mut ids = vec![id];
+    for also in &input.also {
+        if !ids.contains(also) {
+            ids.push(also.clone());
+        }
     }
     let staging = state.uploads.clone();
     let owner = Owner::new(&state, &user);
-    let (path, extension) = staging.with_upload(&id, &owner, |upload| {
-        if upload.busy {
-            return Err(failure(LibraryErrorCode::Conflict, "The upload is busy"));
-        }
-        if upload.book.is_none() {
-            return Err(failure(
-                LibraryErrorCode::Conflict,
-                "The upload hasn't finished",
-            ));
-        }
-        ensure_can_edit(&state, permission)?;
-        upload.busy = true;
-        Ok((
-            staging.book_path(&id, &upload.extension),
-            upload.extension.clone(),
-        ))
-    })?;
-    let claim = Committing {
-        staging: staging.clone(),
-        id: id.clone(),
-    };
+    let (claim, files) = staging.claim(&ids, &owner)?;
 
     let actor = user.0.actor();
-    let allow_duplicate = input.allow_duplicate;
-    let book = input.into_book_add(path)?;
+    let paths = files.iter().map(|(path, _)| path.clone()).collect();
     let book = super::write(state.clone(), permission, move |service| {
-        if !allow_duplicate {
-            service.refuse_duplicate(&book.title)?;
-        }
-        let id = service.create_book(&actor, book)?;
-        service.get_book(&id)
+        service.add_staged(&actor, input, paths)
     })
     .await?;
 
-    // The library holds its own copy now.
+    // The library holds its own copies now.
     drop(claim);
-    discard(&staging, &id, &extension);
+    for (id, (_, extension)) in ids.iter().zip(&files) {
+        discard(&staging, id, extension);
+    }
     Ok((StatusCode::CREATED, Json(book)))
 }
 
@@ -922,34 +978,32 @@ async fn receive_chunk(
     drop(transfer);
     let mut view =
         staging.with_upload(&id, &owner, |upload| Ok(upload.view(&id, &staging.config)))?;
-    flag_duplicates(&state, std::slice::from_mut(&mut view)).await;
+    list_matches(&state, std::slice::from_mut(&mut view)).await;
     Ok(Json(view))
 }
 
-/// Best effort: flags the views whose book's title is already in the library,
-/// with one library read for all, waiting at most `FLAG_WAIT`. A busy,
-/// slow or unavailable library leaves them unflagged, and the commit checks
-/// again.
-async fn flag_duplicates(state: &ApiState, views: &mut [StagedUpload]) {
-    let titles: Vec<String> = views
+/// Best effort: lists the books the library may already hold for each view
+/// with a book, with one library read for all, waiting at most `FLAG_WAIT`.
+/// A busy, slow or unavailable library leaves the lists empty.
+async fn list_matches(state: &ApiState, views: &mut [StagedUpload]) {
+    let candidates: Vec<_> = views
         .iter()
-        .filter_map(|view| view.book.as_ref().map(|book| book.title.clone()))
+        .filter_map(|view| view.book.as_ref().map(StagedBook::candidate))
         .collect();
-    if titles.is_empty() {
+    if candidates.is_empty() {
         return;
     }
     let found = tokio::time::timeout(
         FLAG_WAIT,
         super::run(state.clone(), move |service| {
-            let titles: Vec<&str> = titles.iter().map(String::as_str).collect();
-            service.duplicates(&titles)
+            service.find_matches(&candidates)
         }),
     )
     .await;
     let Ok(Ok(found)) = found else { return };
     let with_book = views.iter_mut().filter(|view| view.book.is_some());
-    for (view, duplicate) in with_book.zip(found) {
-        view.duplicate = duplicate;
+    for (view, matches) in with_book.zip(found) {
+        view.matches = matches;
     }
 }
 
@@ -1035,11 +1089,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn records_written_before_match_keys_still_restore() {
+        let record: UploadRecord = serde_json::from_value(serde_json::json!({
+            "userId": "user", "libraryId": "library", "fileName": "nana.epub",
+            "extension": "epub", "size": 4, "readyAt": null,
+            "book": {"format": "epub", "title": "Nana", "authorNames": ["Zola, Émile"],
+                "identifier": "0-306-40615-2", "publisher": null, "language": null,
+                "tags": [], "publicationDate": null, "coverUrl": null}
+        }))
+        .unwrap();
+        let keys = record.book.unwrap().match_keys;
+        assert_eq!(keys.isbn.as_deref(), Some("9780306406157"));
+        assert_eq!(keys.title_authors.as_deref(), Some("nana|zola émile"));
+    }
+
     fn book() -> StagedBook {
         StagedBook {
             format: "txt".into(),
             title: "Book".into(),
-            title_key: "book".into(),
             author_names: vec!["Author".into()],
             identifier: None,
             publisher: None,
@@ -1047,6 +1115,7 @@ mod tests {
             tags: Vec::new(),
             publication_date: None,
             cover_url: None,
+            match_keys: Default::default(),
         }
     }
 

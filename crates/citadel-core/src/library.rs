@@ -1,12 +1,15 @@
 //! Application operations shared by IPC and HTTP. Hosts supply an open library
 //! and asset URL policy; this module knows neither Tauri nor HTTP extractors.
+use std::collections::{hash_map::Entry, HashMap};
+
 use crate::{
     contracts::{
         custom_columns::{BookCustomValue, CustomColumnDef, CustomValueDto},
-        AuthorUpdate, BookUpdate, LibraryBookPage, LibraryBookQuery, LibraryPublisher,
-        LibrarySeries, LibraryTag, NewAuthor,
+        AuthorUpdate, BookCandidate, BookMatch, BookUpdate, LibraryBookPage, LibraryBookQuery,
+        LibraryPublisher, LibrarySeries, LibraryTag, MatchReason, NewAuthor,
     },
     error::{LibraryError, LibraryErrorCode},
+    staging::{AddTo, CommitUpload},
     Actor, BookUrlBuilder, LibraryAuthor, LibraryBook,
 };
 use libcalibre::{BookId, Library};
@@ -133,44 +136,70 @@ impl<'a> LibraryService<'a> {
         Ok(self.library.add_book(book)?.id.as_i32().to_string())
     }
 
-    /// Refused as a duplicate when a book with the same title, ignoring case
-    /// and punctuation, is already in the library.
-    pub fn refuse_duplicate(&mut self, title: &str) -> Result<()> {
-        match self.duplicates(&[title])?.remove(0) {
-            Some(message) => Err(LibraryError::new(LibraryErrorCode::Duplicate, message)),
-            None => Ok(()),
-        }
-    }
-
-    /// For each title, what the library already holds under it, or `None`.
-    /// At most the first ten matches per title are listed.
-    pub fn duplicates(&mut self, titles: &[&str]) -> Result<Vec<Option<String>>> {
-        const MAX_LISTED: usize = 10;
-        let existing: Vec<_> = self
-            .library
-            .book_titles()?
+    /// For each candidate, the books the library may already hold under it,
+    /// strongest match first, with one library read for all candidates.
+    pub fn find_matches(&mut self, candidates: &[BookCandidate]) -> Result<Vec<Vec<BookMatch>>> {
+        let candidates: Vec<libcalibre::matching::Candidate> =
+            candidates.iter().map(Into::into).collect();
+        let found = self.library.find_duplicates(&candidates)?;
+        let mut books: HashMap<BookId, libcalibre::Book> = HashMap::new();
+        found
             .into_iter()
-            .map(|(id, title)| (id, title_key(&title)))
-            .collect();
-        titles
-            .iter()
-            .map(|title| {
-                let key = title_key(title);
-                let mut entries = Vec::new();
-                for (id, _) in existing
-                    .iter()
-                    .filter(|(_, existing)| *existing == key)
-                    .take(MAX_LISTED)
-                {
-                    let entry = book_entry(&self.library.get_book(*id)?);
-                    if !entries.contains(&entry) {
-                        entries.push(entry);
-                    }
-                }
-                Ok((!entries.is_empty())
-                    .then(|| format!("Already in your library: {}", entries.join("; "))))
+            .map(|matches| {
+                matches
+                    .into_iter()
+                    .map(|found| {
+                        let book = match books.entry(found.book_id) {
+                            Entry::Occupied(entry) => entry.into_mut(),
+                            Entry::Vacant(entry) => {
+                                entry.insert(self.library.get_book(found.book_id)?)
+                            }
+                        };
+                        Ok(book_match(
+                            book,
+                            &self.library.library_path().to_string_lossy(),
+                            self.urls,
+                            found.reason.into(),
+                        ))
+                    })
+                    .collect()
             })
             .collect()
+    }
+
+    /// Adds files to an existing book as further formats, replacing a
+    /// format it already has.
+    pub fn add_book_files(
+        &mut self,
+        _actor: &Actor,
+        id: &str,
+        files: Vec<std::path::PathBuf>,
+    ) -> Result<String> {
+        Ok(self
+            .library
+            .add_book_files(book_id(id)?, files)?
+            .id
+            .as_i32()
+            .to_string())
+    }
+
+    /// Adds reviewed staged files to the library: as one new book with the
+    /// reviewed metadata, or to an existing book (ignoring the metadata).
+    /// The first file's cover becomes a new book's cover.
+    pub fn add_staged(
+        &mut self,
+        actor: &Actor,
+        commit: CommitUpload,
+        files: Vec<std::path::PathBuf>,
+    ) -> Result<LibraryBook> {
+        let id = match commit.add_to.clone() {
+            AddTo::NewBook => {
+                let book = commit.into_book_add(files)?;
+                self.create_book(actor, book)?
+            }
+            AddTo::ExistingBook { book_id } => self.add_book_files(actor, &book_id, files)?,
+        };
+        self.get_book(&id)
     }
 
     pub fn update_book(&mut self, _actor: &Actor, id: &str, updates: BookUpdate) -> Result<i32> {
@@ -421,29 +450,44 @@ fn required_name(name: &str) -> Result<&str> {
     }
 }
 
-/// Titles with the same key are duplicates: case and punctuation don't count.
-pub(crate) fn title_key(title: &str) -> String {
-    let lowercase = title.to_lowercase();
-    let words: Vec<&str> = lowercase
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|word| !word.is_empty())
-        .collect();
-    if words.is_empty() {
-        return lowercase.trim().to_string();
+fn book_match(
+    book: &libcalibre::Book,
+    library_path: &str,
+    urls: &dyn BookUrlBuilder,
+    reason: MatchReason,
+) -> BookMatch {
+    let cover_url = book.has_cover.then(|| {
+        let cover = std::path::Path::new(library_path)
+            .join(&book.book_dir_path)
+            .join("cover.jpg");
+        urls.cover_url(book, &cover, false).url
+    });
+    BookMatch {
+        id: book.id.as_i32().to_string(),
+        title: book.title.clone(),
+        author_names: book
+            .authors
+            .iter()
+            .map(|author| author.name.clone())
+            .collect(),
+        formats: book
+            .files
+            .iter()
+            .map(|file| file.format.to_uppercase())
+            .collect(),
+        isbn: book
+            .identifiers
+            .iter()
+            .find(|identifier| identifier.label.eq_ignore_ascii_case("isbn"))
+            .map(|identifier| identifier.value.clone()),
+        added: Some(
+            book.created_at
+                .and_utc()
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ),
+        cover_url,
+        reason,
     }
-    words.join(" ")
-}
-
-fn book_entry(book: &libcalibre::Book) -> String {
-    if book.authors.is_empty() {
-        return book.title.clone();
-    }
-    let authors: Vec<&str> = book
-        .authors
-        .iter()
-        .map(|author| author.name.as_str())
-        .collect();
-    format!("{} by {}", book.title, authors.join(" & "))
 }
 
 fn author_id(raw: &str) -> Result<libcalibre::AuthorId> {

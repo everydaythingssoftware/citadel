@@ -59,6 +59,7 @@ fn command_builder() -> Builder<tauri::Wry> {
             library::query::clb_query_search_books,
             library::query::clb_query_books,
             library::query::clb_query_get_book,
+            library::query::clb_query_book_matches,
             // Series query commands
             library::query::clb_query_list_series,
             // Tag query commands

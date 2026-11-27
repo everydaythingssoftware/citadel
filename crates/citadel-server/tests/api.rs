@@ -1608,7 +1608,7 @@ fn epub_bytes() -> Vec<u8> {
     use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
     let mut cover = image::RgbImage::new(240, 360);
     for (x, y, pixel) in cover.enumerate_pixels_mut() {
-        *pixel = image::Rgb([(x * 7 ^ y * 13) as u8, (x * y) as u8, (y * 3) as u8]);
+        *pixel = image::Rgb([((x * 7) ^ (y * 13)) as u8, (x * y) as u8, (y * 3) as u8]);
     }
     let mut cover_bytes = Vec::new();
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cover_bytes, 95)
@@ -2185,43 +2185,170 @@ async fn finished_uploads_wait_a_review_window_and_survive_a_restart() {
 }
 
 #[tokio::test]
-async fn a_duplicate_commit_is_refused_until_allowed_and_keeps_the_upload() {
+async fn possible_duplicates_are_listed_and_never_refused() {
     let (directory, service, router, _, cookie) =
         fixture_opened(CalibreCatalogSource::open_writable, small_uploads()).await;
     let first = upload_whole(&router, &cookie, "uploaded.epub", &epub_bytes()).await;
-    assert!(first["duplicate"].is_null());
+    assert_eq!(first["matches"], json!([]));
+    assert_eq!(
+        first["book"]["matchKeys"],
+        json!({"isbn": "9780000000002", "titleAuthors": "uploaded book|author first & author second"})
+    );
     let first = format!("/api/uploads/{}/commit", first["id"].as_str().unwrap());
+    let reviewed = json!({"title": "Uploaded Book", "authorNames": ["First Author"],
+        "identifier": "978-0-00-000000-2"});
+    let (status, added) = send(&router, &cookie, "POST", &first, reviewed.clone()).await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    let existing = added["id"].as_str().unwrap().to_string();
+
+    let staged = upload_whole(&router, &cookie, "uploaded.epub", &epub_bytes()).await;
+    let upload = format!("/api/uploads/{}", staged["id"].as_str().unwrap());
+    let found = &staged["matches"][0];
+    assert_eq!(found["id"], existing.as_str());
+    assert_eq!(found["reason"], "isbn");
+    assert_eq!(found["formats"], json!(["EPUB"]));
+    assert_eq!(found["isbn"], "9780000000002");
+    assert_eq!(found["authorNames"], json!(["First Author"]));
+    assert!(found["coverUrl"].is_string() && found["added"].is_string());
+    let (_, fetched) = send(&router, &cookie, "GET", &upload, Value::Null).await;
+    assert_eq!(fetched["matches"][0]["id"], existing.as_str());
+    let (_, listed) = send(&router, &cookie, "GET", "/api/uploads", Value::Null).await;
+    assert_eq!(listed["uploads"][0]["matches"][0]["reason"], "isbn");
+
+    let (status, found) = send(
+        &router,
+        &cookie,
+        "POST",
+        "/api/books/matches",
+        json!({"title": "uploaded book!", "authorNames": ["Author, First"]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert_eq!(found[0]["reason"], "titleAndAuthor");
+    let (_, found) = send(
+        &router,
+        &cookie,
+        "POST",
+        "/api/books/matches",
+        json!({"title": "Uploaded Book", "authorNames": ["Somebody Else"]}),
+    )
+    .await;
+    assert_eq!(found, json!([]));
     let (status, _) = send(
         &router,
         &cookie,
         "POST",
-        &first,
-        json!({"title": "Uploaded Book"}),
+        "/api/books/matches",
+        json!({"title": "Uploaded Book", "allowDuplicate": true}),
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED);
-    let staged = upload_whole(&router, &cookie, "uploaded.epub", &epub_bytes()).await;
-    let upload = format!("/api/uploads/{}", staged["id"].as_str().unwrap());
-    let flagged = "Already in your library: Uploaded Book by Unknown";
-    assert_eq!(staged["duplicate"], flagged);
-    assert_eq!(staged["book"]["titleKey"], "uploaded book");
-    let (_, fetched) = send(&router, &cookie, "GET", &upload, Value::Null).await;
-    assert_eq!(fetched["duplicate"], flagged);
-    let (_, listed) = send(&router, &cookie, "GET", "/api/uploads", Value::Null).await;
-    assert_eq!(listed["uploads"][0]["duplicate"], flagged);
-    let commit = format!("{upload}/commit");
-    let title = "shared contract";
-    let (status, error) = send(&router, &cookie, "POST", &commit, json!({"title": title})).await;
-    assert_eq!(
-        (status, error["code"].as_str()),
-        (StatusCode::CONFLICT, Some("duplicate"))
-    );
-    let (status, _) = send(&router, &cookie, "GET", &upload, Value::Null).await;
-    assert_eq!(status, StatusCode::OK);
-    let allowed = json!({"title": title, "allowDuplicate": true});
-    let (status, added) = send(&router, &cookie, "POST", &commit, allowed).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let before = book_count(directory.path());
+    let (status, added) = send(
+        &router,
+        &cookie,
+        "POST",
+        &format!("{upload}/commit"),
+        reviewed,
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "{added}");
-    assert_eq!(book_count(directory.path()), 3);
+    assert_eq!(book_count(directory.path()), before + 1);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn commits_add_several_files_as_one_book_or_to_an_existing_one() {
+    let (directory, service, router, _, cookie) =
+        fixture_opened(CalibreCatalogSource::open_writable, small_uploads()).await;
+    let epub = upload_whole(&router, &cookie, "uploaded.epub", &epub_bytes()).await;
+    let text = upload_whole(&router, &cookie, "uploaded.txt", b"Plain text").await;
+    let epub = epub["id"].as_str().unwrap().to_string();
+    let text = text["id"].as_str().unwrap().to_string();
+    let before = book_count(directory.path());
+
+    let (status, _) = send(
+        &router,
+        &cookie,
+        "POST",
+        &format!("/api/uploads/{epub}/commit"),
+        json!({"title": "Two Formats", "also": [text, "0123456789abcdef0123456789abcdef"]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "all are added or none");
+    let (status, added) = send(
+        &router,
+        &cookie,
+        "POST",
+        &format!("/api/uploads/{epub}/commit"),
+        json!({"title": "Two Formats", "also": [text, epub]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["title"], "Two Formats");
+    assert_eq!(added["file_list"].as_array().unwrap().len(), 2);
+    assert_eq!(book_count(directory.path()), before + 1);
+    let (status, _) = send(
+        &router,
+        &cookie,
+        "GET",
+        &format!("/api/uploads/{text}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "both uploads were added");
+    let book_id = added["id"].as_str().unwrap().to_string();
+
+    let pdf_bytes = b"%PDF-1.4 a replacement".to_vec();
+    let replacement = upload_whole(&router, &cookie, "replacement.txt", b"Newer text").await;
+    let pdf = upload_whole(&router, &cookie, "extra.pdf", &pdf_bytes).await;
+    let (status, joined) = send(
+        &router,
+        &cookie,
+        "POST",
+        &format!(
+            "/api/uploads/{}/commit",
+            replacement["id"].as_str().unwrap()
+        ),
+        json!({"also": [pdf["id"]], "addTo": {"kind": "existingBook", "bookId": book_id}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{joined}");
+    assert_eq!(joined["id"], book_id.as_str());
+    assert_eq!(joined["title"], "Two Formats");
+    assert_eq!(joined["file_list"].as_array().unwrap().len(), 3);
+    assert_eq!(book_count(directory.path()), before + 1);
+    let mut library = Library::open_read_only(directory.path()).unwrap();
+    let book = library
+        .get_book(book_id.parse::<i32>().unwrap().into())
+        .unwrap();
+    let text_file = book.files.iter().find(|file| file.format == "TXT").unwrap();
+    let text_path = directory
+        .path()
+        .join(&book.book_dir_path)
+        .join(format!("{}.txt", text_file.name));
+    assert_eq!(std::fs::read_to_string(text_path).unwrap(), "Newer text");
+
+    let orphan = upload_whole(&router, &cookie, "orphan.txt", b"Orphan").await;
+    let (status, _) = send(
+        &router,
+        &cookie,
+        "POST",
+        &format!("/api/uploads/{}/commit", orphan["id"].as_str().unwrap()),
+        json!({"addTo": {"kind": "existingBook", "bookId": "99999"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = send(
+        &router,
+        &cookie,
+        "GET",
+        &format!("/api/uploads/{}", orphan["id"].as_str().unwrap()),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "a failed commit keeps the upload");
     service.stop().await;
 }
 

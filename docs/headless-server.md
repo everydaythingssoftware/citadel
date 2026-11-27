@@ -465,21 +465,36 @@ user who started an upload can see it. Upload routes:
 
 - `POST /api/uploads/{upload_id}/commit` with the reviewed metadata
   (`{"title": "…", "authorNames": […], "identifier": "…", "publisher": "…",
-  "language": "en", "tags": […], "publicationDate": "2021-03-04",
-  "allowDuplicate": false}`; only `title` is required): adds the finished
-  upload to the library with the cover from its file, records the signed-in
-  user as the one who added it, and deletes the staged copy. Answers 201 with
-  the new book, or 409 when the upload isn't finished or is busy, 409
-  `duplicate` when a book with the same title is already in the library (the
-  upload is kept; resend with `"allowDuplicate": true` to add it anyway), and
-  403 `readOnly` when the library is open read-only. An identifier is kept
-  when it is an ISBN.
+  "language": "en", "tags": […], "publicationDate": "2021-03-04"}`; only
+  `title` is required): adds the finished upload to the library with the cover
+  from its file, records the signed-in user as the one who added it, and
+  deletes the staged copy. `"also": ["<upload_id>", …]` adds more finished
+  uploads as further formats of the same book (an EPUB and a MOBI of one book).
+  `"addTo": {"kind": "existingBook", "bookId": "…"}` adds the files to a book
+  already in the library instead, ignoring the metadata (no `title` needed) and
+  replacing a format the book already has; the default is
+  `{"kind": "newBook"}`. Every upload is added, or none. Answers 201 with the
+  book, or 404 when an upload (or the existing book) isn't found, 409 when an
+  upload isn't finished or is busy, and 403 `readOnly` when the library is open
+  read-only. An identifier is kept when it is an ISBN. A possible duplicate is
+  never refused.
 
 Every view of an upload that has a `book` (the list, `GET` and the final chunk's
-answer) also carries `duplicate` when the library already has that title: the
-books it matches, as a commit would be refused. It is best effort, so its
-absence doesn't mean the title is new; the commit still checks. Books with the
-same `titleKey` repeat each other's title.
+answer) also carries `matches`: books the library may already hold, strongest
+first, each with its `id`, `title`, `authorNames`, `formats`, `isbn`, `added`,
+`coverUrl` and `reason`. A book matches on the same ISBN (`isbn`; ISBN-10 and 13
+count as the same), on the same title with an author in common and no clashing
+language (`titleAndAuthor`), or on the same title where one of the two has no
+author (`title`). Titles and author names ignore case and punctuation, and author
+names their word order. The same title by different authors is not a match. The
+list is best effort, so an empty one doesn't mean the book is new. The `book`'s
+`matchKeys` (`isbn`, `titleAuthors`) are equal for uploads of the same book, to
+group them for `also`.
+
+- `POST /api/books/matches` with `{"title": "…", "authorNames": […],
+  "identifier": "…", "language": "en"}` (only `title` is required): the same
+  matches for metadata as the user edits it, at most five. Anyone who can read
+  the library can ask.
 
 Limits can be tuned in an optional `[api.uploads]` table (defaults shown):
 

@@ -11,7 +11,7 @@ use axum::{
     Json, Router,
 };
 use citadel_core::{
-    contracts::{DeleteBooksOutcome, LibraryBookPage, LibraryBookQuery},
+    contracts::{BookCandidate, BookMatch, DeleteBooksOutcome, LibraryBookPage, LibraryBookQuery},
     error::{LibraryError, LibraryErrorCode},
     library::{remove_permanently, LibraryService},
     HttpUrlBuilder, LibraryBook,
@@ -164,7 +164,7 @@ impl IntoResponse for ApiFailure {
             LibraryErrorCode::ReadOnly => StatusCode::FORBIDDEN,
             LibraryErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
             LibraryErrorCode::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
-            LibraryErrorCode::Conflict | LibraryErrorCode::Duplicate => StatusCode::CONFLICT,
+            LibraryErrorCode::Conflict => StatusCode::CONFLICT,
             LibraryErrorCode::StorageFull => StatusCode::INSUFFICIENT_STORAGE,
             LibraryErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -202,6 +202,30 @@ async fn query_books(
     Ok(Json(
         run(state, move |service| service.query_books(query)).await?,
     ))
+}
+
+#[utoipa::path(post, path = "/api/books/matches", operation_id = "findBookMatches",
+    request_body = BookCandidate,
+    description = "Books the library may already hold for a book about to be added, strongest match first (at most five): the same ISBN, the same title with an author in common, or the same title where one has no author. Matches only inform; adding is never refused.",
+    responses((status = 200, body = Vec<BookMatch>), (status = 400, body = LibraryError),
+        (status = 401, body = LibraryError), (status = 503, body = LibraryError), (status = 500, body = LibraryError)),
+    security(("session" = [])))]
+async fn book_matches(
+    State(state): State<ApiState>,
+    candidate: Result<Json<BookCandidate>, JsonRejection>,
+) -> Result<Json<Vec<BookMatch>>, ApiFailure> {
+    let Json(candidate) = candidate.map_err(|_| LibraryError::invalid("Invalid book JSON"))?;
+    // Debug builds log each check, to watch it live while testing.
+    #[cfg(debug_assertions)]
+    let described = format!("{:?} by {:?}", candidate.title, candidate.author_names);
+    let mut found = run(state, move |service| service.find_matches(&[candidate])).await?;
+    let matches = found.pop().unwrap_or_default();
+    #[cfg(debug_assertions)]
+    eprintln!(
+        "citadel_server debug=\"book matches\" candidate={described} matches={}",
+        matches.len()
+    );
+    Ok(Json(matches))
 }
 
 #[utoipa::path(get, path = "/api/books/{book_id}", operation_id = "getBook",
@@ -444,6 +468,7 @@ async fn set_cover_from_file(
 fn routes() -> OpenApiRouter<ApiState> {
     OpenApiRouter::new()
         .routes(routes!(query_books))
+        .routes(routes!(book_matches))
         .routes(routes!(get_book, edits::update_book))
         .routes(routes!(delete_books))
         .routes(routes!(delete_author, edits::update_author))

@@ -15,8 +15,6 @@ pub enum LibraryErrorCode {
     TooLarge,
     /// The request conflicts with the resource's current state.
     Conflict,
-    /// A book with this title is already in the library.
-    Duplicate,
     /// The server has no room to store more.
     StorageFull,
     Internal,

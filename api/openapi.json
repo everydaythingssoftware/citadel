@@ -576,6 +576,77 @@
         ]
       }
     },
+    "/api/books/matches": {
+      "post": {
+        "description": "Books the library may already hold for a book about to be added, strongest match first (at most five): the same ISBN, the same title with an author in common, or the same title where one has no author. Matches only inform; adding is never refused.",
+        "operationId": "findBookMatches",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookCandidate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookMatch"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/books/query": {
       "post": {
         "description": "Query the configured library. HTTP requires an explicit limit between 0 and 200; zero returns only the total. No arbitrary library paths are accepted.",
@@ -3574,6 +3645,7 @@
     },
     "/api/uploads/{upload_id}/commit": {
       "post": {
+        "description": "Add a finished upload, and the uploads named in `also`, to the library: as one new book with the reviewed metadata, or (with `addTo` an existing book) as further formats of that book, replacing any it has. All are added or none. A possible duplicate is never refused.",
         "operationId": "commitUpload",
         "parameters": [
           {
@@ -3853,6 +3925,45 @@
         },
         "additionalProperties": false
       },
+      "AddTo": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A new book, with the reviewed metadata.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "newBook"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A book already in the library, as further formats; the reviewed\nmetadata is ignored and a format the book has is replaced.",
+            "required": [
+              "bookId",
+              "kind"
+            ],
+            "properties": {
+              "bookId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "existingBook"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Where reviewed files go."
+      },
       "ApplyCover": {
         "type": "object",
         "required": [
@@ -3888,6 +3999,39 @@
             ]
           }
         }
+      },
+      "BookCandidate": {
+        "type": "object",
+        "description": "A book about to be added, to look for in the library.",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "authorNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "identifier": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "As typed or read from the file: an ISBN-10 or ISBN-13, with or\nwithout hyphens or a `urn:isbn:` prefix. Anything else is ignored."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Any ISO 639 code (`en`, `eng`, `en-US`)."
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "BookCustomValue": {
         "type": "object",
@@ -3931,6 +4075,65 @@
             }
           }
         ]
+      },
+      "BookMatch": {
+        "type": "object",
+        "description": "A book in the library that may be the one being added.",
+        "required": [
+          "id",
+          "title",
+          "authorNames",
+          "formats",
+          "isbn",
+          "added",
+          "coverUrl",
+          "reason"
+        ],
+        "properties": {
+          "added": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it was added, as an RFC 3339 UTC date-time."
+          },
+          "authorNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The formats it has, uppercase (`EPUB`, `PDF`)."
+          },
+          "id": {
+            "type": "string",
+            "description": "The library book's ID."
+          },
+          "isbn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its ISBN as stored."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/MatchReason"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
       },
       "BookMetadata": {
         "type": "object",
@@ -4164,13 +4367,16 @@
       "CommitUpload": {
         "type": "object",
         "description": "The metadata the user reviewed, to add the upload to the library with.",
-        "required": [
-          "title"
-        ],
         "properties": {
-          "allowDuplicate": {
-            "type": "boolean",
-            "description": "Add the book even if its title is already in the library."
+          "addTo": {
+            "$ref": "#/components/schemas/AddTo"
+          },
+          "also": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "More staged files that join this one as further formats of the same\nbook. All are added together, or none."
           },
           "authorNames": {
             "type": "array",
@@ -4211,7 +4417,8 @@
             }
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Required for a new book."
           }
         },
         "additionalProperties": false
@@ -5075,7 +5282,6 @@
           "unavailable",
           "tooLarge",
           "conflict",
-          "duplicate",
           "storageFull",
           "internal"
         ]
@@ -5219,6 +5425,37 @@
             "type": "string"
           }
         }
+      },
+      "MatchKeys": {
+        "type": "object",
+        "description": "Keys that are equal for files of the same book. Files of one new book\nshare an `isbn` (as 13 digits) or `titleAuthors` (the title and authors,\nignoring case, punctuation and name order; absent without authors).",
+        "required": [
+          "isbn",
+          "titleAuthors"
+        ],
+        "properties": {
+          "isbn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "titleAuthors": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MatchReason": {
+        "type": "string",
+        "description": "Why a book in the library may be the one being added, strongest first.",
+        "enum": [
+          "isbn",
+          "titleAndAuthor",
+          "title"
+        ]
       },
       "MetadataProvider": {
         "type": "string",
@@ -5687,9 +5924,9 @@
         "required": [
           "format",
           "title",
-          "titleKey",
           "authorNames",
-          "tags"
+          "tags",
+          "matchKeys"
         ],
         "properties": {
           "authorNames": {
@@ -5720,6 +5957,10 @@
               "null"
             ]
           },
+          "matchKeys": {
+            "$ref": "#/components/schemas/MatchKeys",
+            "description": "Equal for files of the same book, to group an EPUB and a MOBI of one\nnew book."
+          },
           "publicationDate": {
             "type": [
               "string",
@@ -5742,10 +5983,6 @@
           "title": {
             "type": "string",
             "description": "The file's own title, or its name when it has none."
-          },
-          "titleKey": {
-            "type": "string",
-            "description": "The same for titles that match as duplicates."
           }
         }
       },
@@ -5756,6 +5993,7 @@
           "fileName",
           "size",
           "receivedBytes",
+          "matches",
           "expiresAt"
         ],
         "properties": {
@@ -5770,13 +6008,6 @@
               }
             ]
           },
-          "duplicate": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Present when the library already has the book's title: which books, as\na commit would be refused."
-          },
           "expiresAt": {
             "type": "string",
             "format": "date-time",
@@ -5787,6 +6018,13 @@
           },
           "id": {
             "type": "string"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BookMatch"
+            },
+            "description": "Books the library may already hold, strongest match first. Best\neffort: empty when there are none or the library was too busy to say."
           },
           "receivedBytes": {
             "type": "integer",

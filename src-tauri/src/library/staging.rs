@@ -12,6 +12,7 @@ use std::{
 };
 
 use citadel_core::{
+    contracts::BookMatch,
     error::{LibraryError, LibraryErrorCode},
     path_to_asset_url,
     staging::{book_format, read_book_file, CommitUpload, StagedBook},
@@ -52,9 +53,9 @@ pub struct StagedFile {
     file_name: String,
     size: u64,
     book: StagedBook,
-    /// Present when the library already has the book's title: which books, as
-    /// adding it would be refused.
-    duplicate: Option<String>,
+    /// Books the library may already hold, strongest match first. Empty
+    /// when there are none or the library couldn't be read.
+    matches: Vec<BookMatch>,
 }
 
 impl Staged {
@@ -64,7 +65,7 @@ impl Staged {
             file_name: self.file_name.clone(),
             size: self.size,
             book: self.book.clone(),
-            duplicate: None,
+            matches: Vec::new(),
         }
     }
 }
@@ -197,27 +198,38 @@ impl DesktopStaging {
         Ok(view)
     }
 
-    /// Claims a staged book for adding, returning its file.
-    fn claim(&self, id: &str, library_id: &str) -> Result<PathBuf, LibraryError> {
+    /// Claims staged books for adding, all or none, returning their files
+    /// in order.
+    fn claim(&self, ids: &[String], library_id: &str) -> Result<Vec<PathBuf>, LibraryError> {
         let mut books = self.books()?;
-        let staged = books
-            .get_mut(id)
-            .filter(|staged| staged.library_id == library_id)
-            .ok_or_else(not_found)?;
-        if staged.busy {
-            return Err(LibraryError::new(
-                LibraryErrorCode::Conflict,
-                "This book is already being added",
-            ));
+        let mut paths = Vec::with_capacity(ids.len());
+        for id in ids {
+            let staged = books
+                .get(id)
+                .filter(|staged| staged.library_id == library_id)
+                .ok_or_else(not_found)?;
+            if staged.busy {
+                return Err(LibraryError::new(
+                    LibraryErrorCode::Conflict,
+                    "This book is already being added",
+                ));
+            }
+            paths.push(staged.path.clone());
         }
-        staged.busy = true;
-        Ok(staged.path.clone())
+        for id in ids {
+            if let Some(staged) = books.get_mut(id) {
+                staged.busy = true;
+            }
+        }
+        Ok(paths)
     }
 
-    fn release(&self, id: &str) {
+    fn release(&self, ids: &[String]) {
         if let Ok(mut books) = self.books.lock() {
-            if let Some(staged) = books.get_mut(id) {
-                staged.busy = false;
+            for id in ids {
+                if let Some(staged) = books.get_mut(id) {
+                    staged.busy = false;
+                }
             }
         }
     }
@@ -245,22 +257,22 @@ pub fn clb_query_staged_books(
     staging: tauri::State<DesktopStaging>,
 ) -> Result<Vec<StagedFile>, LibraryError> {
     let mut files = staging.list(&library_id(&state)?)?;
-    flag_duplicates(&state, &mut files);
+    list_matches(&state, &mut files);
     Ok(files)
 }
 
-/// Flags the files whose title is already in the library, with one library
-/// read for all; a library that can't be read leaves them unflagged.
-fn flag_duplicates(state: &CitadelState, files: &mut [StagedFile]) {
+/// Lists the books the library may already hold for each file, with one
+/// library read for all; a library that can't be read lists none.
+fn list_matches(state: &CitadelState, files: &mut [StagedFile]) {
     if files.is_empty() {
         return;
     }
-    let titles: Vec<&str> = files.iter().map(|file| file.book.title.as_str()).collect();
+    let candidates: Vec<_> = files.iter().map(|file| file.book.candidate()).collect();
     let found = state
-        .with_library_service(|service| service.duplicates(&titles))
+        .with_library_service(|service| service.find_matches(&candidates))
         .unwrap_or_default();
-    for (file, duplicate) in files.iter_mut().zip(found) {
-        file.duplicate = duplicate;
+    for (file, matches) in files.iter_mut().zip(found) {
+        file.matches = matches;
     }
 }
 
@@ -280,15 +292,17 @@ pub async fn clb_cmd_stage_book(
         let mut staged = handle
             .state::<DesktopStaging>()
             .stage(library_id, PathBuf::from(path))?;
-        flag_duplicates(&state, std::slice::from_mut(&mut staged));
+        list_matches(&state, std::slice::from_mut(&mut staged));
         Ok(staged)
     })
     .await
     .map_err(unavailable)?
 }
 
-/// Adds a staged book to the library with the metadata the person reviewed.
-/// The library copies the file; the original stays where it was.
+/// Adds a staged book, and the staged books named in `book.also`, to the
+/// library: as one new book with the metadata the person reviewed, or as
+/// further formats of an existing book. All are added or none. The library
+/// copies the files; the originals stay where they were.
 #[tauri::command]
 #[specta::specta]
 pub async fn clb_cmd_add_staged_book(
@@ -305,24 +319,22 @@ pub async fn clb_cmd_add_staged_book(
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let staging = handle.state::<DesktopStaging>();
-        let path = staging.claim(&staged_id, &library_id)?;
-        let allow_duplicate = book.allow_duplicate;
-        let added = book.into_book_add(path).and_then(|book| {
-            state.with_library_service(|service| {
-                if !allow_duplicate {
-                    service.refuse_duplicate(&book.title)?;
-                }
-                let id = service.create_book(&actor, book)?;
-                service.get_book(&id)
-            })
-        });
-        match added {
+        let mut ids = vec![staged_id];
+        for also in &book.also {
+            if !ids.contains(also) {
+                ids.push(also.clone());
+            }
+        }
+        let paths = staging.claim(&ids, &library_id)?;
+        match state.with_library_service(|service| service.add_staged(&actor, book, paths)) {
             Ok(added) => {
-                staging.discard(&staged_id);
+                for id in &ids {
+                    staging.discard(id);
+                }
                 Ok(added)
             }
             Err(error) => {
-                staging.release(&staged_id);
+                staging.release(&ids);
                 Err(error)
             }
         }
@@ -363,7 +375,9 @@ mod tests {
         assert_eq!(staged.size, 16);
         assert_eq!(staging.list("one").unwrap().len(), 1);
         assert!(staging.list("two").unwrap().is_empty());
-        assert!(staging.claim(&staged.id, "two").is_err());
+        assert!(staging
+            .claim(std::slice::from_ref(&staged.id), "two")
+            .is_err());
         // Each library can stage the same file once.
         assert!(staging.stage("one".into(), path.clone()).is_err());
         assert!(staging.stage("two".into(), path).is_ok());
@@ -386,30 +400,54 @@ mod tests {
         let (directory, staging) = staging();
         let path = book_at(directory.path(), "walden.txt", "Walden");
         let staged = staging.stage("one".into(), path.clone()).unwrap();
-        assert_eq!(staging.claim(&staged.id, "one").unwrap(), path);
-        assert!(staging.claim(&staged.id, "one").is_err());
-        staging.release(&staged.id);
-        assert!(staging.claim(&staged.id, "one").is_ok());
+        let ids = [staged.id.clone()];
+        assert_eq!(staging.claim(&ids, "one").unwrap(), vec![path.clone()]);
+        assert!(staging.claim(&ids, "one").is_err());
+        staging.release(&ids);
+        assert!(staging.claim(&ids, "one").is_ok());
         staging.discard(&staged.id);
         assert!(staging.list("one").unwrap().is_empty());
         assert!(path.exists(), "skipping leaves the file alone");
     }
 
     #[test]
-    fn titles_already_in_the_library_are_flagged() {
+    fn several_books_are_claimed_together_or_not_at_all() {
+        let (directory, staging) = staging();
+        let one = staging
+            .stage("one".into(), book_at(directory.path(), "a.txt", "A"))
+            .unwrap();
+        let two = staging
+            .stage("one".into(), book_at(directory.path(), "b.txt", "B"))
+            .unwrap();
+        let both = [one.id.clone(), two.id.clone()];
+        staging.claim(std::slice::from_ref(&two.id), "one").unwrap();
+        assert!(staging.claim(&both, "one").is_err());
+        assert!(
+            staging.claim(std::slice::from_ref(&one.id), "one").is_ok(),
+            "a failed claim claims nothing"
+        );
+        staging.release(&both);
+        assert_eq!(staging.claim(&both, "one").unwrap().len(), 2);
+        assert!(staging
+            .claim(&[one.id.clone(), "missing".into()], "two")
+            .is_err());
+    }
+
+    #[test]
+    fn books_the_library_may_hold_are_listed() {
         let library = tempfile::tempdir().unwrap();
         libcalibre::Library::create_library_at(library.path().to_str().unwrap()).unwrap();
         let state = CitadelState::new();
         state
             .init_library(library.path().to_string_lossy().into_owned())
             .unwrap();
-        state
+        let id = state
             .with_library_service(|service| {
                 service.create_book(
                     &citadel_core::Actor::User { id: "test".into() },
                     libcalibre::BookAdd {
                         title: "Moby Dick".into(),
-                        author_names: vec!["Herman Melville".into()],
+                        author_names: vec![],
                         tags: None,
                         series: None,
                         series_index: None,
@@ -431,15 +469,17 @@ mod tests {
                 staging.stage("one".into(), path).unwrap()
             })
             .to_vec();
-        flag_duplicates(&state, &mut files);
+        list_matches(&state, &mut files);
+        assert_eq!(files[0].matches.len(), 1);
+        assert_eq!(files[0].matches[0].id, id);
         assert_eq!(
-            files[0].duplicate.as_deref(),
-            Some("Already in your library: Moby Dick by Herman Melville")
+            files[0].matches[0].reason,
+            citadel_core::contracts::MatchReason::Title
         );
-        assert_eq!(files[1].duplicate, None);
+        assert!(files[1].matches.is_empty());
 
         let mut files = staging.list("one").unwrap();
-        flag_duplicates(&CitadelState::new(), &mut files);
-        assert!(files.iter().all(|file| file.duplicate.is_none()));
+        list_matches(&CitadelState::new(), &mut files);
+        assert!(files.iter().all(|file| file.matches.is_empty()));
     }
 }
