@@ -10,6 +10,8 @@ import {
 	selectOnly,
 } from "@/lib/book-selection";
 import { useKeymap } from "@/lib/hooks/use-keymap";
+import { selectingContent } from "@/lib/chrome-guards";
+import { keyboardBusyAt } from "@/lib/keyboard-owner";
 import type { KeyBinding, SelectionDirection } from "@/lib/keymap";
 import { moveSelection } from "@/lib/keymap";
 import { usePlatform } from "@/lib/platform/context";
@@ -155,11 +157,6 @@ export const useLibraryKeymap = ({
 				onMatch: leaveSearchForGrid,
 			},
 			{
-				chord: "mod+a",
-				when: gridOwnsKeyboard,
-				onMatch: () => updateBookSelection(selectAll),
-			},
-			{
 				chord: "escape",
 				when: gridOwnsKeyboard,
 				onMatch: () => updateBookSelection(clearSelection),
@@ -173,6 +170,14 @@ export const useLibraryKeymap = ({
 			});
 		}
 	}
+	// As ⌘-click and ⇧-click do, ⌘A changes the selection and keeps the
+	// details open. Focus in the details counts as the grid, as for
+	// Edit > Select All, unless text is being selected there.
+	bindings.push({
+		chord: "mod+a",
+		when: () => !keyboardBusyAt(document.activeElement) && !selectingContent(),
+		onMatch: () => updateBookSelection(selectAll),
+	});
 	const arrowsAllowed = arrowsMoveGrid(gridContainerRef);
 	for (const [chord, direction] of ARROW_CHORDS) {
 		bindings.push(

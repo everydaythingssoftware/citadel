@@ -204,10 +204,10 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   View · Go · Window · Help, `src-tauri/src/menu/`). Each command's key
   equivalent is defined once there (`MENU_ACCELERATORS`, exported into
   `src/bindings.ts`). The library window pushes the menu state in groups
-  (`MenuStateUpdate`: selection, view, libraries, undo, update notice), each
-  when it changes (`useMenuBarSync`), and runs the menu's commands through
-  `useMenuCommands`. There the menu bar handles its own chords and the page
-  doesn't bind them again.
+  (`MenuStateUpdate`: selection, view, libraries, undo, select all, update
+  notice), each when it changes (`useMenuBarSync`), and runs the menu's
+  commands through `useMenuCommands`. There the menu bar handles its own
+  chords and the page doesn't bind them again.
 - Elsewhere the page binds the same chords (`src/lib/app-shortcuts.ts`, which
   reads the Rust table and adds only what Rust doesn't know). Windows and
   Linux desktop bind them all except Hide Sidebar. A browser keeps its own
@@ -228,6 +228,14 @@ Follow `docs/adr/0014-in-place-feedback.md` for when to ask at all.
   there is none; the keys do the same and are left to the browser when there
   is nothing to undo. A focused text field keeps its own typing undo, and
   the menu shows the native items.
+- Edit > Select All selects every book on the Books page, unless the focus
+  is in a text field, a sheet, an alert or a menu. Focus in the details
+  counts as the Books page. Once text there is being selected (a
+  description), Select All selects all of that text instead, as in a
+  read-only text view. In those places and on the other pages, the menu
+  shows the native item. ⌘A/Ctrl+A stays the grid's own key on every
+  platform (`PAGE_OWNED` in `src/lib/app-shortcuts.ts`), because the chrome
+  guard and the grid keymap decide what it selects.
 - Every action that changes the library either registers an undo entry or,
   if it can't be undone, clears the history, so Undo never reaches back
   across it. A new action picks a side deliberately.

@@ -5,6 +5,12 @@ import {
 	shortcutEnvironment,
 	type TShortcutCommand,
 } from "@/lib/app-shortcuts";
+import { selectAll } from "@/lib/book-selection";
+import {
+	allowsNativeSelectAll,
+	selectAllWithinContent,
+	selectingContent,
+} from "@/lib/chrome-guards";
 import { useAddBook } from "@/lib/hooks/use-add-book";
 import {
 	type AddLibraryFlow,
@@ -17,9 +23,15 @@ import { useOpenSettings } from "@/lib/hooks/use-open-settings";
 import { listen } from "@/lib/hooks/use-window-chrome-state";
 import { keyboardBusyAt, overlayOpen } from "@/lib/keyboard-owner";
 import type { KeyBinding } from "@/lib/keymap";
-import { appUndo, GO_PATHS, isBookCommand } from "@/lib/menu-commands";
+import {
+	appUndo,
+	GO_PATHS,
+	isBookCommand,
+	selectAllOwner,
+} from "@/lib/menu-commands";
 import { usePlatform } from "@/lib/platform/context";
 import { useBookEditor } from "@/stores/book-editor/store";
+import { updateBookSelection } from "@/stores/book-selection/store";
 import { useLibraryView } from "@/stores/library-view/store";
 import { requestFind, setShelfSheetOpen } from "@/stores/menu-requests/store";
 import { toggleSidebar } from "@/stores/sidebar/store";
@@ -132,6 +144,13 @@ export const useMenuCommands = (): { addLibrary: AddLibraryFlow } => {
 			case "undo":
 			case "redo":
 				runUndo(command);
+				return;
+			case "select-all":
+				if (selectingContent()) selectAllWithinContent();
+				else if (selectAllOwner(keyboardBusy(), pathname) === "books")
+					updateBookSelection(selectAll);
+				else if (allowsNativeSelectAll(document.activeElement))
+					document.execCommand("selectAll");
 				return;
 			case "add-book":
 				startAddBook();
