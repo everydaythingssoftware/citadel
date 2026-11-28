@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { useRef } from "react";
+import { Reveal } from "@/components/atoms/Reveal";
 import {
 	ChevronLeftGlyph,
 	ChevronRightGlyph,
@@ -7,10 +8,15 @@ import {
 import { Button, IconButton } from "@/components/ui";
 import { useMediaQuery } from "@/lib/hooks/use-breakpoint";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
+import type { MatchChoice } from "@/lib/hooks/use-review-matches";
 import { useScrolled } from "@/lib/hooks/use-scrolled";
-import { UploadPhase } from "@/lib/uploads/queue";
+import type { BookMatch } from "@/lib/services/library";
+import { Destination } from "@/lib/uploads/matches";
+import { type BookFile, UploadPhase } from "@/lib/uploads/queue";
 import { CoverCarousel } from "./CoverCarousel";
 import { CoverRow } from "./CoverRow";
+import { UploadFiles } from "./UploadFiles";
+import { MatchQuestion } from "./UploadMatches";
 import styles from "./UploadReview.module.css";
 import { UploadReviewCard } from "./UploadReviewCard";
 
@@ -27,6 +33,16 @@ export interface UploadReviewProps {
 	onDone?: () => void;
 	/** Books are read from this computer rather than uploaded. */
 	local?: boolean;
+	/** Books already in the library the current book may duplicate. */
+	matches?: BookMatch[];
+	/** Where the current book goes, when it may be a duplicate. */
+	choice?: MatchChoice;
+	/** The current book's formats ("EPUB"); more than one can be split. */
+	formats?: readonly string[];
+	/** The files the current book is made of. */
+	files?: readonly BookFile[];
+	/** Makes each of the current book's files a book of its own. */
+	onSplit?: () => void;
 }
 
 /**
@@ -40,7 +56,17 @@ export const UploadReview = ({
 	onBack,
 	onDone,
 	local = false,
+	matches = [],
+	choice,
+	formats = [],
+	files = [],
+	onSplit,
 }: UploadReviewProps) => {
+	const toExisting =
+		matches.length > 0 && choice?.destination === Destination.existing;
+	// The last matches stay drawn while the question closes over them.
+	const shownMatches = useRef(matches);
+	if (matches.length > 0) shownMatches.current = matches;
 	const { current } = deck;
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const scrolled = useScrolled(scrollRef);
@@ -55,10 +81,14 @@ export const UploadReview = ({
 			</Button>
 			<Button
 				variant="primary"
-				disabled={!current || busy || deck.form.title.trim() === ""}
-				onClick={() => void deck.add()}
+				disabled={
+					!current || busy || (!toExisting && deck.form.title.trim() === "")
+				}
+				onClick={() => void deck.add(choice?.addTo)}
 			>
-				{current?.phase === UploadPhase.adding ? "Adding…" : "Add to Library"}
+				{current?.phase === UploadPhase.adding
+					? "Adding…"
+					: (choice?.addLabel ?? "Add to Library")}
 			</Button>
 		</>
 	);
@@ -133,7 +163,21 @@ export const UploadReview = ({
 							/>
 						))}
 				</div>
-				{current && (
+				{current && files.length > 1 && (
+					<UploadFiles files={files} onSplit={onSplit} />
+				)}
+				{current && choice && (
+					// Opens and closes as edits make the book match or stop matching.
+					<Reveal open={matches.length > 0} resetKey={current.key}>
+						<MatchQuestion
+							matches={shownMatches.current}
+							formats={formats}
+							sameId={toExisting ? choice.selected?.id : undefined}
+							onChoose={choice.choose}
+						/>
+					</Reveal>
+				)}
+				{current && !toExisting && (
 					<UploadReviewCard
 						bookKey={current.key}
 						form={deck.form}

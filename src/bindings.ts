@@ -167,6 +167,18 @@ async clbQueryGetBook(bookId: string) : Promise<Result<LibraryBook, LibraryError
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Books the library may already hold for a book about to be added,
+ * strongest match first.
+ */
+async clbQueryBookMatches(candidate: BookCandidate) : Promise<Result<BookMatch[], LibraryError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clb_query_book_matches", { candidate }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clbQueryListSeries() : Promise<Result<LibrarySeries[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clb_query_list_series") };
@@ -211,8 +223,10 @@ async clbCmdStageBook(path: string) : Promise<Result<StagedFile, LibraryError>> 
 }
 },
 /**
- * Adds a staged book to the library with the metadata the person reviewed.
- * The library copies the file; the original stays where it was.
+ * Adds a staged book, and the staged books named in `book.also`, to the
+ * library: as one new book with the metadata the person reviewed, or as
+ * further formats of an existing book. All are added or none. The library
+ * copies the files; the originals stay where they were.
  */
 async clbCmdAddStagedBook(stagedId: string, book: CommitUpload) : Promise<Result<LibraryBook, LibraryError>> {
     try {
@@ -607,15 +621,61 @@ export const MENU_ACCELERATORS = {"commands":[["add-book","CmdOrCtrl+N"],["undo"
 /** user-defined types **/
 
 /**
+ * Where reviewed files go.
+ */
+export type AddTo = 
+/**
+ * A new book, with the reviewed metadata.
+ */
+{ kind: "newBook" } | 
+/**
+ * A book already in the library, as further formats; the reviewed
+ * metadata is ignored and a format the book has is replaced.
+ */
+{ kind: "existingBook"; bookId: string }
+/**
  * "Undo Mark as Finished"; an absent label disables the item.
  */
 export type AppUndo = { undoLabel: string | null; redoLabel: string | null }
 export type AuthorUpdate = { full_name: string | null; sortable_name: string | null; external_url: string | null }
 /**
+ * A book about to be added, to look for in the library.
+ */
+export type BookCandidate = { title: string; authorNames?: string[]; 
+/**
+ * As typed or read from the file: an ISBN-10 or ISBN-13, with or
+ * without hyphens or a `urn:isbn:` prefix. Anything else is ignored.
+ */
+identifier?: string | null; 
+/**
+ * Any ISO 639 code (`en`, `eng`, `en-US`).
+ */
+language?: string | null }
+/**
  * One book's value for one custom column.
  */
 export type BookCustomValue = { column_id: number; value: CustomValueDto }
 export type BookFile = { Local: LocalFile } | { Remote: RemoteFile }
+/**
+ * A book in the library that may be the one being added.
+ */
+export type BookMatch = { 
+/**
+ * The library book's ID.
+ */
+id: string; title: string; authorNames: string[]; 
+/**
+ * The formats it has, uppercase (`EPUB`, `PDF`).
+ */
+formats: string[]; 
+/**
+ * Its ISBN as stored.
+ */
+isbn: string | null; 
+/**
+ * When it was added, as an RFC 3339 UTC date-time.
+ */
+added: string | null; coverUrl: string | null; reason: MatchReason }
 /**
  * A book record from a provider. Providers return these fully populated from a
  * single search call — there is no separate resolve step, so the cover-less
@@ -666,12 +726,21 @@ export type CalibreClientConfig = { library_path: string }
 /**
  * The metadata the user reviewed, to add the upload to the library with.
  */
-export type CommitUpload = { title: string; authorNames?: string[]; 
+export type CommitUpload = { 
+/**
+ * Required for a new book.
+ */
+title?: string; authorNames?: string[]; 
 /**
  * Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`
  * prefixes are accepted); other identifiers are ignored.
  */
-identifier: string | null; publisher: string | null; language: string | null; tags?: string[]; publicationDate: string | null }
+identifier: string | null; publisher: string | null; language: string | null; tags?: string[]; publicationDate: string | null; 
+/**
+ * More staged files that join this one as further formats of the same
+ * book. All are added together, or none.
+ */
+also?: string[]; addTo?: AddTo }
 /**
  * What a cover looks like before it loads.
  */
@@ -894,6 +963,28 @@ mime_type: string }
 export type LocalOrRemote = "Local" | "Remote"
 export type LocalOrRemoteUrl = { kind: LocalOrRemote; url: string; local_path: string | null }
 /**
+ * Keys that are equal for files of the same book. Files of one new book
+ * share an `isbn` (as 13 digits) or `titleAuthors` (the title and authors,
+ * ignoring case, punctuation and name order; absent without authors).
+ */
+export type MatchKeys = { isbn: string | null; titleAuthors: string | null }
+/**
+ * Why a book in the library may be the one being added, strongest first.
+ */
+export type MatchReason = 
+/**
+ * The same ISBN.
+ */
+"isbn" | 
+/**
+ * The same title and at least one author in common.
+ */
+"titleAndAuthor" | 
+/**
+ * The same title, where one of the two has no author.
+ */
+"title"
+/**
  * A menu choice delivered to the library window.
  */
 export type MenuCommand = "add-book" | "new-shelf" | "add-library" | "show-library-in-file-manager" | "find" | "undo" | "redo" | "select-all" | "book-show-details" | "book-open" | "book-edit" | "book-mark-finished" | "book-show-in-file-manager" | "book-copy-title" | "book-delete" | "toggle-sidebar" | "toggle-unread-only" | { sort: MenuSortOrder } | { go: GoDestination } | "go-back" | "go-forward" | { switchLibrary: string }
@@ -999,11 +1090,21 @@ format: string;
 /**
  * The file's own title, or its name when it has none.
  */
-title: string; authorNames: string[]; identifier: string | null; publisher: string | null; language: string | null; tags: string[]; publicationDate: string | null; coverUrl: string | null }
+title: string; authorNames: string[]; identifier: string | null; publisher: string | null; language: string | null; tags: string[]; publicationDate: string | null; coverUrl: string | null; 
+/**
+ * Equal for files of the same book, to group an EPUB and a MOBI of one
+ * new book.
+ */
+matchKeys: MatchKeys }
 /**
  * A book file read for review, ready to add or skip.
  */
-export type StagedFile = { id: string; fileName: string; size: number; book: StagedBook }
+export type StagedFile = { id: string; fileName: string; size: number; book: StagedBook; 
+/**
+ * Books the library may already hold, strongest match first. Empty
+ * when there are none or the library couldn't be read.
+ */
+matches: BookMatch[] }
 /**
  * Best-effort cloud-sync verdict for a candidate library path. Informational
  * only — the UX warns, it never blocks. Unknown providers (Seafile, Syncthing,

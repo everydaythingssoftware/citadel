@@ -1,6 +1,6 @@
 import type { KeymapEventLike } from "@/lib/keymap";
-import type { OperatingSystem } from "@/lib/platform/os";
 import { eventMatchesChord } from "@/lib/keymap";
+import type { OperatingSystem } from "@/lib/platform/os";
 
 /**
  * Keeps the window from behaving like a web page: no browser context menu

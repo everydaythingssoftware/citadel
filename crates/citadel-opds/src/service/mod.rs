@@ -1182,7 +1182,7 @@ mod tests {
             listeners: Listeners::new(),
             urls: vec!["http://192.168.1.5:8080/opds".to_string()],
         };
-        assert!(state.listener_died(6, listener_failed_error()) == false);
+        assert!(!state.listener_died(6, listener_failed_error()));
         assert!(matches!(state, SharingState::Running { gen: 7, .. }));
 
         assert!(state.listener_died(7, listener_failed_error()));

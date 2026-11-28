@@ -219,7 +219,7 @@ pub(crate) fn find_author_ids_by_book_ids(
     for (book_id_val, author_id_val) in links {
         grouped
             .entry(BookId(book_id_val))
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(AuthorId(author_id_val));
     }
 

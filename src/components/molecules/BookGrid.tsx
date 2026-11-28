@@ -9,6 +9,8 @@ import {
 } from "react";
 import type { LibraryBook } from "@/bindings";
 import { LoadingOverlay } from "@/components/ui";
+import { formatAuthorList } from "@/lib/authors";
+import { bookCoverProps } from "@/lib/covers/book-cover";
 import {
 	anchoredScrollOffset,
 	BOOK_GRID,
@@ -18,15 +20,13 @@ import {
 	type ScrollAnchor,
 	topRowAnchor,
 } from "@/lib/grid-virtual";
-import { useBookGridLayout } from "@/lib/hooks/use-book-grid-layout";
-import { useCoverThumbsMap } from "@/stores/library/store";
-import { bookCoverProps } from "@/lib/covers/book-cover";
-import { formatAuthorList } from "@/lib/authors";
 import { bookDomId } from "@/lib/hooks/use-book-grid-interaction";
+import { useBookGridLayout } from "@/lib/hooks/use-book-grid-layout";
 import {
 	type BookActions,
 	useBookInteractions,
 } from "@/lib/hooks/use-book-interactions";
+import { useCoverThumbsMap } from "@/stores/library/store";
 import { BookCover, COVER_SHELF_HEIGHT } from "../atoms/BookCover";
 import classes from "./BookGrid.module.css";
 

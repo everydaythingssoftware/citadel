@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { useReviewDeck } from "@/lib/hooks/use-review-deck";
+import { useMatchChoice } from "@/lib/hooks/use-review-matches";
+import type { BookMatch } from "@/lib/services/library";
 import { type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import { inHours, sampleBook, staticDeck } from "@/lib/uploads/story-fixtures";
 import { UploadReview } from "./UploadReview";
@@ -123,4 +125,84 @@ export const LastBook: Story = {
 			/>
 		</div>
 	),
+};
+
+const GERMINAL: BookMatch = {
+	id: "g",
+	title: "Moby-Dick",
+	authorNames: ["Herman Melville"],
+	formats: ["MOBI", "PDF"],
+	isbn: "978-0-14-243724-7",
+	added: "2024-03-03",
+	coverUrl: null,
+	reason: "isbn",
+};
+
+const OTHER: BookMatch = {
+	...GERMINAL,
+	id: "h",
+	formats: ["EPUB"],
+	isbn: null,
+	added: "2022-01-12",
+	reason: "titleAndAuthor",
+};
+
+const WithMatches = ({
+	matches,
+	formats = ["EPUB"],
+}: {
+	matches: BookMatch[];
+	formats?: string[];
+}) => {
+	const items = readyItems().slice(0, 1);
+	const deck = staticDeck(items);
+	const choice = useMatchChoice({
+		bookKey: deck.current?.key,
+		staged: matches,
+		matches,
+		formats,
+	});
+	return (
+		<div
+			style={{
+				maxWidth: 520,
+				display: "flex",
+				height: 680,
+				background: "var(--ctd-surface)",
+				borderRadius: 10,
+			}}
+		>
+			<UploadReview
+				onBack={() => {}}
+				deck={deck}
+				matches={matches}
+				choice={choice}
+				formats={formats}
+				files={formats.map((format, index) => ({
+					key: format,
+					format,
+					fileName:
+						index === 0
+							? `germinal.${format.toLowerCase()}`
+							: `Germinal - Émile Zola (Penguin Classics, 2004).${format.toLowerCase()}`,
+				}))}
+				onSplit={formats.length > 1 ? () => {} : undefined}
+			/>
+		</div>
+	);
+};
+
+/** A possible duplicate: the same book by default; or answer that it's a different one. */
+export const PossibleDuplicate: Story = {
+	render: () => <WithMatches matches={[GERMINAL]} />,
+};
+
+/** Two matches to choose between; one already has an EPUB, so choosing it replaces it. */
+export const SeveralMatches: Story = {
+	render: () => <WithMatches matches={[GERMINAL, OTHER]} />,
+};
+
+/** One book from two files, which can be split. */
+export const TwoFormats: Story = {
+	render: () => <WithMatches matches={[]} formats={["EPUB", "MOBI"]} />,
 };

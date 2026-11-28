@@ -16,15 +16,15 @@ import {
 import { MenuCommandHost } from "@/components/organisms/MenuCommandHost";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { IconButton, Tooltip } from "@/components/ui";
-import { useWindowShortcuts } from "@/lib/hooks/use-window-shortcuts";
 import { useAppKeymap } from "@/lib/hooks/use-app-keymap";
 import { SHELL_SIDEBAR_ATTRIBUTE } from "@/lib/hooks/use-book-grid-layout";
+import { ResizeEdge, useEdgeResize } from "@/lib/hooks/use-edge-resize";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
 import { useNavigationPending } from "@/lib/hooks/use-navigation-pending";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-reduced-motion";
-import { ResizeEdge, useEdgeResize } from "@/lib/hooks/use-edge-resize";
 import { useSwipeToClose } from "@/lib/hooks/use-swipe-to-close";
 import { useWindowChromeState } from "@/lib/hooks/use-window-chrome-state";
+import { useWindowShortcuts } from "@/lib/hooks/use-window-shortcuts";
 import { useWindowWidth } from "@/lib/hooks/use-window-width";
 import { some } from "@/lib/option";
 import { usePlatform } from "@/lib/platform/context";

@@ -1,18 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { StagedUpload } from "@/lib/services/library";
 import {
+	bookRows,
 	displayName,
 	emptyQueue,
 	isSending,
 	itemsForFiles,
+	newReadyRows,
 	nextToUpload,
 	type QueueAction,
 	type QueueState,
 	queueReducer,
+	queueSections,
 	RejectReason,
 	readyItems,
 	rejectionFor,
 	reviewedFromStaged,
+	reviewRows,
 	summarize,
 	UploadPhase,
 	visibleItems,
@@ -41,7 +45,9 @@ const staged = (overrides: Partial<StagedUpload> = {}): StagedUpload => ({
 		tags: ["Sea"],
 		publicationDate: "1851-10-18",
 		coverUrl: "/api/uploads/s1/cover",
+		matchKeys: { isbn: null, titleAuthors: null },
 	},
+	matches: [],
 	...overrides,
 });
 const coverUrl = (id: string) => `https://citadel.test/api/uploads/${id}/cover`;
@@ -269,6 +275,93 @@ describe("upload queue", () => {
 			language: "en",
 			tags: ["Sea"],
 			publicationDate: "1851-10-18",
+		});
+	});
+
+	describe("books", () => {
+		const ready = (
+			key: string,
+			format: string,
+			matchKeys: { isbn: string | null; titleAuthors: string | null },
+			matches: StagedUpload["matches"] = [],
+		) => ({
+			key,
+			name: key,
+			fileName: `${key}.${format}`,
+			size: 1,
+			sentBytes: 1,
+			uploadId: key,
+			phase: UploadPhase.ready,
+			book: {
+				...(staged().book as NonNullable<StagedUpload["book"]>),
+				format,
+				matchKeys,
+			},
+			matches,
+		});
+		const sameBook = { isbn: null, titleAuthors: "middlemarch|george eliot" };
+		const match = {
+			id: "9",
+			title: "Walden",
+			authorNames: ["Henry David Thoreau"],
+			formats: ["PDF"],
+			isbn: null,
+			added: null,
+			coverUrl: null,
+			reason: "titleAndAuthor" as const,
+		};
+
+		it("makes one book of files in different formats with the same title and authors", () => {
+			const state = {
+				items: [
+					ready("a", "mobi", sameBook),
+					ready("b", "epub", sameBook),
+					ready("c", "epub", sameBook),
+				],
+			};
+			const rows = bookRows(state);
+			expect(rows.map((row) => row.items.map((item) => item.key))).toEqual([
+				["b", "a"],
+				["c"],
+			]);
+			// The EPUB leads: its metadata and cover are the book's.
+			expect(rows[0]?.lead.key).toBe("b");
+		});
+
+		it("groups by ISBN, and never a split file", () => {
+			const isbn = { isbn: "9780141439549", titleAuthors: null };
+			const state = {
+				items: [
+					ready("a", "epub", isbn),
+					{ ...ready("b", "pdf", isbn), separate: true },
+				],
+			};
+			expect(bookRows(state)).toHaveLength(2);
+			expect(
+				bookRows({
+					items: [ready("a", "epub", isbn), ready("b", "pdf", isbn)],
+				}),
+			).toHaveLength(1);
+		});
+
+		it("puts possible duplicates last, to review, and leaves them out of the new books", () => {
+			const none = { isbn: null, titleAuthors: null };
+			const state = {
+				items: [
+					ready("walden", "epub", none, [match]),
+					ready("kim", "epub", none),
+				],
+			};
+			const sections = queueSections(state);
+			expect(sections.books.map((row) => row.key)).toEqual(["kim"]);
+			expect(sections.possibleDuplicates.map((row) => row.key)).toEqual([
+				"walden",
+			]);
+			expect(reviewRows(state).map((row) => row.key)).toEqual([
+				"kim",
+				"walden",
+			]);
+			expect(newReadyRows(state).map((row) => row.key)).toEqual(["kim"]);
 		});
 	});
 });

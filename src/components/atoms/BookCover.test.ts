@@ -1,10 +1,10 @@
-import { bookCoverProps } from "@/lib/covers/book-cover";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
+import type { LibraryBook } from "@/bindings";
+import { bookCoverProps } from "@/lib/covers/book-cover";
 import { BookCover } from "./BookCover";
 import styles from "./BookCover.module.css";
-import type { LibraryBook } from "@/bindings";
 
 const book = {
 	title: "A title",

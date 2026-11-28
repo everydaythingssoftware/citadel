@@ -1,5 +1,5 @@
-import type { CustomColumnDef } from "@/bindings";
 import { describe, expect, it } from "vitest";
+import type { CustomColumnDef } from "@/bindings";
 import {
 	buildCustomFieldValues,
 	diffCustomValues,

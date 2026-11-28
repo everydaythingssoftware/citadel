@@ -3,7 +3,8 @@ use std::path::Path;
 use citadel_core::{
     contracts::{
         custom_columns::{BookCustomValue, CustomColumnDef},
-        LibraryBookPage, LibraryBookQuery, LibraryPublisher, LibrarySeries, LibraryTag,
+        BookCandidate, BookMatch, LibraryBookPage, LibraryBookQuery, LibraryPublisher,
+        LibrarySeries, LibraryTag,
     },
     error::LibraryError,
     LibraryAuthor, LibraryBook,
@@ -68,6 +69,19 @@ pub fn clb_query_get_book(
     book_id: String,
 ) -> Result<LibraryBook, LibraryError> {
     state.with_library_service(|service| service.get_book(&book_id))
+}
+
+/// Books the library may already hold for a book about to be added,
+/// strongest match first.
+#[tauri::command]
+#[specta::specta]
+pub fn clb_query_book_matches(
+    state: tauri::State<CitadelState>,
+    candidate: BookCandidate,
+) -> Result<Vec<BookMatch>, LibraryError> {
+    state
+        .with_library_service(|service| service.find_matches(&[candidate]))
+        .map(|mut found| found.pop().unwrap_or_default())
 }
 
 #[tauri::command]

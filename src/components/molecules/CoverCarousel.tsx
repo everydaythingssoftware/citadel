@@ -1,4 +1,3 @@
-import { reviewCovers } from "@/lib/uploads/review-covers";
 import clsx from "clsx";
 import { useRef } from "react";
 import { BookCover } from "@/components/atoms/BookCover";
@@ -6,6 +5,7 @@ import { useCarouselScroll } from "@/lib/hooks/use-carousel-scroll";
 import type { DepartingCover } from "@/lib/hooks/use-review-deck";
 import { isPdfFormat } from "@/lib/pdf-only";
 import type { QueueItem } from "@/lib/uploads/queue";
+import { reviewCovers } from "@/lib/uploads/review-covers";
 import styles from "./CoverCarousel.module.css";
 
 export interface CoverCarouselProps {

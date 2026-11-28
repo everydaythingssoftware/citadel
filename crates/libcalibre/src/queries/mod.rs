@@ -6,6 +6,7 @@ pub mod book_identifiers;
 pub mod books;
 pub mod custom_values;
 pub mod languages;
+pub mod matching;
 pub mod publishers;
 pub mod series;
 pub mod tags;

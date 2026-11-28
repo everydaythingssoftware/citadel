@@ -1,11 +1,4 @@
-import { usePlatform } from "@/lib/platform/context";
-import { bookCoverProps } from "@/lib/covers/book-cover";
 import clsx from "clsx";
-import {
-	useCoverThumb,
-	useLibraryActions,
-	useLibraryStore,
-} from "@/stores/library/store";
 import DOMPurify from "dompurify";
 import {
 	type AnimationEvent,
@@ -33,39 +26,46 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
-import { useBookEditorCommands } from "@/lib/hooks/use-book-editor-commands";
-import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
-import { none, some } from "@/lib/option";
+import buttonStyles from "@/components/ui/Button.module.css";
 import { identifierDisplayName } from "@/lib/book-identifiers";
-import type {
-	CoverSize,
-	PreloadedCustomFields,
-} from "@/lib/hooks/use-edit-book-data";
-import { deleteBookCopy, deleteBookDialogTitle } from "@/lib/delete-book-title";
+import { bookCoverProps } from "@/lib/covers/book-cover";
 import {
-	type CustomFieldValue,
 	buildCustomFieldValues,
+	type CustomFieldValue,
 	diffCustomValues,
 	editableCustomColumns,
 	emptyFieldValue,
 } from "@/lib/custom-columns";
+import { deleteBookCopy, deleteBookDialogTitle } from "@/lib/delete-book-title";
+import { useBookEditorCommands } from "@/lib/hooks/use-book-editor-commands";
+import { useDeleteBookConfirmation } from "@/lib/hooks/use-delete-book-confirmation";
+import type {
+	CoverSize,
+	PreloadedCustomFields,
+} from "@/lib/hooks/use-edit-book-data";
 import { useMetadataBookActions } from "@/lib/hooks/use-metadata-book-actions";
 import { useScrolledUnder } from "@/lib/hooks/use-scrolled-under";
 import {
-	KNOWN_LANGUAGE_NAMES,
 	codeForLanguageName,
+	KNOWN_LANGUAGE_NAMES,
 	languageNameForCode,
 } from "@/lib/languages";
 import { deepLinkForIdentifier } from "@/lib/metadata-providers/registry";
+import { none, some } from "@/lib/option";
+import { usePlatform } from "@/lib/platform/context";
 import { formatSeriesIndex } from "@/lib/series";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
-import { GlyphOpenExternal } from "../icons/RowGlyphs";
+import {
+	useCoverThumb,
+	useLibraryActions,
+	useLibraryStore,
+} from "@/stores/library/store";
 import { BookCover } from "../atoms/BookCover";
+import { GlyphOpenExternal } from "../icons/RowGlyphs";
 import { TrashGlyph } from "../icons/TrashGlyph";
 import { BookActions } from "../molecules/BookActions";
 import { MetadataSearchModal } from "../molecules/MetadataSearchModal";
 import { RichTextEditor } from "../molecules/RichTextEditor";
-import buttonStyles from "@/components/ui/Button.module.css";
 import styles from "./EditBook.module.css";
 
 /**

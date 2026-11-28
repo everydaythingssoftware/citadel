@@ -14,6 +14,7 @@ export const sampleBook = (title: string, author: string): StagedBook => ({
 	tags: [],
 	publicationDate: null,
 	coverUrl: null,
+	matchKeys: { isbn: null, titleAuthors: null },
 });
 
 export const inHours = (hours: number, from = new Date()): string =>

@@ -19,6 +19,7 @@ const book = {
 	tags: ["Nature"],
 	publicationDate: "1854-08-09",
 	coverUrl: null,
+	matchKeys: { isbn: null, titleAuthors: null },
 };
 
 describe("review form", () => {

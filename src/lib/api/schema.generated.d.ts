@@ -86,6 +86,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/books/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Books the library may already hold for a book about to be added, strongest match first (at most five): the same ISBN, the same title with an author in common, or the same title where one has no author. Matches only inform; adding is never refused. */
+        post: operations["findBookMatches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/books/query": {
         parameters: {
             query?: never;
@@ -682,6 +699,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Add a finished upload, and the uploads named in `also`, to the library: as one new book with the reviewed metadata, or (with `addTo` an existing book) as further formats of that book, replacing any it has. All are added or none. A possible duplicate is never refused. */
         post: operations["commitUpload"];
         delete?: never;
         options?: never;
@@ -745,6 +763,15 @@ export interface components {
         AddGenres: {
             genres: string[];
         };
+        /** @description Where reviewed files go. */
+        AddTo: {
+            /** @enum {string} */
+            kind: "newBook";
+        } | {
+            bookId: string;
+            /** @enum {string} */
+            kind: "existingBook";
+        };
         ApplyCover: {
             /** @description A `cover_id` from a metadata result. */
             coverId: string;
@@ -753,6 +780,18 @@ export interface components {
             external_url?: string | null;
             full_name?: string | null;
             sortable_name?: string | null;
+        };
+        /** @description A book about to be added, to look for in the library. */
+        BookCandidate: {
+            authorNames?: string[];
+            /**
+             * @description As typed or read from the file: an ISBN-10 or ISBN-13, with or
+             *     without hyphens or a `urn:isbn:` prefix. Anything else is ignored.
+             */
+            identifier?: string | null;
+            /** @description Any ISO 639 code (`en`, `eng`, `en-US`). */
+            language?: string | null;
+            title: string;
         };
         /** @description One book's value for one custom column. */
         BookCustomValue: {
@@ -764,6 +803,21 @@ export interface components {
             Local: components["schemas"]["LocalFile"];
         } | {
             Remote: components["schemas"]["RemoteFile"];
+        };
+        /** @description A book in the library that may be the one being added. */
+        BookMatch: {
+            /** @description When it was added, as an RFC 3339 UTC date-time. */
+            added: string | null;
+            authorNames: string[];
+            coverUrl: string | null;
+            /** @description The formats it has, uppercase (`EPUB`, `PDF`). */
+            formats: string[];
+            /** @description The library book's ID. */
+            id: string;
+            /** @description Its ISBN as stored. */
+            isbn: string | null;
+            reason: components["schemas"]["MatchReason"];
+            title: string;
         };
         /**
          * @description A book record from a provider. Providers return these fully populated from a
@@ -848,6 +902,12 @@ export interface components {
         };
         /** @description The metadata the user reviewed, to add the upload to the library with. */
         CommitUpload: {
+            addTo?: components["schemas"]["AddTo"];
+            /**
+             * @description More staged files that join this one as further formats of the same
+             *     book. All are added together, or none.
+             */
+            also?: string[];
             authorNames?: string[];
             /**
              * @description Stored as the book's ISBN when it is one (`urn:isbn:` and `ISBN:`
@@ -859,7 +919,8 @@ export interface components {
             publicationDate?: string | null;
             publisher?: string | null;
             tags?: string[];
-            title: string;
+            /** @description Required for a new book. */
+            title?: string;
         };
         /** @description What a cover looks like before it loads. */
         CoverColors: {
@@ -1173,6 +1234,20 @@ export interface components {
             url: string;
         };
         /**
+         * @description Keys that are equal for files of the same book. Files of one new book
+         *     share an `isbn` (as 13 digits) or `titleAuthors` (the title and authors,
+         *     ignoring case, punctuation and name order; absent without authors).
+         */
+        MatchKeys: {
+            isbn: string | null;
+            titleAuthors: string | null;
+        };
+        /**
+         * @description Why a book in the library may be the one being added, strongest first.
+         * @enum {string}
+         */
+        MatchReason: "isbn" | "titleAndAuthor" | "title";
+        /**
          * @description The metadata sources Citadel can look books up against. The serialized
          *     short form is the single id used across the Rust enum, the TS string union,
          *     and the frontend registry keys.
@@ -1351,6 +1426,11 @@ export interface components {
             format: string;
             identifier?: string | null;
             language?: string | null;
+            /**
+             * @description Equal for files of the same book, to group an EPUB and a MOBI of one
+             *     new book.
+             */
+            matchKeys: components["schemas"]["MatchKeys"];
             /** Format: date */
             publicationDate?: string | null;
             publisher?: string | null;
@@ -1368,6 +1448,11 @@ export interface components {
             expiresAt: string;
             fileName: string;
             id: string;
+            /**
+             * @description Books the library may already hold, strongest match first. Best
+             *     effort: empty when there are none or the library was too busy to say.
+             */
+            matches: components["schemas"]["BookMatch"][];
             /** Format: int64 */
             receivedBytes: number;
             /** Format: int64 */
@@ -1865,6 +1950,61 @@ export interface operations {
                 };
             };
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+        };
+    };
+    findBookMatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookCandidate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookMatch"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryError"];
+                };
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

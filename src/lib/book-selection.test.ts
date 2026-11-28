@@ -10,7 +10,6 @@ import {
 	materializePending,
 	movedBeyondClickSlop,
 	type ParkedSelection,
-	withoutBooks,
 	restorableSelection,
 	selectAll,
 	selectedBookCount,
@@ -19,6 +18,7 @@ import {
 	selectOnly,
 	toggleBook,
 	unresolvedRange,
+	withoutBooks,
 } from "./book-selection";
 
 const book = (id: string, isRead = false): LibraryBook => ({

@@ -1,9 +1,9 @@
 import type { DragEvent, HTMLAttributes } from "react";
+import { useMemo, useRef } from "react";
 import type { LibraryBook } from "@/bindings";
 import type { BookClickModifiers } from "@/lib/book-selection";
-import type { ContextMenuOpenEvent } from "./use-context-menu";
-import { useMemo, useRef } from "react";
 import { movedBeyondClickSlop } from "@/lib/book-selection";
+import type { ContextMenuOpenEvent } from "./use-context-menu";
 
 export interface BookActions {
 	onPress: (

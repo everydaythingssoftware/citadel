@@ -19,6 +19,7 @@ const FORM = formForBook({
 	tags: ["Sea stories"],
 	publicationDate: "1851-10-18",
 	coverUrl: null,
+	matchKeys: { isbn: null, titleAuthors: null },
 });
 
 const meta: Meta<typeof UploadReviewCard> = {

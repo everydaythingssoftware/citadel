@@ -11,13 +11,15 @@ import {
 	UploadFailure,
 } from "@/lib/services/library";
 import {
+	alreadyQueued,
 	type BookSource,
+	bookRows,
 	itemsForFiles,
+	newReadyRows,
 	nextToUpload,
 	type QueueAction,
 	type QueueItem,
 	type QueueState,
-	readyItems,
 	reviewedFromStaged,
 } from "./queue";
 
@@ -41,12 +43,17 @@ export interface UploadRunner {
 	restore(): Promise<void>;
 	addFiles(files: readonly BookSource[]): void;
 	retry(key: string): void;
-	/** Stops and discards an upload (or skips a ready book). */
+	/** Stops and discards an upload. */
 	remove(key: string): Promise<void>;
-	/** Adds a ready book with the reviewed metadata; true when it landed. */
+	/** Skips a ready book: every file of its row. */
+	skip(key: string): Promise<void>;
+	/**
+	 * Adds the book of row `key`, all its files, with the reviewed metadata
+	 * (or to the existing book `book.addTo` names); true when it landed.
+	 */
 	add(key: string, book: ReviewedBook): Promise<boolean>;
-	/** Adds every ready book with the metadata read from its file. */
-	addAllReady(): Promise<void>;
+	/** Adds every new ready book with its file's metadata; possible duplicates wait. */
+	addNewBooks(): Promise<void>;
 	/** Stops in-flight transfers; staged uploads stay on the server. */
 	dispose(): void;
 }
@@ -115,6 +122,28 @@ export const createUploadRunner = ({
 			dispatch({ type: "received", key: item.key, upload, coverUrl });
 		} catch (error) {
 			if (disposed || current(item.key) === undefined) return;
+			// Already waiting here (the queue lost track of it, say after a
+			// reload): show that book instead of a refusal.
+			if (failureOf(error) === UploadFailure.conflict) {
+				dispatch({ type: "removed", key: item.key });
+				const before = new Set(getState().items.map((other) => other.key));
+				try {
+					const { uploads: staged } = await local.list();
+					dispatch({ type: "restored", uploads: staged, coverUrl });
+				} catch {
+					// The list is out of reach; the book shows on the next visit.
+				}
+				dispatch({
+					type: "noticed",
+					keys: getState()
+						.items.filter(
+							(other) =>
+								!before.has(other.key) && other.fileName === item.fileName,
+						)
+						.map((other) => other.key),
+				});
+				return;
+			}
 			const message =
 				error instanceof Error ? error.message : "Something went wrong";
 			dispatch(
@@ -286,20 +315,41 @@ export const createUploadRunner = ({
 		}
 	};
 
-	const add = async (key: string, book: ReviewedBook): Promise<boolean> => {
+	const rowItems = (key: string): QueueItem[] => {
+		const row = bookRows(getState()).find((candidate) => candidate.key === key);
 		const item = current(key);
-		if (!item?.uploadId) return false;
-		dispatch({ type: "adding", key });
+		return row?.items ?? (item ? [item] : []);
+	};
+
+	const add = async (key: string, book: ReviewedBook): Promise<boolean> => {
+		const [lead, ...others] = rowItems(key);
+		if (!lead?.uploadId) return false;
+		const files = [lead, ...others];
+		for (const item of files) dispatch({ type: "adding", key: item.key });
 		try {
-			await uploads.commit(item.uploadId, book);
+			await uploads.commit(lead.uploadId, {
+				...book,
+				also: others.flatMap((item) => (item.uploadId ? [item.uploadId] : [])),
+			});
 		} catch (error) {
-			dispatch({ type: "addFailed", key, message: messageFor(error) });
+			const message = messageFor(error);
+			for (const item of files)
+				dispatch({ type: "addFailed", key: item.key, message });
 			return false;
 		}
-		dispatch({ type: "added", key });
+		for (const item of files) dispatch({ type: "added", key: item.key });
 		onBookAdded?.();
 		freed();
 		return true;
+	};
+
+	const remove = async (key: string) => {
+		const item = current(key);
+		if (!item) return;
+		controllers.get(key)?.abort();
+		dispatch({ type: "removed", key });
+		if (item.uploadId) await cancelOnServer(item.uploadId);
+		freed();
 	};
 
 	return {
@@ -327,9 +377,17 @@ export const createUploadRunner = ({
 		},
 		addFiles: (files) => {
 			if (files.length === 0) return;
+			// A book already waiting is pointed out, not added twice.
+			const waiting = files.map((file) => alreadyQueued(getState(), file));
+			const fresh = files.filter((_, index) => waiting[index] === undefined);
+			if (fresh.length > 0)
+				dispatch({
+					type: "filesAdded",
+					items: itemsForFiles(fresh, getState().limits),
+				});
 			dispatch({
-				type: "filesAdded",
-				items: itemsForFiles(files, getState().limits),
+				type: "noticed",
+				keys: waiting.flatMap((item) => (item ? [item.key] : [])),
 			});
 			void pump();
 		},
@@ -337,20 +395,15 @@ export const createUploadRunner = ({
 			dispatch({ type: "retried", key });
 			void pump();
 		},
-		remove: async (key) => {
-			const item = current(key);
-			if (!item) return;
-			controllers.get(key)?.abort();
-			dispatch({ type: "removed", key });
-			if (item.uploadId) await cancelOnServer(item.uploadId);
-			freed();
+		remove,
+		skip: async (key) => {
+			await Promise.all(rowItems(key).map((item) => remove(item.key)));
 		},
 		add,
-		addAllReady: async () => {
-			for (const item of readyItems(getState())) {
-				if (item.book && item.phase === "ready")
-					await add(item.key, reviewedFromStaged(item.book));
-			}
+		addNewBooks: async () => {
+			for (const row of newReadyRows(getState()))
+				if (row.lead.book)
+					await add(row.key, reviewedFromStaged(row.lead.book));
 		},
 		dispose: () => {
 			disposed = true;

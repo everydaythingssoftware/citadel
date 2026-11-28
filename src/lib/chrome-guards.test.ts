@@ -1,13 +1,13 @@
-import { dispatchKeymapEvent } from "@/lib/hooks/use-keymap";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { dispatchKeymapEvent } from "@/lib/hooks/use-keymap";
 import {
 	allowsBrowserContextMenu,
-	blocksBrowserKey,
-	browserGuardedEvents,
-	installChromeGuards,
 	allowsDragStart,
 	allowsNativeSelectAll,
+	blocksBrowserKey,
+	browserGuardedEvents,
 	type GuardTarget,
+	installChromeGuards,
 	selectableFromStyles,
 } from "./chrome-guards";
 

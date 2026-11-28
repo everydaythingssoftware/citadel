@@ -21,14 +21,31 @@
 	transform: translateX(-50%);
 	display: flex;
 	flex-direction: column;
-	width: min(520px, calc(100vw - 32px));
+	/* Narrow while it's a list of books; wider, and taller, to review one.
+	   The height is set from the content (useSheetHeight) so it animates. */
+	width: min(440px, calc(100vw - 32px));
 	max-height: min(560px, calc(100vh - 64px - 48px));
+	overflow: hidden;
+	transition:
+		width 320ms cubic-bezier(0.2, 0.8, 0.2, 1),
+		height 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	background-color: var(--ctd-surface);
 	border: var(--ctd-control-border-width) solid var(--ctd-border);
 	border-radius: var(--ctd-radius-panel);
 	box-shadow: var(--ctd-dialog-shadow);
 	z-index: 111;
 	color: var(--ctd-ink);
+}
+
+/* The sheet holds focus for its controls; it never shows a ring itself. */
+.content:focus,
+.content:focus-visible {
+	outline: none;
+}
+
+.content[data-reviewing] {
+	width: min(520px, calc(100vw - 32px));
+	max-height: min(680px, calc(100vh - 112px));
 }
 
 .content[data-state="open"] {
@@ -40,11 +57,23 @@
 }
 
 .header {
+	position: relative;
+	z-index: 1;
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 10px 16px;
+	gap: 4px;
+	padding: 8px 10px 8px 16px;
 	border-bottom: 1px solid var(--ctd-border);
+	transition: box-shadow 160ms ease;
+}
+
+/* The list has scrolled under the header, or runs on under the footer. */
+.header.lifted {
+	box-shadow: 0 6px 10px -8px oklch(0% 0 0 / 0.35);
+}
+
+.footer.lifted {
+	box-shadow: 0 -6px 10px -8px oklch(0% 0 0 / 0.35);
 }
 
 .title {
@@ -62,8 +91,6 @@
 
 /* Phone-only navigation-bar controls. */
 .done,
-.addMore,
-.cancelRow,
 .narrowOnly {
 	display: none;
 }
@@ -75,7 +102,7 @@
 	/* A scrollbar appearing mustn't narrow the rows. */
 	scrollbar-gutter: stable both-edges;
 	scrollbar-width: thin;
-	padding: 4px 20px 16px;
+	padding: 6px 20px 12px;
 }
 
 /* Reviewing: the review scrolls its own middle and pins its actions. */
@@ -93,50 +120,29 @@
 	padding: 0;
 }
 
+/* Holds its children's margins, so the sheet measures its whole height. */
+.stage {
+	display: flow-root;
+}
+
+/* Possible duplicates wait in their own section, after the rest. */
+.sectionLabel {
+	margin: 20px 0 4px;
+	font-size: var(--ctd-text-callout);
+	font-weight: 400;
+	color: var(--ctd-ink-soft);
+	text-align: center;
+}
+
+/* Every book is a possible duplicate: the label leads, without the gap. */
+.list:empty + section .sectionLabel {
+	margin-top: 6px;
+}
+
 .paused {
 	margin: 8px 0 0;
 	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
-}
-
-.dropzone {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 6px;
-	width: 100%;
-	margin-top: 12px;
-	padding: 18px 14px;
-	border: 1.5px dashed color-mix(in oklch, var(--ctd-ink) 25%, transparent);
-	border-radius: 8px;
-	background: transparent;
-	font: inherit;
-	font-size: var(--ctd-text-body);
-	color: var(--ctd-ink-soft);
-	transition:
-		background-color 180ms ease,
-		border-color 180ms ease;
-}
-
-.dropzone:hover {
-	border-color: var(--ctd-brass);
-	color: var(--ctd-ink);
-}
-
-.dropzone:focus-visible,
-.done:focus-visible {
-	outline: none;
-	box-shadow: var(--ctd-focus-shadow);
-}
-
-.plus {
-	font-size: var(--ctd-text-body);
-}
-
-.link {
-	color: var(--ctd-ink);
-	text-decoration: underline;
-	text-underline-offset: 2px;
 }
 
 /* Nothing queued yet: one clear way in. */
@@ -171,10 +177,12 @@
 }
 
 .footer {
+	position: relative;
 	flex: none;
 	display: flex;
 	gap: 8px;
 	padding: 12px 20px 16px;
+	transition: box-shadow 160ms ease;
 }
 
 .spacer {
@@ -232,15 +240,48 @@
  */
 @media (max-width: 36em) {
 	.content {
-		/* The whole screen. With the keyboard up, iOS itself pans the page to
-		   keep the focused field in view; resizing to follow it fought that. */
-		inset: 0;
+		/* The page itself (usePageSheet): at least the screen behind Safari's
+		   toolbars, and as long as its content, which the document scrolls.
+		   Safari then tucks its toolbar away, keeps a focused field in view
+		   and keeps the sticky bars above its own. */
+		position: absolute;
+		inset: 0 0 auto;
+		min-height: 100svh;
 		height: auto;
 		transform: none;
 		width: 100%;
 		max-height: none;
+		overflow: visible;
 		border: 0;
 		border-radius: 0;
+	}
+
+	.content[data-reviewing] {
+		width: 100%;
+		max-height: none;
+	}
+
+	/* Review pushes in from the right like a navigation push, and the list
+	   comes back from the left. */
+	.bodyReview {
+		animation: upload-sheet-push 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+
+	.stage[data-returning] {
+		animation: upload-sheet-pop 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+
+	@keyframes upload-sheet-push {
+		from {
+			transform: translateX(100%);
+		}
+	}
+
+	@keyframes upload-sheet-pop {
+		from {
+			transform: translateX(-30%);
+			opacity: 0;
+		}
 	}
 
 	.content[data-state="open"] {
@@ -253,11 +294,15 @@
 	}
 
 	.header {
+		position: sticky;
+		top: 0;
+		z-index: 2;
 		display: grid;
 		grid-template-columns: 1fr auto 1fr;
 		min-height: 52px;
 		padding: env(safe-area-inset-top) 8px 0;
 		border-bottom: 1px solid var(--ctd-border);
+		background: var(--ctd-surface);
 	}
 
 	/* Reviewing on a phone: the review's own bar is the navigation bar. */
@@ -285,13 +330,11 @@
 		text-align: center;
 	}
 
-	.status,
 	.close {
 		display: none;
 	}
 
 	.addMore {
-		display: inline-flex;
 		justify-self: end;
 		grid-column: 3;
 		min-width: 44px;
@@ -303,28 +346,15 @@
 	.body {
 		display: flex;
 		flex-direction: column;
+		flex: 1 0 auto;
+		min-height: auto;
+		overflow: visible;
 		padding: 0 16px 16px;
-		overscroll-behavior-y: contain;
 	}
 
 	.bodyReview {
+		overflow: visible;
 		padding: 0;
-	}
-
-	/* The navigation bar's + takes over choosing more. */
-	.dropzone {
-		display: none;
-	}
-
-	/* At the end of the list, full width, press and hold. */
-	.cancelRow {
-		display: flex;
-		margin-top: 12px;
-	}
-
-	.cancelRow button {
-		min-height: 48px;
-		border-radius: 14px;
 	}
 
 	.empty {
@@ -360,13 +390,25 @@
 	}
 
 	.footer {
+		position: sticky;
+		bottom: 0;
+		z-index: 2;
 		padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
 		border-top: 1px solid var(--ctd-border);
 		background: var(--ctd-surface);
-		display: grid;
-		/* Like the review's Skip / Add: the secondary action, then the main one. */
-		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+		display: flex;
 		gap: 10px;
+	}
+
+	/* Like the review's Skip / Add: the secondary action, then the main one,
+	   twice as wide; alone, the main one takes the bar. */
+	.footer :global(button) {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	.footer .primary {
+		flex-grow: 2;
 	}
 
 	.cancelAll,
@@ -397,6 +439,15 @@
 @media (prefers-reduced-motion: reduce) {
 	.overlay[data-state],
 	.content[data-state] {
+		animation: none;
+	}
+
+	.content {
+		transition: none;
+	}
+
+	.bodyReview,
+	.stage[data-returning] {
 		animation: none;
 	}
 }

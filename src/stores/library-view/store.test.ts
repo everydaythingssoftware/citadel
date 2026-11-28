@@ -1,5 +1,5 @@
-import type { SmartShelf } from "@/lib/platform/settings/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SmartShelf } from "@/lib/platform/settings/types";
 
 const PREFS_KEY = "book-form-prefs";
 

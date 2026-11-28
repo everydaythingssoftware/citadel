@@ -1,14 +1,13 @@
-import type { BookActions } from "./use-book-interactions";
 import type React from "react";
 import { useMemo } from "react";
 import type { LibraryBook } from "@/bindings";
+import { bookShortcutHint, shortcutEnvironment } from "@/lib/app-shortcuts";
 import {
 	downloadUrlDragData,
 	dragIconPath,
 	primaryLocalPath,
 	primaryRemoteFile,
 } from "@/lib/book-files";
-import { bookShortcutHint, shortcutEnvironment } from "@/lib/app-shortcuts";
 import { BOOK_COMMAND } from "@/lib/book-menu";
 import {
 	bookClickIntent,
@@ -38,6 +37,7 @@ import {
 	useBookSelectionStore,
 } from "@/stores/book-selection/store";
 import { useLibraryStore } from "@/stores/library/store";
+import type { BookActions } from "./use-book-interactions";
 
 // Only Chromium reads `DownloadURL`; it is also the only engine with
 // `navigator.userAgentData`. Elsewhere a cover drags nothing at all rather

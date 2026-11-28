@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { useEffect, useRef } from "react";
 import { BookCover } from "@/components/atoms/BookCover";
 import { UploadProgressRing } from "@/components/atoms/UploadProgressRing";
 import {
@@ -12,8 +13,17 @@ import { hasSource, type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import styles from "./UploadQueueRow.module.css";
 
 export interface UploadQueueRowProps {
+	/** The book's file, or the first of its files. */
 	item: QueueItem;
+	/** How many files make up the book; more than one stacks the cover. */
+	files?: number;
+	/** Opens the review at this book; the whole row is its target. */
 	onReview?: () => void;
+	/**
+	 * Set when the book was just chosen again while already waiting: the row
+	 * scrolls into view and glows once. A new value glows again.
+	 */
+	noticed?: number;
 	onRetry?: () => void;
 	onRemove?: () => void;
 }
@@ -40,7 +50,13 @@ const subtitle = (item: QueueItem): string => {
 	}
 };
 
-const Thumbnail = ({ item }: { item: QueueItem }) => {
+const Thumbnail = ({
+	item,
+	stacked = false,
+}: {
+	item: QueueItem;
+	stacked?: boolean;
+}) => {
 	if (item.phase === UploadPhase.failed || item.phase === UploadPhase.rejected)
 		return (
 			<span className={clsx(styles.thumb, styles.problem)}>
@@ -49,7 +65,13 @@ const Thumbnail = ({ item }: { item: QueueItem }) => {
 		);
 	if (item.book)
 		return (
-			<span className={clsx(styles.thumb, styles.coverSlot)}>
+			<span
+				className={clsx(
+					styles.thumb,
+					styles.coverSlot,
+					stacked && styles.stacked,
+				)}
+			>
 				<BookCover
 					alt=""
 					provisional
@@ -63,20 +85,42 @@ const Thumbnail = ({ item }: { item: QueueItem }) => {
 	return <span className={clsx(styles.thumb, styles.pending)} />;
 };
 
-/** One file in the upload queue, with what's happening to it and what you can do. */
+/**
+ * One book in the upload queue: its cover, title and author. A ready book is
+ * one big target that opens its review; a file still on its way shows its
+ * progress, and a problem what you can do about it.
+ */
 export const UploadQueueRow = ({
 	item,
+	files = 1,
+	noticed,
 	onReview,
 	onRetry,
 	onRemove,
 }: UploadQueueRowProps) => {
+	const rowRef = useRef<HTMLLIElement>(null);
+	useEffect(() => {
+		if (noticed !== undefined)
+			rowRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+	}, [noticed]);
 	const problem =
 		item.phase === UploadPhase.failed ||
 		item.phase === UploadPhase.rejected ||
 		(item.phase === UploadPhase.ready && item.message !== undefined);
 	return (
-		<li className={styles.row} data-phase={item.phase}>
-			<Thumbnail item={item} />
+		<li className={styles.row} data-phase={item.phase} ref={rowRef}>
+			{noticed !== undefined && (
+				<span key={noticed} className={styles.notice} aria-hidden />
+			)}
+			{item.phase === UploadPhase.ready && onReview && (
+				<button
+					type="button"
+					className={styles.target}
+					aria-label={`Review ${item.name}`}
+					onClick={onReview}
+				/>
+			)}
+			<Thumbnail item={item} stacked={files > 1} />
 			<div className={styles.text}>
 				<span className={styles.name}>{item.name}</span>
 				<span className={clsx(styles.subtitle, problem && styles.danger)}>
@@ -107,17 +151,9 @@ export const UploadQueueRow = ({
 				{item.phase === UploadPhase.adding && (
 					<Spinner size={18} aria-label={subtitle(item)} />
 				)}
-				{item.phase === UploadPhase.ready && (
-					// On phones the whole row taps through to review (the button
-					// stretches over it) and shows a chevron instead.
-					<Button
-						className={styles.review}
-						onClick={onReview}
-						aria-label={`Review ${item.name}`}
-					>
-						<span className={styles.reviewLabel}>Review</span>
-						<ChevronRightGlyph className={styles.chevron} />
-					</Button>
+				{item.phase === UploadPhase.ready && onReview && (
+					// Phones end a row that opens something in a disclosure chevron.
+					<ChevronRightGlyph className={styles.chevron} aria-hidden />
 				)}
 				{item.phase === UploadPhase.failed && hasSource(item) && (
 					<Button onClick={onRetry}>Try Again</Button>

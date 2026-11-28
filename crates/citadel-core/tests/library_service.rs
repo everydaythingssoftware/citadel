@@ -1,7 +1,8 @@
 use citadel_core::{
-    contracts::{BookSortOrder, BookUpdate, LibraryBookQuery},
+    contracts::{BookCandidate, BookSortOrder, BookUpdate, LibraryBookQuery, MatchReason},
     error::LibraryErrorCode,
     library::LibraryService,
+    staging::{AddTo, CommitUpload},
     Actor, AssetUrlBuilder, BookFile, HttpUrlBuilder,
 };
 use libcalibre::{BookAdd, Library};
@@ -101,6 +102,134 @@ fn shared_mutation_read_state_and_genres_use_existing_library_behavior() {
         .iter()
         .any(|column| column.label == "citadel_genres"));
     assert!(!service.get_custom_values(&id).unwrap().is_empty());
+}
+
+fn candidate(title: &str, authors: &[&str]) -> BookCandidate {
+    BookCandidate {
+        title: title.into(),
+        author_names: authors.iter().map(|name| name.to_string()).collect(),
+        identifier: None,
+        language: None,
+    }
+}
+
+fn commit(title: &str, add_to: AddTo) -> CommitUpload {
+    serde_json::from_value::<CommitUpload>(serde_json::json!({"title": title}))
+        .map(|body| CommitUpload { add_to, ..body })
+        .unwrap()
+}
+
+#[test]
+fn possible_duplicates_are_listed_but_never_refused() {
+    let (directory, mut library, id) = fixture();
+    let urls = HttpUrlBuilder::new("");
+    let mut service = LibraryService::new(&mut library, &urls);
+    let found = service
+        .find_matches(&[
+            candidate("  contract:  BOOK!", &["Author, Contract"]),
+            candidate("Contract Book", &["Other Author"]),
+            candidate("Contract Book", &[]),
+        ])
+        .unwrap();
+    assert_eq!(found[0].len(), 1);
+    let first = &found[0][0];
+    assert_eq!(
+        (first.id.as_str(), first.reason),
+        (id.as_str(), MatchReason::TitleAndAuthor)
+    );
+    assert_eq!(first.title, "Contract Book");
+    assert_eq!(first.author_names, vec!["Contract Author"]);
+    assert_eq!(first.formats, vec!["TXT"]);
+    assert!(first.added.is_some());
+    assert!(found[1].is_empty(), "the same title by someone else");
+    assert_eq!(found[2][0].reason, MatchReason::Title);
+
+    let source = directory.path().join("again.txt");
+    std::fs::write(&source, "again").unwrap();
+    let again = service
+        .add_staged(
+            &actor(),
+            commit("Contract Book", AddTo::NewBook),
+            vec![source],
+            None,
+        )
+        .unwrap();
+    assert_ne!(again.id, id);
+    let found = service
+        .find_matches(&[candidate("Contract Book", &["Contract Author"])])
+        .unwrap();
+    assert_eq!(found[0].len(), 2);
+}
+
+#[test]
+fn staged_files_make_one_book_or_join_an_existing_one() {
+    let (directory, mut library, id) = fixture();
+    let mut service = LibraryService::new(&mut library, &AssetUrlBuilder);
+    let file = |name: &str, contents: &str| {
+        let path = directory.path().join(name);
+        std::fs::write(&path, contents).unwrap();
+        path
+    };
+    let added = service
+        .add_staged(
+            &actor(),
+            commit("Two Formats", AddTo::NewBook),
+            vec![file("two.epub", "epub"), file("two.pdf", "%PDF")],
+            None,
+        )
+        .unwrap();
+    assert_eq!(added.title, "Two Formats");
+    assert_eq!(added.file_list.len(), 2);
+
+    let existing = AddTo::ExistingBook {
+        book_id: id.clone(),
+    };
+    let joined = service
+        .add_staged(
+            &actor(),
+            commit("", existing.clone()),
+            vec![file("more.pdf", "%PDF"), file("newer.txt", "a newer text")],
+            None,
+        )
+        .unwrap();
+    assert_eq!(joined.id, id);
+    assert_eq!(joined.title, "Contract Book", "the metadata is ignored");
+    let formats = service
+        .find_matches(&[candidate("Contract Book", &[])])
+        .unwrap();
+    let mut formats = formats[0][0].formats.clone();
+    formats.sort();
+    assert_eq!(formats, vec!["PDF", "TXT"]);
+    let BookFile::Local(text) = joined
+        .file_list
+        .iter()
+        .find(|file| matches!(file, BookFile::Local(local) if local.path.extension().is_some_and(|e| e == "txt")))
+        .unwrap()
+    else {
+        panic!("desktop files are local")
+    };
+    assert_eq!(std::fs::read_to_string(&text.path).unwrap(), "a newer text");
+
+    let error = service
+        .add_staged(
+            &actor(),
+            commit(
+                "",
+                AddTo::ExistingBook {
+                    book_id: "999".into(),
+                },
+            ),
+            vec![file("lost.txt", "lost")],
+            None,
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error.code, LibraryErrorCode::NotFound);
+    let error = service
+        .add_staged(&actor(), commit(" ", AddTo::NewBook), vec![], None)
+        .err()
+        .unwrap();
+    assert_eq!(error.code, LibraryErrorCode::InvalidArgument);
 }
 
 #[test]

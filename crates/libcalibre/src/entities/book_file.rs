@@ -21,7 +21,7 @@ impl BookFile {
         let ext = mimetype.to_file_extension();
 
         if ext.is_empty() {
-            format!("{}", self.name)
+            self.name.to_string()
         } else {
             format!("{}.{}", self.name, ext)
         }

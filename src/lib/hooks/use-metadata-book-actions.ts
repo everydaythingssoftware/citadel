@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BookMetadata, LibraryBook } from "@/bindings";
-import { useLibraryActions, useLibraryStore } from "@/stores/library/store";
 import { normalizeIsbn } from "@/lib/isbn";
 import { applyMetadataCover, refreshCoverId } from "@/lib/metadata-import";
 import type {
@@ -14,6 +13,7 @@ import {
 } from "@/lib/metadata-providers/registry";
 import type { ProviderId } from "@/lib/metadata-providers/types";
 import { usePlatform } from "@/lib/platform/context";
+import { useLibraryActions, useLibraryStore } from "@/stores/library/store";
 import {
 	useEnabledProviders,
 	useResolvedProviderConfig,

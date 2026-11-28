@@ -1,5 +1,5 @@
-import { defaultSettings } from "./types";
 import type { MetadataProvidersSettings, SettingsSchema } from "./types";
+import { defaultSettings } from "./types";
 
 /** The current settings schema version. Bump when the shape changes. */
 export const CURRENT_SCHEMA_VERSION = 4;

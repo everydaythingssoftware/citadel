@@ -1,0 +1,125 @@
+/* The question and its answers, a field like the form's. */
+.question {
+	display: grid;
+	gap: 10px;
+	margin: 0 0 16px;
+	padding: 0;
+	border: 0;
+	min-width: 0;
+}
+
+.questionTitle {
+	padding: 0;
+	margin-bottom: 2px;
+	font-size: var(--ctd-text-headline);
+	font-weight: 600;
+	color: var(--ctd-ink);
+}
+
+/*
+ * An answer card. 16 all round, measured from the ink rather than the
+ * line boxes: the text block is pulled up by its title's leading and cap
+ * gap so the title's caps sit level with the cover's top edge, and pulled
+ * in at the bottom by the last line's descent.
+ */
+.choice {
+	position: relative;
+	display: grid;
+	grid-template-columns: 52px minmax(0, 1fr);
+	column-gap: 14px;
+	padding: 16px;
+	border: var(--ctd-control-border-width) solid var(--ctd-border);
+	border-radius: var(--ctd-radius-panel);
+	background: var(--ctd-surface-strong);
+	line-height: var(--ctd-leading-body);
+}
+
+.choice[data-selected] {
+	border-color: var(--ctd-accent);
+	box-shadow: 0 0 0 0.5px var(--ctd-accent);
+}
+
+.choice:has(.radio:focus-visible) {
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+/* Level with the middle of the title's capitals. */
+.radio {
+	position: absolute;
+	top: calc(16px - 0.24em + 0.5lh);
+	right: 16px;
+	margin: 0;
+	translate: 0 -50%;
+	accent-color: var(--ctd-accent);
+}
+
+/* Top-aligned, so the cover keeps its own height instead of the row's. */
+.matchCover {
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+}
+
+.matchText {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	margin: -0.3em 0 -0.24em;
+}
+
+.matchTitle {
+	font-weight: 600;
+}
+
+/* Room for the radio beside the title; the lines below can pass under it. */
+.question .matchTitle {
+	padding-right: 28px;
+}
+
+.matchAuthors {
+	color: var(--ctd-ink-soft);
+}
+
+/* Labels and values, a step apart from the title and author above. */
+.facts {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	column-gap: 12px;
+	row-gap: 3px;
+	margin: 10px 0 0;
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
+}
+
+.facts dt {
+	color: var(--ctd-ink-soft);
+}
+
+.facts dd {
+	margin: 0;
+	font-variant-numeric: tabular-nums;
+}
+
+.same {
+	color: var(--ctd-ink);
+	font-weight: 600;
+}
+
+.hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+}
+
+/* "No, a different book": one line, the radio level with it. */
+.different {
+	display: flex;
+	align-items: center;
+	font-weight: 500;
+}
+
+.different .radio {
+	top: 50%;
+}

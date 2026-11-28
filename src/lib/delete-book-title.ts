@@ -1,5 +1,5 @@
-import type { OperatingSystem } from "@/lib/platform/os";
 import { formatCount, pluralize } from "@/lib/book-count";
+import type { OperatingSystem } from "@/lib/platform/os";
 import { BookDeletion, type TBookDeletion } from "@/lib/services/library";
 
 export const trashNameFor = (os: OperatingSystem): string =>

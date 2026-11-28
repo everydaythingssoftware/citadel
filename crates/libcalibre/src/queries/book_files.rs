@@ -26,6 +26,22 @@ pub(crate) fn create(
         .map_err(CalibreError::from)
 }
 
+/// Points a `data` row at a replacement file.
+pub(crate) fn update(
+    conn: &mut SqliteConnection,
+    file_id: i32,
+    file_name: &str,
+    size: i32,
+) -> Result<(), CalibreError> {
+    use crate::schema::data::dsl::*;
+
+    diesel::update(data.filter(id.eq(file_id)))
+        .set((name.eq(file_name), uncompressed_size.eq(size)))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(CalibreError::from)
+}
+
 // =============================================================================
 // Relationships
 // =============================================================================
@@ -58,10 +74,7 @@ pub(crate) fn find_many_by_book_ids(
 
     let mut grouped: HashMap<BookId, Vec<BookFile>> = HashMap::new();
     for file in files? {
-        grouped
-            .entry(BookId(file.book))
-            .or_insert_with(Vec::new)
-            .push(file);
+        grouped.entry(BookId(file.book)).or_default().push(file);
     }
 
     Ok(grouped)

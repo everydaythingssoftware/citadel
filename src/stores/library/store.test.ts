@@ -1,5 +1,5 @@
-import type { Library, Options } from "@/lib/services/library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Library, Options } from "@/lib/services/library";
 
 const initClient = vi.fn<(options: Options) => Promise<Library>>();
 

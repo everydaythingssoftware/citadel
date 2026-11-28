@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
 const ipc = vi.hoisted(() => ({
 	initClient: vi.fn(),
 	clbCmdCreateLibrary: vi.fn(),
@@ -11,9 +12,10 @@ const ipc = vi.hoisted(() => ({
 	clbCmdSetBookCoverFromMetadata: vi.fn(),
 }));
 vi.mock("@/bindings", () => ({ commands: ipc }));
+
+import { CoverExpiredError } from "../library/types";
 import { tauriLibraryCatalog } from "./tauri";
 import { webLibraryCatalog } from "./web";
-import { CoverExpiredError } from "../library/types";
 
 describe("catalog and library transports", () => {
 	it("rejects unavailable remote connections before issuing desktop commands", async () => {

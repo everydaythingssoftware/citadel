@@ -44,10 +44,7 @@ pub(crate) fn find_many_by_book_ids(
 
     let mut grouped: HashMap<BookId, Vec<Identifier>> = HashMap::new();
     for ident in idents? {
-        grouped
-            .entry(BookId(ident.book))
-            .or_insert_with(Vec::new)
-            .push(ident)
+        grouped.entry(BookId(ident.book)).or_default().push(ident)
     }
 
     Ok(grouped)

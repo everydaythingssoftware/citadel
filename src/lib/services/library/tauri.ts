@@ -34,15 +34,17 @@ export const createTauriBookImports = (): LocalBookImports => {
 			size: file.size,
 			receivedBytes: file.size,
 			book: file.book,
+			matches: file.matches,
 		};
 	};
 	const refused = (error: LibraryError) =>
 		new UploadError(
-			error.code === "invalidArgument" ||
-				error.code === "notFound" ||
-				error.code === "conflict"
-				? UploadFailure.invalid
-				: UploadFailure.server,
+			error.code === "conflict"
+				? // Already waiting to be added.
+					UploadFailure.conflict
+				: error.code === "invalidArgument" || error.code === "notFound"
+					? UploadFailure.invalid
+					: UploadFailure.server,
 			error.message,
 		);
 	return {
@@ -66,9 +68,17 @@ export const createTauriBookImports = (): LocalBookImports => {
 				language: book.language ?? null,
 				tags: book.tags,
 				publicationDate: book.publicationDate ?? null,
+				also: book.also ?? [],
+				addTo: book.addTo ?? { kind: "newBook" },
 			});
 			if (result.status === "error") throw new Error(result.error.message);
 			covers.delete(id);
+			for (const other of book.also ?? []) covers.delete(other);
+			return result.data;
+		},
+		findMatches: async (candidate) => {
+			const result = await commands.clbQueryBookMatches(candidate);
+			if (result.status === "error") throw refused(result.error);
 			return result.data;
 		},
 		cancel: async (id) => {

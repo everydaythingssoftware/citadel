@@ -25,12 +25,6 @@ struct BusyTimeout {
 }
 
 #[derive(QueryableByName)]
-struct TextResult {
-    #[diesel(sql_type = Text)]
-    result: String,
-}
-
-#[derive(QueryableByName)]
 struct CountResult {
     #[diesel(sql_type = Integer)]
     count: i32,

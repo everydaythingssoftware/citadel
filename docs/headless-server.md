@@ -465,12 +465,36 @@ user who started an upload can see it. Upload routes:
 
 - `POST /api/uploads/{upload_id}/commit` with the reviewed metadata
   (`{"title": "…", "authorNames": […], "identifier": "…", "publisher": "…",
-  "language": "en", "tags": […], "publicationDate": "2021-03-04"}`; only `title`
-  is required): adds the finished upload to the library with the cover from
-  its file, records the signed-in user as the one who added it, and deletes the
-  staged copy. Answers 201 with the new book, or 409 when the upload isn't
-  finished or is busy, and 403 `readOnly` when the library is open read-only. An identifier is kept
-  when it is an ISBN.
+  "language": "en", "tags": […], "publicationDate": "2021-03-04"}`; only
+  `title` is required): adds the finished upload to the library with the cover
+  from its file, records the signed-in user as the one who added it, and
+  deletes the staged copy. `"also": ["<upload_id>", …]` adds more finished
+  uploads as further formats of the same book (an EPUB and a MOBI of one book).
+  `"addTo": {"kind": "existingBook", "bookId": "…"}` adds the files to a book
+  already in the library instead, ignoring the metadata (no `title` needed) and
+  replacing a format the book already has; the default is
+  `{"kind": "newBook"}`. Every upload is added, or none. Answers 201 with the
+  book, or 404 when an upload (or the existing book) isn't found, 409 when an
+  upload isn't finished or is busy, and 403 `readOnly` when the library is open
+  read-only. An identifier is kept when it is an ISBN. A possible duplicate is
+  never refused.
+
+Every view of an upload that has a `book` (the list, `GET` and the final chunk's
+answer) also carries `matches`: books the library may already hold, strongest
+first, each with its `id`, `title`, `authorNames`, `formats`, `isbn`, `added`,
+`coverUrl` and `reason`. A book matches on the same ISBN (`isbn`; ISBN-10 and 13
+count as the same), on the same title with an author in common and no clashing
+language (`titleAndAuthor`), or on the same title where one of the two has no
+author (`title`). Titles and author names ignore case and punctuation, and author
+names their word order. The same title by different authors is not a match. The
+list is best effort, so an empty one doesn't mean the book is new. The `book`'s
+`matchKeys` (`isbn`, `titleAuthors`) are equal for uploads of the same book, to
+group them for `also`.
+
+- `POST /api/books/matches` with `{"title": "…", "authorNames": […],
+  "identifier": "…", "language": "en"}` (only `title` is required): the same
+  matches for metadata as the user edits it, at most five. Anyone who can read
+  the library can ask.
 
 Limits can be tuned in an optional `[api.uploads]` table (defaults shown):
 
@@ -558,7 +582,7 @@ perUserPerMinute = 30
 
 Build the frontend with `bun run build:web`, set `api.webDirectory` to the absolute build directory, and open the server in your browser. The frontend itself is served without authentication and shows a sign-in form; the session cookie then authenticates API requests, images, and downloads. The sidebar has a sign-out button. The frontend and API must share an origin, either using this built-in hosting or a reverse proxy. Deep links serve the app; unknown API routes and missing assets remain 404s.
 
-Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. When the library is open for writing, books can be added from the browser: drop files anywhere on the window or use Add Book, watch them upload, then review each one (or add them all with the metadata read from their files). Uploads keep going while the sheet is closed, and finished ones wait out the review window across reloads and restarts. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
+Browser startup uses the server’s configured library and ignores desktop library paths in browser settings. Search, paged books, authors, series, tags, publishers, covers, and downloads are available. When the library is open for writing, books can be added from the browser: drop files anywhere on the window or use Add Book, watch them upload, then review each one (or add them all with the metadata read from their files). Closing the sheet drops the books not yet added, except while files are still being sent: those keep going with the sheet closed. Finished uploads wait out the review window across reloads and restarts. Thumbnail generation uses a bounded in-memory cache and never writes inside the library.
 
 For frontend development, run `CITADEL_API_URL=http://127.0.0.1:8081 bun dev:web` to proxy `/api` through Vite.
 

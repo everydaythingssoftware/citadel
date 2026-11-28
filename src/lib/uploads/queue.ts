@@ -1,5 +1,6 @@
 import type { LocalFile } from "@/lib/platform";
 import type {
+	BookMatch,
 	ReviewedBook,
 	StagedBook,
 	StagedUpload,
@@ -46,6 +47,10 @@ export interface QueueItem {
 	expiresAt?: string;
 	/** Why the item failed, was rejected, or couldn't be added. */
 	message?: string;
+	/** Books already in the library that this one may duplicate. */
+	matches?: BookMatch[];
+	/** Split off: never grouped with another file as one book. */
+	separate?: boolean;
 }
 
 export interface QueueState {
@@ -53,6 +58,12 @@ export interface QueueState {
 	limits?: UploadLimits;
 	/** Set when the server has no room for another upload yet. */
 	paused?: string;
+	/**
+	 * Books chosen again while already waiting: the queue points them out
+	 * instead of adding them twice. `id` changes each time, so pointing
+	 * out the same book again replays it.
+	 */
+	noticed?: { keys: string[]; id: number };
 }
 
 export const emptyQueue: QueueState = { items: [] };
@@ -91,6 +102,10 @@ export type QueueAction =
 	| { type: "added"; key: string }
 	| { type: "addFailed"; key: string; message: string }
 	| { type: "removed"; key: string }
+	/** Points out books chosen again while already waiting; none clears it. */
+	| { type: "noticed"; keys: string[] }
+	/** The files of one book go their own ways, each a book of its own. */
+	| { type: "split"; keys: string[] }
 	| { type: "cleared" };
 
 const extensionOf = (fileName: string): string =>
@@ -157,6 +172,27 @@ export const itemsForFiles = (
 		};
 	});
 
+/**
+ * The queue item already holding a chosen file, if any: the same file on
+ * this computer, or a picked file of the same name and size. Files that
+ * failed or were turned away don't count; choosing them again retries.
+ */
+export const alreadyQueued = (
+	state: QueueState,
+	source: BookSource,
+): QueueItem | undefined =>
+	state.items.find(
+		(item) =>
+			item.phase !== UploadPhase.added &&
+			item.phase !== UploadPhase.rejected &&
+			item.phase !== UploadPhase.failed &&
+			(isLocal(source)
+				? item.path === source.path
+				: item.file !== undefined
+					? item.file.name === source.name && item.file.size === source.size
+					: item.fileName === source.name && item.size === source.size),
+	);
+
 /** Whether the item still has its file, to send or read (again). */
 export const hasSource = (item: QueueItem): boolean =>
 	item.file !== undefined || item.path !== undefined;
@@ -176,6 +212,7 @@ const fromStaged = (
 	coverUrl: upload.book?.coverUrl ? coverUrl(upload.id) : undefined,
 	phase: upload.book ? UploadPhase.ready : item.phase,
 	message: undefined,
+	matches: upload.matches ?? [],
 });
 
 const update = (
@@ -313,6 +350,20 @@ export const queueReducer = (
 				...state,
 				items: state.items.filter((item) => item.key !== action.key),
 			};
+		case "split":
+			return {
+				...state,
+				items: state.items.map((item) =>
+					action.keys.includes(item.key) ? { ...item, separate: true } : item,
+				),
+			};
+		case "noticed":
+			return action.keys.length === 0
+				? { ...state, noticed: undefined }
+				: {
+						...state,
+						noticed: { keys: action.keys, id: (state.noticed?.id ?? 0) + 1 },
+					};
 		case "cleared":
 			return { ...state, items: [], paused: undefined };
 	}
@@ -338,6 +389,139 @@ export const readyItems = (state: QueueState): QueueItem[] =>
 	state.items.filter(
 		(item) =>
 			item.phase === UploadPhase.ready || item.phase === UploadPhase.adding,
+	);
+
+/**
+ * One book in the queue: usually one file, but an EPUB and a MOBI of the
+ * same book (same ISBN, or same title and authors) read as one book with two
+ * formats, added together.
+ */
+export interface BookRow {
+	/** The lead file's key, which names the row. */
+	key: string;
+	/** The file whose metadata and cover the book shows. */
+	lead: QueueItem;
+	items: QueueItem[];
+	/** Books already in the library this one may duplicate, strongest first. */
+	matches: BookMatch[];
+}
+
+const isReadyItem = (item: QueueItem): boolean =>
+	item.phase === UploadPhase.ready || item.phase === UploadPhase.adding;
+
+const sameBook = (a: StagedBook, b: StagedBook): boolean =>
+	(a.matchKeys.isbn != null && a.matchKeys.isbn === b.matchKeys.isbn) ||
+	(a.matchKeys.titleAuthors != null &&
+		a.matchKeys.titleAuthors === b.matchKeys.titleAuthors);
+
+const groupable = (item: QueueItem): item is QueueItem & { book: StagedBook } =>
+	item.book !== undefined && !item.separate && isReadyItem(item);
+
+/** Another format of the same book as every file already in the group. */
+const joins = (group: QueueItem[], item: QueueItem): boolean =>
+	groupable(item) &&
+	group.every(
+		(other) =>
+			groupable(other) &&
+			other.book.format !== item.book.format &&
+			sameBook(other.book, item.book),
+	);
+
+const mergedMatches = (items: QueueItem[]): BookMatch[] => [
+	...new Map(
+		items
+			.flatMap((item) => item.matches ?? [])
+			.map((match) => [match.id, match]),
+	).values(),
+];
+
+/** Whose metadata and cover a book of several files shows: the richest format. */
+const LEAD_FORMATS = ["epub", "azw3", "mobi", "azw", "pdf", "txt"];
+const leadRank = (item: QueueItem): number => {
+	const rank = LEAD_FORMATS.indexOf(item.book?.format ?? "");
+	return rank === -1 ? LEAD_FORMATS.length : rank;
+};
+
+/** The queue as books, in the order their first file arrived. */
+export const bookRows = (state: QueueState): BookRow[] =>
+	visibleItems(state)
+		.reduce<{ lead: QueueItem; items: QueueItem[] }[]>((rows, item) => {
+			const row = rows.find((candidate) => joins(candidate.items, item));
+			if (row) row.items.push(item);
+			else rows.push({ lead: item, items: [item] });
+			return rows;
+		}, [])
+		.map(({ lead: first, items }) => {
+			const lead = items.reduce(
+				(best, item) => (leadRank(item) < leadRank(best) ? item : best),
+				first,
+			);
+			return {
+				key: lead.key,
+				lead,
+				items: [lead, ...items.filter((item) => item !== lead)],
+				matches: mergedMatches(items),
+			};
+		});
+
+export const isPossibleDuplicate = (row: BookRow): boolean =>
+	row.matches.length > 0 && isReadyItem(row.lead);
+
+/** The formats a row's files make up, as people know them ("EPUB"). */
+export const rowFormats = (row: BookRow): string[] =>
+	row.items.flatMap((item) =>
+		item.book ? [item.book.format.toUpperCase()] : [],
+	);
+
+/** A file a book is made of, as the review lists it. */
+export interface BookFile {
+	key: string;
+	/** As people know it: "EPUB". */
+	format: string;
+	fileName: string;
+}
+
+/** The files a row's book is made of, lead first. */
+export const rowFiles = (row: BookRow): BookFile[] =>
+	row.items.flatMap((item) =>
+		item.book
+			? [
+					{
+						key: item.key,
+						format: item.book.format.toUpperCase(),
+						fileName: item.fileName,
+					},
+				]
+			: [],
+	);
+
+export interface QueueSections {
+	/** New books, and files still on their way. */
+	books: BookRow[];
+	/** Ready books that may already be in the library. */
+	possibleDuplicates: BookRow[];
+}
+
+export const queueSections = (state: QueueState): QueueSections => {
+	const rows = bookRows(state);
+	return {
+		books: rows.filter((row) => !isPossibleDuplicate(row)),
+		possibleDuplicates: rows.filter(isPossibleDuplicate),
+	};
+};
+
+/** The books to review, in the order the queue lists them. */
+export const reviewRows = (state: QueueState): BookRow[] => {
+	const { books, possibleDuplicates } = queueSections(state);
+	return [...books, ...possibleDuplicates].filter((row) =>
+		isReadyItem(row.lead),
+	);
+};
+
+/** Ready books Add New Books takes: everything that isn't a possible duplicate. */
+export const newReadyRows = (state: QueueState): BookRow[] =>
+	queueSections(state).books.filter(
+		(row) => row.lead.phase === UploadPhase.ready && row.lead.book,
 	);
 
 /** Items still shown in the queue: added books leave once acknowledged. */

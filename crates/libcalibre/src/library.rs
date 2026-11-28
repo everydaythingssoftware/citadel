@@ -6,10 +6,15 @@ use sanitise_file_name::sanitise;
 
 const UNKNOWN_AUTHOR: &str = "Unknown";
 
+/// The most possible duplicates [`Library::find_duplicates`] lists for one
+/// candidate.
+pub const MAX_DUPLICATES: usize = 5;
+
 use crate::{
     book_file::cover_image_data,
     custom_columns::{self, CustomColumn, CustomColumnKind, CustomColumnSpec, CustomValue},
     entities::book_file::NewBookFile,
+    matching::{Candidate, DuplicateMatch, MatchProfile},
     operations,
     persistence::{establish_connection, establish_read_only_connection},
     queries::{authors as author_queries, book_files, books as book_queries},
@@ -625,7 +630,7 @@ impl Library {
             .map(|a| a.name.clone())
             .unwrap_or_default();
         let author_dir_name = sanitise(&primary_author);
-        let book_dir_name = sanitise(&format!("{} ({})", &book.title, book_row.id));
+        let book_dir_name = sanitise(&format!("{} ({})", book.title, book_row.id));
         let book_dir_relative = Path::new(&author_dir_name).join(&book_dir_name);
         let library_root = Path::new(&self.db_path.library_path);
 
@@ -650,7 +655,7 @@ impl Library {
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_uppercase();
-            let file_stem = sanitise(&format!("{} - {}", &book.title, &primary_author));
+            let file_stem = sanitise(&format!("{} - {}", book.title, primary_author));
             let file_size = std::fs::metadata(file_path)
                 .map(|m| m.len() as i32)
                 .unwrap_or(0);
@@ -784,6 +789,127 @@ impl Library {
             }
             Ok(dirs)
         })
+    }
+
+    /// For each candidate, the books in the library that may be the same
+    /// book, strongest match first (see [`crate::matching`]), at most
+    /// [`MAX_DUPLICATES`] each. Reads the library once for all candidates,
+    /// without hydrating books.
+    pub fn find_duplicates(
+        &mut self,
+        candidates: &[Candidate],
+    ) -> Result<Vec<Vec<DuplicateMatch>>, CalibreError> {
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut existing: Vec<(BookId, MatchProfile)> =
+            crate::queries::matching::book_facts(&mut self.conn)?
+                .into_iter()
+                .map(|(id, facts)| {
+                    let profile = MatchProfile::new(
+                        &facts.title,
+                        &facts.author_names,
+                        facts.isbns,
+                        &facts.languages,
+                    );
+                    (id, profile)
+                })
+                .collect();
+        existing.sort_by_key(|(id, _)| id.as_i32());
+        Ok(candidates
+            .iter()
+            .map(|candidate| {
+                let candidate = MatchProfile::of(candidate);
+                let mut matches: Vec<DuplicateMatch> = existing
+                    .iter()
+                    .filter_map(|(book_id, profile)| {
+                        candidate.reason(profile).map(|reason| DuplicateMatch {
+                            book_id: *book_id,
+                            reason,
+                        })
+                    })
+                    .collect();
+                matches.sort_by_key(|found| found.reason);
+                matches.truncate(MAX_DUPLICATES);
+                matches
+            })
+            .collect())
+    }
+
+    /// Adds files to an existing book as further formats, copied into its
+    /// folder and named like [`Library::add_book`] names them. A format the
+    /// book already has is replaced: its old file is deleted and its record
+    /// updated. Returns the updated book, which is queued in
+    /// `metadata_dirtied`.
+    ///
+    /// Fails with [`CalibreError::BookNotFound`] for an unknown book and
+    /// [`CalibreError::FileSystem`] when a file can't be read or copied;
+    /// every file is checked before anything is written, but files copied
+    /// before a later failure remain.
+    pub fn add_book_files(
+        &mut self,
+        book_id: BookId,
+        file_paths: Vec<PathBuf>,
+    ) -> Result<Book, CalibreError> {
+        let book = self.get_book(book_id)?;
+        let sizes = file_paths
+            .iter()
+            .map(|path| {
+                std::fs::metadata(path)
+                    .ok()
+                    .filter(|metadata| metadata.is_file())
+                    .map(|metadata| metadata.len() as i32)
+                    .ok_or_else(|| {
+                        CalibreError::FileSystem(format!("Can't read {}", path.display()))
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let primary_author = book
+            .authors
+            .first()
+            .map(|author| author.name.as_str())
+            .unwrap_or(UNKNOWN_AUTHOR);
+        let file_stem = sanitise(&format!("{} - {}", book.title, primary_author));
+        let book_dir = Path::new(&self.db_path.library_path).join(&book.book_dir_path);
+        std::fs::create_dir_all(&book_dir).map_err(|e| CalibreError::FileSystem(e.to_string()))?;
+
+        for (file_path, size) in file_paths.iter().zip(sizes) {
+            let extension = file_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_uppercase();
+            let file_name = |stem: &str| {
+                if extension.is_empty() {
+                    stem.to_string()
+                } else {
+                    format!("{}.{}", stem, extension.to_lowercase())
+                }
+            };
+            let dest_path = book_dir.join(file_name(&file_stem));
+            std::fs::copy(file_path, &dest_path)
+                .map_err(|e| CalibreError::FileSystem(e.to_string()))?;
+            match book_files::find_by_book_and_format(&mut self.conn, book_id, extension.clone())? {
+                Some(existing) => {
+                    if existing.name != file_stem {
+                        let _ = std::fs::remove_file(book_dir.join(file_name(&existing.name)));
+                    }
+                    book_files::update(&mut self.conn, existing.id, &file_stem, size)?;
+                }
+                None => book_files::create(
+                    &mut self.conn,
+                    NewBookFile {
+                        book: book_id.as_i32(),
+                        format: extension.clone(),
+                        uncompressed_size: size,
+                        name: file_stem.clone(),
+                    },
+                )?,
+            }
+        }
+
+        book_queries::touch(&mut self.conn, book_id)?;
+        self.get_book(book_id)
     }
 
     /// `(id, book_dir_path)` for every book with a cover, read straight from
@@ -1431,7 +1557,7 @@ fn set_custom_value_and_touch(
     Ok(())
 }
 
-fn unique_tag_names<'a>(tag_names: &'a [String]) -> Vec<&'a str> {
+fn unique_tag_names(tag_names: &[String]) -> Vec<&str> {
     let mut unique = Vec::new();
 
     for tag_name in tag_names {

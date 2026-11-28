@@ -1,4 +1,3 @@
-import { reviewCovers } from "@/lib/uploads/review-covers";
 import clsx from "clsx";
 import { type CSSProperties, useRef } from "react";
 import { BookCover } from "@/components/atoms/BookCover";
@@ -7,6 +6,7 @@ import { useCoverRow } from "@/lib/hooks/use-cover-row";
 import type { DepartingCover } from "@/lib/hooks/use-review-deck";
 import { isPdfFormat } from "@/lib/pdf-only";
 import type { QueueItem } from "@/lib/uploads/queue";
+import { reviewCovers } from "@/lib/uploads/review-covers";
 import styles from "./CoverRow.module.css";
 
 export interface CoverRowProps {

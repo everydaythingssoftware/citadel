@@ -1,6 +1,7 @@
 import { isDesktop } from "@/lib/platform/runtime";
 import { tauriMetadataService } from "./tauri";
 import { webMetadataService } from "./web";
+
 export type {
 	CredentialHome,
 	MetadataService,

@@ -47,6 +47,9 @@ const setup = (options: FakeUploadsOptions = {}) => {
 		actions,
 		sleeps,
 		state: () => state,
+		dispatch: (action: QueueAction) => {
+			state = queueReducer(state, action);
+		},
 		phases: () => state.items.map((item) => item.phase),
 		added: () => added,
 	};
@@ -227,13 +230,13 @@ describe("upload runner", () => {
 		expect(queue.added()).toBe(1);
 	});
 
-	it("adds every ready book with the metadata read from its file", async () => {
+	it("adds every new book with the metadata read from its file", async () => {
 		const queue = setup();
 		queue.runner.addFiles([file("One.epub", "abcd"), file("Two.epub", "efgh")]);
 		await until(() =>
 			queue.phases().every((phase) => phase === UploadPhase.ready),
 		);
-		await queue.runner.addAllReady();
+		await queue.runner.addNewBooks();
 		expect(queue.fake.committed.map(({ book }) => book.title)).toEqual([
 			"One (read)",
 			"Two (read)",
@@ -254,5 +257,81 @@ describe("upload runner", () => {
 		await settle();
 		expect(queue.state().items).toEqual([]);
 		expect(queue.fake.staged.size).toBe(0);
+	});
+
+	it("leaves possible duplicates for review when adding the new books", async () => {
+		const queue = setup({
+			matchesFor: (title) =>
+				title.startsWith("Two")
+					? [
+							{
+								id: "7",
+								title: "Two",
+								authorNames: ["An Author"],
+								formats: ["PDF"],
+								isbn: null,
+								added: null,
+								coverUrl: null,
+								reason: "titleAndAuthor",
+							},
+						]
+					: [],
+		});
+		queue.runner.addFiles([file("One.epub", "abcd"), file("Two.epub", "efgh")]);
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
+		await queue.runner.addNewBooks();
+		expect(queue.fake.committed.map(({ book }) => book.title)).toEqual([
+			"One (read)",
+		]);
+		expect(queue.phases()).toEqual([UploadPhase.added, UploadPhase.ready]);
+	});
+
+	it("adds an EPUB and a MOBI of one book as one book", async () => {
+		const queue = setup();
+		queue.runner.addFiles([file("One.epub", "abcd"), file("One.mobi", "efgh")]);
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
+		const [epub, mobi] = queue.state().items;
+		await queue.runner.addNewBooks();
+		expect(queue.fake.committed).toEqual([
+			{
+				uploadId: epub?.uploadId,
+				book: expect.objectContaining({ also: [mobi?.uploadId] }),
+			},
+		]);
+		expect(queue.phases()).toEqual([UploadPhase.added, UploadPhase.added]);
+	});
+
+	it("adds the files of a split book as books of their own", async () => {
+		const queue = setup();
+		queue.runner.addFiles([file("One.epub", "abcd"), file("One.mobi", "efgh")]);
+		await until(() =>
+			queue.phases().every((phase) => phase === UploadPhase.ready),
+		);
+		queue.dispatch({
+			type: "split",
+			keys: queue.state().items.map((item) => item.key),
+		});
+		await queue.runner.addNewBooks();
+		expect(queue.fake.committed.map(({ book }) => book.also)).toEqual([[], []]);
+	});
+
+	it("points out a file picked again instead of uploading it twice", async () => {
+		const queue = setup();
+		const walden = file("Walden.epub", "abcd");
+		queue.runner.addFiles([walden]);
+		await until(() => queue.phases()[0] === UploadPhase.ready);
+		queue.runner.addFiles([
+			file("Walden.epub", "abcd"),
+			file("Kim.epub", "efgh"),
+		]);
+		expect(queue.state().items.map((item) => item.fileName)).toEqual([
+			"Walden.epub",
+			"Kim.epub",
+		]);
+		expect(queue.state().noticed?.keys).toEqual([queue.state().items[0]?.key]);
 	});
 });

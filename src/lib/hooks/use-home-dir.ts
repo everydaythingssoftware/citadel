@@ -1,5 +1,5 @@
-import { usePlatform } from "@/lib/platform/context";
 import { useEffect, useState } from "react";
+import { usePlatform } from "@/lib/platform/context";
 
 const cachedHomes = new WeakMap<
 	ReturnType<typeof usePlatform>,

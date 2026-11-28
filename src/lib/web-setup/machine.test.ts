@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+	FoundLibraries,
 	PathInspection,
 	ServedLibrary,
 } from "@/lib/services/library-catalog/types";
@@ -10,7 +11,6 @@ import type {
 	SetupSnapshot,
 	TransitionResult,
 } from "./machine";
-import type { FoundLibraries } from "@/lib/services/library-catalog/types";
 import {
 	ALREADY_A_LIBRARY_ERROR,
 	EMPTY_PATH_ERROR,

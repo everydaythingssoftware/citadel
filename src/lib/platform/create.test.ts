@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 vi.mock("@/bindings", () => ({
 	commands: new Proxy(
 		{},
@@ -9,6 +10,7 @@ vi.mock("@/bindings", () => ({
 		},
 	),
 }));
+
 import { createPlatform, createWebPlatform } from "./create";
 
 afterEach(() => {

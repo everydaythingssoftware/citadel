@@ -1,10 +1,10 @@
 import type {
 	AuthorUpdate,
 	BookCustomValue,
-	CustomColumnDef,
-	CustomValueDto,
 	BookUpdate,
 	CoverThumbnail,
+	CustomColumnDef,
+	CustomValueDto,
 	DeleteBooksOutcome,
 	LibraryAuthor,
 	LibraryBook,
@@ -43,6 +43,12 @@ export type StagedUpload = Omit<
 export type StagedBook = components["schemas"]["StagedBook"];
 /** The reviewed metadata a staged upload is added to the library with. */
 export type ReviewedBook = components["schemas"]["CommitUpload"];
+/** Where a reviewed book goes: a new book, or another format of one already there. */
+export type AddTo = components["schemas"]["AddTo"];
+/** A book already in the library that a new one may duplicate. */
+export type BookMatch = components["schemas"]["BookMatch"];
+/** What a book being reviewed is checked against the library with. */
+export type BookCandidate = components["schemas"]["BookCandidate"];
 
 export interface UploadLimits {
 	maxFileBytes: number;
@@ -90,8 +96,14 @@ export interface UploadChunk {
 interface BookStaging {
 	/** Absolute URL of the cover preview, for a book with `coverUrl`. */
 	coverUrl(uploadId: string): string;
+	/**
+	 * Adds a staged book: to a new book or an existing one (`book.addTo`),
+	 * with the files of `book.also` as further formats.
+	 */
 	commit(uploadId: string, book: ReviewedBook): Promise<LibraryBook>;
 	cancel(uploadId: string): Promise<void>;
+	/** Books already in the library that `candidate` may duplicate. */
+	findMatches(candidate: BookCandidate): Promise<BookMatch[]>;
 }
 
 /**

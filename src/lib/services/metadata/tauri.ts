@@ -2,6 +2,7 @@ import type { MetadataProvider } from "@/bindings";
 import { commands } from "@/bindings";
 import { appSchemeUrl } from "@/lib/platform/runtime";
 import { CREDENTIAL_HOME, type MetadataService } from "./types";
+
 const PROVIDERS: MetadataProvider[] = [
 	"loc",
 	"dnb",

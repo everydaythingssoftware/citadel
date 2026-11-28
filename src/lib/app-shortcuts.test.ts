@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
 	ariaChord,
-	windowShortcuts,
 	bookShortcutHint,
 	chordFromAccelerator,
 	formatChord,
 	menuBarOwnsChords,
 	pageShortcuts,
 	shortcutChord,
+	windowShortcuts,
 } from "./app-shortcuts";
 import { BOOK_COMMAND } from "./book-menu";
 import { none, some } from "./option";

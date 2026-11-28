@@ -8,6 +8,7 @@ mod custom_columns;
 mod entities;
 mod error;
 mod library;
+pub mod matching;
 /// Book file formats and their MIME types and extensions.
 pub mod mime_type;
 mod models;
@@ -30,7 +31,7 @@ pub use library::{
     Author, AuthorAdd, AuthorUpdate, Book, BookAdd, BookFileInfo, BookIdentifier, BookPage,
     BookQuery, BookSortOrder, BookUpdate, CatalogFacetKind, CatalogFacetSummary, CustomValueFilter,
     CustomValueSummary, Library, PublisherSummary, ResolvedBookAsset, SeriesSummary, TagSummary,
-    DEFAULT_READ_COLUMN,
+    DEFAULT_READ_COLUMN, MAX_DUPLICATES,
 };
 pub use schema_versions::{
     backups as upgrade_backups, peek_schema_version, SchemaUpgrade, MINIMUM_SCHEMA_VERSION,
