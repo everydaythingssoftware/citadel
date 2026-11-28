@@ -192,7 +192,7 @@ const WithMatches = ({
 	);
 };
 
-/** A possible duplicate: added to the existing book by default. Click the note, or New Book. */
+/** A possible duplicate: the same book by default; or answer that it's a different one. */
 export const PossibleDuplicate: Story = {
 	render: () => <WithMatches matches={[GERMINAL]} />,
 };
