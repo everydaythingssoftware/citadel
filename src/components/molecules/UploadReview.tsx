@@ -16,7 +16,7 @@ import { type BookFile, UploadPhase } from "@/lib/uploads/queue";
 import { CoverCarousel } from "./CoverCarousel";
 import { CoverRow } from "./CoverRow";
 import { UploadFiles } from "./UploadFiles";
-import { MatchChooser, MatchDestination, MatchNote } from "./UploadMatches";
+import { MatchQuestion } from "./UploadMatches";
 import styles from "./UploadReview.module.css";
 import { UploadReviewCard } from "./UploadReviewCard";
 
@@ -64,7 +64,7 @@ export const UploadReview = ({
 }: UploadReviewProps) => {
 	const toExisting =
 		matches.length > 0 && choice?.destination === Destination.existing;
-	// The last matches stay drawn while the note closes over them.
+	// The last matches stay drawn while the question closes over them.
 	const shownMatches = useRef(matches);
 	if (matches.length > 0) shownMatches.current = matches;
 	const { current } = deck;
@@ -167,24 +167,15 @@ export const UploadReview = ({
 					<UploadFiles files={files} onSplit={onSplit} />
 				)}
 				{current && choice && (
+					// Opens and closes as edits make the book match or stop matching.
 					<Reveal open={matches.length > 0} resetKey={current.key}>
-						<MatchDestination
-							destination={choice.destination}
-							onChange={choice.setDestination}
+						<MatchQuestion
+							matches={shownMatches.current}
+							formats={formats}
+							sameId={toExisting ? choice.selected?.id : undefined}
+							onChoose={choice.choose}
 						/>
-						{/* Added as new, it still says which book it may duplicate. */}
-						<Reveal open={!toExisting} resetKey={current.key}>
-							<MatchNote matches={shownMatches.current} formats={formats} />
-						</Reveal>
 					</Reveal>
-				)}
-				{current && toExisting && choice && (
-					<MatchChooser
-						matches={matches}
-						formats={formats}
-						selectedId={choice.selected?.id}
-						onSelect={choice.select}
-					/>
 				)}
 				{current && !toExisting && (
 					<UploadReviewCard

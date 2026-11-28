@@ -1,139 +1,37 @@
-/* Centred under the destination it qualifies. */
-.noteRow {
-	display: flex;
-	justify-content: center;
-	margin: -8px 0 12px;
-}
-
-/* The whole line is the target that opens the matching book. */
-.note {
-	display: block;
-	max-width: 100%;
-	margin: 0;
-	padding: 3px 6px;
-	border: 0;
-	border-radius: var(--ctd-radius-control);
-	background: transparent;
-	font: inherit;
-	font-size: var(--ctd-text-callout);
-	color: var(--ctd-ink-soft);
-	text-align: left;
-}
-
-.note:hover,
-.note[data-state="open"] {
-	background: var(--ctd-nav-hover-bg);
-}
-
-.note:focus-visible {
-	outline: none;
-	box-shadow: var(--ctd-focus-shadow);
-}
-
-.noteLabel {
-	font-weight: 600;
-	color: var(--ctd-ink);
-}
-
-.noteMatch {
-	color: var(--ctd-ink);
-	text-decoration: underline;
-	text-decoration-color: color-mix(in oklch, var(--ctd-ink) 30%, transparent);
-	text-underline-offset: 2px;
-}
-
-.popover {
+/* The question and its answers, a field like the form's. */
+.question {
 	display: grid;
-	gap: 12px;
-	width: min(320px, calc(100vw - 24px));
-	padding: 12px;
-	background-color: var(--ctd-surface-strong);
-	border: var(--ctd-control-border-width) solid var(--ctd-border);
-	border-radius: var(--ctd-radius-panel);
-	box-shadow: var(--ctd-popover-shadow);
-	color: var(--ctd-ink);
-	font-size: var(--ctd-text-body);
-	/* Above the upload sheet. */
-	z-index: 120;
-	animation: match-popover-in 140ms ease-out;
-}
-
-@keyframes match-popover-in {
-	from {
-		opacity: 0;
-		transform: translateY(-4px);
-	}
-}
-
-.popoverBook {
-	display: grid;
-	grid-template-columns: 52px minmax(0, 1fr);
-	gap: 12px;
-}
-
-.popoverBook + .popoverBook {
-	padding-top: 12px;
-	border-top: 1px solid var(--ctd-border);
-}
-
-/* On a narrow phone the label takes a line of its own over the control. */
-.destination {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: center;
-	gap: 6px 8px;
-	margin-bottom: 14px;
-	font-size: var(--ctd-text-callout);
-}
-
-/* "Add to" and "Add as" share one place and crossfade. */
-.destinationLabel {
-	display: inline-grid;
-	justify-items: end;
-	white-space: nowrap;
-	color: var(--ctd-ink-soft);
-}
-
-.destinationLabel > span {
-	grid-area: 1 / 1;
-	opacity: 0;
-	transition: opacity 160ms ease-out;
-}
-
-.destinationLabel > span[data-shown] {
-	opacity: 1;
-}
-
-/* A field like the form's: a label over its content. */
-.field {
-	display: grid;
-	gap: 6px;
-	margin: 0 0 14px;
+	gap: 10px;
+	margin: 0 0 16px;
 	padding: 0;
 	border: 0;
 	min-width: 0;
 }
 
-.fieldLabel {
+.questionTitle {
 	padding: 0;
-	font-size: var(--ctd-text-subheadline);
-	color: var(--ctd-ink-soft);
+	margin-bottom: 2px;
+	font-size: var(--ctd-text-headline);
+	font-weight: 600;
+	color: var(--ctd-ink);
 }
 
-.chooser {
-	gap: 10px;
-}
-
+/*
+ * An answer card. 16 all round, measured from the ink rather than the
+ * line boxes: the text block is pulled up by its title's leading and cap
+ * gap so the title's caps sit level with the cover's top edge, and pulled
+ * in at the bottom by the last line's descent.
+ */
 .choice {
 	position: relative;
 	display: grid;
 	grid-template-columns: 52px minmax(0, 1fr);
-	gap: 14px;
-	padding: 14px 16px;
+	column-gap: 14px;
+	padding: 16px;
 	border: var(--ctd-control-border-width) solid var(--ctd-border);
 	border-radius: var(--ctd-radius-panel);
 	background: var(--ctd-surface-strong);
+	line-height: var(--ctd-leading-body);
 }
 
 .choice[data-selected] {
@@ -145,11 +43,13 @@
 	box-shadow: var(--ctd-focus-shadow);
 }
 
+/* Level with the middle of the title's capitals. */
 .radio {
 	position: absolute;
-	top: 16px;
+	top: calc(16px - 0.24em + 0.5lh);
 	right: 16px;
 	margin: 0;
+	translate: 0 -50%;
 	accent-color: var(--ctd-accent);
 }
 
@@ -163,8 +63,8 @@
 .matchText {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
 	min-width: 0;
+	margin: -0.3em 0 -0.24em;
 }
 
 .matchTitle {
@@ -172,16 +72,23 @@
 }
 
 /* Room for the radio beside the title; the lines below can pass under it. */
-.chooser .matchTitle {
+.question .matchTitle {
 	padding-right: 28px;
 }
 
+.matchAuthors {
+	color: var(--ctd-ink-soft);
+}
+
+/* Labels and values, a step apart from the title and author above. */
 .facts {
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr);
-	column-gap: 8px;
-	margin: 6px 0 0;
+	grid-template-columns: max-content minmax(0, 1fr);
+	column-gap: 12px;
+	row-gap: 3px;
+	margin: 10px 0 0;
 	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
 }
 
 .facts dt {
@@ -190,15 +97,12 @@
 
 .facts dd {
 	margin: 0;
+	font-variant-numeric: tabular-nums;
 }
 
 .same {
 	color: var(--ctd-ink);
 	font-weight: 600;
-}
-
-.soft {
-	color: var(--ctd-ink-soft);
 }
 
 .hidden {
@@ -209,25 +113,13 @@
 	clip-path: inset(50%);
 }
 
-@media (pointer: coarse) {
-	.note {
-		min-height: 44px;
-	}
+/* "No, a different book": one line, the radio level with it. */
+.different {
+	display: flex;
+	align-items: center;
+	font-weight: 500;
 }
 
-@media (prefers-reduced-motion: reduce) {
-	.popover {
-		animation: none;
-	}
-
-	.destinationLabel > span {
-		transition: none;
-	}
-}
-
-/* What made it match, so the emphasis above has a name. */
-.reason {
-	margin-top: 4px;
-	font-size: var(--ctd-text-callout);
-	color: var(--ctd-ink-soft);
+.different .radio {
+	top: 50%;
 }

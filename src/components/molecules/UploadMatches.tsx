@@ -1,15 +1,7 @@
-import * as Popover from "@radix-ui/react-popover";
 import clsx from "clsx";
-import { useId } from "react";
+import { Fragment, useId } from "react";
 import { BookCover } from "@/components/atoms/BookCover";
-import { SegmentedControl } from "@/components/ui";
-import { shortAuthorNames } from "@/lib/authors";
 import type { BookMatch } from "@/lib/services/library";
-import {
-	Destination,
-	shortTitle,
-	type TDestination,
-} from "@/lib/uploads/matches";
 import styles from "./UploadMatches.module.css";
 
 const addedDate = (added: string | null | undefined): string | undefined => {
@@ -28,16 +20,9 @@ const addedDate = (added: string | null | undefined): string | undefined => {
 			});
 };
 
-/** Why a book counts as a possible duplicate, in a few words. */
-const REASONS: Record<BookMatch["reason"], string> = {
-	isbn: "Same ISBN",
-	titleAndAuthor: "Same title and author",
-	title: "Same title",
-};
-
 /**
- * A book already in the library, enough to tell whether it's the same one:
- * what matched is emphasised, and so is a format the new file would replace.
+ * A book already here, enough to tell whether it's the same one. A format
+ * the new file would replace is emphasised.
  */
 export const MatchedBook = ({
 	match,
@@ -48,7 +33,6 @@ export const MatchedBook = ({
 	formats: readonly string[];
 }) => {
 	const added = addedDate(match.added);
-	const byTitle = match.reason !== "isbn";
 	return (
 		<>
 			<span className={styles.matchCover}>
@@ -59,15 +43,8 @@ export const MatchedBook = ({
 				/>
 			</span>
 			<span className={styles.matchText}>
-				<span className={clsx(styles.matchTitle, byTitle && styles.same)}>
-					{match.title}
-				</span>
-				<span
-					className={clsx(
-						styles.soft,
-						match.reason === "titleAndAuthor" && styles.same,
-					)}
-				>
+				<span className={styles.matchTitle}>{match.title}</span>
+				<span className={styles.matchAuthors}>
 					{match.authorNames.join(", ")}
 				</span>
 				<dl className={styles.facts}>
@@ -76,13 +53,14 @@ export const MatchedBook = ({
 							<dt>Formats</dt>
 							<dd>
 								{match.formats.map((format, index) => (
-									<span
-										key={format}
-										className={clsx(formats.includes(format) && styles.same)}
-									>
+									<Fragment key={format}>
 										{index > 0 && ", "}
-										{format}
-									</span>
+										<span
+											className={clsx(formats.includes(format) && styles.same)}
+										>
+											{format}
+										</span>
+									</Fragment>
 								))}
 							</dd>
 						</>
@@ -90,9 +68,7 @@ export const MatchedBook = ({
 					{match.isbn && (
 						<>
 							<dt>ISBN</dt>
-							<dd className={clsx(match.reason === "isbn" && styles.same)}>
-								{match.isbn}
-							</dd>
+							<dd>{match.isbn}</dd>
 						</>
 					)}
 					{added && (
@@ -102,137 +78,67 @@ export const MatchedBook = ({
 						</>
 					)}
 				</dl>
-				<span className={styles.reason}>{REASONS[match.reason]}</span>
 			</span>
 		</>
 	);
 };
 
-const matchSummary = (matches: BookMatch[]): string => {
-	const [first] = matches;
-	if (!first) return "";
-	if (matches.length > 1) return `${matches.length} books in your library`;
-	const by = shortAuthorNames(first.authorNames);
-	return by ? `${shortTitle(first.title)} by ${by}` : shortTitle(first.title);
-};
-
 /**
- * Where the book goes: combined with the existing book, or as a new one.
- * The label reads "Combine with" or "Add as" with the choice, crossfading.
+ * Asks the one thing a person can answer at a glance: is this a book
+ * already here? Each possible duplicate is a "yes, this one"; the last
+ * choice is "no, a different book". What adding does follows from it.
  */
-export const MatchDestination = ({
-	destination,
-	onChange,
-}: {
-	destination: TDestination;
-	onChange: (destination: TDestination) => void;
-}) => (
-	<div className={styles.destination}>
-		<span className={styles.destinationLabel} aria-hidden>
-			<span data-shown={destination === Destination.existing || undefined}>
-				Combine with
-			</span>
-			<span data-shown={destination === Destination.new || undefined}>
-				Add as
-			</span>
-		</span>
-		<SegmentedControl
-			aria-label="Combine with or add as"
-			value={destination}
-			onChange={(value) => onChange(value as TDestination)}
-			items={[
-				{ value: Destination.existing, label: "Existing Book" },
-				{ value: Destination.new, label: "New Book" },
-			]}
-		/>
-	</div>
-);
-
-/**
- * Adding to a book already there: the possible duplicate, or a choice of
- * them, under a label like any other field's.
- */
-export const MatchChooser = ({
+export const MatchQuestion = ({
 	matches,
 	formats,
-	selectedId,
-	onSelect,
+	sameId,
+	onChoose,
 }: {
 	matches: BookMatch[];
 	/** The new book's formats, as "EPUB". */
 	formats: readonly string[];
-	selectedId: string | undefined;
-	onSelect: (id: string) => void;
+	/** The match this book is the same as; undefined for a different book. */
+	sameId: string | undefined;
+	/** A match's id, or null for a different book. */
+	onChoose: (id: string | null) => void;
 }) => {
 	const name = useId();
-	const [only] = matches;
-	if (matches.length === 1 && only)
-		return (
-			<div className={styles.field}>
-				<span className={styles.fieldLabel}>Possible duplicate</span>
-				<div className={styles.choice}>
-					<MatchedBook match={only} formats={formats} />
-				</div>
-			</div>
-		);
 	return (
-		<fieldset className={clsx(styles.field, styles.chooser)}>
-			<legend className={styles.fieldLabel}>Possible duplicates</legend>
+		<fieldset className={styles.question}>
+			<legend className={styles.questionTitle}>
+				{matches.length === 1
+					? "Is this the same book?"
+					: "Is this one of these books?"}
+			</legend>
 			{matches.map((match) => (
 				<label
 					key={match.id}
 					className={styles.choice}
-					data-selected={match.id === selectedId || undefined}
+					data-selected={match.id === sameId || undefined}
 				>
 					<input
 						type="radio"
 						name={name}
 						className={styles.radio}
-						checked={match.id === selectedId}
-						onChange={() => onSelect(match.id)}
+						checked={match.id === sameId}
+						onChange={() => onChoose(match.id)}
 					/>
 					<MatchedBook match={match} formats={formats} />
 				</label>
 			))}
+			<label
+				className={clsx(styles.choice, styles.different)}
+				data-selected={sameId === undefined || undefined}
+			>
+				<input
+					type="radio"
+					name={name}
+					className={styles.radio}
+					checked={sameId === undefined}
+					onChange={() => onChoose(null)}
+				/>
+				<span>No, it’s a different book</span>
+			</label>
 		</fieldset>
 	);
 };
-
-/**
- * Under the destination while the book is added as a new one: which book
- * it may duplicate. The whole line opens that book in a popover.
- */
-export const MatchNote = ({
-	matches,
-	formats,
-}: {
-	matches: BookMatch[];
-	/** The new book's formats, as "EPUB". */
-	formats: readonly string[];
-}) => (
-	<div className={styles.noteRow}>
-		<Popover.Root>
-			<Popover.Trigger asChild>
-				<button type="button" className={styles.note}>
-					<span className={styles.noteLabel}>Possible duplicate</span> of{" "}
-					<span className={styles.noteMatch}>{matchSummary(matches)}</span>
-				</button>
-			</Popover.Trigger>
-			<Popover.Portal>
-				<Popover.Content
-					className={styles.popover}
-					side="bottom"
-					align="center"
-					sideOffset={6}
-					collisionPadding={12}
-				>
-					{matches.map((match) => (
-						<div key={match.id} className={styles.popoverBook}>
-							<MatchedBook match={match} formats={formats} />
-						</div>
-					))}
-				</Popover.Content>
-			</Popover.Portal>
-		</Popover.Root>
-	</div>
-);

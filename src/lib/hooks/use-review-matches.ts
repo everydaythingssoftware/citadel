@@ -8,6 +8,7 @@ import type {
 import {
 	addLabel,
 	addToFor,
+	Destination,
 	defaultDestination,
 	defaultMatch,
 	type TDestination,
@@ -89,9 +90,9 @@ interface Choice {
 
 export interface MatchChoice {
 	destination: TDestination;
-	setDestination: (destination: TDestination) => void;
 	selected: BookMatch | undefined;
-	select: (id: string) => void;
+	/** The same book as this match, or (null) a different book. */
+	choose: (id: string | null) => void;
 	/** What adding sends, and what its button says. */
 	addTo: AddTo;
 	addLabel: string;
@@ -132,9 +133,13 @@ export const useMatchChoice = ({
 	const destination = matches.length > 0 ? current.destination : "new";
 	return {
 		destination,
-		setDestination: (next) => setChoice({ ...current, destination: next }),
 		selected,
-		select: (id) => setChoice({ ...current, selectedId: id }),
+		choose: (id) =>
+			setChoice(
+				id === null
+					? { ...current, destination: Destination.new }
+					: { ...current, destination: Destination.existing, selectedId: id },
+			),
 		addTo: addToFor(destination, selected),
 		addLabel: addLabel(destination, selected, formats, matches.length > 0),
 	};
