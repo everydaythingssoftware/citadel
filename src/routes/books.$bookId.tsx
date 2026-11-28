@@ -1,4 +1,3 @@
-import { usePlatform } from "@/lib/platform/context";
 import {
 	createFileRoute,
 	useNavigate,
@@ -14,10 +13,11 @@ import {
 	preloadEditBook,
 	useEditBookData,
 } from "@/lib/hooks/use-edit-book-data";
-import { forgetDeletedBooks } from "@/stores/book-selection/store";
 import { useGoBack } from "@/lib/hooks/use-go-back";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
+import { usePlatform } from "@/lib/platform/context";
 import { BookDeletion } from "@/lib/services/library";
+import { forgetDeletedBooks } from "@/stores/book-selection/store";
 import {
 	LibraryState,
 	useAuthors,

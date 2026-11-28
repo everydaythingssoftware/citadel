@@ -2,8 +2,8 @@ import clsx from "clsx";
 import {
 	type CSSProperties,
 	type HTMLAttributes,
-	type ReactEventHandler,
 	memo,
+	type ReactEventHandler,
 	useMemo,
 } from "react";
 import type { CoverColors } from "@/bindings";

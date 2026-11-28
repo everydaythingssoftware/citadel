@@ -311,6 +311,11 @@ scroller is hovered or scrolling (`data-scrolling`, from
   (details drawer, edit page) stay still. The lift moves the art inside the
   hit target, never the target itself, so the cover can't flicker under a
   resting pointer.
+- Loading is instant or readable, never a flash. Work that finishes within
+  300ms shows only its result; a loading state that does appear stays at
+  least 600ms (`usePendingGrace`).
+- Content that comes and goes with an edit (a note appearing as a title
+  starts to match) opens and closes; it never pops in one frame.
 
 ## Accessibility
 

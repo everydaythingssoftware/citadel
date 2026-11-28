@@ -9,9 +9,9 @@ import {
 import {
 	type BrowserSession,
 	createBrowserSession,
+	ServerUnreachableError,
 	type SessionInfo,
 	type SetupStatus,
-	ServerUnreachableError,
 	WrongAddressError,
 } from "@/lib/services/session";
 

@@ -1,14 +1,14 @@
 import type { CSSProperties } from "react";
-import { motifCover, type MotifShape } from "./cover-motif";
+import { shortenToChars } from "@/lib/domain/book";
 
 import { selectByStringHash } from "@/lib/hash-string";
-import { shortenToChars } from "@/lib/domain/book";
 import img1Url from "../../../assets/1.jpg";
 import img2Url from "../../../assets/2.jpg";
 import img3Url from "../../../assets/3.jpg";
 import img4Url from "../../../assets/4.jpg";
 import img5Url from "../../../assets/5.jpg";
 import styles from "../BookCover.module.css";
+import { type MotifShape, motifCover } from "./cover-motif";
 
 const TitledArtwork = ({
 	title,

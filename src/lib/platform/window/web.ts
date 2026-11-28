@@ -1,5 +1,5 @@
-import type { WindowAdapter } from "../types";
 import { none } from "@/lib/option";
+import type { WindowAdapter } from "../types";
 export const createWebWindow = (): WindowAdapter => ({
 	isMain: true,
 	toggleFullscreen: none(),

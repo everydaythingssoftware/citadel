@@ -5,9 +5,9 @@ import { sendUploadChunk } from "@/lib/api/upload-chunk";
 import {
 	type BookMatch,
 	type BookUploads,
+	type TUploadFailure,
 	UploadError,
 	UploadFailure,
-	type TUploadFailure,
 } from "./types";
 
 type LibraryErrorCode = components["schemas"]["LibraryErrorCode"];

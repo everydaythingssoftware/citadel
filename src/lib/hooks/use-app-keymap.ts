@@ -1,8 +1,8 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useKeymap } from "@/lib/hooks/use-keymap";
-import { usePlatform } from "@/lib/platform/context";
 import { overlayOpen } from "@/lib/keyboard-owner";
 import type { KeyBinding } from "@/lib/keymap";
+import { usePlatform } from "@/lib/platform/context";
 
 export const useAppKeymap = () => {
 	const navigate = useNavigate();

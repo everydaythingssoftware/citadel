@@ -180,3 +180,10 @@
 		animation: none;
 	}
 }
+
+/* What made it match, so the emphasis above has a name. */
+.reason {
+	margin-top: 4px;
+	font-size: var(--ctd-text-callout);
+	color: var(--ctd-ink-soft);
+}

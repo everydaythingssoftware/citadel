@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
 const ipc = vi.hoisted(() => ({
 	clbQueryMetadataSearch: vi.fn(),
 	clbQueryMetadataByIsbn: vi.fn(),
 	clbCmdTestMetadataProvider: vi.fn(),
 }));
 vi.mock("@/bindings", () => ({ commands: ipc }));
+
 import { tauriMetadataService } from "./tauri";
 import { createWebMetadataService } from "./web";
 

@@ -1,6 +1,6 @@
 import {
-	type SoftwareUpdateState as DesktopUpdateState,
 	commands,
+	type SoftwareUpdateState as DesktopUpdateState,
 	events,
 } from "@/bindings";
 import type { SoftwareUpdateState } from "@/lib/updates/software-update";

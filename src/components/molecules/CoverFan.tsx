@@ -1,9 +1,9 @@
 import clsx from "clsx";
-import { BookCover } from "@/components/atoms/BookCover";
 import type { CSSProperties } from "react";
 import painting1 from "@/assets/1.jpg";
 import painting2 from "@/assets/2.jpg";
 import painting3 from "@/assets/3.jpg";
+import { BookCover } from "@/components/atoms/BookCover";
 import styles from "./CoverFan.module.css";
 
 const COVERS = [

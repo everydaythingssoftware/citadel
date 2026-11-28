@@ -1,8 +1,8 @@
+import { create } from "zustand";
 import type {
 	LibraryBookSortOrderKey,
 	SmartShelf,
 } from "@/lib/platform/settings/types";
-import { create } from "zustand";
 
 const PREFS_KEY = "book-form-prefs";
 

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeymapDispatchEventLike } from "./keymap";
 import {
-	NO_SELECTION,
 	createKeymapHandler,
 	eventMatchesChord,
 	isEditableTarget,
 	moveSelection,
+	NO_SELECTION,
 	panelTakesEscape,
 	parseChord,
 	setChordPlatform,

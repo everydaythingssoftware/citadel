@@ -1,7 +1,7 @@
-import type { EditableTargetLike, KeyBinding } from "@/lib/keymap";
-import { browserGuardedEvents } from "@/lib/chrome-guards";
-import { createKeymapHandler } from "@/lib/keymap";
 import { useEffect, useRef } from "react";
+import { browserGuardedEvents } from "@/lib/chrome-guards";
+import type { EditableTargetLike, KeyBinding } from "@/lib/keymap";
+import { createKeymapHandler } from "@/lib/keymap";
 
 export interface KeymapOptions {
 	/**

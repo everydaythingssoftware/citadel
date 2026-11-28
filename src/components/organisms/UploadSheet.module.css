@@ -114,6 +114,11 @@
 	padding: 0;
 }
 
+/* Holds its children's margins, so the sheet measures its whole height. */
+.stage {
+	display: flow-root;
+}
+
 /* Possible duplicates wait in their own section, after the rest. */
 .sectionLabel {
 	margin: 20px 0 4px;
@@ -121,6 +126,11 @@
 	font-weight: 400;
 	color: var(--ctd-ink-soft);
 	text-align: center;
+}
+
+/* Every book is a possible duplicate: the label leads, without the gap. */
+.list:empty + section .sectionLabel {
+	margin-top: 6px;
 }
 
 .paused {

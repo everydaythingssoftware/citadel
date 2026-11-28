@@ -1,5 +1,5 @@
-import { usePlatform } from "@/lib/platform/context";
 import { useEffect } from "react";
+import { usePlatform } from "@/lib/platform/context";
 import { useResolvedColorScheme } from "@/lib/theme-manager";
 import { useSettings } from "@/stores/settings/store";
 

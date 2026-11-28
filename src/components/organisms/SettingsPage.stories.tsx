@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useMemo } from "react";
-import { createWebPlatform } from "@/lib/platform/create";
 import { PlatformProvider } from "@/lib/platform/context";
+import { createWebPlatform } from "@/lib/platform/create";
 import {
 	SettingsSection,
 	type TSettingsSection,

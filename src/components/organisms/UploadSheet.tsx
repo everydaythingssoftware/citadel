@@ -13,12 +13,18 @@ import {
 	Tooltip,
 } from "@/components/ui";
 import { useFollowNewest } from "@/lib/hooks/use-follow-newest";
+import { usePendingGrace } from "@/lib/hooks/use-pending-grace";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
 import type { MatchChoice } from "@/lib/hooks/use-review-matches";
 import { useScrollEdges } from "@/lib/hooks/use-scroll-edges";
 import { useSheetHeight } from "@/lib/hooks/use-sheet-height";
 import type { BookMatch } from "@/lib/services/library";
-import type { BookRow, QueueSections, QueueSummary } from "@/lib/uploads/queue";
+import {
+	type BookRow,
+	isActive,
+	type QueueSections,
+	type QueueSummary,
+} from "@/lib/uploads/queue";
 import styles from "./UploadSheet.module.css";
 
 /** The review's height on wide screens: room for the covers and the form. */
@@ -127,8 +133,10 @@ export const UploadSheet = ({
 	wasReviewing.current = reviewing;
 	const returning = returned.current;
 	const discarding = useRef(false);
-	const { books, possibleDuplicates } = sections;
-	const count = books.length + possibleDuplicates.length;
+	const { possibleDuplicates } = sections;
+	// Files read in a blink go straight to their book; slower ones show it.
+	const books = usePendingGrace(sections.books, (row) => isActive(row.lead));
+	const count = sections.books.length + possibleDuplicates.length;
 	const ready = summary.ready > 0;
 	const canAddNew = books.some((row) => row.lead.phase === "ready");
 	const cancelHint = local

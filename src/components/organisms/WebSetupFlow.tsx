@@ -8,6 +8,10 @@ import { usePrefersReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import type { WebSetupFlow as WebSetupFlowState } from "@/lib/hooks/use-web-setup-flow";
 import { useWebSetupFlow } from "@/lib/hooks/use-web-setup-flow";
 import type {
+	FoundLibraries,
+	ServedLibrary,
+} from "@/lib/services/library-catalog/types";
+import type {
 	FolderBrowser,
 	PathVerdict,
 	PublicUrls,
@@ -22,10 +26,6 @@ import {
 	UPGRADE_PROMPT,
 	verdict,
 } from "@/lib/web-setup/machine";
-import type {
-	FoundLibraries,
-	ServedLibrary,
-} from "@/lib/services/library-catalog/types";
 import card from "./FirstRunFlow.module.css";
 import {
 	BackButton,

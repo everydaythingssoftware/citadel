@@ -32,13 +32,13 @@ import {
 import { downloadFile } from "@/lib/download";
 import { usePlatform } from "@/lib/platform/context";
 import type { PlatformAdapter } from "@/lib/platform/types";
+import { finishedEntry } from "@/lib/undo-history";
 import {
 	openBookDetails,
 	updateBookSelection,
 	useBookSelectionStore,
 } from "@/stores/book-selection/store";
 import { requestBooksDeletion } from "@/stores/delete-books/store";
-import { finishedEntry } from "@/lib/undo-history";
 import { useLibraryStore } from "@/stores/library/store";
 import { useLibraryView } from "@/stores/library-view/store";
 import { registerUndo } from "@/stores/undo/store";

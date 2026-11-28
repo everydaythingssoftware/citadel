@@ -1,5 +1,5 @@
-import type { RecoveryAdapter } from "../types";
 import { commands } from "@/bindings";
+import type { RecoveryAdapter } from "../types";
 
 export const tauriRecovery: RecoveryAdapter = {
 	problem: () => commands.clbQueryDatabaseProblem(),

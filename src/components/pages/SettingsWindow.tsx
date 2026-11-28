@@ -1,8 +1,8 @@
-import { usePlatform } from "@/lib/platform/context";
 import { useEffect } from "react";
 import { SettingsPanes } from "@/components/organisms/SettingsPanes";
 import classes from "@/components/pages/SettingsWindow.module.css";
 import { useNativeThemeSync } from "@/lib/hooks/use-native-theme-sync";
+import { usePlatform } from "@/lib/platform/context";
 import {
 	useApplyColorScheme,
 	useResolvedColorScheme,

@@ -28,6 +28,13 @@ const addedDate = (added: string | null | undefined): string | undefined => {
 			});
 };
 
+/** Why a book counts as a possible duplicate, in a few words. */
+const REASONS: Record<BookMatch["reason"], string> = {
+	isbn: "Same ISBN",
+	titleAndAuthor: "Same title and author",
+	title: "Same title",
+};
+
 /**
  * A book already in the library, enough to tell whether it's the same one:
  * what matched is emphasised, and so is a format the new file would replace.
@@ -95,6 +102,7 @@ export const MatchedBook = ({
 						</>
 					)}
 				</dl>
+				<span className={styles.reason}>{REASONS[match.reason]}</span>
 			</span>
 		</>
 	);

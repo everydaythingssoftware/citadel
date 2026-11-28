@@ -1,4 +1,3 @@
-import { bookCoverProps } from "@/lib/covers/book-cover";
 import { Link, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import DOMPurify from "dompurify";
@@ -25,6 +24,7 @@ import {
 	sortIdentifiers,
 } from "@/lib/book-identifiers";
 import { coverWash } from "@/lib/cover-palette";
+import { bookCoverProps } from "@/lib/covers/book-cover";
 import { useBookDrawerResize } from "@/lib/hooks/use-book-drawer-resize";
 import { type BookFiles, useBookFiles } from "@/lib/hooks/use-book-files";
 import { useDetailsPanelFocus } from "@/lib/hooks/use-details-panel-focus";

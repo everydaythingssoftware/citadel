@@ -1,5 +1,5 @@
-import { revealLabel } from "@/lib/book-file-actions";
 import { booksTitle, formatCount } from "@/lib/book-count";
+import { revealLabel } from "@/lib/book-file-actions";
 import type {
 	ContextMenuItemEntry,
 	ContextMenuSeparatorEntry,

@@ -211,33 +211,39 @@
 /* A book made of several files says so under its cover, and can split. */
 .files {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	justify-content: center;
-	flex-wrap: wrap;
-	gap: 6px;
-	margin: 0 0 10px;
+	gap: 10px;
+	margin: 0 0 12px;
 	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
-	text-align: center;
 }
 
-.split {
-	padding: 0 4px;
-	border: 0;
-	border-radius: var(--ctd-radius-control);
-	background: transparent;
-	font: inherit;
-	color: var(--ctd-ink);
-	text-decoration: underline;
-	text-decoration-color: color-mix(in oklch, var(--ctd-ink) 30%, transparent);
-	text-underline-offset: 2px;
+/* The possible-duplicate note opens and closes rather than popping. */
+.reveal {
+	display: grid;
+	grid-template-rows: 0fr;
+	opacity: 0;
+	transition:
+		grid-template-rows 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+		opacity 180ms ease;
 }
 
-.split:hover {
-	background: var(--ctd-nav-hover-bg);
+.reveal[data-open] {
+	grid-template-rows: 1fr;
+	opacity: 1;
 }
 
-.split:focus-visible {
-	outline: none;
-	box-shadow: var(--ctd-focus-shadow);
+.revealInner {
+	min-height: 0;
+	overflow: hidden;
+	/* Room for focus rings and the selected card's outline. */
+	padding: 3px;
+	margin: -3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.reveal {
+		transition: none;
+	}
 }

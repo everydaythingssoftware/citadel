@@ -14,8 +14,8 @@ import { Destination } from "@/lib/uploads/matches";
 import { UploadPhase } from "@/lib/uploads/queue";
 import { CoverCarousel } from "./CoverCarousel";
 import { CoverRow } from "./CoverRow";
-import styles from "./UploadReview.module.css";
 import { UploadMatches } from "./UploadMatches";
+import styles from "./UploadReview.module.css";
 import { UploadReviewCard } from "./UploadReviewCard";
 
 /** Beyond this many books the dots would wrap; the position says it instead. */
@@ -64,6 +64,9 @@ export const UploadReview = ({
 }: UploadReviewProps) => {
 	const toExisting =
 		matches.length > 0 && choice?.destination === Destination.existing;
+	// The last matches stay drawn while the note closes over them.
+	const shownMatches = useRef(matches);
+	if (matches.length > 0) shownMatches.current = matches;
 	const { current } = deck;
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const scrolled = useScrolled(scrollRef);
@@ -161,24 +164,35 @@ export const UploadReview = ({
 						))}
 				</div>
 				{current && formats.length > 1 && (
-					<p className={styles.files}>
-						{formatList(formats)} files, added as one book
+					<div className={styles.files}>
+						<span>{formatList(formats)}</span>
 						{onSplit && (
-							<button type="button" className={styles.split} onClick={onSplit}>
-								Split
-							</button>
+							<Button variant="subtle" onClick={onSplit}>
+								Split into {formats.length} Books
+							</Button>
 						)}
-					</p>
+					</div>
 				)}
 				{current && choice && (
-					<UploadMatches
-						matches={matches}
-						formats={formats}
-						destination={choice.destination}
-						onDestinationChange={choice.setDestination}
-						selectedId={choice.selected?.id}
-						onSelect={choice.select}
-					/>
+					// Opens and closes as edits make the book match or stop
+					// matching; a new book starts as it is.
+					<div
+						key={current.key}
+						className={styles.reveal}
+						data-open={matches.length > 0 || undefined}
+						inert={matches.length === 0}
+					>
+						<div className={styles.revealInner}>
+							<UploadMatches
+								matches={shownMatches.current}
+								formats={formats}
+								destination={choice.destination}
+								onDestinationChange={choice.setDestination}
+								selectedId={choice.selected?.id}
+								onSelect={choice.select}
+							/>
+						</div>
+					</div>
 				)}
 				{current && !toExisting && (
 					<UploadReviewCard

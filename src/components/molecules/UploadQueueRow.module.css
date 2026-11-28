@@ -70,8 +70,12 @@
 	height: 20px;
 }
 
+/* A book still being read: a quiet cover-sized slot, no taller than the
+   covers that will replace it. */
 .pending {
-	border: 1px dashed color-mix(in oklch, var(--ctd-ink) 30%, transparent);
+	height: 48px;
+	border-radius: 2px;
+	background: color-mix(in oklch, var(--ctd-ink) 8%, transparent);
 }
 
 .problem {

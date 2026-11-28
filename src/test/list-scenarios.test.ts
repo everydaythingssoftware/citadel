@@ -1,5 +1,5 @@
-import type { LibraryAuthor, LibrarySeries, LibraryTag } from "@/bindings";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LibraryAuthor, LibrarySeries, LibraryTag } from "@/bindings";
 
 const store = vi.hoisted(() => ({
 	state: {
