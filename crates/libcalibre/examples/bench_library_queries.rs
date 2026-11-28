@@ -578,13 +578,13 @@ fn run() -> Result<(), String> {
     let author_sort_expr = "(SELECT a.sort FROM books_authors_link bal \
          JOIN authors a ON a.id = bal.author \
          WHERE bal.book = books.id ORDER BY bal.id LIMIT 1)";
-    let text_where = "(books.title LIKE ? ESCAPE '\\' \
+    let text_where = "(casefold(books.title) LIKE ? ESCAPE '\\' \
               OR EXISTS (SELECT 1 FROM books_authors_link bal \
                          JOIN authors a ON a.id = bal.author \
-                         WHERE bal.book = books.id AND a.name LIKE ? ESCAPE '\\') \
+                         WHERE bal.book = books.id AND casefold(a.name) LIKE ? ESCAPE '\\') \
               OR EXISTS (SELECT 1 FROM books_series_link bsl \
                          JOIN series s ON s.id = bsl.series \
-                         WHERE bsl.book = books.id AND s.name LIKE ? ESCAPE '\\'))";
+                         WHERE bsl.book = books.id AND casefold(s.name) LIKE ? ESCAPE '\\'))";
 
     println!("\n## Query plans\n");
     explain(
