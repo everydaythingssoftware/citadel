@@ -14,6 +14,10 @@
 //!
 //! Output is deterministic for a given (--books, --seed) pair, except for
 //! row timestamps and UUIDs which the database generates at insert time.
+//!
+//! `--non-ascii-share 0.3` makes about that share of the titles, author names
+//! and series names Cyrillic, Greek or accented Latin. The default, 0, leaves
+//! the output for a seed unchanged.
 
 use std::collections::{HashMap, HashSet};
 use std::io::Cursor;
@@ -33,12 +37,14 @@ struct Args {
     dest: PathBuf,
     books: usize,
     seed: u64,
+    non_ascii_share: f64,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut dest: Option<PathBuf> = None;
     let mut books = DEFAULT_BOOKS;
     let mut seed = DEFAULT_SEED;
+    let mut non_ascii_share = 0.0;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -59,6 +65,12 @@ fn parse_args() -> Result<Args, String> {
                     .parse()
                     .map_err(|_| format!("invalid --seed value: {value}"))?;
             }
+            "--non-ascii-share" => {
+                let value = args.next().ok_or("--non-ascii-share requires a number")?;
+                non_ascii_share = value
+                    .parse()
+                    .map_err(|_| format!("invalid --non-ascii-share value: {value}"))?;
+            }
             other => return Err(format!("unknown argument: {other}")),
         }
     }
@@ -67,7 +79,15 @@ fn parse_args() -> Result<Args, String> {
     if books == 0 {
         return Err("--books must be at least 1".to_string());
     }
-    Ok(Args { dest, books, seed })
+    if !(0.0..=1.0).contains(&non_ascii_share) {
+        return Err("--non-ascii-share must be from 0 to 1".to_string());
+    }
+    Ok(Args {
+        dest,
+        books,
+        seed,
+        non_ascii_share,
+    })
 }
 
 // =============================================================================
@@ -272,22 +292,123 @@ const TAG_POOL: &[&str] = &[
     "doorstopper",
 ];
 
+// Non-ASCII vocabulary for `--non-ascii-share`: Cyrillic (with "ё" and "Ё",
+// which Russian text often writes as "е"), Greek and accented Latin, in
+// several letter cases.
+const NON_ASCII_FIRST_NAMES: &[&str] = &[
+    "Лев",
+    "Фёдор",
+    "Анна",
+    "Пётр",
+    "Ольга",
+    "Мария",
+    "Сергей",
+    "Алёна",
+    "José",
+    "Zoë",
+    "Søren",
+    "Åsa",
+    "Łukasz",
+    "Αλέξης",
+    "Ελένη",
+    "Émile",
+];
+
+const NON_ASCII_LAST_NAMES: &[&str] = &[
+    "Толстой",
+    "Достоевский",
+    "Ахматова",
+    "Королёв",
+    "Чехов",
+    "Бунин",
+    "Шолохов",
+    "Ёлкин",
+    "García",
+    "Müller",
+    "Ødegård",
+    "Nuñez",
+    "Παπαδόπουλος",
+    "Οικονόμου",
+    "Dvořák",
+    "Strauß",
+];
+
+const NON_ASCII_TITLE_WORDS: &[&str] = &[
+    "Война",
+    "мир",
+    "Ёлка",
+    "всё",
+    "Звёзды",
+    "ночь",
+    "Сказки",
+    "тишина",
+    "Дорога",
+    "озеро",
+    "Берёза",
+    "ЁЖИК",
+    "утро",
+    "Évasion",
+    "mémoire",
+    "Señora",
+    "Größe",
+    "Ψυχή",
+    "Οδύσσεια",
+    "θάλασσα",
+    "Café",
+    "niño",
+    "Über",
+];
+
+const NON_ASCII_SERIES_NOUNS: &[&str] = &[
+    "Хроники",
+    "Сказания",
+    "Звёзды",
+    "Летопись",
+    "Légendes",
+    "Χρονικά",
+    "Mémoires",
+];
+
+/// Whether the next name is non-ASCII. Draws from `rng` only when `share` is
+/// above 0, so the default output for a seed stays the same.
+fn draw_non_ascii(rng: &mut fastrand::Rng, share: f64) -> bool {
+    share > 0.0 && rng.f64() < share
+}
+
 // =============================================================================
 // Deterministic content builders
 // =============================================================================
 
-fn build_author_pool(rng: &mut fastrand::Rng, size: usize) -> Vec<String> {
+fn build_author_pool(rng: &mut fastrand::Rng, size: usize, non_ascii_share: f64) -> Vec<String> {
     let mut pool = Vec::with_capacity(size);
     let mut seen = HashSet::new();
     while pool.len() < size {
-        let first = FIRST_NAMES[rng.usize(..FIRST_NAMES.len())];
-        let last = LAST_NAMES[rng.usize(..LAST_NAMES.len())];
+        let non_ascii = draw_non_ascii(rng, non_ascii_share);
+        let (first, last) = if non_ascii {
+            (
+                NON_ASCII_FIRST_NAMES[rng.usize(..NON_ASCII_FIRST_NAMES.len())],
+                NON_ASCII_LAST_NAMES[rng.usize(..NON_ASCII_LAST_NAMES.len())],
+            )
+        } else {
+            (
+                FIRST_NAMES[rng.usize(..FIRST_NAMES.len())],
+                LAST_NAMES[rng.usize(..LAST_NAMES.len())],
+            )
+        };
         let name = if pool.len() % 7 == 3 {
             // Sprinkle middle initials so name collisions stay rare.
             let initial = (b'A' + rng.u8(..26)) as char;
             format!("{first} {initial}. {last}")
         } else {
             format!("{first} {last}")
+        };
+        // The non-ASCII lists give few names, so a high share runs out of
+        // them. A number then makes the name unique: no earlier name has the
+        // number of the next pool slot. ASCII names keep their old draws.
+        let name = if non_ascii && seen.contains(&name) {
+            format!("{name} {}", pool.len() + 1)
+        } else {
+            name
         };
         if seen.insert(name.clone()) {
             pool.push(name);
@@ -303,7 +424,21 @@ fn weighted_author_index(rng: &mut fastrand::Rng, pool_len: usize) -> usize {
     ((pool_len as f64) * r.powf(2.5)) as usize % pool_len
 }
 
-fn build_title(rng: &mut fastrand::Rng) -> String {
+fn build_non_ascii_title(rng: &mut fastrand::Rng) -> String {
+    let first = NON_ASCII_TITLE_WORDS[rng.usize(..NON_ASCII_TITLE_WORDS.len())];
+    let second = NON_ASCII_TITLE_WORDS[rng.usize(..NON_ASCII_TITLE_WORDS.len())];
+    match rng.usize(..3) {
+        0 => format!("{first} {second}"),
+        1 => format!("{first} и {second}"),
+        _ => first.to_string(),
+    }
+}
+
+fn build_title(rng: &mut fastrand::Rng, non_ascii_share: f64) -> String {
+    if draw_non_ascii(rng, non_ascii_share) {
+        return build_non_ascii_title(rng);
+    }
+
     // ~4% of titles carry LIKE-hostile characters.
     if rng.f64() < 0.04 {
         return HOSTILE_TITLES[rng.usize(..HOSTILE_TITLES.len())].to_string();
@@ -343,6 +478,7 @@ fn build_series_schedule(
     rng: &mut fastrand::Rng,
     book_count: usize,
     author_pool_len: usize,
+    non_ascii_share: f64,
 ) -> Vec<Option<SeriesSlot>> {
     let target = (book_count as f64 * 0.30) as usize;
     let mut slots: Vec<Option<SeriesSlot>> = vec![None; book_count];
@@ -353,7 +489,11 @@ fn build_series_schedule(
         series_number += 1;
         let size = rng.usize(3..=15).min(target - covered).max(1);
         let pattern = SERIES_PATTERNS[rng.usize(..SERIES_PATTERNS.len())];
-        let noun = TITLE_NOUNS[rng.usize(..TITLE_NOUNS.len())];
+        let noun = if draw_non_ascii(rng, non_ascii_share) {
+            NON_ASCII_SERIES_NOUNS[rng.usize(..NON_ASCII_SERIES_NOUNS.len())]
+        } else {
+            TITLE_NOUNS[rng.usize(..TITLE_NOUNS.len())]
+        };
         let name = format!("{} #{series_number}", pattern.replace("{}", noun));
         let author_index = weighted_author_index(rng, author_pool_len);
 
@@ -620,8 +760,13 @@ fn run() -> Result<(), String> {
         Library::open(&dest_str).map_err(|e| format!("failed to open library: {e}"))?;
 
     // Deterministic content pools.
-    let author_pool = build_author_pool(&mut rng, (args.books / 8).max(1));
-    let series_schedule = build_series_schedule(&mut rng, args.books, author_pool.len());
+    let author_pool = build_author_pool(&mut rng, (args.books / 8).max(1), args.non_ascii_share);
+    let series_schedule = build_series_schedule(
+        &mut rng,
+        args.books,
+        author_pool.len(),
+        args.non_ascii_share,
+    );
     let cover_templates = build_cover_templates(&mut rng);
 
     // The stub EPUB is written once to a scratch file inside dest (removed
@@ -687,7 +832,7 @@ fn run() -> Result<(), String> {
         }
 
         let book = BookAdd {
-            title: build_title(&mut rng),
+            title: build_title(&mut rng, args.non_ascii_share),
             author_names,
             tags: if tags.is_empty() { None } else { Some(tags) },
             series: series_slot.as_ref().map(|s| s.name.clone()),
