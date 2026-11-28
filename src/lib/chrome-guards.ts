@@ -94,16 +94,30 @@ const styledSelectableBlock = (element: Element | null): Element | null => {
 	return block;
 };
 
-/**
- * Inside a block of selectable content, Select All selects that block, as in
- * a read-only NSTextView; anywhere else it does nothing native.
- */
-const selectAllWithinContent = (doc: Document) => {
+const selectedContentBlock = (doc: Document): Element | null => {
 	const anchor = asTarget(doc.getSelection()?.anchorNode ?? null);
 	const content =
 		anchor?.closest(SELECTABLE_SELECTOR) ??
 		styledSelectableBlock(anchor instanceof Element ? anchor : null);
-	if (!(content instanceof Element)) return;
+	return content instanceof Element ? content : null;
+};
+
+/**
+ * Whether someone has started selecting text in content (a book's
+ * description, say): then Select All extends to that block, not the books.
+ * A bare caret doesn't count.
+ */
+export const selectingContent = (doc: Document = document): boolean =>
+	(doc.getSelection()?.toString().trim().length ?? 0) > 0 &&
+	selectedContentBlock(doc) !== null;
+
+/**
+ * Inside a block of selectable content, Select All selects that block, as in
+ * a read-only NSTextView; anywhere else it does nothing native.
+ */
+export const selectAllWithinContent = (doc: Document = document) => {
+	const content = selectedContentBlock(doc);
+	if (content === null) return;
 	const range = doc.createRange();
 	range.selectNodeContents(content);
 	const selection = doc.getSelection();
@@ -151,7 +165,7 @@ export const installChromeGuards = (
 		if (allowsNativeSelectAll(asTarget(event.target))) return;
 		browserGuardedEvents.add(event);
 		event.preventDefault();
-		// The app's Select All (every book) goes first; the text is the fallback.
+		// An app command (every book) takes the key first; else the text does.
 		setTimeout(() => {
 			if (browserGuardedEvents.has(event)) selectAllWithinContent(doc);
 		}, 0);

@@ -6,7 +6,11 @@ import {
 	type TShortcutCommand,
 } from "@/lib/app-shortcuts";
 import { selectAll } from "@/lib/book-selection";
-import { allowsNativeSelectAll } from "@/lib/chrome-guards";
+import {
+	allowsNativeSelectAll,
+	selectAllWithinContent,
+	selectingContent,
+} from "@/lib/chrome-guards";
 import { useAddBook } from "@/lib/hooks/use-add-book";
 import {
 	type AddLibraryFlow,
@@ -142,7 +146,8 @@ export const useMenuCommands = (): { addLibrary: AddLibraryFlow } => {
 				runUndo(command);
 				return;
 			case "select-all":
-				if (selectAllOwner(keyboardBusy(), pathname) === "books")
+				if (selectingContent()) selectAllWithinContent();
+				else if (selectAllOwner(keyboardBusy(), pathname) === "books")
 					updateBookSelection(selectAll);
 				else if (allowsNativeSelectAll(document.activeElement))
 					document.execCommand("selectAll");
