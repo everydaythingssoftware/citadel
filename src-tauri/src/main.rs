@@ -15,6 +15,7 @@ mod account;
 mod app_updates;
 pub mod libs {
     pub mod cover_thumbs;
+    pub mod pdf_cover;
 }
 mod library;
 mod menu;

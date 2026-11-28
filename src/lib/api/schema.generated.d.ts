@@ -861,8 +861,20 @@ export interface components {
             tags?: string[];
             title: string;
         };
+        /** @description What a cover looks like before it loads. */
+        CoverColors: {
+            palette: components["schemas"]["CoverPalette"] | null;
+            /** @description The cover's ThumbHash, base64 (standard, padded). */
+            thumbhash: string;
+        };
+        /** @description A cover's main colour and, when it has one, a second distinct colour. */
+        CoverPalette: {
+            dominant: components["schemas"]["PaletteColor"];
+            secondary: components["schemas"]["PaletteColor"] | null;
+        };
         CoverThumbnail: {
             book_id: string;
+            cover_colors: components["schemas"]["CoverColors"] | null;
             /** Format: int32 */
             height: number;
             url: string;
@@ -981,7 +993,7 @@ export interface components {
             detail: string | null;
             /**
              * @description `database`, `providerKeys`, `library`, `webApp`, `opds`, `metadata`,
-             *     `stateDisk` or `libraryDisk`.
+             *     `pdfCovers`, `stateDisk` or `libraryDisk`.
              */
             name: string;
             status: components["schemas"]["HealthStatus"];
@@ -1179,6 +1191,20 @@ export interface components {
         NewAuthor: {
             name: string;
             sortable_name?: string | null;
+        };
+        /** @description One of a cover's colours in OKLab, with how much of the cover it covers. */
+        PaletteColor: {
+            /** Format: double */
+            a: number;
+            /** Format: double */
+            b: number;
+            /** Format: double */
+            l: number;
+            /**
+             * Format: double
+             * @description Share of the cover's counted pixels in this colour, 0–1.
+             */
+            share: number;
         };
         ProviderCredentialInfo: {
             /** @description The provider account the key belongs to, when the provider says. */

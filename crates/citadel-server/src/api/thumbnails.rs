@@ -10,8 +10,12 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use citadel_core::error::{LibraryError, LibraryErrorCode};
-use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, ImageReader, Limits};
+use citadel_core::{
+    cover_colors::cover_colors,
+    error::{LibraryError, LibraryErrorCode},
+    CoverColors,
+};
+use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, DynamicImage, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
 
 use super::{run_library, ApiFailure, ApiState};
@@ -23,6 +27,9 @@ pub(super) struct CoverThumbnail {
     url: String,
     width: u32,
     height: u32,
+    /// The cover's palette and ThumbHash, worked out with the thumbnail.
+    #[schema(required = true)]
+    cover_colors: Option<CoverColors>,
 }
 
 #[derive(Clone)]
@@ -155,14 +162,16 @@ async fn generate(state: ApiState, id: String) -> Result<CachedThumbnail, ApiFai
             return Ok(cached);
         }
         let reader = ImageReader::open(asset.canonical_path()).map_err(|_| missing())?;
-        let (bytes, width, height) = resized_jpeg(reader, 300, 600).ok_or_else(missing)?;
+        let thumb = fit(reader, 300, 600).ok_or_else(missing)?;
+        let bytes = encode_jpeg(&thumb).ok_or_else(missing)?;
         let cached = CachedThumbnail {
             version: version.clone(),
             descriptor: CoverThumbnail {
                 book_id: id.clone(),
                 url: format!("/api/books/{id}/thumbnail?v={version}"),
-                width,
-                height,
+                width: thumb.width(),
+                height: thumb.height(),
+                cover_colors: Some(cover_colors(&thumb)),
             },
             bytes,
         };
@@ -190,20 +199,36 @@ pub(super) fn resized_jpeg<R: std::io::BufRead + std::io::Seek>(
     max_width: u32,
     max_height: u32,
 ) -> Option<(Vec<u8>, u32, u32)> {
+    let image = fit(reader, max_width, max_height)?;
+    let bytes = encode_jpeg(&image)?;
+    Some((bytes, image.width(), image.height()))
+}
+
+/// Decodes an image (within memory and size limits) and resizes it to fit
+/// `max_width` × `max_height`.
+fn fit<R: std::io::BufRead + std::io::Seek>(
+    reader: ImageReader<R>,
+    max_width: u32,
+    max_height: u32,
+) -> Option<DynamicImage> {
     let mut reader = reader.with_guessed_format().ok()?;
     let mut limits = Limits::default();
     limits.max_image_width = Some(10000);
     limits.max_image_height = Some(10000);
     limits.max_alloc = Some(64 * 1024 * 1024);
     reader.limits(limits);
-    let image = reader
-        .decode()
-        .ok()?
-        .resize(max_width, max_height, FilterType::Triangle)
-        .to_rgb8();
+    Some(
+        reader
+            .decode()
+            .ok()?
+            .resize(max_width, max_height, FilterType::Triangle),
+    )
+}
+
+fn encode_jpeg(image: &DynamicImage) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
     JpegEncoder::new_with_quality(&mut bytes, 80)
-        .encode_image(&image)
+        .encode_image(&image.to_rgb8())
         .ok()?;
-    Some((bytes, image.width(), image.height()))
+    Some(bytes)
 }

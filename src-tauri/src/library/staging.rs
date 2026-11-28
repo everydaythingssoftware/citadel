@@ -40,6 +40,8 @@ struct Staged {
     size: u64,
     book: StagedBook,
     cover: Option<PathBuf>,
+    /// A PDF's rendered first page at full size, to add with the book.
+    rendered_cover: Option<PathBuf>,
     /// Being added to the library; one add at a time.
     busy: bool,
 }
@@ -167,7 +169,17 @@ impl DesktopStaging {
         }
 
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let mut read = read_book_file(&path, &file_name, extension);
+        let mut read = read_book_file(&path, &file_name, extension, crate::libs::pdf_cover::render);
+        let rendered_cover = read
+            .rendered_cover
+            .then_some(read.cover.as_deref())
+            .flatten()
+            .and_then(|cover| {
+                let cover_path = self.cover_dir.join(format!("{id}.page.jpg"));
+                fs::create_dir_all(&self.cover_dir).ok()?;
+                fs::write(&cover_path, cover).ok()?;
+                Some(cover_path)
+            });
         let cover = read
             .cover
             .take()
@@ -186,6 +198,7 @@ impl DesktopStaging {
             size,
             book: read.book,
             cover,
+            rendered_cover,
             busy: false,
         };
         let view = staged.view(&id);
@@ -193,8 +206,13 @@ impl DesktopStaging {
         Ok(view)
     }
 
-    /// Claims a staged book for adding, returning its file.
-    fn claim(&self, id: &str, library_id: &str) -> Result<PathBuf, LibraryError> {
+    /// Claims a staged book for adding, returning its file and any cover
+    /// rendered from it.
+    fn claim(
+        &self,
+        id: &str,
+        library_id: &str,
+    ) -> Result<(PathBuf, Option<Vec<u8>>), LibraryError> {
         let mut books = self.books()?;
         let staged = books
             .get_mut(id)
@@ -207,7 +225,11 @@ impl DesktopStaging {
             ));
         }
         staged.busy = true;
-        Ok(staged.path.clone())
+        let cover = staged
+            .rendered_cover
+            .as_ref()
+            .and_then(|path| fs::read(path).ok());
+        Ok((staged.path.clone(), cover))
     }
 
     fn release(&self, id: &str) {
@@ -224,7 +246,11 @@ impl DesktopStaging {
             .lock()
             .ok()
             .and_then(|mut books| books.remove(id));
-        if let Some(cover) = removed.and_then(|staged| staged.cover) {
+        for cover in removed
+            .into_iter()
+            .flat_map(|staged| [staged.cover, staged.rendered_cover])
+            .flatten()
+        {
             let _ = fs::remove_file(cover);
         }
     }
@@ -281,10 +307,10 @@ pub async fn clb_cmd_add_staged_book(
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let staging = handle.state::<DesktopStaging>();
-        let path = staging.claim(&staged_id, &library_id)?;
+        let (path, cover) = staging.claim(&staged_id, &library_id)?;
         let added = book.into_book_add(path).and_then(|book| {
             state.with_library_service(|service| {
-                let id = service.create_book(&actor, book)?;
+                let id = service.create_book(&actor, book, cover)?;
                 service.get_book(&id)
             })
         });
@@ -358,7 +384,10 @@ mod tests {
         let (directory, staging) = staging();
         let path = book_at(directory.path(), "walden.txt", "Walden");
         let staged = staging.stage("one".into(), path.clone()).unwrap();
-        assert_eq!(staging.claim(&staged.id, "one").unwrap(), path);
+        assert_eq!(
+            staging.claim(&staged.id, "one").unwrap(),
+            (path.clone(), None)
+        );
         assert!(staging.claim(&staged.id, "one").is_err());
         staging.release(&staged.id);
         assert!(staging.claim(&staged.id, "one").is_ok());

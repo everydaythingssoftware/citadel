@@ -1,9 +1,32 @@
 name: Server image
 
-# Pull requests build and smoke-test the image on both architectures without
-# pushing. The release workflow calls this with `push` to publish it.
+# Pull requests build and smoke-test the amd64 image without pushing.
+# The release workflow calls this with `push` to publish amd64 + arm64.
 on:
   pull_request:
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "docker/**"
+      - "crates/citadel-core/**"
+      - "crates/citadel-metadata/**"
+      - "crates/citadel-opds/**"
+      - "crates/citadel-server/**"
+      - "crates/libcalibre/**"
+      - "src-tauri/**"
+      - "src/**"
+      - "tools/testing/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "tsconfig.json"
+      - "tsconfig.node.json"
+      - "postcss.config.cjs"
+      - "package.json"
+      - "bun.lockb"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/server-image.yml"
   workflow_call:
     inputs:
       version:
@@ -21,66 +44,64 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   IMAGE: ghcr.io/everydaythingssoftware/citadel-server
+  CACHE_IMAGE: ghcr.io/everydaythingssoftware/citadel-server-cache
 
 jobs:
   build:
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            arch: amd64
-            runner: ubuntu-24.04
-          - platform: linux/arm64
-            arch: arm64
-            runner: ubuntu-24.04-arm
+      matrix: ${{ fromJSON(inputs.push && '{"include":[{"platform":"linux/amd64","arch":"amd64","runner":"ubuntu-24.04"},{"platform":"linux/arm64","arch":"arm64","runner":"ubuntu-24.04-arm"}]}' || '{"include":[{"platform":"linux/amd64","arch":"amd64","runner":"ubuntu-24.04"}]}') }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        if: inputs.push
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
           build-args: |
             CITADEL_VERSION=${{ inputs.version }}
             CITADEL_BUILD_COMMIT=${{ github.sha }}
-          cache-from: type=gha,scope=server-image-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=server-image-${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
+          cache-to: ${{ inputs.push && format('type=registry,ref={0}:{1},mode=max', env.CACHE_IMAGE, matrix.arch) || '' }}
           load: true
           tags: citadel-server:smoke
 
       - name: Smoke test
         run: docker/smoke-test.sh citadel-server:smoke
 
-      - name: Log in to GitHub Container Registry
-        if: inputs.push
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       # Same inputs as the build above, so every layer comes from its cache.
       - name: Push by digest
         if: inputs.push
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
           build-args: |
             CITADEL_VERSION=${{ inputs.version }}
             CITADEL_BUILD_COMMIT=${{ github.sha }}
-          cache-from: type=gha,scope=server-image-${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Keep the digest
@@ -90,7 +111,7 @@ jobs:
           digest='${{ steps.push.outputs.digest }}'
           touch "$RUNNER_TEMP/digests/${digest#sha256:}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: inputs.push
         with:
           name: server-image-digest-${{ matrix.arch }}
@@ -106,15 +127,15 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
           pattern: server-image-digest-*
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

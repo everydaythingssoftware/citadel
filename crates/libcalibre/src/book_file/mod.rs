@@ -4,6 +4,12 @@
 //! EPUB and MOBI files are parsed with the `epub` and `mobi` features (both on
 //! by default). Without one, files of that format are read like PDFs: a title
 //! from the file name and no cover.
+//!
+//! PDFs embed no cover. With the `pdf` feature, [`render_pdf_cover`] renders
+//! a PDF's first page by running poppler's `pdftoppm`, when it is installed.
+//! Rendering is never implicit: [`cover_image_data`] and adding a book don't
+//! do it, so a host renders first and stores the result with
+//! [`crate::Library::set_book_cover`].
 use std::{ffi::OsStr, path::Path};
 
 use chrono::NaiveDate;
@@ -14,10 +20,15 @@ use crate::mime_type::MimeType;
 mod epub;
 #[cfg(feature = "mobi")]
 mod mobi;
+#[cfg(feature = "pdf")]
+mod pdf;
+
+#[cfg(feature = "pdf")]
+pub use pdf::{pdftoppm, render_cover as render_pdf_cover, RENDER_TIMEOUT as PDF_RENDER_TIMEOUT};
 
 /// Covers larger than this are ignored rather than read into memory; a
 /// compressed EPUB entry can otherwise expand without bound.
-#[cfg(any(feature = "epub", feature = "mobi"))]
+#[cfg(any(feature = "epub", feature = "mobi", feature = "pdf"))]
 pub(crate) const MAX_COVER_BYTES: u64 = 16 * 1024 * 1024;
 
 /// What a book file says about itself. Formats without embedded metadata

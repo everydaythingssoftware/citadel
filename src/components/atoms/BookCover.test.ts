@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
 import { BookCover } from "./BookCover";
+import styles from "./BookCover.module.css";
 import type { LibraryBook } from "@/bindings";
 
 const book = {
@@ -31,12 +32,35 @@ it("uses the thumbnail and reserves its proportions", () => {
 				url: "/thumb.jpg",
 				width: 100,
 				height: 150,
+				cover_colors: null,
 			}),
 		}),
 	);
 	expect(html).toContain('src="/thumb.jpg"');
 	expect(html).toContain('width="100"');
 	expect(html).toContain('height="150"');
+});
+
+it("paints the cover colours placeholder behind the image", () => {
+	const html = renderToStaticMarkup(
+		createElement(BookCover, {
+			...bookCoverProps(book, {
+				book_id: "1",
+				url: "/thumb.jpg",
+				width: 100,
+				height: 150,
+				cover_colors: {
+					palette: {
+						dominant: { l: 0.42, a: -0.027, b: -0.076, share: 1 },
+						secondary: null,
+					},
+					thumbhash: "",
+				},
+			}),
+		}),
+	);
+	expect(html).toContain("background-color:oklab(42.0% -0.027 -0.076)");
+	expect(html).toContain('data-placeholder=""');
 });
 
 it("uses the titled fallback for a missing metadata image", () => {
@@ -65,4 +89,21 @@ it.each([
 ])("uses geometric artwork without a usable title (%j)", (title) => {
 	const html = renderToStaticMarkup(createElement(BookCover, { title }));
 	expect(html).not.toContain("<img");
+});
+
+// A PDF's cover is its first page, so it's drawn without the binding: the
+// spine crease and the board edges.
+it("draws a PDF-only book flat", () => {
+	const pdf = {
+		...book,
+		file_list: [{ Local: { path: "/l/Report.pdf", mime_type: "PDF" } }],
+	};
+	const flat = renderToStaticMarkup(
+		createElement(BookCover, bookCoverProps(pdf)),
+	);
+	const bound = renderToStaticMarkup(
+		createElement(BookCover, bookCoverProps(book)),
+	);
+	expect(flat).not.toContain(`class="${styles.spine}"`);
+	expect(bound).toContain(`class="${styles.spine}"`);
 });
