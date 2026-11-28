@@ -20,6 +20,7 @@ import { useScrollEdges } from "@/lib/hooks/use-scroll-edges";
 import { useSheetHeight } from "@/lib/hooks/use-sheet-height";
 import type { BookMatch } from "@/lib/services/library";
 import {
+	type BookFile,
 	type BookRow,
 	isActive,
 	type QueueSections,
@@ -51,6 +52,8 @@ export interface UploadSheetProps {
 	matches?: BookMatch[];
 	choice?: MatchChoice;
 	formats?: readonly string[];
+	/** The files the book under review is made of. */
+	files?: readonly BookFile[];
 	onSplit?: () => void;
 	authorSuggestions?: string[];
 	tagSuggestions?: string[];
@@ -118,6 +121,7 @@ export const UploadSheet = ({
 	matches,
 	choice,
 	formats,
+	files,
 	onSplit,
 	authorSuggestions,
 	tagSuggestions,
@@ -233,6 +237,7 @@ export const UploadSheet = ({
 								matches={matches}
 								choice={choice}
 								formats={formats}
+								files={files}
 								onSplit={onSplit}
 								authorSuggestions={authorSuggestions}
 								tagSuggestions={tagSuggestions}

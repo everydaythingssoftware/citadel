@@ -178,6 +178,14 @@ const WithMatches = ({
 				matches={matches}
 				choice={choice}
 				formats={formats}
+				files={formats.map((format, index) => ({
+					key: format,
+					format,
+					fileName:
+						index === 0
+							? `germinal.${format.toLowerCase()}`
+							: `Germinal - Émile Zola (Penguin Classics, 2004).${format.toLowerCase()}`,
+				}))}
 				onSplit={formats.length > 1 ? () => {} : undefined}
 			/>
 		</div>

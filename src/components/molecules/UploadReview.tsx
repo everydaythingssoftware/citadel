@@ -12,9 +12,10 @@ import type { MatchChoice } from "@/lib/hooks/use-review-matches";
 import { useScrolled } from "@/lib/hooks/use-scrolled";
 import type { BookMatch } from "@/lib/services/library";
 import { Destination } from "@/lib/uploads/matches";
-import { UploadPhase } from "@/lib/uploads/queue";
+import { type BookFile, UploadPhase } from "@/lib/uploads/queue";
 import { CoverCarousel } from "./CoverCarousel";
 import { CoverRow } from "./CoverRow";
+import { UploadFiles } from "./UploadFiles";
 import { MatchChooser, MatchDestination, MatchNote } from "./UploadMatches";
 import styles from "./UploadReview.module.css";
 import { UploadReviewCard } from "./UploadReviewCard";
@@ -38,14 +39,11 @@ export interface UploadReviewProps {
 	choice?: MatchChoice;
 	/** The current book's formats ("EPUB"); more than one can be split. */
 	formats?: readonly string[];
+	/** The files the current book is made of. */
+	files?: readonly BookFile[];
 	/** Makes each of the current book's files a book of its own. */
 	onSplit?: () => void;
 }
-
-const formatList = (formats: readonly string[]): string =>
-	formats.length <= 1
-		? (formats[0] ?? "")
-		: `${formats.slice(0, -1).join(", ")} and ${formats.at(-1)}`;
 
 /**
  * Reviews ready books: their covers in a row to swipe through, the current
@@ -61,6 +59,7 @@ export const UploadReview = ({
 	matches = [],
 	choice,
 	formats = [],
+	files = [],
 	onSplit,
 }: UploadReviewProps) => {
 	const toExisting =
@@ -164,15 +163,8 @@ export const UploadReview = ({
 							/>
 						))}
 				</div>
-				{current && formats.length > 1 && (
-					<div className={styles.files}>
-						<span>{formatList(formats)}</span>
-						{onSplit && (
-							<Button variant="subtle" onClick={onSplit}>
-								Split into {formats.length} Books
-							</Button>
-						)}
-					</div>
+				{current && files.length > 1 && (
+					<UploadFiles files={files} onSplit={onSplit} />
 				)}
 				{current && choice && (
 					<Reveal open={matches.length > 0} resetKey={current.key}>

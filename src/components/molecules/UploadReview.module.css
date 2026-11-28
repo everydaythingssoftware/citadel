@@ -207,14 +207,3 @@
 		font-weight: 600;
 	}
 }
-
-/* A book made of several files says so under its cover, and can split. */
-.files {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 10px;
-	margin: 0 0 12px;
-	font-size: var(--ctd-text-callout);
-	color: var(--ctd-ink-soft);
-}

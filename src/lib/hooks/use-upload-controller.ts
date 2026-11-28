@@ -4,6 +4,7 @@ import {
 	queueSections,
 	readyItems,
 	reviewRows,
+	rowFiles,
 	rowFormats,
 	summarize,
 	visibleItems,
@@ -86,6 +87,10 @@ export const useUploadController = () => {
 		() => (currentRow ? rowFormats(currentRow) : []),
 		[currentRow],
 	);
+	const files = useMemo(
+		() => (currentRow ? rowFiles(currentRow) : []),
+		[currentRow],
+	);
 	const staged = currentRow?.matches ?? NO_MATCHES;
 	const matches = useLiveMatches({
 		intake,
@@ -138,6 +143,7 @@ export const useUploadController = () => {
 			matches,
 			choice,
 			formats,
+			files,
 			onSplit:
 				currentRow && currentRow.items.length > 1
 					? () =>

@@ -1,0 +1,178 @@
+.anchor {
+	display: flex;
+	justify-content: center;
+	margin: -2px 0 14px;
+}
+
+.capsule {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px 2px 9px;
+	border: 0;
+	border-radius: var(--ctd-radius-capsule);
+	background: color-mix(in oklch, var(--ctd-ink) 7%, transparent);
+	font: inherit;
+	font-size: var(--ctd-text-callout);
+	line-height: var(--ctd-leading-callout);
+	color: var(--ctd-ink-soft);
+	transition:
+		background-color 120ms ease-out,
+		color 120ms ease-out;
+}
+
+.capsule:hover,
+.capsule[data-state="open"] {
+	background: color-mix(in oklch, var(--ctd-ink) 12%, transparent);
+	color: var(--ctd-ink);
+}
+
+.capsule:focus-visible {
+	outline: none;
+	box-shadow: var(--ctd-focus-shadow);
+}
+
+.chevron {
+	width: 10px;
+	height: 10px;
+	transition: transform 160ms ease-out;
+}
+
+.capsule[data-state="open"] .chevron {
+	transform: rotate(180deg);
+}
+
+/*
+ * Hangs from the capsule by an arrow, as a macOS popover does. Opaque, not
+ * glass: it covers coloured covers and keeps file names readable.
+ */
+.popover {
+	--pop-bg: var(--ctd-surface-strong);
+	--pop-border: var(--ctd-menu-border);
+	position: relative;
+	display: grid;
+	gap: 12px;
+	box-sizing: border-box;
+	width: min(292px, calc(100vw - 24px));
+	padding: 12px;
+	border: var(--ctd-control-border-width) solid var(--pop-border);
+	border-radius: 12px;
+	background: var(--pop-bg);
+	box-shadow:
+		var(--ctd-popover-shadow),
+		inset 0 1px 0 var(--ctd-menu-inner-highlight);
+	color: var(--ctd-ink);
+	/* Above the upload sheet. */
+	z-index: 120;
+	transform-origin: var(--radix-popover-content-transform-origin);
+	animation: files-pop-in 160ms ease-out;
+}
+
+.popover:focus-visible {
+	outline: none;
+}
+
+/* The arrow: a square turned 45°, half over the top edge so it hides the
+   border there, its tip rounded. */
+.popover::before {
+	content: "";
+	position: absolute;
+	top: -8px;
+	left: calc(50% - 7px);
+	width: 14px;
+	height: 14px;
+	border-top: var(--ctd-control-border-width) solid var(--pop-border);
+	border-left: var(--ctd-control-border-width) solid var(--pop-border);
+	border-top-left-radius: 3px;
+	background: var(--pop-bg);
+	transform: rotate(45deg);
+}
+
+@keyframes files-pop-in {
+	from {
+		opacity: 0;
+		scale: 0.96;
+	}
+}
+
+.rows {
+	display: grid;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	min-width: 0;
+}
+
+.row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	min-height: 40px;
+	padding: 6px 0;
+}
+
+/* Hairlines between rows start under the text, as in a macOS list. */
+.row + .row::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: 30px;
+	height: 1px;
+	background: var(--ctd-border);
+}
+
+.rowText {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.rowFormat {
+	font-size: var(--ctd-text-body);
+	font-weight: 600;
+	line-height: var(--ctd-leading-body);
+}
+
+.rowName {
+	font-size: var(--ctd-text-subheadline);
+	line-height: var(--ctd-leading-subheadline);
+	color: var(--ctd-ink-soft);
+}
+
+@media (pointer: coarse) {
+	.capsule {
+		min-height: 32px;
+		padding: 4px 12px 4px 13px;
+	}
+
+	.popover {
+		width: min(358px, calc(100vw - 24px));
+		padding: 8px 16px 16px;
+		border-radius: 16px;
+	}
+
+	.row {
+		min-height: 52px;
+	}
+
+	.popover :global(button) {
+		min-height: 44px;
+		border-radius: 12px;
+		font-weight: 600;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.popover {
+		animation: none;
+	}
+
+	.chevron {
+		transition: none;
+	}
+}

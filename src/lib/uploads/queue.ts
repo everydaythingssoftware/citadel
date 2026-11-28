@@ -473,6 +473,28 @@ export const rowFormats = (row: BookRow): string[] =>
 		item.book ? [item.book.format.toUpperCase()] : [],
 	);
 
+/** A file a book is made of, as the review lists it. */
+export interface BookFile {
+	key: string;
+	/** As people know it: "EPUB". */
+	format: string;
+	fileName: string;
+}
+
+/** The files a row's book is made of, lead first. */
+export const rowFiles = (row: BookRow): BookFile[] =>
+	row.items.flatMap((item) =>
+		item.book
+			? [
+					{
+						key: item.key,
+						format: item.book.format.toUpperCase(),
+						fileName: item.fileName,
+					},
+				]
+			: [],
+	);
+
 export interface QueueSections {
 	/** New books, and files still on their way. */
 	books: BookRow[];
