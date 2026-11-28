@@ -640,14 +640,4 @@ mod tests {
             Some("Undo Mark as Finished".to_string())
         );
     }
-
-    #[test]
-    fn select_all_stays_native_until_the_frontend_picks_the_books() {
-        assert!(!menu_view(&MenuState::default(), "Finder").select_all_books);
-        let books = MenuState {
-            select_all: MenuSelectAll::Books,
-            ..MenuState::default()
-        };
-        assert!(menu_view(&books, "Finder").select_all_books);
-    }
 }

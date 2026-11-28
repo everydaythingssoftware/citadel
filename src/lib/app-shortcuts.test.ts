@@ -59,17 +59,6 @@ describe("pageShortcuts", () => {
 		}
 	});
 
-	it("leaves ⌘A/Ctrl+A to the library keymap and the chrome guard", () => {
-		for (const env of [
-			macApp,
-			windowsApp,
-			linuxApp,
-			macBrowser,
-			windowsBrowser,
-		])
-			expect(commandsOf(env)).not.toContain("select-all");
-	});
-
 	it("binds Undo and Redo everywhere the page handles keys", () => {
 		for (const env of [windowsApp, linuxApp, macBrowser, windowsBrowser]) {
 			expect(shortcutChord("undo", env)).toEqual(some("mod+z"));

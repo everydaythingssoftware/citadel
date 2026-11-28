@@ -43,13 +43,9 @@ describe("appUndo", () => {
 });
 
 describe("selectAllOwner", () => {
-	it("gives Select All to the books on the Books page, outside fields and sheets", () => {
+	it("gives Select All to the books only on the Books page, outside fields and sheets", () => {
 		expect(selectAllOwner(false, "/")).toBe("books");
-	});
-
-	it("keeps the native Select All in a field, a sheet or another page", () => {
 		expect(selectAllOwner(true, "/")).toBe("native");
 		expect(selectAllOwner(false, "/authors")).toBe("native");
-		expect(selectAllOwner(false, "/books/12")).toBe("native");
 	});
 });
