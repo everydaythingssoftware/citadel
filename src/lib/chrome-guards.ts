@@ -151,7 +151,10 @@ export const installChromeGuards = (
 		if (allowsNativeSelectAll(asTarget(event.target))) return;
 		browserGuardedEvents.add(event);
 		event.preventDefault();
-		selectAllWithinContent(doc);
+		// The app's Select All (every book) goes first; the text is the fallback.
+		setTimeout(() => {
+			if (browserGuardedEvents.has(event)) selectAllWithinContent(doc);
+		}, 0);
 	};
 	const onDragStart = (event: DragEvent) => {
 		if (allowsDragStart(asTarget(event.target))) return;
