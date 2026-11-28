@@ -1,5 +1,5 @@
 use citadel_core::{
-    contracts::{BookSortOrder, BookUpdate, LibraryBookQuery},
+    contracts::{BookSortOrder, BookUpdate, LibraryBookQuery, LibrarySearchHint, SearchScope},
     error::LibraryErrorCode,
     library::LibraryService,
     Actor, AssetUrlBuilder, BookFile, HttpUrlBuilder,
@@ -47,6 +47,7 @@ fn query(limit: Option<u32>) -> LibraryBookQuery {
         tag_id: None,
         publisher_id: None,
         hide_read: false,
+        search_scope: SearchScope::TitlesAuthorsSeries,
         sort: BookSortOrder::TitleAsc,
         limit,
         offset: 0,
@@ -121,4 +122,62 @@ fn invalid_identifiers_and_missing_books_have_shared_error_codes() {
         service.query_books(invalid).err().unwrap().code,
         LibraryErrorCode::InvalidArgument
     );
+}
+
+#[test]
+fn search_errors_have_their_own_code_and_hints_return_with_the_page() {
+    let (_directory, mut library, _) = fixture();
+    let mut service = LibraryService::new(&mut library, &AssetUrlBuilder);
+    let mut invalid = query(Some(50));
+    invalid.text = Some("tags:\"contract".into());
+    let error = service.query_books(invalid).err().unwrap();
+    assert_eq!(error.code, LibraryErrorCode::InvalidSearch);
+    assert_eq!(error.message, "Missing closing quote.");
+
+    let mut hinted = query(Some(50));
+    hinted.text = Some("titel:contract".into());
+    assert_eq!(
+        service.query_books(hinted).unwrap().search_hints,
+        vec![LibrarySearchHint::UnknownField {
+            name: "titel".into(),
+            message: r#"No field named "titel". Searched as text."#.into(),
+        }]
+    );
+
+    let mut tagged = query(Some(50));
+    tagged.text = Some("tags:contract".into());
+    assert_eq!(service.query_books(tagged).unwrap().total, 1);
+}
+
+#[test]
+fn a_search_hint_carries_its_kind_and_only_the_fields_of_that_kind() {
+    let unknown = LibrarySearchHint::UnknownField {
+        name: "titel".into(),
+        message: "m".into(),
+    };
+    assert_eq!(
+        serde_json::to_value(&unknown).unwrap(),
+        serde_json::json!({ "kind": "unknownField", "name": "titel", "message": "m" })
+    );
+    let other = LibrarySearchHint::Other {
+        message: "m".into(),
+    };
+    assert_eq!(
+        serde_json::to_value(&other).unwrap(),
+        serde_json::json!({ "kind": "other", "message": "m" })
+    );
+}
+
+#[test]
+fn the_search_scope_decides_whether_bare_words_match_the_publisher() {
+    let (_directory, mut library, _) = fixture();
+    let mut service = LibraryService::new(&mut library, &AssetUrlBuilder);
+    let mut default_scope = query(Some(50));
+    default_scope.text = Some("press".into());
+    assert_eq!(service.query_books(default_scope).unwrap().total, 0);
+
+    let mut all_fields = query(Some(50));
+    all_fields.text = Some("press".into());
+    all_fields.search_scope = SearchScope::AllFields;
+    assert_eq!(service.query_books(all_fields).unwrap().total, 1);
 }

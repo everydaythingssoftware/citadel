@@ -135,9 +135,37 @@ const filter: SmartShelfFilter = {
 	query: "dune",
 	sortOrder: "nameAz",
 	hideRead: false,
+	searchScope: "titlesAuthorsSeries",
 };
 
 describe("useSettings smart shelves", () => {
+	it("init saves the shelves that the settings migration changed", async () => {
+		const manager = createFakeSettingsManager();
+		await manager.set("settingsSchemaVersion", 4);
+		await manager.set("smartShelves", [
+			{
+				id: "old",
+				name: "Old",
+				filter: { query: "dune messiah", sortOrder: "nameAz", hideRead: false },
+			} as never,
+		]);
+
+		await importStore(manager);
+
+		expect(await manager.get("smartShelves")).toEqual([
+			{
+				id: "old",
+				name: "Old",
+				filter: {
+					query: '"dune messiah"',
+					sortOrder: "nameAz",
+					hideRead: false,
+					searchScope: "titlesAuthorsSeries",
+				},
+			},
+		]);
+	});
+
 	it("init hydrates smartShelves with the built-in Unread shelf", async () => {
 		const useSettings = await importStore(createFakeSettingsManager());
 
@@ -147,7 +175,12 @@ describe("useSettings smart shelves", () => {
 			{
 				id: "builtin-unread",
 				name: "Unread",
-				filter: { query: "", sortOrder: "authorAz", hideRead: true },
+				filter: {
+					query: "",
+					sortOrder: "authorAz",
+					hideRead: true,
+					searchScope: "titlesAuthorsSeries",
+				},
 			},
 		]);
 	});

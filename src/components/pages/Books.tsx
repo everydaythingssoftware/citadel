@@ -12,7 +12,7 @@ import {
 	TextInput,
 	Tooltip,
 } from "@/components/ui";
-import { bookCountStatus } from "@/lib/book-count";
+import { bookGridView } from "@/lib/book-grid-view";
 import {
 	BOOK_PAGE_SIZE,
 	type BookGridFilter,
@@ -31,13 +31,17 @@ import { useEntryScroll } from "@/lib/hooks/use-entry-scroll";
 import { useLibraryKeymap } from "@/lib/hooks/use-library-keymap";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { useOnLibraryFlip } from "@/lib/hooks/use-on-library-flip";
+import { useSearchScopeMenu } from "@/lib/hooks/use-search-scope-menu";
 import { useShownEntryKey } from "@/lib/hooks/use-shown-entry-key";
+import { SORT_LABELS } from "@/lib/library-sort-options";
 import { SCROLL_REGION, scrollRegionAttributes } from "@/lib/navigation";
+import type { ShelfViewFields } from "@/lib/platform/settings/types";
+import { noMatchesText, searchPlaceholder } from "@/lib/search-scope";
 import {
 	type BookRouteFilters,
 	deepLinkClearsQuery,
-	hasRouteFilters,
-	routeFiltersToShelf,
+	shelfFilterFromView,
+	shelfViewSummary,
 } from "@/lib/shelves";
 import { closeBookDetails } from "@/stores/book-selection/store";
 import {
@@ -46,6 +50,7 @@ import {
 	useLibraryActions,
 	useLibraryReady,
 	useLibraryTotal,
+	usePageOutcome,
 	usePublishers,
 	useSeriesList,
 	useStaleBookSnapshot,
@@ -79,15 +84,6 @@ interface BookSearchOptions {
 	publisher_id?: number;
 }
 
-const SORT_LABELS: Record<LibraryBookSortOrderKey, string> = {
-	nameAz: "Name (A–Z)",
-	nameZa: "Name (Z–A)",
-	authorAz: "Author (A–Z)",
-	authorZa: "Author (Z–A)",
-	addedNewest: "Recently added",
-	addedOldest: "Oldest added",
-};
-
 /**
  * How long the search text must sit still before it becomes a new paged
  * cache key (each distinct key costs backend fetches). The field itself
@@ -104,6 +100,7 @@ export const Books = ({
 	const query = useLibraryView((s) => s.query);
 	const sortOrder = useLibraryView((s) => s.sortOrder);
 	const hideRead = useLibraryView((s) => s.hideRead);
+	const searchScope = useLibraryView((s) => s.searchScope);
 	const setQuery = useLibraryView((s) => s.setQuery);
 	const setSortOrder = useLibraryView((s) => s.setSortOrder);
 	const setHideRead = useLibraryView((s) => s.setHideRead);
@@ -127,6 +124,7 @@ export const Books = ({
 	const libraryReady = useLibraryReady();
 	const cache = useBookCache();
 	const staleSnapshot = useStaleBookSnapshot();
+	const pageOutcome = usePageOutcome();
 	const libraryTotal = useLibraryTotal();
 	const authors = useAuthors();
 	const seriesList = useSeriesList();
@@ -142,6 +140,7 @@ export const Books = ({
 			tagId: tag_id ?? null,
 			publisherId: publisher_id ?? null,
 			hideRead,
+			searchScope,
 			sortOrder,
 		}),
 		[
@@ -151,6 +150,7 @@ export const Books = ({
 			tag_id,
 			publisher_id,
 			hideRead,
+			searchScope,
 			sortOrder,
 		],
 	);
@@ -199,14 +199,6 @@ export const Books = ({
 		() => shownBookItems(cache, staleSnapshot),
 		[cache, staleSnapshot],
 	);
-	const total = queryResolved ? cache.total : (staleSnapshot?.total ?? 0);
-
-	// True loading = no resolved data at all (fresh library open, no stale
-	// snapshot to show). During a search transition we are "searching", not
-	// "loading" — the stale grid stays visible.
-	const loading = !libraryReady || (!queryResolved && staleSnapshot === null);
-	// Dimming hint shown over the stale grid while the new query fetches.
-	const isSearching = libraryReady && !queryResolved && staleSnapshot !== null;
 
 	const navigate = useNavigate();
 	const onClearDeepLinkFilter = useCallback(() => {
@@ -254,6 +246,15 @@ export const Books = ({
 		entryKey,
 	});
 	const { selectedCount, isSelected } = useBookSelection();
+	// The rules of the grid status and the empty states are in bookGridView.
+	const gridView = bookGridView({
+		libraryReady,
+		cache,
+		staleSnapshot,
+		pageOutcome,
+		libraryTotal,
+		selectedCount,
+	});
 	const grid = useBookGridInteraction(books);
 
 	const searchInputRef = useRef<HTMLInputElement>(null);
@@ -310,12 +311,7 @@ export const Books = ({
 	// A genuinely empty library (including first-run with the bundled library)
 	// teaches the two ways to populate it; an empty result against a non-empty
 	// library is a zero-result filter.
-	const emptyLibrary = !loading && (libraryTotal ?? 0) === 0;
-	// Only show the zero-result state once the active query has resolved to 0
-	// results — never transiently while a new search is still in flight.
-	const noMatches =
-		!loading && queryResolved && total === 0 && (libraryTotal ?? 0) > 0;
-	const showGrid = !emptyLibrary && !noMatches;
+	const showGrid = !gridView.emptyLibrary && !gridView.noMatches;
 	const regionProps = {
 		ref: gridContainerRef,
 		...scrollRegionAttributes(SCROLL_REGION.libraryGrid),
@@ -323,10 +319,16 @@ export const Books = ({
 		className: clsx(
 			styles.gridArea,
 			"ctd-scroller",
-			isSearching && styles.gridAreaSearching,
+			// Dimming hint shown over the stale grid while the new query
+			// fetches. No dimming while the last answer for the filter is an
+			// error.
+			gridView.status === "searching" && styles.gridAreaSearching,
 		),
 	};
 	const trimmedQuery = query.trim();
+
+	const { menu: scopeMenu, button: scopeButton } =
+		useSearchScopeMenu(searchInputRef);
 
 	const searchTokens = [
 		...(authorTokenName !== undefined
@@ -380,8 +382,14 @@ export const Books = ({
 					<span className={styles.searchWrap}>
 						<SearchField
 							ref={searchInputRef}
-							placeholder={searchTokens.length > 0 ? undefined : "Search"}
-							aria-label="Search book titles and authors"
+							placeholder={
+								searchTokens.length > 0
+									? undefined
+									: searchPlaceholder(searchScope)
+							}
+							aria-label="Search books"
+							message={gridView.callout ?? undefined}
+							scopeButton={scopeButton}
 							value={query}
 							onChange={(event) => setQuery(event.currentTarget.value)}
 							className={styles.searchInput}
@@ -409,9 +417,7 @@ export const Books = ({
 						/>
 					</span>
 					<SaveAsShelfControl
-						query={query}
-						sortOrder={sortOrder}
-						hideRead={hideRead}
+						view={{ query, sortOrder, hideRead, searchScope }}
 						routeFilters={{ author_id, series_id, tag_id, publisher_id }}
 					/>
 				</div>
@@ -432,7 +438,8 @@ export const Books = ({
 				>
 					<BookGrid
 						bookList={books}
-						loading={loading}
+						loading={gridView.status === "loading"}
+						pendingSlots={gridView.status === "stale" ? "hidden" : "loading"}
 						bookActions={grid.bookActions}
 						isSelected={isSelected}
 						scrollElementRef={gridContainerRef}
@@ -444,13 +451,13 @@ export const Books = ({
 				</div>
 			) : (
 				<div {...regionProps} tabIndex={-1}>
-					{emptyLibrary ? (
+					{gridView.emptyLibrary ? (
 						<EmptyLibrary />
 					) : trimmedQuery.length > 0 ? (
 						<EmptyState
 							art="search"
 							title={`No books match “${trimmedQuery}”`}
-							description="Search looks at titles and authors. Check the spelling, or try fewer words."
+							description={noMatchesText(searchScope)}
 						>
 							<Button variant="default" onClick={() => setQuery("")}>
 								Clear Search
@@ -476,12 +483,7 @@ export const Books = ({
 			)}
 			<div className={styles.footer}>
 				<span className={styles.footerText} aria-live="polite">
-					{bookCountStatus({
-						loading,
-						total,
-						libraryTotal,
-						selectedCount,
-					})}
+					{gridView.footer}
 				</span>
 			</div>
 			<BookDetailsDrawer
@@ -495,6 +497,11 @@ export const Books = ({
 				menu={grid.menu.menu}
 				returnFocusRef={gridContainerRef}
 				onClose={grid.menu.close}
+			/>
+			<ContextMenu
+				menu={scopeMenu.menu}
+				returnFocusRef={scopeMenu.returnFocusRef}
+				onClose={scopeMenu.close}
 			/>
 			<DeleteBooksDialogs />
 		</div>
@@ -534,16 +541,12 @@ const DeleteBooksDialogs = () => {
 };
 
 interface SaveAsShelfControlProps {
-	query: string;
-	sortOrder: LibraryBookSortOrderKey;
-	hideRead: boolean;
+	view: ShelfViewFields;
 	routeFilters: BookRouteFilters;
 }
 
 const SaveAsShelfControl = ({
-	query,
-	sortOrder,
-	hideRead,
+	view,
 	routeFilters,
 }: SaveAsShelfControlProps) => {
 	const applyShelf = useLibraryView((s) => s.applyShelf);
@@ -564,12 +567,7 @@ const SaveAsShelfControl = ({
 		setError(null);
 	};
 
-	const summary = [
-		...(hasRouteFilters(routeFilters) ? ["this view's filter"] : []),
-		query.trim().length > 0 ? `search "${query.trim()}"` : "no search",
-		`sorted by ${SORT_LABELS[sortOrder]}`,
-		hideRead ? "hiding read books" : "showing read books",
-	].join(", ");
+	const summary = shelfViewSummary(view, routeFilters);
 
 	const save = async () => {
 		const trimmed = name.trim();
@@ -578,12 +576,10 @@ const SaveAsShelfControl = ({
 		}
 
 		try {
-			const shelf = await createSmartShelf(trimmed, {
-				query,
-				sortOrder,
-				hideRead,
-				...routeFiltersToShelf(routeFilters, libraryId),
-			});
+			const shelf = await createSmartShelf(
+				trimmed,
+				shelfFilterFromView(view, routeFilters, libraryId),
+			);
 			applyShelf(shelf);
 			close();
 		} catch (e) {

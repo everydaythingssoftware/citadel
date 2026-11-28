@@ -84,6 +84,12 @@
 	text-overflow: ellipsis;
 }
 
+/* A fixed width keeps the labels of checked and unchecked items aligned. */
+.check {
+	flex: none;
+	width: 1em;
+}
+
 .shortcut {
 	flex: none;
 	margin-inline-start: 16px;

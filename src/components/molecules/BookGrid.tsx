@@ -59,6 +59,11 @@ export type VisibleRangeChange = (startIndex: number, endIndex: number) => void;
 interface BookGridProps {
 	loading: boolean;
 	/**
+	 * How the grid draws a book whose page has not loaded. `hidden` keeps the
+	 * space and draws nothing, for a result whose missing pages cannot load.
+	 */
+	pendingSlots?: "loading" | "hidden";
+	/**
 	 * Indexed array of the filtered library: length is the total match
 	 * count, `undefined` entries are books whose page has not been fetched
 	 * yet (they render as placeholders).
@@ -91,6 +96,7 @@ interface BookGridProps {
 
 export const BookGrid = ({
 	loading,
+	pendingSlots = "loading",
 	bookList: books,
 	bookActions,
 	isSelected,
@@ -286,7 +292,14 @@ export const BookGrid = ({
 											aria-hidden="true"
 											key={`placeholder-${index}`}
 										>
-											<BookCover loading />
+											<BookCover
+												loading
+												style={
+													pendingSlots === "hidden"
+														? { visibility: "hidden" }
+														: undefined
+												}
+											/>
 										</div>
 									);
 								const selected = isSelected(book.id, index);

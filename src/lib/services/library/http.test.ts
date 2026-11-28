@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LibraryBook, LibraryBookQuery } from "@/bindings";
 import { createHttpLibrary } from "./http";
-import { CoverExpiredError, DeviceType } from "./types";
+import { CoverExpiredError, DeviceType, InvalidSearchError } from "./types";
 
 const query: LibraryBookQuery = {
 	text: "search",
@@ -10,6 +10,7 @@ const query: LibraryBookQuery = {
 	tag_id: 2,
 	publisher_id: null,
 	hide_read: false,
+	search_scope: "titlesAuthorsSeries",
 	sort: "AuthorAsc",
 	limit: 100,
 	offset: 200,
@@ -49,7 +50,7 @@ describe("HTTP Library", () => {
 			fetch: async (request) => {
 				requests.push(request);
 				return request.method === "POST"
-					? json({ items: [book], total: 300 })
+					? json({ items: [book], total: 300, search_hints: [] })
 					: json({ ...book, cover_image: null });
 			},
 		});
@@ -93,6 +94,7 @@ describe("HTTP Library", () => {
 						id: String(offset + index + 1),
 					})),
 					total: 451,
+					search_hints: [],
 				});
 			},
 		});
@@ -133,13 +135,14 @@ describe("HTTP Library", () => {
 			baseUrl: "https://citadel.test",
 			fetch: async (request) => {
 				bodies.push((await request.json()) as LibraryBookQuery);
-				return json({ items: [], total: 451 });
+				return json({ items: [], total: 451, search_hints: [] });
 			},
 		});
 		const countQuery = { ...query, limit: 0 };
 		expect(await library.queryBooks(countQuery)).toEqual({
 			items: [],
 			total: 451,
+			search_hints: [],
 		});
 		expect(bodies).toEqual([countQuery]);
 	});
@@ -208,6 +211,68 @@ describe("HTTP Library", () => {
 		);
 		await expect(library.listAuthors()).rejects.toThrow(
 			"Authentication required",
+		);
+		await expect(library.queryBooks(query)).rejects.not.toBeInstanceOf(
+			InvalidSearchError,
+		);
+	});
+
+	it.each([
+		100,
+		null,
+	])("returns the search hints of a query with limit %s", async (limit) => {
+		const hint = {
+			kind: "unknownField",
+			name: "titel",
+			message: 'No field named "titel". Searched as text.',
+		};
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () =>
+				json({ items: [book], total: 1, search_hints: [hint] }),
+		});
+		const page = await library.queryBooks({ ...query, limit, series_id: 8 });
+		expect(page.search_hints).toEqual([hint]);
+	});
+
+	it("throws InvalidSearchError for a search that does not parse", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () =>
+				json({ code: "invalidSearch", message: "Missing closing quote." }, 400),
+		});
+		const rejection = library.queryBooks(query);
+		await expect(rejection).rejects.toBeInstanceOf(InvalidSearchError);
+		await expect(rejection).rejects.toThrow("Missing closing quote.");
+	});
+
+	it("gives the HTTP status when an error body is not JSON", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () =>
+				new Response("<html><body>Bad Gateway</body></html>", {
+					status: 502,
+					headers: { "content-type": "text/html" },
+				}),
+		});
+		await expect(library.queryBooks(query)).rejects.toThrow(
+			"Library request failed (502)",
+		);
+		await expect(library.deleteAuthor("3")).rejects.toThrow(
+			"Library request failed (502)",
+		);
+	});
+
+	it("gives the HTTP status when a JSON error body has no message", async () => {
+		const library = createHttpLibrary({
+			baseUrl: "https://citadel.test",
+			fetch: async () => json({ error: "upstream timeout" }, 504),
+		});
+		await expect(library.queryBooks(query)).rejects.toThrow(
+			"Library request failed (504)",
+		);
+		await expect(library.deleteAuthor("3")).rejects.toThrow(
+			"Library request failed (504)",
 		);
 	});
 

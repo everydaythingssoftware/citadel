@@ -6,6 +6,7 @@ import {
 	useBrowserSessionControls,
 } from "@/lib/hooks/use-browser-session";
 import {
+	type ContextMenuButton,
 	type ContextMenuController,
 	type ContextMenuTarget,
 	useContextMenu,
@@ -64,12 +65,20 @@ export interface SidebarViewModel {
 	session: BrowserSessionControls | null;
 }
 
+/** The controls that open the menu of the open library. */
+export interface LibraryMenu {
+	/** For a control that opens the menu with a right-click or a key. */
+	target: ContextMenuTarget;
+	/** For the "Library" heading, which opens the menu with a click. */
+	button: ContextMenuButton;
+}
+
 export interface SidebarModel {
 	view: SidebarViewModel;
 	/** Two or more local libraries: the header switches between them. */
 	libraryPicker: boolean;
 	/** The open library's own menu (Show in Finder, Forget…). */
-	libraryMenu: Option<ContextMenuTarget>;
+	libraryMenu: Option<LibraryMenu>;
 	contextMenu: ContextMenuController;
 	shelfDelete: ShelfDelete;
 	removeLibrary: RemoveLibrary;
@@ -100,21 +109,20 @@ export const useSidebarModel = (): Option<SidebarModel> => {
 	const activeShelfId = useLibraryView((s) => s.activeShelfId);
 	const applyShelf = useLibraryView((s) => s.applyShelf);
 	const resetToAllBooks = useLibraryView((s) => s.resetToAllBooks);
-	const clearMissingActiveShelf = useLibraryView(
-		(s) => s.clearMissingActiveShelf,
-	);
+	const syncActiveShelf = useLibraryView((s) => s.syncActiveShelf);
 	const detachShelf = useLibraryView((s) => s.detachShelf);
 	const currentPathname = location.pathname;
 	const routeFilters = routeFiltersFromSearch(location.search);
 	const { author_id, series_id, tag_id, publisher_id } = routeFilters;
 
 	// activeShelfId comes from localStorage, shelves from settings.json; drop a
-	// shelf id that no longer exists once settings have hydrated.
+	// shelf id that no longer exists once settings have hydrated, or apply the
+	// filter of the shelf again.
 	useEffect(() => {
 		if (hydrated) {
-			clearMissingActiveShelf(smartShelves.map((shelf) => shelf.id));
+			syncActiveShelf(smartShelves);
 		}
-	}, [hydrated, smartShelves, clearMissingActiveShelf]);
+	}, [hydrated, smartShelves, syncActiveShelf]);
 
 	// A shelf is only "showing" while the route carries its tag/author/series/
 	// publisher filter. When the route stops matching (the filter token was
@@ -217,7 +225,16 @@ export const useSidebarModel = (): Option<SidebarModel> => {
 		},
 		libraryPicker: platform.capabilities.canPickLocalFiles && libraryCount >= 2,
 		libraryMenu: libraryActions.items.isSome
-			? some(contextMenu.target(libraryActions.items.value, "Library actions"))
+			? some({
+					target: contextMenu.target(
+						libraryActions.items.value,
+						"Library actions",
+					),
+					button: contextMenu.menuButton(
+						libraryActions.items.value,
+						"Library actions",
+					),
+				})
 			: none(),
 		contextMenu,
 		shelfDelete,

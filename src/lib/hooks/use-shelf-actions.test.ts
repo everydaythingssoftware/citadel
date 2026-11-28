@@ -27,7 +27,12 @@ import { deleteShelf } from "./use-shelf-actions";
 const SHELF: SmartShelf = {
 	id: "shelf-1",
 	name: "Reading",
-	filter: { query: "", sortOrder: "authorAz", hideRead: true },
+	filter: {
+		query: "",
+		sortOrder: "authorAz",
+		hideRead: true,
+		searchScope: "titlesAuthorsSeries",
+	},
 };
 
 beforeEach(() => {

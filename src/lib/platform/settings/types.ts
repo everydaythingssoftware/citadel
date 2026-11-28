@@ -1,4 +1,4 @@
-import type { MetadataProvider } from "@/bindings";
+import type { MetadataProvider, SearchScope } from "@/bindings";
 
 // Owned here (not in the library-view store) so the platform settings layer
 // never depends on the stores layer; the store re-exports it.
@@ -21,6 +21,11 @@ export interface SmartShelfFilter {
 	sortOrder: LibraryBookSortOrderKey;
 	hideRead: boolean;
 	/**
+	 * The fields that a bare word searches. The settings migration to version
+	 * 5 gives a scope to each shelf saved before the scope existed.
+	 */
+	searchScope: SearchScope;
+	/**
 	 * Author, series, tag or publisher the shelf was saved from (library ids).
 	 * Optional so shelves saved before these existed stay valid and unfiltered.
 	 */
@@ -34,6 +39,15 @@ export interface SmartShelfFilter {
 	 */
 	libraryId?: string;
 }
+
+/**
+ * The fields of the book view that a shelf stores and applies. The route
+ * filters of a shelf are not part of the view.
+ */
+export type ShelfViewFields = Pick<
+	SmartShelfFilter,
+	"query" | "sortOrder" | "hideRead" | "searchScope"
+>;
 
 export interface SmartShelf {
 	id: string;
@@ -105,7 +119,12 @@ export const defaultSettings: SettingsSchema = {
 		{
 			id: "builtin-unread",
 			name: "Unread",
-			filter: { query: "", sortOrder: "authorAz", hideRead: true },
+			filter: {
+				query: "",
+				sortOrder: "authorAz",
+				hideRead: true,
+				searchScope: "titlesAuthorsSeries",
+			},
 		},
 	],
 	// Starts at 0 (the unmigrated sentinel) so the one-time migration runs once

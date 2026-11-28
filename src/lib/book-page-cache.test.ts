@@ -8,6 +8,7 @@ import {
 	cacheForKey,
 	compareBySeriesIndex,
 	emptyBookCache,
+	hasSameView,
 	invalidateBookCache,
 	pagesCoveringRange,
 	pagesToFetch,
@@ -42,6 +43,7 @@ const filter = (overrides: Partial<BookGridFilter> = {}): BookGridFilter => ({
 	tagId: null,
 	publisherId: null,
 	hideRead: false,
+	searchScope: "titlesAuthorsSeries",
 	sortOrder: "authorAz",
 	...overrides,
 });
@@ -68,6 +70,54 @@ describe("serializeBookFilter", () => {
 		expect(serializeBookFilter(filter({ publisherId: 5 }))).not.toBe(base);
 		expect(serializeBookFilter(filter({ hideRead: true }))).not.toBe(base);
 		expect(serializeBookFilter(filter({ sortOrder: "nameZa" }))).not.toBe(base);
+		expect(
+			serializeBookFilter(filter({ text: "dune", searchScope: "allFields" })),
+		).not.toBe(serializeBookFilter(filter({ text: "dune" })));
+	});
+
+	it("ignores the search scope when the text is blank", () => {
+		expect(serializeBookFilter(filter({ searchScope: "allFields" }))).toBe(
+			serializeBookFilter(filter()),
+		);
+		expect(
+			serializeBookFilter(filter({ text: "  ", searchScope: "allFields" })),
+		).toBe(serializeBookFilter(filter()));
+	});
+});
+
+describe("hasSameView", () => {
+	const key = (overrides: Partial<BookGridFilter>) =>
+		serializeBookFilter(filter(overrides));
+
+	it("is true for two equal keys", () => {
+		expect(hasSameView(key({ text: "dune" }), key({ text: "dune" }))).toBe(
+			true,
+		);
+	});
+
+	it("is true when only the text or the scope differ", () => {
+		expect(hasSameView(key({ text: "dune" }), key({ text: '"dun' }))).toBe(
+			true,
+		);
+		expect(
+			hasSameView(
+				key({ text: "dune" }),
+				key({ text: '"dun', searchScope: "allFields" }),
+			),
+		).toBe(true);
+		expect(hasSameView(key({}), key({ text: '"dun' }))).toBe(true);
+	});
+
+	it("is false when a filter or the sort differ", () => {
+		expect(
+			hasSameView(key({ text: "a" }), key({ text: "b", authorId: "7" })),
+		).toBe(false);
+		expect(
+			hasSameView(key({ text: "a" }), key({ text: "b", hideRead: true })),
+		).toBe(false);
+		expect(
+			hasSameView(key({ text: "a" }), key({ text: "b", sortOrder: "nameZa" })),
+		).toBe(false);
 	});
 });
 
@@ -106,6 +156,22 @@ describe("toBookQuery", () => {
 	it("nullifies blank text and passes trimmed text through", () => {
 		expect(toBookQuery(filter({ text: "  " }), 0).text).toBeNull();
 		expect(toBookQuery(filter({ text: " dune " }), 0).text).toBe("dune");
+	});
+
+	it("sends the search scope of a search text", () => {
+		expect(toBookQuery(filter({ text: "x" }), 0).search_scope).toBe(
+			"titlesAuthorsSeries",
+		);
+		expect(
+			toBookQuery(filter({ text: "x", searchScope: "allFields" }), 0)
+				.search_scope,
+		).toBe("allFields");
+	});
+
+	it("sends the default scope when the text is blank", () => {
+		expect(
+			toBookQuery(filter({ searchScope: "allFields" }), 0).search_scope,
+		).toBe("titlesAuthorsSeries");
 	});
 
 	it("passes tag and publisher filters through, paged as usual", () => {

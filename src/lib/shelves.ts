@@ -1,4 +1,9 @@
-import type { SmartShelfFilter } from "@/lib/platform/settings/types";
+import { SORT_LABELS } from "@/lib/library-sort-options";
+import type {
+	ShelfViewFields,
+	SmartShelfFilter,
+} from "@/lib/platform/settings/types";
+import { searchScopeLabel } from "@/lib/search-scope";
 
 /** The Books route's deep-link filters (its search params). */
 export interface BookRouteFilters {
@@ -41,6 +46,40 @@ export const routeFiltersToShelf = (
 	...(route.publisher_id !== undefined && { publisherId: route.publisher_id }),
 	...(hasRouteFilters(route) && libraryId !== undefined && { libraryId }),
 });
+
+/**
+ * The filter of a new shelf for the current view, its scope included, with
+ * the route filters of the view. "Save as shelf…" stores it.
+ */
+export const shelfFilterFromView = (
+	view: ShelfViewFields,
+	routeFilters: BookRouteFilters,
+	libraryId: string | undefined,
+): SmartShelfFilter => ({
+	query: view.query,
+	sortOrder: view.sortOrder,
+	hideRead: view.hideRead,
+	searchScope: view.searchScope,
+	...routeFiltersToShelf(routeFilters, libraryId),
+});
+
+/**
+ * The text that tells what "Save as shelf…" stores for the current view. It
+ * names each field that {@link shelfFilterFromView} stores, the scope too.
+ */
+export const shelfViewSummary = (
+	view: ShelfViewFields,
+	routeFilters: BookRouteFilters,
+): string => {
+	const query = view.query.trim();
+	return [
+		...(hasRouteFilters(routeFilters) ? ["this view's filter"] : []),
+		query.length > 0 ? `search "${query}"` : "no search",
+		`search scope "${searchScopeLabel(view.searchScope)}"`,
+		`sorted by ${SORT_LABELS[view.sortOrder]}`,
+		view.hideRead ? "hiding read books" : "showing read books",
+	].join(", ");
+};
 
 /** Whether a shelf belongs in this library; shelves without ids are global. */
 export const shelfInLibrary = (

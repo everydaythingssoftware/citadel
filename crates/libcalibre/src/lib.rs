@@ -17,6 +17,7 @@ mod persistence;
 mod queries;
 mod schema;
 mod schema_versions;
+mod search;
 /// Calibre-compatible sort keys for book titles and author names.
 pub mod sorting;
 mod stats;
@@ -36,6 +37,7 @@ pub use schema_versions::{
     backups as upgrade_backups, peek_schema_version, SchemaUpgrade, MINIMUM_SCHEMA_VERSION,
     SCHEMA_VERSION,
 };
+pub use search::{SearchError, SearchHint, SearchKind, SearchOperator, SearchScope, Spanned};
 pub use stats::{library_stats, LibraryStats};
 pub use types::{AuthorId, BookId};
 pub use util::is_library;

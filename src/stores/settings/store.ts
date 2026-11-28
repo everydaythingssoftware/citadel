@@ -165,6 +165,7 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 					"metadataProviders",
 					migrated.metadataProviders,
 				);
+				await settingsManager.set("smartShelves", migrated.smartShelves);
 				await settingsManager.set(
 					"settingsSchemaVersion",
 					migrated.settingsSchemaVersion,

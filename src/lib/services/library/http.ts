@@ -1,35 +1,64 @@
 import type { ClientOptions } from "openapi-fetch";
-import type { CoverThumbnail, LibraryBook } from "@/bindings";
+import type {
+	CoverThumbnail,
+	LibraryBook,
+	LibrarySearchHint,
+} from "@/bindings";
 import { createCitadelHttpClient } from "@/lib/api/client";
-import { BookDeletion, CoverExpiredError, type Library } from "./types";
+import {
+	BookDeletion,
+	CoverExpiredError,
+	failure,
+	type Library,
+	type LibraryFailure,
+} from "./types";
 import { createHttpUploads } from "./uploads-http";
 
 const unsupported = async (): Promise<never> => {
 	throw new Error("This isn't available in the browser");
 };
 
+/** The error for a response with no usable body, from its HTTP status. */
+const statusFailure = (response: Response): Error =>
+	new Error(`Library request failed (${response.status})`);
+
+/**
+ * The error of a failed response. openapi-fetch gives the raw text when the
+ * body is not JSON, for example the HTML page of a proxy. That text is not a
+ * message for the user, so the HTTP status replaces it. The status also
+ * replaces a JSON body with no message, which a proxy can send too.
+ */
+const responseFailure = (
+	error: LibraryFailure | string,
+	response: Response,
+): Error =>
+	typeof error !== "string" && typeof error.message === "string"
+		? failure(error)
+		: statusFailure(response);
+
 const unwrap = async <T>(
 	request: Promise<{
 		data?: T;
-		error?: { message: string };
+		error?: LibraryFailure | string;
 		response: Response;
 	}>,
 ): Promise<T> => {
 	const { data, error, response } = await request;
-	if (error) throw new Error(error.message);
-	if (!response.ok || data === undefined)
-		throw new Error(`Library request failed (${response.status})`);
+	if (error) throw responseFailure(error, response);
+	if (!response.ok || data === undefined) throw statusFailure(response);
 	return data;
 };
 
 /** For writes that answer 204 No Content, where openapi-fetch has no data. */
 const succeed = async (
-	request: Promise<{ error?: { message: string }; response: Response }>,
+	request: Promise<{
+		error?: LibraryFailure | string;
+		response: Response;
+	}>,
 ): Promise<void> => {
 	const { error, response } = await request;
-	if (error) throw new Error(error.message);
-	if (!response.ok)
-		throw new Error(`Library request failed (${response.status})`);
+	if (error) throw responseFailure(error, response);
+	if (!response.ok) throw statusFailure(response);
 };
 
 export const createHttpLibrary = (
@@ -76,6 +105,7 @@ export const createHttpLibrary = (
 			const offset = query.offset ?? 0;
 			const requestedLimit = query.limit ?? Number.POSITIVE_INFINITY;
 			let total = 0;
+			let searchHints: LibrarySearchHint[] = [];
 			while (items.length < requestedLimit) {
 				const page = await unwrap(
 					client.POST("/api/books/query", {
@@ -87,10 +117,11 @@ export const createHttpLibrary = (
 					}),
 				);
 				total = page.total;
+				searchHints = page.search_hints;
 				items.push(...page.items.map(rememberBook));
 				if (page.items.length === 0 || offset + items.length >= total) break;
 			}
-			return { items, total };
+			return { items, total, search_hints: searchHints };
 		},
 		getBook: async (bookId) =>
 			rememberBook(

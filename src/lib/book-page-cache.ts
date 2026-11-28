@@ -7,8 +7,14 @@
  * data-in/data-out so it can be unit-tested without Tauri.
  */
 
-import type { BookSortOrder, LibraryBook, LibraryBookQuery } from "@/bindings";
+import type {
+	BookSortOrder,
+	LibraryBook,
+	LibraryBookQuery,
+	SearchScope,
+} from "@/bindings";
 import type { LibraryBookSortOrderKey } from "@/lib/platform/settings/types";
+import { SEARCH_SCOPE } from "@/lib/search-scope";
 
 /**
  * Books fetched per page. 100 covers is 10–25 virtualized shelf rows
@@ -26,6 +32,8 @@ export interface BookGridFilter {
 	tagId: number | null;
 	publisherId: number | null;
 	hideRead: boolean;
+	/** The fields that a bare word searches. It applies only to a search text. */
+	searchScope: SearchScope;
 	sortOrder: LibraryBookSortOrderKey;
 }
 
@@ -36,6 +44,7 @@ export const ALL_BOOKS_FILTER: BookGridFilter = {
 	tagId: null,
 	publisherId: null,
 	hideRead: false,
+	searchScope: SEARCH_SCOPE.titlesAuthorsSeries,
 	sortOrder: "authorAz",
 };
 
@@ -53,20 +62,44 @@ const normalizedText = (filter: BookGridFilter): string | null => {
 	return trimmed.length > 0 ? trimmed : null;
 };
 
+/** The scope that a query uses: the default scope when the text is blank. */
+const queryScope = (filter: BookGridFilter): SearchScope =>
+	normalizedText(filter) === null
+		? SEARCH_SCOPE.titlesAuthorsSeries
+		: filter.searchScope;
+
+/** The two parts of a cache key: the search, and the filters with the sort. */
+interface BookFilterKey {
+	search: [string | null, SearchScope];
+	view: unknown[];
+}
+
 /**
  * Cache key for a filter combination. Sorting is part of the key: a page
  * fetched under one sort order holds different indices under another.
  */
 export const serializeBookFilter = (filter: BookGridFilter): string =>
-	JSON.stringify([
-		normalizedText(filter),
-		filter.authorId,
-		filter.seriesId,
-		filter.tagId,
-		filter.publisherId,
-		filter.hideRead,
-		filter.sortOrder,
-	]);
+	JSON.stringify({
+		search: [normalizedText(filter), queryScope(filter)],
+		view: [
+			filter.authorId,
+			filter.seriesId,
+			filter.tagId,
+			filter.publisherId,
+			filter.hideRead,
+			filter.sortOrder,
+		],
+	} satisfies BookFilterKey);
+
+/**
+ * True when two cache keys have the same filters and the same sort. The
+ * search text and the scope can differ.
+ */
+export const hasSameView = (a: string, b: string): boolean => {
+	const view = (key: string) =>
+		JSON.stringify((JSON.parse(key) as BookFilterKey).view);
+	return view(a) === view(b);
+};
 
 /**
  * The backend query for one page of a filter.
@@ -88,6 +121,7 @@ export const toBookQuery = (
 	tag_id: filter.tagId,
 	publisher_id: filter.publisherId,
 	hide_read: filter.hideRead,
+	search_scope: queryScope(filter),
 	sort: SORT_ORDER_TO_BACKEND[filter.sortOrder],
 	limit: filter.seriesId !== null ? null : pageSize,
 	offset: filter.seriesId !== null ? 0 : pageIndex * pageSize,

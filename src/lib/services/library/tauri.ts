@@ -9,6 +9,7 @@ import {
 import {
 	BookDeletion,
 	CoverExpiredError,
+	failure,
 	type Library,
 	type LocalBookImports,
 	type StagedUpload,
@@ -131,7 +132,11 @@ export const createTauriLibrary = (): Library => {
 		queryBooks: async (query: LibraryBookQuery) => {
 			const results = await commands.clbQueryBooks(query);
 			if (results.status === "error") {
-				throw new Error(results.error.message);
+				// Tauri gives a plain string when it cannot read the arguments.
+				const error: unknown = results.error;
+				throw failure(
+					typeof error === "string" ? { message: error } : results.error,
+				);
 			}
 
 			for (const book of results.data.items) {

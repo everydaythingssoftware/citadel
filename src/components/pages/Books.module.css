@@ -54,6 +54,9 @@
 	padding: 10px 24px;
 	background-color: var(--ctd-content-bg);
 	border-bottom: 1px solid var(--ctd-border);
+	/* Grid rows that scroll under the search callout cannot cover it. */
+	position: relative;
+	z-index: 1;
 }
 
 /* One row: the search field fills what the other controls leave, down to a

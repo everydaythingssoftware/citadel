@@ -1,5 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { ContextMenuEntry, ContextMenuState } from "@/lib/context-menu";
+import {
+	type ContextMenuEntry,
+	type ContextMenuState,
+	opensMenuFromButton,
+	toggleMenu,
+} from "@/lib/context-menu";
 import { none, type Option, some } from "@/lib/option";
 
 export interface ContextMenuOpenEvent {
@@ -14,6 +19,20 @@ export interface ContextMenuTarget {
 	onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
 }
 
+/** The props of a button that opens the menu under itself. */
+export interface ContextMenuButton {
+	"aria-haspopup": "menu";
+	/**
+	 * True while the menu with this label is open. One controller can hold the
+	 * menus of many controls.
+	 */
+	"aria-expanded": boolean;
+	/** Opens the menu, or closes it when this button opened it. */
+	onClick: (event: React.MouseEvent<HTMLElement>) => void;
+	/** ArrowDown opens the menu. Enter and Space click the button. */
+	onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
+}
+
 export interface ContextMenuController {
 	menu: ContextMenuState | null;
 	openAt(
@@ -22,7 +41,19 @@ export interface ContextMenuController {
 		label?: string,
 	): void;
 	target(items: ContextMenuEntry[], label: string): ContextMenuTarget;
-	/** The control the menu was last opened from; pass to ContextMenu. */
+	/**
+	 * Props for a button that opens the menu under itself. A second click
+	 * closes the menu. Focus returns to `returnFocus`, or to the button.
+	 */
+	menuButton(
+		items: ContextMenuEntry[],
+		label: string,
+		options?: { returnFocus?: React.RefObject<HTMLElement | null> },
+	): ContextMenuButton;
+	/**
+	 * The control the menu was last opened from, or the `returnFocus` of
+	 * `menuButton`; pass to ContextMenu.
+	 */
 	returnFocusRef: React.RefObject<HTMLElement | null>;
 	close(): void;
 }
@@ -45,7 +76,8 @@ export const keyboardMenuEvent = (
 
 /**
  * State for one ContextMenu: `{...menu.target(items, "Book actions")}` on
- * the control, `<ContextMenu menu={menu.menu} returnFocusRef=
+ * the control, or `{...menu.menuButton(items, "Search scope")}` on a menu
+ * button, and `<ContextMenu menu={menu.menu} returnFocusRef=
  * {menu.returnFocusRef} onClose={menu.close} />` beside it.
  */
 export const useContextMenu = (): ContextMenuController => {
@@ -80,9 +112,36 @@ export const useContextMenu = (): ContextMenuController => {
 		}),
 		[openAt],
 	);
+	const menuButton = useCallback(
+		(
+			items: ContextMenuEntry[],
+			label: string,
+			options?: { returnFocus?: React.RefObject<HTMLElement | null> },
+		): ContextMenuButton => {
+			const under = (button: HTMLElement): ContextMenuState => {
+				returnFocusRef.current = options?.returnFocus?.current ?? button;
+				const rect = button.getBoundingClientRect();
+				return { x: rect.left, y: rect.bottom, items, label, anchor: button };
+			};
+			return {
+				"aria-haspopup": "menu",
+				"aria-expanded": menu?.label === label,
+				onClick: (event) => {
+					const opening = under(event.currentTarget);
+					setMenu((open) => toggleMenu(open, opening));
+				},
+				onKeyDown: (event) => {
+					if (!opensMenuFromButton(event.key)) return;
+					event.preventDefault();
+					setMenu(under(event.currentTarget));
+				},
+			};
+		},
+		[menu],
+	);
 	const close = useCallback(() => setMenu(null), []);
 	return useMemo(
-		() => ({ menu, openAt, target, returnFocusRef, close }),
-		[menu, openAt, target, close],
+		() => ({ menu, openAt, target, menuButton, returnFocusRef, close }),
+		[menu, openAt, target, menuButton, close],
 	);
 };

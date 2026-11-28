@@ -234,6 +234,19 @@ export const selectedBooks = (
 };
 
 /**
+ * True when `books` holds each book that `selection` selects. Select All and
+ * a long ⇧-range can select positions whose pages did not load. A command on
+ * them must not act on only the loaded part.
+ */
+export const selectionIsLoaded = (
+	selection: BookSelection,
+	books: readonly (LibraryBook | undefined)[],
+): boolean =>
+	selection.mode === "all"
+		? !books.includes(undefined)
+		: materializePending(selection, books).pending === null;
+
+/**
  * Right-click: a book outside the selection becomes the selection; one
  * inside it keeps the whole selection, so the menu acts on all of them.
  */

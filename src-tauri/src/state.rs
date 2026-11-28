@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn shared_queries_use_desktop_assets_and_structured_errors() {
         use citadel_core::{
-            contracts::{BookSortOrder, LibraryBookQuery},
+            contracts::{BookSortOrder, LibraryBookQuery, SearchScope},
             error::LibraryErrorCode,
             BookFile,
         };
@@ -344,6 +344,7 @@ mod tests {
                     tag_id: None,
                     publisher_id: None,
                     hide_read: false,
+                    search_scope: SearchScope::TitlesAuthorsSeries,
                     sort: BookSortOrder::TitleAsc,
                     limit: Some(0),
                     offset: 0,

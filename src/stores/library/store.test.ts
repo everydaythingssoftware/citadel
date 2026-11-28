@@ -1,3 +1,4 @@
+import { ALL_BOOKS_FILTER } from "@/lib/book-page-cache";
 import type { Library, Options } from "@/lib/services/library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,6 +34,19 @@ const openedPaths = () =>
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+type QueryPage = Awaited<ReturnType<Library["queryBooks"]>>;
+
+/** An empty result page that carries hints with the given messages. */
+const pageWith = (messages: string[], total = 0): QueryPage => ({
+	items: [],
+	total,
+	search_hints: messages.map((message) => ({
+		kind: "unknownField",
+		name: "x",
+		message,
+	})),
+});
+
 const fakeLibrary = () => {
 	const fake = {
 		listCustomColumns: vi.fn(async () => []),
@@ -45,7 +59,7 @@ const fakeLibrary = () => {
 			async (_id: string, _coverId: string) => undefined,
 		),
 		setBookCoverFromFile: vi.fn(async (_id: string, _image: Blob) => undefined),
-		queryBooks: vi.fn(async () => ({ items: [], total: 250 })),
+		queryBooks: vi.fn(async (): Promise<QueryPage> => pageWith([], 250)),
 		listAuthors: vi.fn(async () => []),
 		listSeries: vi.fn(async () => []),
 		listCoverThumbnails: vi.fn(async () => []),
@@ -75,6 +89,37 @@ const bootOnA = async () => {
 	expect(useLibraryStore.getState().confirmedLibraryPath).toBe(PATH_A);
 	return { useLibraryStore, a };
 };
+
+describe("library open", () => {
+	beforeEach(() => {
+		initClient.mockReset();
+	});
+
+	it("logs a failed library total and a failed cover index", async () => {
+		const { useLibraryStore } = await importStore();
+		const a = fakeLibrary();
+		const totalFailure = new Error("Library busy");
+		const thumbFailure = new Error("Cover index failed");
+		a.fake.queryBooks.mockImplementation(async (...args: unknown[]) => {
+			const [query] = args as [{ limit?: number | null }];
+			if (query.limit === 0) throw totalFailure;
+			return pageWith([], 250);
+		});
+		a.fake.listCoverThumbnails.mockRejectedValueOnce(thumbFailure);
+		initClient.mockResolvedValueOnce(a.library);
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		await useLibraryStore.getState().actions.initialize(PATH_A);
+		expect(log).toHaveBeenCalledWith(
+			"Failed to load library total:",
+			totalFailure,
+		);
+		expect(log).toHaveBeenCalledWith(
+			"Failed to load cover thumbnails:",
+			thumbFailure,
+		);
+		log.mockRestore();
+	});
+});
 
 describe("library switch backend restore", () => {
 	beforeEach(() => {
@@ -313,6 +358,376 @@ describe("remote library initialization", () => {
 	});
 });
 
+describe("search feedback", () => {
+	beforeEach(() => {
+		initClient.mockReset();
+	});
+
+	const bootWithSnapshot = async () => {
+		const booted = await bootOnA();
+		const { actions } = booted.useLibraryStore.getState();
+		// The boot already holds page 0 of ALL_BOOKS_FILTER, so a seed search
+		// makes the snapshot.
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "seed" });
+		await actions.ensureBookRange(0, 10);
+		// The store module was reset, so the error class and the helpers must
+		// come from the same reset.
+		const { InvalidSearchError } = await import("@/lib/services/library/types");
+		const feedback = await import("@/lib/book-grid-view");
+		const currentKey = () => booted.useLibraryStore.getState().bookCache.key;
+		const shownFeedback = () => {
+			const state = booted.useLibraryStore.getState();
+			return feedback.bookGridView({
+				libraryReady: true,
+				cache: state.bookCache,
+				staleSnapshot: state.staleBookSnapshot,
+				pageOutcome: state.pageOutcome,
+				libraryTotal: state.libraryTotal,
+				selectedCount: 0,
+			}).callout;
+		};
+		return {
+			...booted,
+			InvalidSearchError,
+			feedback,
+			currentKey,
+			shownFeedback,
+		};
+	};
+
+	it("a search that does not parse shows the error and keeps the last results", async () => {
+		const {
+			useLibraryStore,
+			a,
+			InvalidSearchError,
+			currentKey,
+			shownFeedback,
+		} = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		a.fake.queryBooks.mockRejectedValueOnce(
+			new InvalidSearchError("Missing closing quote."),
+		);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: 'tags:"x' });
+		await actions.ensureBookRange(0, 10);
+		const state = useLibraryStore.getState();
+		expect(state.pageOutcome).toEqual({
+			key: currentKey(),
+			kind: "searchError",
+			message: "Missing closing quote.",
+		});
+		expect(shownFeedback()).toEqual({
+			tone: "error",
+			text: "Missing closing quote.",
+		});
+		expect(state.staleBookSnapshot).not.toBeNull();
+	});
+
+	it("the first search error after the boot keeps the books of the boot", async () => {
+		const { useLibraryStore, a } = await bootOnA();
+		const { InvalidSearchError } = await import("@/lib/services/library/types");
+		const { actions } = useLibraryStore.getState();
+		a.fake.queryBooks.mockRejectedValueOnce(
+			new InvalidSearchError('Type a value after "tags:".'),
+		);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "tags:" });
+		await actions.ensureBookRange(0, 10);
+		expect(useLibraryStore.getState().staleBookSnapshot?.total).toBe(250);
+	});
+
+	it("a key with a search error sends no more page requests", async () => {
+		const { useLibraryStore, a, InvalidSearchError } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		a.fake.queryBooks.mockRejectedValueOnce(
+			new InvalidSearchError("Missing closing quote."),
+		);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: 'tags:"x' });
+		await actions.ensureBookRange(0, 10);
+		const calls = a.fake.queryBooks.mock.calls.length;
+		await actions.ensureBookRange(500, 700);
+		expect(a.fake.queryBooks.mock.calls.length).toBe(calls);
+	});
+
+	it("a load error lets the next range request fetch the page again", async () => {
+		const { useLibraryStore, a } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		a.fake.queryBooks.mockRejectedValueOnce(new Error("Disk failed"));
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "dune" });
+		await actions.ensureBookRange(0, 10);
+		expect(useLibraryStore.getState().pageOutcome?.kind).toBe("loadError");
+		const calls = a.fake.queryBooks.mock.calls.length;
+		await actions.ensureBookRange(0, 10);
+		expect(a.fake.queryBooks.mock.calls.length).toBe(calls + 1);
+		expect(useLibraryStore.getState().pageOutcome?.kind).toBe("ok");
+		log.mockRestore();
+	});
+
+	it("a failed search after a change of the view drops the last results", async () => {
+		const { useLibraryStore, a, InvalidSearchError } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		a.fake.queryBooks.mockRejectedValueOnce(
+			new InvalidSearchError("Missing closing quote."),
+		);
+		actions.setBookFilter({
+			...ALL_BOOKS_FILTER,
+			text: 'tags:"x',
+			authorId: "7",
+		});
+		await actions.ensureBookRange(0, 10);
+		expect(useLibraryStore.getState().staleBookSnapshot).toBeNull();
+	});
+
+	it("the last answer stays while the next search is in flight", async () => {
+		const { useLibraryStore, a, InvalidSearchError, feedback, currentKey } =
+			await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		a.fake.queryBooks.mockRejectedValueOnce(
+			new InvalidSearchError("Missing closing quote."),
+		);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: 'tags:"x' });
+		await actions.ensureBookRange(0, 10);
+		const next = deferred<QueryPage>();
+		a.fake.queryBooks.mockReturnValueOnce(next.promise);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: 'tags:"x"' });
+		const range = actions.ensureBookRange(0, 10);
+		const { pageOutcome } = useLibraryStore.getState();
+		expect(pageOutcome?.kind).toBe("searchError");
+		expect(feedback.outcomeFor(pageOutcome, currentKey())).toBeNull();
+		next.resolve(pageWith([]));
+		await range;
+		expect(useLibraryStore.getState().pageOutcome).toEqual({
+			key: currentKey(),
+			kind: "ok",
+			hints: [],
+		});
+	});
+
+	it("a hint shows with the results and clears on the next clean search", async () => {
+		const { useLibraryStore, a, shownFeedback } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		a.fake.queryBooks.mockResolvedValueOnce(
+			pageWith(['No field named "titel". Searched as text.']),
+		);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "titel:dune" });
+		await actions.ensureBookRange(0, 10);
+		expect(shownFeedback()).toEqual({
+			tone: "hint",
+			text: 'No field named "titel". Searched as text.',
+		});
+		a.fake.queryBooks.mockResolvedValueOnce(pageWith([]));
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "dune" });
+		await actions.ensureBookRange(0, 10);
+		expect(shownFeedback()).toBeNull();
+	});
+
+	it("a late failure for an older search does not replace the current answer", async () => {
+		const { useLibraryStore, a, InvalidSearchError, currentKey } =
+			await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		const first = deferred<QueryPage>();
+		const second = deferred<QueryPage>();
+		a.fake.queryBooks
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "a" });
+		const firstRange = actions.ensureBookRange(0, 10);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "b" });
+		const secondRange = actions.ensureBookRange(0, 10);
+		second.resolve(pageWith([]));
+		await secondRange;
+		first.reject(new InvalidSearchError("Missing closing quote."));
+		await firstRange;
+		expect(useLibraryStore.getState().pageOutcome).toEqual({
+			key: currentKey(),
+			kind: "ok",
+			hints: [],
+		});
+	});
+
+	it("a late hint after a change of the scope does not replace the current answer", async () => {
+		const { useLibraryStore, a, shownFeedback } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		const first = deferred<QueryPage>();
+		const second = deferred<QueryPage>();
+		a.fake.queryBooks
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "a" });
+		const firstRange = actions.ensureBookRange(0, 10);
+		actions.setBookFilter({
+			...ALL_BOOKS_FILTER,
+			text: "a",
+			searchScope: "allFields",
+		});
+		const secondRange = actions.ensureBookRange(0, 10);
+		second.resolve(pageWith(["current hint"]));
+		await secondRange;
+		first.resolve(pageWith(["old hint"]));
+		await firstRange;
+		expect(shownFeedback()).toEqual({ tone: "hint", text: "current hint" });
+	});
+
+	it("a load error goes to the outcome and to the log, not to the callout", async () => {
+		const {
+			useLibraryStore,
+			a,
+			InvalidSearchError,
+			currentKey,
+			shownFeedback,
+		} = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		a.fake.queryBooks.mockRejectedValueOnce(
+			new InvalidSearchError("Missing closing quote."),
+		);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: 'tags:"x' });
+		await actions.ensureBookRange(0, 10);
+		const failure = new Error("Disk failed");
+		a.fake.queryBooks.mockRejectedValueOnce(failure);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "dune" });
+		await actions.ensureBookRange(0, 10);
+		expect(useLibraryStore.getState().pageOutcome).toEqual({
+			key: currentKey(),
+			kind: "loadError",
+			message: "Disk failed",
+			hints: [],
+			failedPages: [0],
+		});
+		expect(shownFeedback()).toBeNull();
+		expect(log).toHaveBeenCalledWith("Failed to load books:", failure);
+		log.mockRestore();
+	});
+
+	it("a later page that loads keeps the load error of an earlier page", async () => {
+		const { useLibraryStore, a } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const firstPage = deferred<QueryPage>();
+		const secondPage = deferred<QueryPage>();
+		a.fake.queryBooks
+			.mockImplementationOnce(() => firstPage.promise)
+			.mockImplementationOnce(() => secondPage.promise);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "dune" });
+		const loading = actions.ensureBookRange(0, 150);
+		firstPage.reject(new Error("Library busy"));
+		await vi.waitFor(() =>
+			expect(useLibraryStore.getState().pageOutcome?.kind).toBe("loadError"),
+		);
+		secondPage.resolve(pageWith([], 250));
+		await loading;
+		expect(useLibraryStore.getState().pageOutcome).toMatchObject({
+			kind: "loadError",
+			message: "Library busy",
+			failedPages: [0],
+		});
+		log.mockRestore();
+	});
+
+	it("a search error replaces an older load error", async () => {
+		const { useLibraryStore, a, InvalidSearchError } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		a.fake.queryBooks.mockRejectedValueOnce(new Error("Disk failed"));
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "dune" });
+		await actions.ensureBookRange(0, 10);
+		a.fake.queryBooks.mockRejectedValueOnce(
+			new InvalidSearchError("Missing closing quote."),
+		);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: 'tags:"x' });
+		await actions.ensureBookRange(0, 10);
+		expect(useLibraryStore.getState().pageOutcome?.kind).toBe("searchError");
+		log.mockRestore();
+	});
+
+	it("a library switch drops the answer when the filter changed during the load", async () => {
+		const { useLibraryStore, InvalidSearchError } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: 'tags:"x' });
+		const b = fakeLibrary();
+		const gate = deferred<QueryPage>();
+		b.fake.queryBooks.mockImplementation((async (query: {
+			text: string | null;
+		}) => {
+			if (query.text) {
+				await gate.promise;
+				throw new InvalidSearchError("Missing closing quote.");
+			}
+			return pageWith([], 250);
+		}) as never);
+		initClient.mockResolvedValueOnce(b.library);
+		const switching = actions.initialize(PATH_B);
+		await flush();
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "dune" });
+		gate.resolve(pageWith([]));
+		await switching;
+		const state = useLibraryStore.getState();
+		expect(state.confirmedLibraryPath).toBe(PATH_B);
+		expect(state.pageOutcome).toBeNull();
+	});
+
+	it("a library switch with bad search text shows the callout", async () => {
+		const { useLibraryStore, InvalidSearchError, shownFeedback } =
+			await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: 'tags:"x' });
+		const b = fakeLibrary();
+		b.fake.queryBooks.mockImplementation((async (query: {
+			text: string | null;
+		}) => {
+			if (query.text) throw new InvalidSearchError("Missing closing quote.");
+			return pageWith([], 250);
+		}) as never);
+		initClient.mockResolvedValueOnce(b.library);
+		await actions.initialize(PATH_B);
+		expect(useLibraryStore.getState().confirmedLibraryPath).toBe(PATH_B);
+		expect(shownFeedback()).toEqual({
+			tone: "error",
+			text: "Missing closing quote.",
+		});
+	});
+
+	it("a library switch with a load error logs it and keeps it out of the callout", async () => {
+		const { useLibraryStore, shownFeedback } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "dune" });
+		const failure = new Error("Disk failed");
+		const b = fakeLibrary();
+		b.fake.queryBooks.mockImplementation((async (query: {
+			text: string | null;
+		}) => {
+			if (query.text) throw failure;
+			return pageWith([], 250);
+		}) as never);
+		initClient.mockResolvedValueOnce(b.library);
+		await actions.initialize(PATH_B);
+		expect(useLibraryStore.getState().confirmedLibraryPath).toBe(PATH_B);
+		expect(useLibraryStore.getState().pageOutcome?.kind).toBe("loadError");
+		expect(shownFeedback()).toBeNull();
+		expect(log).toHaveBeenCalledWith("Failed to load books:", failure);
+		log.mockRestore();
+	});
+
+	it("a library switch with a hinted search text shows the hint", async () => {
+		const { useLibraryStore, shownFeedback } = await bootWithSnapshot();
+		const { actions } = useLibraryStore.getState();
+		actions.setBookFilter({ ...ALL_BOOKS_FILTER, text: "titel:x" });
+		const b = fakeLibrary();
+		b.fake.queryBooks.mockImplementation((async (query: {
+			text: string | null;
+		}) =>
+			query.text
+				? pageWith(['No field named "titel". Searched as text.'], 1)
+				: pageWith([], 250)) as never);
+		initClient.mockResolvedValueOnce(b.library);
+		await actions.initialize(PATH_B);
+		expect(shownFeedback()).toEqual({
+			tone: "hint",
+			text: 'No field named "titel". Searched as text.',
+		});
+	});
+});
+
 describe("initial browser thumbnails", () => {
 	it("requests thumbnails for covers in the page inserted during initialization", async () => {
 		initClient.mockReset();
@@ -329,6 +744,7 @@ describe("initial browser thumbnails", () => {
 		remote.fake.queryBooks.mockResolvedValue({
 			items: [book] as never[],
 			total: 1,
+			search_hints: [],
 		});
 		initClient.mockResolvedValueOnce(remote.library);
 		await useLibraryStore.getState().actions.initialize({

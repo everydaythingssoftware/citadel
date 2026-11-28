@@ -15,6 +15,7 @@ import {
 	matchTypeahead,
 	moveHighlight,
 	placeMenu,
+	pressClosesMenu,
 	tidyEntries,
 } from "@/lib/context-menu";
 
@@ -154,9 +155,10 @@ export const useContextMenuSurface = ({
 	useEffect(() => {
 		if (!menu) return;
 		const onPointerDown = (event: PointerEvent) => {
-			const target = event.target;
-			if (target instanceof Node && menuRef.current?.contains(target)) return;
-			onClose();
+			const target = event.target instanceof Node ? event.target : null;
+			if (pressClosesMenu(target, [menuRef.current, menu.anchor])) {
+				onClose();
+			}
 		};
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "Escape") return;

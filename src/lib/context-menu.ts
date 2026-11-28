@@ -14,6 +14,8 @@ export interface ContextMenuItemEntry {
 	shortcut?: string;
 	/** The same, spelled for `aria-keyshortcuts` ("Meta+I"). */
 	keyShortcuts?: string;
+	/** Makes the item a radio item. A checked item shows a checkmark. */
+	checked?: boolean;
 }
 
 export interface ContextMenuSeparatorEntry {
@@ -30,11 +32,27 @@ export interface ContextMenuState {
 	items: ContextMenuEntry[];
 	/** The menu's accessible name, e.g. "Book actions". */
 	label?: string;
+	/**
+	 * The menu button that opened the menu, or undefined for a menu that
+	 * opened at the pointer. A press on it is not an outside press.
+	 */
+	anchor?: HTMLElement;
 }
 
 export const isMenuItem = (
 	entry: ContextMenuEntry,
 ): entry is ContextMenuItemEntry => entry.type !== "separator";
+
+/** The role and the checked state of an item. Only a radio item has a state. */
+export const menuItemAria = (
+	entry: ContextMenuItemEntry,
+): {
+	role: "menuitem" | "menuitemradio";
+	"aria-checked": boolean | undefined;
+} =>
+	entry.checked === undefined
+		? { role: "menuitem", "aria-checked": undefined }
+		: { role: "menuitemradio", "aria-checked": entry.checked };
 
 const isNavigable = (
 	entry: ContextMenuEntry | undefined,
@@ -148,3 +166,37 @@ export const placeMenu = ({
 		top: Math.max(margin, top),
 	};
 };
+
+/** An element that can hold a node, as a DOM element does. */
+interface NodeContainer {
+	contains(node: Node | null): boolean;
+}
+
+/**
+ * True when a pointer press closes the open menu. A press on the menu, or on
+ * the control that opens it, does not: that control toggles the menu with
+ * its own click.
+ */
+export const pressClosesMenu = (
+	target: Node | null,
+	inside: readonly (NodeContainer | null | undefined)[],
+): boolean => !inside.some((element) => element?.contains(target) === true);
+
+/**
+ * The menu after a click on a menu button. A click on the button of the open
+ * menu closes it. Any other click opens `opening`.
+ */
+export const toggleMenu = (
+	open: ContextMenuState | null,
+	opening: ContextMenuState,
+): ContextMenuState | null =>
+	open?.anchor !== undefined && open.anchor === opening.anchor ? null : opening;
+
+/**
+ * True for a key that opens the menu of a focused menu button: ArrowDown,
+ * Enter and Space, as in the WAI-ARIA menu button pattern. The button
+ * handles these keys itself, so that a keymap of the page does not act on
+ * them.
+ */
+export const opensMenuFromButton = (key: string): boolean =>
+	key === "ArrowDown" || key === "Enter" || key === " ";

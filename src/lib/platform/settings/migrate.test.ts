@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CURRENT_SCHEMA_VERSION, migrateSettings } from "./migrate";
-import { defaultSettings, type SettingsSchema } from "./types";
+import { defaultSettings, type SettingsSchema, type SmartShelf } from "./types";
 
 const v0 = (overrides: Partial<SettingsSchema>): SettingsSchema => ({
 	...defaultSettings,
@@ -45,7 +45,7 @@ describe("migrateSettings", () => {
 			},
 		};
 		const result = migrateSettings(v1);
-		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		// K10plus added and enabled, inserted right after DNB.
 		expect(result.metadataProviders.configs.k10plus).toEqual({
 			enabled: true,
@@ -82,7 +82,7 @@ describe("migrateSettings", () => {
 			settingsSchemaVersion: 2,
 		};
 		const result = migrateSettings(v2);
-		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		expect(result.sharing).toEqual({
 			target: "localNetworks",
 			port: 9028,
@@ -103,7 +103,7 @@ describe("migrateSettings", () => {
 			},
 		};
 		const result = migrateSettings(v3);
-		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		expect(result.sharing.port).toBe(9028);
 		expect(result.sharing.authenticationEnabled).toBe(true);
 		expect(result.sharing.username).toBe("phil");
@@ -121,7 +121,89 @@ describe("migrateSettings", () => {
 			},
 		};
 		const result = migrateSettings(chosen);
-		expect(result.settingsSchemaVersion).toBe(4);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		expect(result.sharing.port).toBe(54321);
+	});
+});
+
+describe("the v5 search scope of shelves", () => {
+	const v4 = (filters: unknown[]): SettingsSchema => ({
+		...defaultSettings,
+		settingsSchemaVersion: 4,
+		smartShelves: filters.map((filter, index) => ({
+			id: `shelf-${index}`,
+			name: `Shelf ${index}`,
+			filter,
+		})) as SmartShelf[],
+	});
+	const filters = (settings: SettingsSchema) =>
+		settings.smartShelves.map((shelf) => shelf.filter);
+
+	it("quotes the query of a shelf saved before the search language", () => {
+		const result = migrateSettings(
+			v4([
+				{
+					query: " Ender's \"Game \\ x ",
+					sortOrder: "nameAz",
+					hideRead: false,
+				},
+			]),
+		);
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+		expect(filters(result)).toEqual([
+			{
+				query: '"Ender\'s \\"Game \\\\ x"',
+				sortOrder: "nameAz",
+				hideRead: false,
+				searchScope: "titlesAuthorsSeries",
+			},
+		]);
+	});
+
+	it("leaves a blank query empty and keeps the other fields", () => {
+		const result = migrateSettings(
+			v4([
+				{
+					query: "  ",
+					sortOrder: "authorAz",
+					hideRead: true,
+					authorId: "7",
+					libraryId: "lib",
+				},
+			]),
+		);
+		expect(filters(result)).toEqual([
+			{
+				query: "",
+				sortOrder: "authorAz",
+				hideRead: true,
+				authorId: "7",
+				libraryId: "lib",
+				searchScope: "titlesAuthorsSeries",
+			},
+		]);
+	});
+
+	it("keeps a shelf that already has a scope, so that a second run changes nothing", () => {
+		const once = migrateSettings(
+			v4([{ query: "dune", sortOrder: "nameAz", hideRead: false }]),
+		);
+		const again = migrateSettings({ ...once, settingsSchemaVersion: 4 });
+		expect(filters(again)).toEqual(filters(once));
+		expect(filters(again)[0]?.query).toBe('"dune"');
+		const scoped = {
+			query: "tags:x",
+			sortOrder: "nameAz",
+			hideRead: false,
+			searchScope: "allFields",
+		};
+		expect(filters(migrateSettings(v4([scoped])))).toEqual([scoped]);
+	});
+
+	it("keeps a shelf with a query that is not a string", () => {
+		const broken = { query: null, sortOrder: "nameAz", hideRead: false };
+		const result = migrateSettings(v4([broken, undefined]));
+		expect(result.settingsSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+		expect(filters(result)).toEqual([broken, undefined]);
 	});
 });

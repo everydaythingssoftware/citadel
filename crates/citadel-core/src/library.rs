@@ -4,7 +4,7 @@ use crate::{
     contracts::{
         custom_columns::{BookCustomValue, CustomColumnDef, CustomValueDto},
         AuthorUpdate, BookUpdate, LibraryBookPage, LibraryBookQuery, LibraryPublisher,
-        LibrarySeries, LibraryTag, NewAuthor,
+        LibrarySearchHint, LibrarySeries, LibraryTag, NewAuthor,
     },
     error::{LibraryError, LibraryErrorCode},
     Actor, BookUrlBuilder, LibraryAuthor, LibraryBook,
@@ -38,6 +38,7 @@ impl<'a> LibraryService<'a> {
             .transpose()?;
         let page = self.library.query_books(libcalibre::BookQuery {
             text: query.text,
+            search_scope: query.search_scope.into(),
             author_id,
             series_id: query.series_id,
             tag_id: query.tag_id,
@@ -51,6 +52,11 @@ impl<'a> LibraryService<'a> {
         Ok(LibraryBookPage {
             items: self.books(&page.items, false)?,
             total: count(page.total),
+            search_hints: page
+                .hints
+                .iter()
+                .map(|hint| LibrarySearchHint::from(&hint.value))
+                .collect(),
         })
     }
 

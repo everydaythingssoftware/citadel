@@ -112,7 +112,7 @@ fn main() -> Result<(), CalibreError> {
 
 ## Querying books
 
-`query_books` searches, filters, sorts and pages in SQL, returning one page plus the total match count. `text` is a case-insensitive substring match over titles, author names and series names. Filters combine with AND.
+`query_books` searches, filters, sorts and pages in SQL, returning one page plus the total match count. `text` is a search in a subset of the Calibre search language, which the section "Search text" describes. Filters combine with AND.
 
 ```rust,no_run
 use libcalibre::{BookQuery, BookSortOrder, CalibreError, Library};
@@ -155,6 +155,26 @@ fn main() -> Result<(), CalibreError> {
     Ok(())
 }
 ```
+
+### Search text
+
+`BookQuery::text` is a search in a subset of the Calibre search language. `search_books` uses the same search language in the default scope.
+
+- A bare word is a case-insensitive substring match. `BookQuery::search_scope` selects its fields. `SearchScope::TitlesAuthorsSeries`, the default, searches titles, author names and series names. `SearchScope::AllFields` also searches tags, publisher names and identifier values.
+- `field:value` searches one field, the same in each scope. The fields are `title`, `authors`, `series`, `tags`, `publisher`, `comments`, `identifiers`, `isbn`, `formats` and `languages`. The aliases are `author`, `tag`, `comment`, `identifier`, `format` and `language`.
+- `languages:` compares the ISO 639 code, for example `languages:eng`.
+- `identifiers:TYPE:VALUE` searches the identifiers whose type contains `TYPE`. Write `identifiers:=TYPE:VALUE` to search one type. `isbn:VALUE` is the same as `identifiers:=isbn:VALUE`.
+- A value that starts with `=` must equal the field value. A bare `=` directly before a quoted phrase, for example `="frank herbert"`, matches when a field of the scope equals the phrase.
+- After a field prefix, the values `true` and `false` test for a value or for no value. A bare `true` is text.
+- Terms combine with `and`, `or` and `not`, and parentheses make groups. Two terms with no operator between them combine with `and`. `and` has a higher priority than `or`, thus `a or b c` means `a or (b and c)`.
+- A quoted phrase keeps its spaces. A backslash makes the next character plain text, for example `\"` or `\:`.
+- The case folding is for ASCII letters only.
+- A prefix that is not a field name, for example `titel:dune`, is plain text, and `BookPage::hints` gives a hint for it. A prefix with no value that is not a supported field name is plain text too, for example the `Wars:` of `Star Wars: A New Hope`. It gets a hint when it is one edit from a field name or an alias of four or more letters, for example `titel: dune`.
+- A supported field name with no value, for example `title: dune` or `tags:`, gives `SearchError::MissingValue`.
+- A Calibre field or a Calibre search kind that the search language cannot apply, for example `rating:>4` or a `~` regular expression, is an error.
+- A search text has a maximum of 100 terms, 16 levels of parentheses and `not`, and 20,000 bytes.
+- An error gives `CalibreError::InvalidSearch`, and the query does not run.
+- Each error and each hint is a `Spanned` value. Its `span` is the byte range of the text that it is about, counted from the start of `BookQuery::text`.
 
 ## Custom columns
 

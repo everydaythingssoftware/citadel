@@ -20,10 +20,8 @@ use super::onboarding::{self, DetectedLibrary, SyncStatus};
 pub fn clb_query_search_books(
     state: tauri::State<CitadelState>,
     query: String,
-) -> Result<Vec<LibraryBook>, String> {
-    state
-        .with_library_service(|service| service.search_books(&query))
-        .map_err(|error| error.to_string())
+) -> Result<Vec<LibraryBook>, LibraryError> {
+    state.with_library_service(|service| service.search_books(&query))
 }
 
 #[tauri::command]

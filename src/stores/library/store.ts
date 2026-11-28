@@ -16,6 +16,13 @@ import type {
 	NewAuthor,
 } from "@/bindings";
 import {
+	failedOutcome,
+	loadedOutcome,
+	outcomeFor,
+	type PageOutcome,
+	type PageRequest,
+} from "@/lib/book-grid-view";
+import {
 	ALL_BOOKS_FILTER,
 	advanceSnapshot,
 	applyBookPage,
@@ -25,6 +32,7 @@ import {
 	cacheForKey,
 	compareBySeriesIndex,
 	emptyBookCache,
+	hasSameView,
 	invalidateBookCache,
 	type PagedBookCache,
 	pagesCoveringRange,
@@ -139,7 +147,12 @@ interface LibraryStoreState {
 	// Paged book grid state
 	bookFilter: BookGridFilter;
 	bookCache: PagedBookCache;
-	bookPagesError: string | null;
+	/**
+	 * The answer to the last page request, with its cache key: the hints, a
+	 * search error or a load error. It stays until the next answer, so the
+	 * callout does not blink between keystrokes.
+	 */
+	pageOutcome: PageOutcome | null;
 	/**
 	 * Last successfully resolved query snapshot. Kept across key changes so the
 	 * grid can show stale results while the new query is in flight (stale-while-
@@ -189,7 +202,7 @@ const initialState = {
 	confirmedLibraryPath: null,
 	bookFilter: ALL_BOOKS_FILTER,
 	bookCache: emptyBookCache(serializeBookFilter(ALL_BOOKS_FILTER), 0),
-	bookPagesError: null,
+	pageOutcome: null as PageOutcome | null,
 	staleBookSnapshot: null as BookSnapshot | null,
 	coverThumbs: new Map<LibraryBook["id"], CoverThumbnail>(),
 	libraryTotal: null,
@@ -253,25 +266,38 @@ const openBackend = (options: Options): Promise<Library> => {
 	return open;
 };
 
-interface Settled<T> {
-	value: T | null;
-	error: string | null;
-}
+/** The value of a shadow-load fact, or the value that it threw. */
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
-/** Resolves a shadow-load fact without failing the whole load: value +
- * error message, mirroring how `loadAuthors`/`loadSeries` isolate failures. */
-const settleWithMessage = async <T>(
-	promise: Promise<T>,
-	fallback: string,
-): Promise<Settled<T>> => {
+/** Resolves a shadow-load fact without failing the whole load: value or the
+ * thrown value, mirroring how `loadAuthors`/`loadSeries` isolate failures. */
+const settle = async <T>(promise: Promise<T>): Promise<Settled<T>> => {
 	try {
-		return { value: await promise, error: null };
+		return { ok: true, value: await promise };
 	} catch (error) {
-		return {
-			value: null,
-			error: error instanceof Error ? error.message : fallback,
-		};
+		return { ok: false, error };
 	}
+};
+
+/** The message of a thrown value, or `fallback` when it is not an Error. */
+const messageOf = (error: unknown, fallback: string): string =>
+	error instanceof Error ? error.message : fallback;
+
+/**
+ * The outcome of a failed page request. A load error also goes to the log.
+ * A search error goes only to the callout, because it is the text of the
+ * user and not a defect.
+ */
+const failedPageOutcome = (
+	previous: PageOutcome | null,
+	request: PageRequest,
+	error: unknown,
+): PageOutcome => {
+	const outcome = failedOutcome(previous, request, error);
+	if (outcome.kind === "loadError") {
+		console.error("Failed to load books:", error);
+	}
+	return outcome;
 };
 
 export const useLibraryStore = create<LibraryStoreState>((set, get) => {
@@ -456,16 +482,34 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 							nextCache,
 							state.staleBookSnapshot,
 						),
-						bookPagesError: null,
+						pageOutcome: loadedOutcome(
+							state.pageOutcome,
+							{ key, pageIndex },
+							page.search_hints,
+						),
 					};
 				});
 				ensureCoverThumbs(items);
 			} catch (error) {
+				// The generation check also drops a late failure of an older
+				// key, so the outcome always belongs to the current key.
 				if (!canCommitActive(generation)) return;
-				set({
-					bookPagesError:
-						error instanceof Error ? error.message : "Failed to load books",
-				});
+				const outcome = failedPageOutcome(
+					get().pageOutcome,
+					{ key, pageIndex },
+					error,
+				);
+				set((state) => ({
+					pageOutcome: outcome,
+					// The last results stay on screen only for the same view:
+					// a failed shelf or route filter must not show the books of
+					// another view.
+					staleBookSnapshot:
+						state.staleBookSnapshot !== null &&
+						hasSameView(state.staleBookSnapshot.key, key)
+							? state.staleBookSnapshot
+							: null,
+				}));
 			} finally {
 				inFlightBookPages.delete(flightKey);
 			}
@@ -510,8 +554,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				} catch (error) {
 					if (!canCommitActive(generation)) return;
 					set({
-						authorsError:
-							error instanceof Error ? error.message : "Failed to load authors",
+						authorsError: messageOf(error, "Failed to load authors"),
 						authorsLoading: false,
 					});
 				}
@@ -531,8 +574,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				} catch (error) {
 					if (!canCommitActive(generation)) return;
 					set({
-						seriesError:
-							error instanceof Error ? error.message : "Failed to load series",
+						seriesError: messageOf(error, "Failed to load series"),
 						seriesLoading: false,
 					});
 				}
@@ -593,6 +635,11 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				// Only serve the current key; a filter change mid-scroll means
 				// the caller's range belongs to a retired cache.
 				if (bookCache.key !== serializeBookFilter(bookFilter)) return;
+				// A search error answers each page of its key the same way.
+				if (
+					outcomeFor(get().pageOutcome, bookCache.key)?.kind === "searchError"
+				)
+					return;
 
 				// A series is fetched whole as page 0 (see toBookQuery). A view
 				// that resolved to no books still wants page 0: once a book is
@@ -714,28 +761,25 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 					// the grid already has every known ThumbHash and sizeHint.
 					const [authors, series, totalCount, firstPage, seededThumbs] =
 						await Promise.all([
-							settleWithMessage(
-								library.listAuthors(),
-								"Failed to load authors",
-							),
-							settleWithMessage(library.listSeries(), "Failed to load series"),
-							settleWithMessage(
+							settle(library.listAuthors()),
+							settle(library.listSeries()),
+							settle(
 								library.queryBooks({
 									...toBookQuery(ALL_BOOKS_FILTER, 0),
 									limit: 0,
 								}),
-								"Failed to load library total",
 							),
-							settleWithMessage(
-								library.queryBooks(toBookQuery(filterAtStart, 0)),
-								"Failed to load books",
-							),
-							settleWithMessage(
-								library.listCoverThumbnails(),
-								"Failed to seed cover thumbnails",
-							),
+							settle(library.queryBooks(toBookQuery(filterAtStart, 0))),
+							settle(library.listCoverThumbnails()),
 						]);
 					if (pendingSwitch?.token !== shadowToken) return;
+					if (!totalCount.ok)
+						console.error("Failed to load library total:", totalCount.error);
+					if (!seededThumbs.ok)
+						console.error(
+							"Failed to load cover thumbnails:",
+							seededThumbs.error,
+						);
 
 					// FLIP — one zustand set(): a single React commit that swaps
 					// the active generation, its data, and the confirmed library
@@ -743,8 +787,13 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 					// Scroll-adjacent view state (bookFilter key, library-view
 					// store) is intentionally untouched, matching the old
 					// initialize.
+					// The outcome of the old library does not answer for the new one.
+					const firstRequest = { key: keyAtStart, pageIndex: 0 };
+					const firstPageOutcome = firstPage.ok
+						? loadedOutcome(null, firstRequest, firstPage.value.search_hints)
+						: failedPageOutcome(null, firstRequest, firstPage.error);
 					const shadowPages = new Map<number, LibraryBook[]>();
-					if (firstPage.value !== null) {
+					if (firstPage.ok) {
 						const items =
 							filterAtStart.seriesId !== null
 								? [...firstPage.value.items].sort(compareBySeriesIndex)
@@ -754,7 +803,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 					const shadowCache: PagedBookCache = {
 						key: keyAtStart,
 						generation: get().bookCache.generation + 1,
-						total: firstPage.value?.total ?? null,
+						total: firstPage.ok ? firstPage.value.total : null,
 						pages: shadowPages,
 						stale: new Set(),
 					};
@@ -763,7 +812,7 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 						LibraryBook["id"],
 						CoverThumbnail
 					>();
-					for (const thumb of seededThumbs.value ?? []) {
+					for (const thumb of seededThumbs.ok ? seededThumbs.value : []) {
 						seededCoverThumbs.set(thumb.book_id, thumb);
 					}
 					set({
@@ -772,22 +821,28 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 						libraryError: null,
 						confirmedLibraryPath: libraryPath,
 						bookCache: cache,
-						staleBookSnapshot: null,
+						// The first page is the last result of the new library,
+						// so the first search error keeps it on screen.
+						staleBookSnapshot: advanceSnapshot(cache, null),
 						coverThumbs: seededCoverThumbs,
-						libraryTotal: totalCount.value?.total ?? null,
+						libraryTotal: totalCount.ok ? totalCount.value.total : null,
 						coversSeeded: true,
-						authors: authors.value ? authors.value.sort(sortAuthors) : [],
+						authors: authors.ok ? authors.value.sort(sortAuthors) : [],
 						authorsLoading: false,
-						authorsError: authors.error,
-						series: series.value ?? [],
+						authorsError: authors.ok
+							? null
+							: messageOf(authors.error, "Failed to load authors"),
+						series: series.ok ? series.value : [],
 						seriesLoading: false,
-						seriesError: series.error,
+						seriesError: series.ok
+							? null
+							: messageOf(series.error, "Failed to load series"),
 						// Lazy lists belong to the old library; their pages reload.
 						tags: null,
 						tagsLoading: false,
 						publishers: null,
 						publishersLoading: false,
-						bookPagesError: firstPage.error,
+						pageOutcome: outcomeFor(firstPageOutcome, get().bookCache.key),
 					});
 					pendingSwitch = null;
 					ensureCoverThumbs(cache.pages.get(0) ?? []);
@@ -950,8 +1005,8 @@ export const useLibraryError = () =>
 
 // Selectors for the paged book grid
 export const useBookCache = () => useLibraryStore((state) => state.bookCache);
-export const useBookPagesError = () =>
-	useLibraryStore((state) => state.bookPagesError);
+export const usePageOutcome = () =>
+	useLibraryStore((state) => state.pageOutcome);
 export const useStaleBookSnapshot = () =>
 	useLibraryStore((state) => state.staleBookSnapshot);
 export const useCoverThumb = (bookId: LibraryBook["id"]) =>

@@ -17,7 +17,11 @@ const result = spawnSync(
 );
 if (result.status !== 0) process.exit(result.status ?? 1);
 const schema = `${JSON.stringify(JSON.parse(result.stdout), null, 2)}\n`;
-const types = astToString(await openapiTS(JSON.parse(schema)));
+// The server supplies a default value, so a field with a default stays
+// optional for the client that sends it.
+const types = astToString(
+	await openapiTS(JSON.parse(schema), { defaultNonNullable: false }),
+);
 const files = {
 	"api/openapi.json": schema,
 	"src/lib/api/schema.generated.d.ts": types,

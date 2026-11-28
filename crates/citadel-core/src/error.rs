@@ -17,6 +17,9 @@ pub enum LibraryErrorCode {
     Conflict,
     /// The server has no room to store more.
     StorageFull,
+    /// The search text does not parse, is over a limit, or uses a search
+    /// feature that is not supported. The message says what is wrong.
+    InvalidSearch,
     Internal,
 }
 
@@ -86,6 +89,7 @@ impl From<libcalibre::CalibreError> for LibraryError {
             | CalibreError::InvalidCustomValue(_)
             | CalibreError::UnsupportedCustomColumn(_)
             | CalibreError::AuthorHasAssociatedBooks(_) => LibraryErrorCode::InvalidArgument,
+            CalibreError::InvalidSearch(_) => LibraryErrorCode::InvalidSearch,
             CalibreError::LibraryNotInitialized => LibraryErrorCode::Unavailable,
             _ => LibraryErrorCode::Internal,
         };
