@@ -41,6 +41,8 @@ struct Staged {
     size: u64,
     book: StagedBook,
     cover: Option<PathBuf>,
+    /// A PDF's rendered first page at full size, to add with the book.
+    rendered_cover: Option<PathBuf>,
     /// Being added to the library; one add at a time.
     busy: bool,
 }
@@ -172,7 +174,17 @@ impl DesktopStaging {
         }
 
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let mut read = read_book_file(&path, &file_name, extension);
+        let mut read = read_book_file(&path, &file_name, extension, crate::libs::pdf_cover::render);
+        let rendered_cover = read
+            .rendered_cover
+            .then_some(read.cover.as_deref())
+            .flatten()
+            .and_then(|cover| {
+                let cover_path = self.cover_dir.join(format!("{id}.page.jpg"));
+                fs::create_dir_all(&self.cover_dir).ok()?;
+                fs::write(&cover_path, cover).ok()?;
+                Some(cover_path)
+            });
         let cover = read
             .cover
             .take()
@@ -191,6 +203,7 @@ impl DesktopStaging {
             size,
             book: read.book,
             cover,
+            rendered_cover,
             busy: false,
         };
         let view = staged.view(&id);
@@ -199,8 +212,12 @@ impl DesktopStaging {
     }
 
     /// Claims staged books for adding, all or none, returning their files
-    /// in order.
-    fn claim(&self, ids: &[String], library_id: &str) -> Result<Vec<PathBuf>, LibraryError> {
+    /// in order and any cover rendered from the first.
+    fn claim(
+        &self,
+        ids: &[String],
+        library_id: &str,
+    ) -> Result<(Vec<PathBuf>, Option<Vec<u8>>), LibraryError> {
         let mut books = self.books()?;
         let mut paths = Vec::with_capacity(ids.len());
         for id in ids {
@@ -221,7 +238,12 @@ impl DesktopStaging {
                 staged.busy = true;
             }
         }
-        Ok(paths)
+        let cover = ids
+            .first()
+            .and_then(|id| books.get(id))
+            .and_then(|staged| staged.rendered_cover.as_ref())
+            .and_then(|path| fs::read(path).ok());
+        Ok((paths, cover))
     }
 
     fn release(&self, ids: &[String]) {
@@ -240,7 +262,11 @@ impl DesktopStaging {
             .lock()
             .ok()
             .and_then(|mut books| books.remove(id));
-        if let Some(cover) = removed.and_then(|staged| staged.cover) {
+        for cover in removed
+            .into_iter()
+            .flat_map(|staged| [staged.cover, staged.rendered_cover])
+            .flatten()
+        {
             let _ = fs::remove_file(cover);
         }
     }
@@ -325,8 +351,8 @@ pub async fn clb_cmd_add_staged_book(
                 ids.push(also.clone());
             }
         }
-        let paths = staging.claim(&ids, &library_id)?;
-        match state.with_library_service(|service| service.add_staged(&actor, book, paths)) {
+        let (paths, cover) = staging.claim(&ids, &library_id)?;
+        match state.with_library_service(|service| service.add_staged(&actor, book, paths, cover)) {
             Ok(added) => {
                 for id in &ids {
                     staging.discard(id);
@@ -401,7 +427,10 @@ mod tests {
         let path = book_at(directory.path(), "walden.txt", "Walden");
         let staged = staging.stage("one".into(), path.clone()).unwrap();
         let ids = [staged.id.clone()];
-        assert_eq!(staging.claim(&ids, "one").unwrap(), vec![path.clone()]);
+        assert_eq!(
+            staging.claim(&ids, "one").unwrap(),
+            (vec![path.clone()], None)
+        );
         assert!(staging.claim(&ids, "one").is_err());
         staging.release(&ids);
         assert!(staging.claim(&ids, "one").is_ok());
@@ -427,7 +456,7 @@ mod tests {
             "a failed claim claims nothing"
         );
         staging.release(&both);
-        assert_eq!(staging.claim(&both, "one").unwrap().len(), 2);
+        assert_eq!(staging.claim(&both, "one").unwrap().0.len(), 2);
         assert!(staging
             .claim(&[one.id.clone(), "missing".into()], "two")
             .is_err());
@@ -459,6 +488,7 @@ mod tests {
                         language: None,
                         file_paths: vec![],
                     },
+                    None,
                 )
             })
             .unwrap();

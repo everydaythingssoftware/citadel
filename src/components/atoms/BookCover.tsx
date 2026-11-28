@@ -29,6 +29,11 @@ export interface BookCoverProps extends HTMLAttributes<HTMLDivElement> {
 	finished?: boolean;
 	loading?: boolean;
 	exit?: "added" | "skipped";
+	/**
+	 * Draw the cover as a flat page, without the binding crease: a book whose
+	 * only format is PDF, whose cover is its first page (`isPdfOnly`).
+	 */
+	flat?: boolean;
 	onImageError?: ReactEventHandler<HTMLImageElement>;
 }
 
@@ -52,6 +57,7 @@ const BookCoverContent = ({
 	finished = false,
 	loading = false,
 	exit,
+	flat = false,
 	onImageError,
 	className,
 	style,
@@ -83,6 +89,7 @@ const BookCoverContent = ({
 			data-loading={loading || undefined}
 			data-finished={finished || undefined}
 			data-fallback={!imageSrc || undefined}
+			data-flat={flat || undefined}
 			data-interactive={
 				Boolean(props.onClick || props.onPointerDown) || undefined
 			}
@@ -124,8 +131,12 @@ const BookCoverContent = ({
 									showTitle={!provisional && title.trim().length > 0}
 								/>
 							))}
-						<span className={styles.spine} aria-hidden="true" />
-						<span className={styles.edges} aria-hidden="true" />
+						{!flat && (
+							<>
+								<span className={styles.spine} aria-hidden="true" />
+								<span className={styles.edges} aria-hidden="true" />
+							</>
+						)}
 						<span className={styles.readOverlay} aria-hidden="true" />
 					</>
 				)}

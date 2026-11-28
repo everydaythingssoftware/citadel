@@ -616,7 +616,7 @@ softwareUpdateChanged: "software-update-changed"
 
 /** user-defined constants **/
 
-export const MENU_ACCELERATORS = {"commands":[["add-book","CmdOrCtrl+N"],["undo","CmdOrCtrl+Z"],["redo","CmdOrCtrl+Shift+Z"],["find","CmdOrCtrl+F"],["book-show-details","CmdOrCtrl+I"],["book-open","CmdOrCtrl+O"],["book-edit","CmdOrCtrl+E"],["book-show-in-file-manager","CmdOrCtrl+Shift+R"],["book-delete","CmdOrCtrl+Backspace"],["toggle-sidebar","Ctrl+Cmd+S"],[{"go":"allBooks"},"CmdOrCtrl+1"],[{"go":"authors"},"CmdOrCtrl+2"],[{"go":"series"},"CmdOrCtrl+3"],[{"go":"tags"},"CmdOrCtrl+4"],[{"go":"publishers"},"CmdOrCtrl+5"],["go-back","CmdOrCtrl+["],["go-forward","CmdOrCtrl+]"]],"settings":"CmdOrCtrl+,"} as const;
+export const MENU_ACCELERATORS = {"commands":[["add-book","CmdOrCtrl+N"],["undo","CmdOrCtrl+Z"],["redo","CmdOrCtrl+Shift+Z"],["select-all","CmdOrCtrl+A"],["find","CmdOrCtrl+F"],["book-show-details","CmdOrCtrl+I"],["book-open","CmdOrCtrl+O"],["book-edit","CmdOrCtrl+E"],["book-show-in-file-manager","CmdOrCtrl+Shift+R"],["book-delete","CmdOrCtrl+Backspace"],["toggle-sidebar","Ctrl+Cmd+S"],[{"go":"allBooks"},"CmdOrCtrl+1"],[{"go":"authors"},"CmdOrCtrl+2"],[{"go":"series"},"CmdOrCtrl+3"],[{"go":"tags"},"CmdOrCtrl+4"],[{"go":"publishers"},"CmdOrCtrl+5"],["go-back","CmdOrCtrl+["],["go-forward","CmdOrCtrl+]"]],"settings":"CmdOrCtrl+,"} as const;
 
 /** user-defined types **/
 
@@ -987,12 +987,18 @@ export type MatchReason =
 /**
  * A menu choice delivered to the library window.
  */
-export type MenuCommand = "add-book" | "new-shelf" | "add-library" | "show-library-in-file-manager" | "find" | "undo" | "redo" | "book-show-details" | "book-open" | "book-edit" | "book-mark-finished" | "book-show-in-file-manager" | "book-copy-title" | "book-delete" | "toggle-sidebar" | "toggle-unread-only" | { sort: MenuSortOrder } | { go: GoDestination } | "go-back" | "go-forward" | { switchLibrary: string }
+export type MenuCommand = "add-book" | "new-shelf" | "add-library" | "show-library-in-file-manager" | "find" | "undo" | "redo" | "select-all" | "book-show-details" | "book-open" | "book-edit" | "book-mark-finished" | "book-show-in-file-manager" | "book-copy-title" | "book-delete" | "toggle-sidebar" | "toggle-unread-only" | { sort: MenuSortOrder } | { go: GoDestination } | "go-back" | "go-forward" | { switchLibrary: string }
 /**
  * A menu choice, sent to the library window.
  */
 export type MenuCommandChosen = MenuCommand
 export type MenuLibrary = { id: string; name: string; active: boolean }
+/**
+ * Who Edit > Select All acts on. `Books` holds on the Books page, unless
+ * the focus is in a text field, a sheet, an alert or a menu. `Native`
+ * holds in those places and on the other pages.
+ */
+export type MenuSelectAll = "native" | "books"
 /**
  * The selected books: the Book menu's enabled items and plural labels.
  */
@@ -1001,7 +1007,7 @@ export type MenuSortOrder = "nameAz" | "nameZa" | "authorAz" | "authorZa" | "add
 /**
  * One group of what the menu bar shows, replaced whole.
  */
-export type MenuStateUpdate = { selection: MenuSelection } | { view: MenuViewOptions } | { libraries: MenuLibrary[] } | { undo: MenuUndo } | { updateReady: string | null }
+export type MenuStateUpdate = { selection: MenuSelection } | { view: MenuViewOptions } | { libraries: MenuLibrary[] } | { undo: MenuUndo } | { selectAll: MenuSelectAll } | { updateReady: string | null }
 /**
  * Who Edit > Undo and Redo act on: a focused text field, whose typing the
  * native items undo, or the app's undo history.

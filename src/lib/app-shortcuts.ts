@@ -67,6 +67,12 @@ const IN_BROWSER: readonly TNamedCommand[] = [
 	"book-delete",
 ];
 
+/**
+ * Chords the page binds with its own rules, so the shortcut table leaves
+ * them alone: ⌘A belongs to the library keymap and the chrome guard.
+ */
+const PAGE_OWNED: readonly TNamedCommand[] = ["select-all"];
+
 /** Off Apple keyboards: Windows and Linux's own chord instead of the Mac's. */
 const OFF_MAC_CHORD: Partial<Record<TNamedCommand, string>> = {
 	"toggle-sidebar": "mod+shift+l",
@@ -116,8 +122,8 @@ export const pageShortcuts = (env: ShortcutEnvironment): Shortcut[] => {
 	const extras = usesCommandKey(env.os)
 		? []
 		: OFF_MAC_EXTRAS.filter((extra) => env.desktop || extra.inBrowser);
-	return MENU_SHORTCUTS.filter(({ command }) =>
-		boundHere(command, env),
+	return MENU_SHORTCUTS.filter(
+		({ command }) => boundHere(command, env) && !named(command, PAGE_OWNED),
 	).flatMap((shortcut) => [
 		{ command: shortcut.command, chord: chordHere(shortcut, env.os) },
 		...extras

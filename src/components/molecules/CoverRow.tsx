@@ -4,6 +4,7 @@ import { BookCover } from "@/components/atoms/BookCover";
 import { DEFAULT_COVER_ROW } from "@/lib/cover-row";
 import { useCoverRow } from "@/lib/hooks/use-cover-row";
 import type { DepartingCover } from "@/lib/hooks/use-review-deck";
+import { isPdfFormat } from "@/lib/pdf-only";
 import type { QueueItem } from "@/lib/uploads/queue";
 import { reviewCovers } from "@/lib/uploads/review-covers";
 import styles from "./CoverRow.module.css";
@@ -80,6 +81,7 @@ export const CoverRow = ({
 							className={styles.art}
 							src={item.coverUrl}
 							title={titleOf(item)}
+							flat={isPdfFormat(item.book?.format)}
 							exit={exiting && !departing?.last ? departing?.exit : undefined}
 						/>
 					</button>

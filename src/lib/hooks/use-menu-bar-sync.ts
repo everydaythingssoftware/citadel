@@ -1,9 +1,10 @@
+import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useBookSelectionActions } from "@/lib/hooks/use-book-selection";
 import { useLibrarySelection } from "@/lib/hooks/use-library-selection";
 import { listen } from "@/lib/hooks/use-window-chrome-state";
 import { keyboardBusyAt } from "@/lib/keyboard-owner";
-import { appUndo } from "@/lib/menu-commands";
+import { appUndo, selectAllOwner } from "@/lib/menu-commands";
 import { usePlatform } from "@/lib/platform/context";
 import type { MenuStateUpdate, PlatformAdapter } from "@/lib/platform/types";
 import { useBookEditor } from "@/stores/book-editor/store";
@@ -59,7 +60,8 @@ const push = (platform: PlatformAdapter, update: MenuStateUpdate) => {
  * Tells the macOS menu bar what the library window shows, one group at a
  * time as it changes. While someone types or a sheet is up, the Book menu
  * stands down (⌘⌫ deletes text, not books) and Undo and Redo are the text
- * field's own.
+ * field's own. On the Books page, Select All selects the books, unless the
+ * focus is in a text field, a sheet, an alert or a menu.
  */
 export const useMenuBarSync = () => {
 	const platform = usePlatform();
@@ -72,6 +74,9 @@ export const useMenuBarSync = () => {
 	const history = useUndoStore((state) => state.history);
 	const busy = useKeyboardBusy();
 	const windowActive = useWindowActive(platform);
+	const pathname = useRouterState({
+		select: (state) => state.location.pathname,
+	});
 
 	const count = busy ? 0 : selectedCount;
 	useEffect(
@@ -108,4 +113,7 @@ export const useMenuBarSync = () => {
 			}),
 		[platform, appOwnsUndo, undoLabel, redoLabel],
 	);
+
+	const selectAll = windowActive ? selectAllOwner(busy, pathname) : "native";
+	useEffect(() => push(platform, { selectAll }), [platform, selectAll]);
 };

@@ -4,6 +4,7 @@ import { expect, it } from "vitest";
 import type { LibraryBook } from "@/bindings";
 import { bookCoverProps } from "@/lib/covers/book-cover";
 import { BookCover } from "./BookCover";
+import styles from "./BookCover.module.css";
 
 const book = {
 	title: "A title",
@@ -88,4 +89,21 @@ it.each([
 ])("uses geometric artwork without a usable title (%j)", (title) => {
 	const html = renderToStaticMarkup(createElement(BookCover, { title }));
 	expect(html).not.toContain("<img");
+});
+
+// A PDF's cover is its first page, so it's drawn without the binding: the
+// spine crease and the board edges.
+it("draws a PDF-only book flat", () => {
+	const pdf = {
+		...book,
+		file_list: [{ Local: { path: "/l/Report.pdf", mime_type: "PDF" } }],
+	};
+	const flat = renderToStaticMarkup(
+		createElement(BookCover, bookCoverProps(pdf)),
+	);
+	const bound = renderToStaticMarkup(
+		createElement(BookCover, bookCoverProps(book)),
+	);
+	expect(flat).not.toContain(`class="${styles.spine}"`);
+	expect(bound).toContain(`class="${styles.spine}"`);
 });

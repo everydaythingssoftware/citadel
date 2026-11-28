@@ -35,6 +35,7 @@ fn fixture() -> (tempfile::TempDir, Library, String) {
                 language: Some("en".into()),
                 file_paths: vec![source],
             },
+            None,
         )
         .unwrap();
     (directory, library, id)
@@ -150,6 +151,7 @@ fn possible_duplicates_are_listed_but_never_refused() {
             &actor(),
             commit("Contract Book", AddTo::NewBook),
             vec![source],
+            None,
         )
         .unwrap();
     assert_ne!(again.id, id);
@@ -173,6 +175,7 @@ fn staged_files_make_one_book_or_join_an_existing_one() {
             &actor(),
             commit("Two Formats", AddTo::NewBook),
             vec![file("two.epub", "epub"), file("two.pdf", "%PDF")],
+            None,
         )
         .unwrap();
     assert_eq!(added.title, "Two Formats");
@@ -186,6 +189,7 @@ fn staged_files_make_one_book_or_join_an_existing_one() {
             &actor(),
             commit("", existing.clone()),
             vec![file("more.pdf", "%PDF"), file("newer.txt", "a newer text")],
+            None,
         )
         .unwrap();
     assert_eq!(joined.id, id);
@@ -216,12 +220,13 @@ fn staged_files_make_one_book_or_join_an_existing_one() {
                 },
             ),
             vec![file("lost.txt", "lost")],
+            None,
         )
         .err()
         .unwrap();
     assert_eq!(error.code, LibraryErrorCode::NotFound);
     let error = service
-        .add_staged(&actor(), commit(" ", AddTo::NewBook), vec![])
+        .add_staged(&actor(), commit(" ", AddTo::NewBook), vec![], None)
         .err()
         .unwrap();
     assert_eq!(error.code, LibraryErrorCode::InvalidArgument);

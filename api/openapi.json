@@ -4867,7 +4867,7 @@
           },
           "name": {
             "type": "string",
-            "description": "`database`, `providerKeys`, `library`, `webApp`, `opds`, `metadata`,\n`stateDisk` or `libraryDisk`."
+            "description": "`database`, `providerKeys`, `library`, `webApp`, `opds`, `metadata`,\n`pdfCovers`, `stateDisk` or `libraryDisk`."
           },
           "status": {
             "$ref": "#/components/schemas/HealthStatus"

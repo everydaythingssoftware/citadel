@@ -8,6 +8,7 @@ import {
 	XmarkGlyph,
 } from "@/components/icons/UploadGlyphs";
 import { Button, IconButton, Spinner } from "@/components/ui";
+import { isPdfFormat } from "@/lib/pdf-only";
 import { hasSource, type QueueItem, UploadPhase } from "@/lib/uploads/queue";
 import styles from "./UploadQueueRow.module.css";
 
@@ -76,6 +77,7 @@ const Thumbnail = ({
 					provisional
 					src={item.coverUrl}
 					title={item.book.title}
+					flat={isPdfFormat(item.book.format)}
 					maxHeight="100cqh"
 				/>
 			</span>

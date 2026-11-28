@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { dispatchKeymapEvent } from "@/lib/hooks/use-keymap";
 import {
 	allowsBrowserContextMenu,
@@ -67,6 +67,64 @@ describe("allowsNativeSelectAll", () => {
 		expect(allowsNativeSelectAll(inside("textarea"))).toBe(true);
 		expect(allowsNativeSelectAll(inside("[data-selectable]"))).toBe(false);
 		expect(allowsNativeSelectAll(CHROME)).toBe(false);
+	});
+});
+
+describe("Select All over the chrome", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("cancels the browser's Select All without stopping the app's", () => {
+		class ChromeElement {
+			closest() {
+				return null;
+			}
+		}
+		vi.stubGlobal("Element", ChromeElement);
+		vi.stubGlobal("Node", class {});
+		const listeners = new Map<string, EventListener>();
+		const doc = {
+			addEventListener: (
+				name: string,
+				listener: EventListener,
+				options?: boolean | AddEventListenerOptions,
+			) => {
+				const capture =
+					options === true || (typeof options === "object" && options.capture);
+				listeners.set(`${name}:${!!capture}`, listener);
+			},
+			removeEventListener: () => {},
+			getSelection: () => null,
+		} as unknown as Document;
+		installChromeGuards(doc, { os: "macos", desktop: true });
+		const event = {
+			key: "a",
+			ctrlKey: true,
+			shiftKey: false,
+			altKey: false,
+			metaKey: false,
+			target: new ChromeElement(),
+			defaultPrevented: false,
+			preventDefault() {
+				this.defaultPrevented = true;
+			},
+		};
+		listeners.get("keydown:false")?.(event as unknown as Event);
+		expect(event.defaultPrevented).toBe(true);
+		let selections = 0;
+		dispatchKeymapEvent(
+			[
+				{
+					chord: "mod+a",
+					onMatch: () => {
+						selections++;
+					},
+				},
+			],
+			event as unknown as KeyboardEvent,
+		);
+		expect(selections).toBe(1);
 	});
 });
 

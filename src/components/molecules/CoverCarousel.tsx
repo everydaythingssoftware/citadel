@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { BookCover } from "@/components/atoms/BookCover";
 import { useCarouselScroll } from "@/lib/hooks/use-carousel-scroll";
 import type { DepartingCover } from "@/lib/hooks/use-review-deck";
+import { isPdfFormat } from "@/lib/pdf-only";
 import type { QueueItem } from "@/lib/uploads/queue";
 import { reviewCovers } from "@/lib/uploads/review-covers";
 import styles from "./CoverCarousel.module.css";
@@ -70,6 +71,7 @@ export const CoverCarousel = ({
 								className={styles.cover}
 								src={item.coverUrl}
 								title={item.book?.title ?? item.name}
+								flat={isPdfFormat(item.book?.format)}
 								exit={exiting && !departing?.last ? departing?.exit : undefined}
 							/>
 						</button>

@@ -594,9 +594,11 @@ export const useLibraryStore = create<LibraryStoreState>((set, get) => {
 				// the caller's range belongs to a retired cache.
 				if (bookCache.key !== serializeBookFilter(bookFilter)) return;
 
-				// A series is fetched whole as page 0 (see toBookQuery).
+				// A series is fetched whole as page 0 (see toBookQuery). A view
+				// that resolved to no books still wants page 0: once a book is
+				// added it is stale, and nothing else would fetch it again.
 				const wantedPages =
-					bookFilter.seriesId !== null
+					bookFilter.seriesId !== null || bookCache.total === 0
 						? [0]
 						: pagesCoveringRange(start, end, BOOK_PAGE_SIZE, bookCache.total);
 				const missing = pagesToFetch(bookCache, wantedPages);

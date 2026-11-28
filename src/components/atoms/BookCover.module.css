@@ -183,6 +183,10 @@
 	padding: 0.3rem 0.3rem 0.3rem calc(0.3rem + 6px);
 	z-index: 1;
 }
+/* The extra left padding clears the binding crease, which a page doesn't have. */
+.cover[data-flat] .caption {
+	padding: 0.3rem;
+}
 .title {
 	font-size: clamp(6px, 10cqi, var(--ctd-type-mac-title-3));
 	font-weight: bolder;

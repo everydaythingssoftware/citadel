@@ -34,6 +34,10 @@ Download the `.dmg` from [Releases](https://github.com/everydaythingssoftware/ci
 
 Download the `-setup.exe` for your architecture from [Releases](https://github.com/everydaythingssoftware/citadel/releases). Installers are not code-signed, so SmartScreen warns on first run: choose **More info → Run anyway**.
 
+### Installing on Linux
+
+Download the `.deb` or `.rpm` from [Releases](https://github.com/everydaythingssoftware/citadel/releases) and install it with your package manager, which also installs `poppler-utils` to draw PDF covers. The `.AppImage` runs without installing; for PDF covers, install your distribution's `poppler-utils` (or `poppler`) package too.
+
 ## Developing
 
 As a prerequisite, you'll need to install [Bun](https://bun.sh) and

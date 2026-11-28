@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appUndo, isBookCommand } from "./menu-commands";
+import { appUndo, isBookCommand, selectAllOwner } from "./menu-commands";
 import { none, some } from "./option";
 import { emptyUndoHistory, registerEntry } from "./undo-history";
 
@@ -39,5 +39,13 @@ describe("appUndo", () => {
 			undoLabel: null,
 			redoLabel: null,
 		});
+	});
+});
+
+describe("selectAllOwner", () => {
+	it("gives Select All to the books only on the Books page, outside fields and sheets", () => {
+		expect(selectAllOwner(false, "/")).toBe("books");
+		expect(selectAllOwner(true, "/")).toBe("native");
+		expect(selectAllOwner(false, "/authors")).toBe("native");
 	});
 });

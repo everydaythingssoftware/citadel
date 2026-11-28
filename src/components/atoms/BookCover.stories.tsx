@@ -21,6 +21,10 @@ export default meta;
 type Story = StoryObj<typeof BookCover>;
 
 const invalidImage = "data:image/png;base64,aW52YWxpZA==";
+/** A PDF's first page, the cover a PDF gets: white paper with a little text. */
+const PDF_PAGE = `data:image/svg+xml,${encodeURIComponent(
+	'<svg xmlns="http://www.w3.org/2000/svg" width="425" height="550" viewBox="0 0 425 550"><rect width="425" height="550" fill="#fff"/><text x="212" y="150" text-anchor="middle" font-family="Georgia, serif" font-size="30" fill="#111">Middlemarch</text><text x="212" y="190" text-anchor="middle" font-family="Georgia, serif" font-size="18" fill="#444">A Study of Provincial Life</text><text x="212" y="430" text-anchor="middle" font-family="Georgia, serif" font-size="20" fill="#111">George Eliot</text></svg>',
+)}`;
 const noop = () => {};
 const sampleArtwork = (width: number, height: number) =>
 	`data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#e4c28d"/><rect x="4" y="4" width="${width - 8}" height="${height - 8}" fill="none" stroke="#65462e" stroke-width="6"/><text x="18" y="44" fill="#38271b" font-family="Georgia,serif" font-size="22">A Book of Stories</text><circle cx="${width - 28}" cy="${height - 28}" r="18" fill="#936442"/></svg>`)}`;
@@ -209,6 +213,11 @@ const examples: {
 		label: "Small thumbnail",
 		description: "The same renderer fits a 36 × 54 pixel slot.",
 		props: { src: artwork, maxHeight: 54 },
+	},
+	{
+		label: "PDF · flat",
+		description: "A PDF-only book is a page: no binding crease or edges.",
+		props: { src: PDF_PAGE, flat: true },
 	},
 ];
 
@@ -594,4 +603,44 @@ export const TitledFallback: Story = {
 		title: "A Book of Stories",
 		authors: "An Author",
 	},
+};
+
+/** A PDF-only book is a page: no binding crease. */
+export const PdfFlat: Story = {
+	name: "PDF, flat",
+	args: {
+		src: PDF_PAGE,
+		title: "Middlemarch",
+		sizeHint: { width: 425, height: 550 },
+		flat: true,
+	},
+};
+
+const FLAT_BESIDE_BOUND: { label: string; props: BookCoverProps }[] = [
+	{ label: "Page, bound", props: { src: PDF_PAGE } },
+	{ label: "Page, flat", props: { src: PDF_PAGE, flat: true } },
+	{ label: "Placeholder, bound", props: {} },
+	{ label: "Placeholder, flat", props: { flat: true } },
+];
+
+/** The same page and placeholder, bound like a book and flat like a PDF. */
+export const PdfFlatBesideBound: Story = {
+	name: "PDF, flat beside bound",
+	render: () => (
+		<div style={{ display: "flex", gap: 24, alignItems: "flex-end" }}>
+			{FLAT_BESIDE_BOUND.map(({ label, props }) => (
+				<figure key={label} style={{ width: 150, margin: 0 }}>
+					<BookCover
+						title="Middlemarch"
+						authors="George Eliot"
+						sizeHint={props.src ? { width: 425, height: 550 } : undefined}
+						{...props}
+					/>
+					<figcaption style={{ fontSize: 12, marginTop: 8 }}>
+						{label}
+					</figcaption>
+				</figure>
+			))}
+		</div>
+	),
 };

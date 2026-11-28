@@ -21,6 +21,9 @@ pub const FILE_MANAGER_NAME: &str = "Finder";
 /// Below About and Check for Updates….
 const RESTART_POSITION: usize = 2;
 
+/// Below Undo, Redo, a separator, Cut, Copy and Paste.
+const SELECT_ALL_POSITION: usize = 6;
+
 struct BookItems<R: Runtime> {
     show_details: MenuItem<R>,
     open: MenuItem<R>,
@@ -40,6 +43,8 @@ pub struct MenuBar<R: Runtime> {
     native_redo: PredefinedMenuItem<R>,
     app_undo: MenuItem<R>,
     app_redo: MenuItem<R>,
+    native_select_all: PredefinedMenuItem<R>,
+    app_select_all: MenuItem<R>,
     switch_library: Submenu<R>,
     book: BookItems<R>,
     sidebar: MenuItem<R>,
@@ -141,6 +146,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
     let native_redo = PredefinedMenuItem::redo(app, None)?;
     let app_undo = command_item(app, MenuCommand::Undo, "Undo")?;
     let app_redo = command_item(app, MenuCommand::Redo, "Redo")?;
+    let native_select_all = PredefinedMenuItem::select_all(app, None)?;
+    let app_select_all = command_item(app, MenuCommand::SelectAll, "Select All")?;
     let edit_menu = Submenu::with_items(
         app,
         "Edit",
@@ -152,7 +159,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
             &PredefinedMenuItem::cut(app, None)?,
             &PredefinedMenuItem::copy(app, None)?,
             &PredefinedMenuItem::paste(app, None)?,
-            &PredefinedMenuItem::select_all(app, None)?,
+            &native_select_all,
             &separator()?,
             &command_item(app, MenuCommand::Find, "Find")?,
         ],
@@ -302,6 +309,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuBar<
             native_redo,
             app_undo,
             app_redo,
+            native_select_all,
+            app_select_all,
             switch_library,
             book,
             sidebar,
@@ -363,6 +372,19 @@ impl<R: Runtime> MenuBar<R> {
             if let Some(undo) = &next.undo {
                 set_item(&self.app_undo, &undo.undo)?;
                 set_item(&self.app_redo, &undo.redo)?;
+            }
+        }
+
+        let app_select_all_shown = previous.is_some_and(|view| view.select_all_books);
+        if next.select_all_books != app_select_all_shown {
+            if next.select_all_books {
+                self.edit_menu.remove(&self.native_select_all)?;
+                self.edit_menu
+                    .insert(&self.app_select_all, SELECT_ALL_POSITION)?;
+            } else {
+                self.edit_menu.remove(&self.app_select_all)?;
+                self.edit_menu
+                    .insert(&self.native_select_all, SELECT_ALL_POSITION)?;
             }
         }
         Ok(())

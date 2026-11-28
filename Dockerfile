@@ -43,8 +43,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 
 FROM debian:${DEBIAN_RELEASE}-slim
 # Debian's SQLite is built with FTS5, which Calibre's annotation triggers need.
+# poppler-utils' pdftoppm draws PDF covers.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 libssl3 tini \
+ && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 libssl3 poppler-utils tini \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=server /out/citadel-server /usr/lib/citadel/citadel-server
 COPY --from=web /src/dist /usr/share/citadel/web
