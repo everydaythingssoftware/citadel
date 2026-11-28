@@ -12,6 +12,8 @@ interface CoverSize {
  * cache and does not need a ThumbHash placeholder or fade on remount.
  */
 const loadedCoverUrls = new Set<string>();
+/** Their sizes, so a remounted cover takes its shape at once, not on load. */
+const loadedCoverSizes = new Map<string, CoverSize>();
 
 export const useCoverImage = (
 	src: string | null | undefined,
@@ -21,7 +23,9 @@ export const useCoverImage = (
 	const [failed, setFailed] = useState(false);
 	const [wasCached] = useState(() => Boolean(src && loadedCoverUrls.has(src)));
 	const [loaded, setLoaded] = useState(wasCached);
-	const [loadedSize, setLoadedSize] = useState<CoverSize>();
+	const [loadedSize, setLoadedSize] = useState<CoverSize | undefined>(() =>
+		src ? loadedCoverSizes.get(src) : undefined,
+	);
 	const imageSrc = failed ? undefined : src || undefined;
 
 	// Cached images not yet recorded in this session (e.g. from browser cache)
@@ -50,10 +54,12 @@ export const useCoverImage = (
 			if (imageSrc) loadedCoverUrls.add(imageSrc);
 			setLoaded(true);
 			if (!sizeHint) {
-				setLoadedSize({
+				const natural = {
 					width: image.naturalWidth,
 					height: image.naturalHeight,
-				});
+				};
+				if (imageSrc) loadedCoverSizes.set(imageSrc, natural);
+				setLoadedSize(natural);
 			}
 		}
 	};

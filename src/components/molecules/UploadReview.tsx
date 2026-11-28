@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { useRef } from "react";
+import { Reveal } from "@/components/atoms/Reveal";
 import {
 	ChevronLeftGlyph,
 	ChevronRightGlyph,
@@ -14,7 +15,7 @@ import { Destination } from "@/lib/uploads/matches";
 import { UploadPhase } from "@/lib/uploads/queue";
 import { CoverCarousel } from "./CoverCarousel";
 import { CoverRow } from "./CoverRow";
-import { UploadMatches } from "./UploadMatches";
+import { MatchChooser, MatchDestination, MatchNote } from "./UploadMatches";
 import styles from "./UploadReview.module.css";
 import { UploadReviewCard } from "./UploadReviewCard";
 
@@ -174,25 +175,20 @@ export const UploadReview = ({
 					</div>
 				)}
 				{current && choice && (
-					// Opens and closes as edits make the book match or stop
-					// matching; a new book starts as it is.
-					<div
-						key={current.key}
-						className={styles.reveal}
-						data-open={matches.length > 0 || undefined}
-						inert={matches.length === 0}
-					>
-						<div className={styles.revealInner}>
-							<UploadMatches
-								matches={shownMatches.current}
-								formats={formats}
-								destination={choice.destination}
-								onDestinationChange={choice.setDestination}
-								selectedId={choice.selected?.id}
-								onSelect={choice.select}
-							/>
-						</div>
-					</div>
+					<Reveal open={matches.length > 0} resetKey={current.key}>
+						<MatchDestination
+							destination={choice.destination}
+							onChange={choice.setDestination}
+						/>
+					</Reveal>
+				)}
+				{current && toExisting && choice && (
+					<MatchChooser
+						matches={matches}
+						formats={formats}
+						selectedId={choice.selected?.id}
+						onSelect={choice.select}
+					/>
 				)}
 				{current && !toExisting && (
 					<UploadReviewCard
@@ -200,6 +196,11 @@ export const UploadReview = ({
 						form={deck.form}
 						errors={deck.errors}
 						message={current.message}
+						titleNote={
+							<Reveal open={matches.length > 0} resetKey={current.key}>
+								<MatchNote matches={shownMatches.current} formats={formats} />
+							</Reveal>
+						}
 						onChange={deck.updateForm}
 						onLeaveField={deck.leaveField}
 						detailsOpen={deck.detailsOpen}

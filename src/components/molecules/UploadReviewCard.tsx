@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import { ChevronDownGlyph } from "@/components/icons/UploadGlyphs";
 import { TagsInput, TextInput } from "@/components/ui";
 import { KNOWN_LANGUAGE_NAMES } from "@/lib/languages";
@@ -12,6 +12,8 @@ export interface UploadReviewCardProps {
 	errors?: Partial<Record<ReviewField, string>>;
 	/** Why the book couldn't be added, from the server. */
 	message?: string;
+	/** Shown under the title, e.g. which book it may duplicate. */
+	titleNote?: ReactNode;
 	onChange?: (patch: Partial<ReviewForm>) => void;
 	onLeaveField?: (field: ReviewField) => void;
 	/** Publisher, language, date, tags and ISBN are showing. */
@@ -33,6 +35,7 @@ export const UploadReviewCard = ({
 	form,
 	errors = {},
 	message,
+	titleNote,
 	onChange,
 	onLeaveField,
 	detailsOpen = false,
@@ -47,15 +50,18 @@ export const UploadReviewCard = ({
 	const detailsId = useId();
 	return (
 		<div className={clsx(styles.fields, className)}>
-			<TextInput
-				label="Title"
-				value={form.title}
-				enterKeyHint="next"
-				autoComplete="off"
-				onChange={(event) => change({ title: event.target.value })}
-				onBlur={leave("title")}
-				error={errors.title}
-			/>
+			<div>
+				<TextInput
+					label="Title"
+					value={form.title}
+					enterKeyHint="next"
+					autoComplete="off"
+					onChange={(event) => change({ title: event.target.value })}
+					onBlur={leave("title")}
+					error={errors.title}
+				/>
+				{titleNote}
+			</div>
 			<TagsInput
 				label="Authors"
 				value={form.authors}

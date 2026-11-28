@@ -116,95 +116,121 @@ const matchSummary = (matches: BookMatch[]): string => {
 	return by ? `${shortTitle(first.title)} by ${by}` : shortTitle(first.title);
 };
 
-export interface UploadMatchesProps {
+/**
+ * Where the book goes: to the existing book, or as a new one. The label
+ * reads "Add to" or "Add as" with the choice, crossfading between them.
+ */
+export const MatchDestination = ({
+	destination,
+	onChange,
+}: {
+	destination: TDestination;
+	onChange: (destination: TDestination) => void;
+}) => (
+	<div className={styles.destination}>
+		<span className={styles.destinationLabel} aria-hidden>
+			<span data-shown={destination === Destination.existing || undefined}>
+				Add to
+			</span>
+			<span data-shown={destination === Destination.new || undefined}>
+				Add as
+			</span>
+		</span>
+		<SegmentedControl
+			aria-label="Add to"
+			value={destination}
+			onChange={(value) => onChange(value as TDestination)}
+			items={[
+				{ value: Destination.existing, label: "Existing Book" },
+				{ value: Destination.new, label: "New Book" },
+			]}
+		/>
+	</div>
+);
+
+/**
+ * Adding to a book already there: the possible duplicate, or a choice of
+ * them, under a label like any other field's.
+ */
+export const MatchChooser = ({
+	matches,
+	formats,
+	selectedId,
+	onSelect,
+}: {
 	matches: BookMatch[];
 	/** The new book's formats, as "EPUB". */
 	formats: readonly string[];
-	destination: TDestination;
-	onDestinationChange: (destination: TDestination) => void;
 	selectedId: string | undefined;
 	onSelect: (id: string) => void;
-}
-
-/**
- * What the review says about a possible duplicate: which book it may
- * duplicate (the whole line opens it in a popover), where it goes, and, to
- * add it to a book already there, which one.
- */
-export const UploadMatches = ({
-	matches,
-	formats,
-	destination,
-	onDestinationChange,
-	selectedId,
-	onSelect,
-}: UploadMatchesProps) => {
+}) => {
 	const name = useId();
-	if (matches.length === 0) return null;
 	const [only] = matches;
-	return (
-		<div className={styles.matches}>
-			<Popover.Root>
-				<Popover.Trigger asChild>
-					<button type="button" className={styles.note}>
-						<span className={styles.noteLabel}>Possible duplicate</span> of{" "}
-						<span className={styles.noteMatch}>{matchSummary(matches)}</span>
-					</button>
-				</Popover.Trigger>
-				<Popover.Portal>
-					<Popover.Content
-						className={styles.popover}
-						side="bottom"
-						align="center"
-						sideOffset={6}
-						collisionPadding={12}
-					>
-						{matches.map((match) => (
-							<div key={match.id} className={styles.popoverBook}>
-								<MatchedBook match={match} formats={formats} />
-							</div>
-						))}
-					</Popover.Content>
-				</Popover.Portal>
-			</Popover.Root>
-			<div className={styles.destination}>
-				<span className={styles.soft}>Add to</span>
-				<SegmentedControl
-					aria-label="Add to"
-					value={destination}
-					onChange={(value) => onDestinationChange(value as TDestination)}
-					items={[
-						{ value: Destination.existing, label: "Existing Book" },
-						{ value: Destination.new, label: "New Book" },
-					]}
-				/>
+	if (matches.length === 1 && only)
+		return (
+			<div className={styles.field}>
+				<span className={styles.fieldLabel}>Possible duplicate</span>
+				<div className={styles.choice}>
+					<MatchedBook match={only} formats={formats} />
+				</div>
 			</div>
-			{destination === Destination.existing &&
-				(matches.length === 1 && only ? (
-					<div className={styles.choice}>
-						<MatchedBook match={only} formats={formats} />
-					</div>
-				) : (
-					<fieldset className={styles.chooser}>
-						<legend className={styles.hidden}>Add to which book?</legend>
-						{matches.map((match) => (
-							<label
-								key={match.id}
-								className={styles.choice}
-								data-selected={match.id === selectedId || undefined}
-							>
-								<input
-									type="radio"
-									name={name}
-									className={styles.radio}
-									checked={match.id === selectedId}
-									onChange={() => onSelect(match.id)}
-								/>
-								<MatchedBook match={match} formats={formats} />
-							</label>
-						))}
-					</fieldset>
-				))}
-		</div>
+		);
+	return (
+		<fieldset className={clsx(styles.field, styles.chooser)}>
+			<legend className={styles.fieldLabel}>Possible duplicates</legend>
+			{matches.map((match) => (
+				<label
+					key={match.id}
+					className={styles.choice}
+					data-selected={match.id === selectedId || undefined}
+				>
+					<input
+						type="radio"
+						name={name}
+						className={styles.radio}
+						checked={match.id === selectedId}
+						onChange={() => onSelect(match.id)}
+					/>
+					<MatchedBook match={match} formats={formats} />
+				</label>
+			))}
+		</fieldset>
 	);
 };
+
+/**
+ * Part of the form while the book is added as a new one: which book it may
+ * duplicate. The whole line opens that book in a popover.
+ */
+export const MatchNote = ({
+	matches,
+	formats,
+}: {
+	matches: BookMatch[];
+	/** The new book's formats, as "EPUB". */
+	formats: readonly string[];
+}) => (
+	<Popover.Root>
+		<Popover.Trigger asChild>
+			<button type="button" className={styles.note}>
+				<span className={styles.noteLabel}>Possible duplicate</span> of{" "}
+				<span className={styles.noteMatch}>{matchSummary(matches)}</span>
+			</button>
+		</Popover.Trigger>
+		<Popover.Portal>
+			<Popover.Content
+				className={styles.popover}
+				side="bottom"
+				align="start"
+				sideOffset={6}
+				collisionPadding={12}
+			>
+				{matches.map((match) => (
+					<div key={match.id} className={styles.popoverBook}>
+						<MatchedBook match={match} formats={formats} />
+					</div>
+				))}
+			</Popover.Content>
+		</Popover.Portal>
+	</Popover.Root>
+);

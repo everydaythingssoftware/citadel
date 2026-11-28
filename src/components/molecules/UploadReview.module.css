@@ -218,32 +218,3 @@
 	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
 }
-
-/* The possible-duplicate note opens and closes rather than popping. */
-.reveal {
-	display: grid;
-	grid-template-rows: 0fr;
-	opacity: 0;
-	transition:
-		grid-template-rows 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
-		opacity 180ms ease;
-}
-
-.reveal[data-open] {
-	grid-template-rows: 1fr;
-	opacity: 1;
-}
-
-.revealInner {
-	min-height: 0;
-	overflow: hidden;
-	/* Room for focus rings and the selected card's outline. */
-	padding: 3px;
-	margin: -3px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.reveal {
-		transition: none;
-	}
-}

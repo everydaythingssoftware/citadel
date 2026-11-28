@@ -1,22 +1,17 @@
-.matches {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	margin-bottom: 14px;
-}
-
-/* The whole line is the target that opens the matching book. */
+/* The whole line is the target that opens the matching book. It sits in
+   the form, under the title, so it starts where the fields start. */
 .note {
-	align-self: center;
+	display: block;
 	max-width: 100%;
-	padding: 4px 8px;
+	margin: 4px -6px 0;
+	padding: 3px 6px;
 	border: 0;
 	border-radius: var(--ctd-radius-control);
 	background: transparent;
 	font: inherit;
 	font-size: var(--ctd-text-callout);
 	color: var(--ctd-ink-soft);
-	text-align: center;
+	text-align: left;
 }
 
 .note:hover,
@@ -80,16 +75,45 @@
 	align-items: center;
 	justify-content: center;
 	gap: 8px;
+	margin-bottom: 14px;
 	font-size: var(--ctd-text-callout);
 }
 
-.chooser {
+/* "Add to" and "Add as" share one place and crossfade. */
+.destinationLabel {
+	display: inline-grid;
+	justify-items: end;
+	color: var(--ctd-ink-soft);
+}
+
+.destinationLabel > span {
+	grid-area: 1 / 1;
+	opacity: 0;
+	transition: opacity 160ms ease-out;
+}
+
+.destinationLabel > span[data-shown] {
+	opacity: 1;
+}
+
+/* A field like the form's: a label over its content. */
+.field {
 	display: grid;
-	gap: 8px;
-	margin: 0;
+	gap: 6px;
+	margin: 0 0 14px;
 	padding: 0;
 	border: 0;
 	min-width: 0;
+}
+
+.fieldLabel {
+	padding: 0;
+	font-size: var(--ctd-text-subheadline);
+	color: var(--ctd-ink-soft);
+}
+
+.chooser {
+	gap: 8px;
 }
 
 .choice {
@@ -120,8 +144,10 @@
 	accent-color: var(--ctd-accent);
 }
 
+/* Top-aligned, so the cover keeps its own height instead of the row's. */
 .matchCover {
 	display: flex;
+	align-items: flex-start;
 	justify-content: center;
 }
 
@@ -178,6 +204,10 @@
 @media (prefers-reduced-motion: reduce) {
 	.popover {
 		animation: none;
+	}
+
+	.destinationLabel > span {
+		transition: none;
 	}
 }
 

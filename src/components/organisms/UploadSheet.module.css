@@ -37,6 +37,12 @@
 	color: var(--ctd-ink);
 }
 
+/* The sheet holds focus for its controls; it never shows a ring itself. */
+.content:focus,
+.content:focus-visible {
+	outline: none;
+}
+
 .content[data-reviewing] {
 	width: min(520px, calc(100vw - 32px));
 	max-height: min(680px, calc(100vh - 112px));
