@@ -15,6 +15,35 @@ const loadedCoverUrls = new Set<string>();
 /** Their sizes, so a remounted cover takes its shape at once, not on load. */
 const loadedCoverSizes = new Map<string, CoverSize>();
 
+/** Covers fetched ahead of being shown, kept so the browser keeps them. */
+const preloaded = new Map<string, HTMLImageElement>();
+const PRELOAD_LIMIT = 200;
+
+/**
+ * Loads a cover before anything shows it, so it appears at once, at its own
+ * size, when something does: the books a review may show next, say.
+ */
+export const preloadCover = (src: string | null | undefined) => {
+	if (!src || preloaded.has(src) || loadedCoverUrls.has(src)) return;
+	const image = new Image();
+	image.decoding = "async";
+	image.onload = () => {
+		if (resolveCoverLoad(image) === "failed") return;
+		loadedCoverUrls.add(src);
+		loadedCoverSizes.set(src, {
+			width: image.naturalWidth,
+			height: image.naturalHeight,
+		});
+	};
+	image.src = src;
+	preloaded.set(src, image);
+	// The oldest go first; they've long since been shown or passed by.
+	for (const old of preloaded.keys()) {
+		if (preloaded.size <= PRELOAD_LIMIT) break;
+		preloaded.delete(old);
+	}
+};
+
 export const useCoverImage = (
 	src: string | null | undefined,
 	sizeHint: CoverSize | undefined,

@@ -20,6 +20,7 @@ import {
 import { useUploadsStore } from "@/stores/uploads/store";
 import { useBookUploads } from "./use-book-uploads";
 import { useChooseBookFiles } from "./use-choose-book-files";
+import { preloadCover } from "./use-cover-image";
 import { useFileDrag } from "./use-file-drag";
 import { useReviewDeck } from "./use-review-deck";
 import { useLiveMatches, useMatchChoice } from "./use-review-matches";
@@ -81,6 +82,13 @@ export const useUploadController = () => {
 		},
 		keyboard: sheetOpen && reviewing,
 	});
+
+	// Every possible duplicate a review may show, loaded ahead, so moving
+	// between books shows each one's match at once.
+	useEffect(() => {
+		for (const row of rows)
+			for (const match of row.matches) preloadCover(match.coverUrl);
+	}, [rows]);
 
 	const currentRow = rows.find((row) => row.key === deck.current?.key);
 	const formats = useMemo(
