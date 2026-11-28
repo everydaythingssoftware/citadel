@@ -111,3 +111,45 @@ fn test_author_to_author_sort_sql_function_complex_case() {
 
     assert_eq!(result.result, "Doe, John, Jr.");
 }
+
+#[derive(QueryableByName)]
+struct BoolResult {
+    #[diesel(sql_type = diesel::sql_types::Bool)]
+    result: bool,
+}
+
+#[test]
+fn test_casefold_sql_function_folds_cyrillic_case() {
+    let mut conn = establish_connection(":memory:").unwrap();
+
+    let result: StringResult = diesel::sql_query("SELECT casefold('Толстой') as result")
+        .get_result(&mut conn)
+        .unwrap();
+
+    assert_eq!(result.result, "толстой");
+}
+
+#[test]
+fn test_casefold_simple_sql_function_keeps_sharp_s() {
+    let mut conn = establish_connection(":memory:").unwrap();
+
+    let result: StringResult = diesel::sql_query("SELECT casefold_simple('Straße') as result")
+        .get_result(&mut conn)
+        .unwrap();
+
+    assert_eq!(result.result, "straße");
+}
+
+#[test]
+fn test_casefold_sql_functions_return_null_for_null() {
+    let mut conn = establish_connection(":memory:").unwrap();
+
+    for function in ["casefold", "casefold_simple"] {
+        let result: BoolResult =
+            diesel::sql_query(format!("SELECT {function}(NULL) IS NULL as result"))
+                .get_result(&mut conn)
+                .unwrap();
+
+        assert!(result.result, "{function}(NULL) must be NULL");
+    }
+}

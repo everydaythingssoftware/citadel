@@ -30,13 +30,25 @@ define_sql_function!(fn title_sort(title: diesel::sql_types::Text) -> diesel::sq
 define_sql_function!(fn uuid4() -> diesel::sql_types::Text);
 define_sql_function!(fn author_to_author_sort(name: diesel::sql_types::Text) -> diesel::sql_types::Text);
 
+// SQL functions that only libcalibre's queries call (see `crate::casefold`).
+// Calibre does not have them, so no trigger, view or index may use them.
+define_sql_function!(fn casefold(text: diesel::sql_types::Nullable<diesel::sql_types::Text>) -> diesel::sql_types::Nullable<diesel::sql_types::Text>);
+define_sql_function!(fn casefold_simple(text: diesel::sql_types::Nullable<diesel::sql_types::Text>) -> diesel::sql_types::Nullable<diesel::sql_types::Text>);
+
 /// Register Calibre's custom SQL functions (`title_sort`, `uuid4`,
-/// `author_to_author_sort`) on `conn`. These are per-connection, so they must
+/// `author_to_author_sort`) and the query functions `casefold` and
+/// `casefold_simple` on `conn`. These are per-connection, so they must
 /// be registered on every connection.
 pub fn register_sql_functions(conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
     title_sort_utils::register_impl(conn, sort_book_title)?;
     uuid4_utils::register_impl(conn, || uuid::Uuid::new_v4().to_string())?;
     author_to_author_sort_utils::register_impl(conn, sort_author_name)?;
+    casefold_utils::register_impl(conn, |text: Option<String>| {
+        text.map(|text| crate::casefold::fold(&text))
+    })?;
+    casefold_simple_utils::register_impl(conn, |text: Option<String>| {
+        text.map(|text| crate::casefold::fold_simple(&text))
+    })?;
     Ok(())
 }
 

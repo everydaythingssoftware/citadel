@@ -3,6 +3,7 @@
 
 mod assets;
 pub mod book_file;
+mod casefold;
 mod create;
 mod custom_columns;
 mod entities;
