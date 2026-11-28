@@ -533,6 +533,18 @@ body {
 	height: 100dvh;
 }
 
+/* A sheet shown as the page on a phone (usePageSheet): the document
+   scrolls it, and the app waits, unseen and as it was, behind. */
+:root[data-page-sheet] body {
+	overflow: visible;
+}
+
+:root[data-page-sheet] #root {
+	position: fixed;
+	inset: 0;
+	visibility: hidden;
+}
+
 /* iOS zooms into any field with text under 16px and doesn't zoom back out. */
 @media (pointer: coarse) {
 	:root {

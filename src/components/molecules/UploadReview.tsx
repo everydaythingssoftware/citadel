@@ -172,6 +172,10 @@ export const UploadReview = ({
 							destination={choice.destination}
 							onChange={choice.setDestination}
 						/>
+						{/* Added as new, it still says which book it may duplicate. */}
+						<Reveal open={!toExisting} resetKey={current.key}>
+							<MatchNote matches={shownMatches.current} formats={formats} />
+						</Reveal>
 					</Reveal>
 				)}
 				{current && toExisting && choice && (
@@ -188,11 +192,6 @@ export const UploadReview = ({
 						form={deck.form}
 						errors={deck.errors}
 						message={current.message}
-						titleNote={
-							<Reveal open={matches.length > 0} resetKey={current.key}>
-								<MatchNote matches={shownMatches.current} formats={formats} />
-							</Reveal>
-						}
 						onChange={deck.updateForm}
 						onLeaveField={deck.leaveField}
 						detailsOpen={deck.detailsOpen}

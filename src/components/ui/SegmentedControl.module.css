@@ -17,6 +17,8 @@
 	height: calc(var(--ctd-control-height) - 6px);
 	min-width: 30px;
 	padding: 0 9px;
+	/* A segment's label stays on one line; the control never folds. */
+	white-space: nowrap;
 	font-size: var(--ctd-text-callout);
 	font-weight: var(--ctd-control-font-weight);
 	font-family: inherit;

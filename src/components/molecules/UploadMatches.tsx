@@ -117,8 +117,8 @@ const matchSummary = (matches: BookMatch[]): string => {
 };
 
 /**
- * Where the book goes: to the existing book, or as a new one. The label
- * reads "Add to" or "Add as" with the choice, crossfading between them.
+ * Where the book goes: combined with the existing book, or as a new one.
+ * The label reads "Combine with" or "Add as" with the choice, crossfading.
  */
 export const MatchDestination = ({
 	destination,
@@ -130,14 +130,14 @@ export const MatchDestination = ({
 	<div className={styles.destination}>
 		<span className={styles.destinationLabel} aria-hidden>
 			<span data-shown={destination === Destination.existing || undefined}>
-				Add to
+				Combine with
 			</span>
 			<span data-shown={destination === Destination.new || undefined}>
 				Add as
 			</span>
 		</span>
 		<SegmentedControl
-			aria-label="Add to"
+			aria-label="Combine with or add as"
 			value={destination}
 			onChange={(value) => onChange(value as TDestination)}
 			items={[
@@ -199,8 +199,8 @@ export const MatchChooser = ({
 };
 
 /**
- * Part of the form while the book is added as a new one: which book it may
- * duplicate. The whole line opens that book in a popover.
+ * Under the destination while the book is added as a new one: which book
+ * it may duplicate. The whole line opens that book in a popover.
  */
 export const MatchNote = ({
 	matches,
@@ -210,27 +210,29 @@ export const MatchNote = ({
 	/** The new book's formats, as "EPUB". */
 	formats: readonly string[];
 }) => (
-	<Popover.Root>
-		<Popover.Trigger asChild>
-			<button type="button" className={styles.note}>
-				<span className={styles.noteLabel}>Possible duplicate</span> of{" "}
-				<span className={styles.noteMatch}>{matchSummary(matches)}</span>
-			</button>
-		</Popover.Trigger>
-		<Popover.Portal>
-			<Popover.Content
-				className={styles.popover}
-				side="bottom"
-				align="start"
-				sideOffset={6}
-				collisionPadding={12}
-			>
-				{matches.map((match) => (
-					<div key={match.id} className={styles.popoverBook}>
-						<MatchedBook match={match} formats={formats} />
-					</div>
-				))}
-			</Popover.Content>
-		</Popover.Portal>
-	</Popover.Root>
+	<div className={styles.noteRow}>
+		<Popover.Root>
+			<Popover.Trigger asChild>
+				<button type="button" className={styles.note}>
+					<span className={styles.noteLabel}>Possible duplicate</span> of{" "}
+					<span className={styles.noteMatch}>{matchSummary(matches)}</span>
+				</button>
+			</Popover.Trigger>
+			<Popover.Portal>
+				<Popover.Content
+					className={styles.popover}
+					side="bottom"
+					align="center"
+					sideOffset={6}
+					collisionPadding={12}
+				>
+					{matches.map((match) => (
+						<div key={match.id} className={styles.popoverBook}>
+							<MatchedBook match={match} formats={formats} />
+						</div>
+					))}
+				</Popover.Content>
+			</Popover.Portal>
+		</Popover.Root>
+	</div>
 );

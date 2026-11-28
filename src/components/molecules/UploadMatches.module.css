@@ -1,9 +1,15 @@
-/* The whole line is the target that opens the matching book. It sits in
-   the form, under the title, so it starts where the fields start. */
+/* Centred under the destination it qualifies. */
+.noteRow {
+	display: flex;
+	justify-content: center;
+	margin: -8px 0 12px;
+}
+
+/* The whole line is the target that opens the matching book. */
 .note {
 	display: block;
 	max-width: 100%;
-	margin: 4px -6px 0;
+	margin: 0;
 	padding: 3px 6px;
 	border: 0;
 	border-radius: var(--ctd-radius-control);
@@ -70,11 +76,13 @@
 	border-top: 1px solid var(--ctd-border);
 }
 
+/* On a narrow phone the label takes a line of its own over the control. */
 .destination {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: center;
-	gap: 8px;
+	gap: 6px 8px;
 	margin-bottom: 14px;
 	font-size: var(--ctd-text-callout);
 }
@@ -83,6 +91,7 @@
 .destinationLabel {
 	display: inline-grid;
 	justify-items: end;
+	white-space: nowrap;
 	color: var(--ctd-ink-soft);
 }
 
@@ -113,15 +122,15 @@
 }
 
 .chooser {
-	gap: 8px;
+	gap: 10px;
 }
 
 .choice {
 	position: relative;
 	display: grid;
 	grid-template-columns: 52px minmax(0, 1fr);
-	gap: 12px;
-	padding: 12px;
+	gap: 14px;
+	padding: 14px 16px;
 	border: var(--ctd-control-border-width) solid var(--ctd-border);
 	border-radius: var(--ctd-radius-panel);
 	background: var(--ctd-surface-strong);
@@ -129,7 +138,7 @@
 
 .choice[data-selected] {
 	border-color: var(--ctd-accent);
-	box-shadow: 0 0 0 1px var(--ctd-accent);
+	box-shadow: 0 0 0 0.5px var(--ctd-accent);
 }
 
 .choice:has(.radio:focus-visible) {
@@ -138,8 +147,8 @@
 
 .radio {
 	position: absolute;
-	top: 12px;
-	right: 12px;
+	top: 16px;
+	right: 16px;
 	margin: 0;
 	accent-color: var(--ctd-accent);
 }
@@ -160,6 +169,11 @@
 
 .matchTitle {
 	font-weight: 600;
+}
+
+/* Room for the radio beside the title; the lines below can pass under it. */
+.chooser .matchTitle {
+	padding-right: 28px;
 }
 
 .facts {

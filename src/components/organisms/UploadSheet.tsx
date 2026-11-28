@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import clsx from "clsx";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PlusGlyph, UploadGlyph } from "@/components/icons/UploadGlyphs";
 import { UploadQueueRow } from "@/components/molecules/UploadQueueRow";
 import { UploadReview } from "@/components/molecules/UploadReview";
@@ -12,7 +12,9 @@ import {
 	IconButton,
 	Tooltip,
 } from "@/components/ui";
+import { PHONE_QUERY, useMediaQuery } from "@/lib/hooks/use-breakpoint";
 import { useFollowNewest } from "@/lib/hooks/use-follow-newest";
+import { usePageSheet } from "@/lib/hooks/use-page-sheet";
 import { usePendingGrace } from "@/lib/hooks/use-pending-grace";
 import type { ReviewDeck } from "@/lib/hooks/use-review-deck";
 import type { MatchChoice } from "@/lib/hooks/use-review-matches";
@@ -166,8 +168,16 @@ export const UploadSheet = ({
 			? Math.min(REVIEW_HEIGHT, window.innerHeight - SHEET_MARGIN)
 			: undefined,
 	});
+	// A phone shows the sheet as the page, so the document scrolls it.
+	const page = useMediaQuery(PHONE_QUERY);
+	usePageSheet(open, page);
+	// Each view starts at its top.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: runs on switching view
+	useEffect(() => {
+		if (page) window.scrollTo(0, 0);
+	}, [page, reviewing]);
 	return (
-		<Dialog.Root open={open} onOpenChange={onOpenChange}>
+		<Dialog.Root open={open} onOpenChange={onOpenChange} modal={!page}>
 			<Dialog.Portal>
 				<Dialog.Overlay className={styles.overlay} />
 				<Dialog.Content

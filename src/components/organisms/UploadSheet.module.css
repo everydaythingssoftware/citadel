@@ -240,13 +240,18 @@
  */
 @media (max-width: 36em) {
 	.content {
-		/* The whole screen. With the keyboard up, iOS itself pans the page to
-		   keep the focused field in view; resizing to follow it fought that. */
-		inset: 0;
+		/* The page itself (usePageSheet): at least the screen behind Safari's
+		   toolbars, and as long as its content, which the document scrolls.
+		   Safari then tucks its toolbar away, keeps a focused field in view
+		   and keeps the sticky bars above its own. */
+		position: absolute;
+		inset: 0 0 auto;
+		min-height: 100svh;
 		height: auto;
 		transform: none;
 		width: 100%;
 		max-height: none;
+		overflow: visible;
 		border: 0;
 		border-radius: 0;
 	}
@@ -289,11 +294,15 @@
 	}
 
 	.header {
+		position: sticky;
+		top: 0;
+		z-index: 2;
 		display: grid;
 		grid-template-columns: 1fr auto 1fr;
 		min-height: 52px;
 		padding: env(safe-area-inset-top) 8px 0;
 		border-bottom: 1px solid var(--ctd-border);
+		background: var(--ctd-surface);
 	}
 
 	/* Reviewing on a phone: the review's own bar is the navigation bar. */
@@ -337,11 +346,14 @@
 	.body {
 		display: flex;
 		flex-direction: column;
+		flex: 1 0 auto;
+		min-height: auto;
+		overflow: visible;
 		padding: 0 16px 16px;
-		overscroll-behavior-y: contain;
 	}
 
 	.bodyReview {
+		overflow: visible;
 		padding: 0;
 	}
 
@@ -378,6 +390,9 @@
 	}
 
 	.footer {
+		position: sticky;
+		bottom: 0;
+		z-index: 2;
 		padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
 		border-top: 1px solid var(--ctd-border);
 		background: var(--ctd-surface);

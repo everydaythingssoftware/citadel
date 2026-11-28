@@ -56,5 +56,5 @@ export const addLabel = (
 	const replaced = formats.filter((format) => match.formats.includes(format));
 	if (replaced.length === 1 && formats.length === 1)
 		return `Replace ${replaced[0]}`;
-	return replaced.length > 0 ? "Add and Replace" : "Add to Existing";
+	return replaced.length > 0 ? "Combine and Replace" : "Combine Books";
 };
