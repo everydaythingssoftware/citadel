@@ -43,12 +43,26 @@ pub(crate) fn list_all(conn: &mut SqliteConnection) -> Result<Vec<TagSummary>, C
         .collect())
 }
 
+/// The tag named `tag_name`, with ASCII case ignored (`COLLATE NOCASE`). A
+/// non-ASCII name that this misses also matches by the simple Unicode
+/// folding ([`crate::casefold::find_id_by_folded_value`]).
 pub(crate) fn find_by_name_case_insensitive(
     conn: &mut SqliteConnection,
     tag_name: &str,
 ) -> Result<Option<Tag>, CalibreError> {
-    sql_query("SELECT id, name FROM tags WHERE name = ? COLLATE NOCASE LIMIT 1")
+    let indexed = sql_query("SELECT id, name FROM tags WHERE name = ? COLLATE NOCASE LIMIT 1")
         .bind::<Text, _>(tag_name)
+        .get_result(conn)
+        .optional()?;
+    if indexed.is_some() {
+        return Ok(indexed);
+    }
+    let Some(folded_id) = crate::casefold::find_id_by_folded_value(conn, "tags", "name", tag_name)?
+    else {
+        return Ok(None);
+    };
+    sql_query("SELECT id, name FROM tags WHERE id = ?")
+        .bind::<Integer, _>(folded_id)
         .get_result(conn)
         .optional()
         .map_err(CalibreError::from)
@@ -94,6 +108,8 @@ pub(crate) fn find_for_book(
         .map_err(CalibreError::from)
 }
 
+/// Links the book to the tag. A link that exists stays as it is, because two
+/// names can fold to one tag ([`crate::casefold::fold_simple`]).
 pub(crate) fn link_book(
     conn: &mut SqliteConnection,
     tag_id: i32,
@@ -101,7 +117,7 @@ pub(crate) fn link_book(
 ) -> Result<(), CalibreError> {
     use crate::schema::books_tags_link::dsl::*;
 
-    diesel::insert_into(books_tags_link)
+    diesel::insert_or_ignore_into(books_tags_link)
         .values((tag.eq(tag_id), book.eq(book_id.as_i32())))
         .execute(conn)
         .map_err(CalibreError::from)?;

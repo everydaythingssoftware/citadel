@@ -889,7 +889,9 @@ fn upsert_non_normalized_text(
 
 /// Replace the book's links for a normalized column with the given values,
 /// creating value rows as needed (case-insensitive match, mirroring the
-/// `COLLATE NOCASE` UNIQUE constraint) and pruning orphaned value rows.
+/// `COLLATE NOCASE` UNIQUE constraint) and pruning orphaned value rows. A
+/// non-ASCII value that the constraint's ASCII rule misses also matches by the
+/// simple Unicode folding ([`crate::casefold::find_id_by_folded_value`]).
 fn set_normalized_values(
     conn: &mut SqliteConnection,
     n: i32,
@@ -906,10 +908,20 @@ fn set_normalized_values(
             .bind::<SqlText, _>(value)
             .get_result::<IdRow>(conn)
             .optional()
-            .map_err(CalibreError::from)?;
+            .map_err(CalibreError::from)?
+            .map(|row| row.id);
+            let existing = match existing {
+                Some(id) => Some(id),
+                None => crate::casefold::find_id_by_folded_value(
+                    conn,
+                    &format!("custom_column_{n}"),
+                    "value",
+                    value,
+                )?,
+            };
 
             let value_id = match existing {
-                Some(row) => row.id,
+                Some(id) => id,
                 // Older Calibre value tables lack the `link` column, so only
                 // mention `value` here.
                 None => {

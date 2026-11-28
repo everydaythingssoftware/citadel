@@ -74,7 +74,8 @@ pub(crate) fn delete_if_unused(
 
 /// Links the book to the named publisher, creating it if needed (matched
 /// case-insensitively, as Calibre does) and replacing any earlier link:
-/// Calibre allows one publisher per book.
+/// Calibre allows one publisher per book. A non-ASCII name also matches by
+/// the simple Unicode folding ([`crate::casefold::find_id_by_folded_value`]).
 pub(crate) fn set_for_book(
     conn: &mut SqliteConnection,
     book_id: crate::BookId,
@@ -91,6 +92,10 @@ pub(crate) fn set_for_book(
         .select(publishers::id)
         .first::<i32>(conn)
         .optional()?;
+    let existing = match existing {
+        Some(id) => Some(id),
+        None => crate::casefold::find_id_by_folded_value(conn, "publishers", "name", name)?,
+    };
     let publisher_id = match existing {
         Some(id) => id,
         None => diesel::insert_into(publishers::table)

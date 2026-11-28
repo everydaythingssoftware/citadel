@@ -99,7 +99,9 @@ pub(crate) fn cover_sources_for(
 /// WHERE clause from [`filter_where_sql`] so the page and total cannot drift.
 pub(crate) struct BookPageFilters<'a> {
     /// Case-insensitive substring match (LIKE wildcards escaped) across the
-    /// book title, linked author names, and linked series names.
+    /// book title, linked author names, and linked series names. The case
+    /// folding is the Unicode full case folding ([`crate::casefold::fold`]).
+    /// Accents stay significant, except that "ё" matches "е".
     pub text: Option<&'a str>,
     pub author_id: Option<AuthorId>,
     pub series_id: Option<i32>,
@@ -136,8 +138,11 @@ pub(crate) struct AcquisitionCandidate {
     pub name: String,
 }
 
+/// The `LIKE` pattern for a substring search: `text` folded by
+/// [`crate::casefold::fold`], to compare with a `casefold(...)` column, with
+/// its LIKE wildcards escaped.
 fn like_pattern(text: &str) -> String {
-    let escaped = text
+    let escaped = crate::casefold::fold(text)
         .replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_");
@@ -152,13 +157,13 @@ fn filter_where_sql(filters: &BookPageFilters) -> String {
 
     if filters.text.is_some() {
         clauses.push(
-            "(books.title LIKE ? ESCAPE '\\' \
+            "(casefold(books.title) LIKE ? ESCAPE '\\' \
               OR EXISTS (SELECT 1 FROM books_authors_link bal \
                          JOIN authors a ON a.id = bal.author \
-                         WHERE bal.book = books.id AND a.name LIKE ? ESCAPE '\\') \
+                         WHERE bal.book = books.id AND casefold(a.name) LIKE ? ESCAPE '\\') \
               OR EXISTS (SELECT 1 FROM books_series_link bsl \
                          JOIN series s ON s.id = bsl.series \
-                         WHERE bsl.book = books.id AND s.name LIKE ? ESCAPE '\\'))"
+                         WHERE bsl.book = books.id AND casefold(s.name) LIKE ? ESCAPE '\\'))"
                 .to_string(),
         );
     }

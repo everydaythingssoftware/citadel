@@ -112,7 +112,7 @@ fn main() -> Result<(), CalibreError> {
 
 ## Querying books
 
-`query_books` searches, filters, sorts and pages in SQL, returning one page plus the total match count. `text` is a case-insensitive substring match over titles, author names and series names. Filters combine with AND.
+`query_books` searches, filters, sorts and pages in SQL, returning one page plus the total match count. `text` is a case-insensitive substring match over titles, author names and series names. The case folding is Unicode's, so "толстой" finds "Толстой" and "straße" finds "STRASSE". Accents stay significant, as in Calibre's default search, but "ё" matches "е", because Russian text often writes "е" in place of "ё". Filters combine with AND.
 
 ```rust,no_run
 use libcalibre::{BookQuery, BookSortOrder, CalibreError, Library};

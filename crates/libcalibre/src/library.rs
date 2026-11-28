@@ -279,7 +279,9 @@ pub struct BookQuery {
     /// names, and linked series names, with LIKE wildcards escaped — the
     /// same semantics as [`Library::search_books`], EXCEPT that `None` or
     /// empty/whitespace text matches ALL books (where `search_books` returns
-    /// no books).
+    /// no books). The case folding is the Unicode full case folding, so
+    /// "толстой" matches "Толстой". Accents stay significant, except that
+    /// "ё" matches "е".
     pub text: Option<String>,
     /// Only books linked to this author.
     pub author_id: Option<AuthorId>,
@@ -1373,8 +1375,10 @@ impl Library {
     }
 
     /// Every book whose title, author names or series name contains `query`
-    /// (trimmed), case-insensitively, sorted by title. An empty or blank
-    /// query returns no books; see [`BookQuery::text`].
+    /// (trimmed), case-insensitively, sorted by title. The case folding is
+    /// the Unicode full case folding. Accents stay significant, except that
+    /// "ё" matches "е". An empty or blank query returns no books; see
+    /// [`BookQuery::text`].
     pub fn search_books(&mut self, query: &str) -> Result<Vec<Book>, CalibreError> {
         let query = query.trim();
         if query.is_empty() {
@@ -1435,9 +1439,10 @@ fn unique_tag_names<'a>(tag_names: &'a [String]) -> Vec<&'a str> {
     let mut unique = Vec::new();
 
     for tag_name in tag_names {
+        let folded = crate::casefold::fold_simple(tag_name);
         if !unique
             .iter()
-            .any(|existing: &&str| existing.eq_ignore_ascii_case(tag_name))
+            .any(|existing: &&str| crate::casefold::fold_simple(existing) == folded)
         {
             unique.push(tag_name.as_str());
         }

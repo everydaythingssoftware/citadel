@@ -205,6 +205,40 @@ fn pick_search_tokens(conn: &mut SqliteConnection) -> (String, String) {
     (common, rare)
 }
 
+/// The first word with a non-ASCII character in the titles, in id order and
+/// in lower case, so that a case-folding search must match its capitalized
+/// form. `None` when every title is ASCII.
+fn pick_non_ascii_token(conn: &mut SqliteConnection) -> Option<String> {
+    pick_title_word(conn, "Non-ASCII", |word| !word.is_ascii())
+}
+
+/// The same as [`pick_non_ascii_token`], for the first word with a Cyrillic
+/// letter.
+fn pick_cyrillic_token(conn: &mut SqliteConnection) -> Option<String> {
+    pick_title_word(conn, "Cyrillic", |word| {
+        word.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
+    })
+}
+
+fn pick_title_word(
+    conn: &mut SqliteConnection,
+    label: &str,
+    wanted: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let titles: Vec<TitleRow> = sql_query("SELECT title FROM books ORDER BY id")
+        .load(conn)
+        .unwrap_or_default();
+    let token = titles.iter().find_map(|row| {
+        row.title
+            .split_whitespace()
+            .map(|word| word.trim_matches(|c: char| c.is_ascii_punctuation()))
+            .find(|word| word.chars().count() >= 3 && wanted(word))
+    })?;
+    let token = token.to_lowercase();
+    println!("{label} search needle: '{token}'");
+    Some(token)
+}
+
 fn most_linked(conn: &mut SqliteConnection, link_table: &str, column: &str) -> Option<(i32, i64)> {
     let rows: Vec<IdCountRow> = sql_query(format!(
         "SELECT {column} AS id, COUNT(*) AS c FROM {link_table} \
@@ -321,6 +355,8 @@ fn run() -> Result<(), String> {
     }
 
     let (common_token, rare_token) = pick_search_tokens(&mut raw_conn);
+    let non_ascii_token = pick_non_ascii_token(&mut raw_conn);
+    let cyrillic_token = pick_cyrillic_token(&mut raw_conn);
     let (prolific_author, author_books) =
         most_linked(&mut raw_conn, "books_authors_link", "author")
             .ok_or("no books_authors_link rows")?;
@@ -396,6 +432,28 @@ fn run() -> Result<(), String> {
                 ..BookQuery::default()
             },
         ));
+        match &non_ascii_token {
+            Some(token) => results.push(page_scenario(
+                &format!("query_books: text search non-ASCII ('{token}')"),
+                BookQuery {
+                    text: Some(token.clone()),
+                    limit: Some(PAGE_SIZE),
+                    ..BookQuery::default()
+                },
+            )),
+            None => println!("(no non-ASCII title; skipping the non-ASCII search)"),
+        }
+        match &cyrillic_token {
+            Some(token) => results.push(page_scenario(
+                &format!("query_books: text search Cyrillic ('{token}')"),
+                BookQuery {
+                    text: Some(token.clone()),
+                    limit: Some(PAGE_SIZE),
+                    ..BookQuery::default()
+                },
+            )),
+            None => println!("(no Cyrillic title; skipping the Cyrillic search)"),
+        }
         results.push(page_scenario(
             "query_books: text search literal '%'",
             BookQuery {
@@ -520,13 +578,13 @@ fn run() -> Result<(), String> {
     let author_sort_expr = "(SELECT a.sort FROM books_authors_link bal \
          JOIN authors a ON a.id = bal.author \
          WHERE bal.book = books.id ORDER BY bal.id LIMIT 1)";
-    let text_where = "(books.title LIKE ? ESCAPE '\\' \
+    let text_where = "(casefold(books.title) LIKE ? ESCAPE '\\' \
               OR EXISTS (SELECT 1 FROM books_authors_link bal \
                          JOIN authors a ON a.id = bal.author \
-                         WHERE bal.book = books.id AND a.name LIKE ? ESCAPE '\\') \
+                         WHERE bal.book = books.id AND casefold(a.name) LIKE ? ESCAPE '\\') \
               OR EXISTS (SELECT 1 FROM books_series_link bsl \
                          JOIN series s ON s.id = bsl.series \
-                         WHERE bsl.book = books.id AND s.name LIKE ? ESCAPE '\\'))";
+                         WHERE bsl.book = books.id AND casefold(s.name) LIKE ? ESCAPE '\\'))";
 
     println!("\n## Query plans\n");
     explain(
