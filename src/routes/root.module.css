@@ -143,6 +143,13 @@
 	border-top-left-radius: var(--ctd-radius-panel);
 }
 
+/* A page that scrolls its own regions (the library grid) never overflows
+   the panel, so it keeps no gutter for a bar that never comes: its details
+   panel runs to the window's edge. Outranks .ctd-scroller's gutter. */
+.shell .main > .content:has(> [data-owns-scroll]) {
+	scrollbar-gutter: auto;
+}
+
 /* With no sidebar beside it, the panel runs to the window edge: no left
    hairline or corner to meet. */
 .shell:not([data-sidebar-open]) .content {
