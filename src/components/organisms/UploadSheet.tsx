@@ -42,6 +42,8 @@ export interface UploadSheetProps {
 	summary: QueueSummary;
 	/** Why the queue is holding back, e.g. the server is full. */
 	paused?: string;
+	/** Books chosen again while already waiting, to point out. */
+	noticed?: { keys: string[]; id: number };
 	/** Review one book at a time instead of showing the whole queue. */
 	reviewing: boolean;
 	deck: ReviewDeck;
@@ -68,11 +70,13 @@ export interface UploadSheetProps {
 
 const Rows = ({
 	rows,
+	noticed,
 	onReview,
 	onRetry,
 	onRemove,
 }: {
 	rows: BookRow[];
+	noticed?: { keys: string[]; id: number };
 	onReview: (key: string) => void;
 	onRetry: (key: string) => void;
 	onRemove: (key: string) => void;
@@ -82,6 +86,11 @@ const Rows = ({
 			key={row.key}
 			item={row.lead}
 			files={row.items.length}
+			noticed={
+				row.items.some((item) => noticed?.keys.includes(item.key))
+					? noticed?.id
+					: undefined
+			}
 			onReview={() => onReview(row.key)}
 			onRetry={() => onRetry(row.key)}
 			onRemove={() => onRemove(row.key)}
@@ -103,6 +112,7 @@ export const UploadSheet = ({
 	sections,
 	summary,
 	paused,
+	noticed,
 	reviewing,
 	deck,
 	matches,
@@ -243,6 +253,7 @@ export const UploadSheet = ({
 										>
 											<Rows
 												rows={books}
+												noticed={noticed}
 												onReview={onReview}
 												onRetry={onRetry}
 												onRemove={onRemove}
@@ -259,6 +270,7 @@ export const UploadSheet = ({
 												<ul className={styles.list}>
 													<Rows
 														rows={possibleDuplicates}
+														noticed={noticed}
 														onReview={onReview}
 														onRetry={onRetry}
 														onRemove={onRemove}

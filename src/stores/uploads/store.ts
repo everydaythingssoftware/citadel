@@ -107,7 +107,10 @@ export const useUploadsStore = create<UploadsState & UploadsActions>()(
 			),
 		// What was on screen stays while the sheet animates away; the next
 		// open starts from the queue.
-		closeSheet: () => set({ sheetOpen: false }),
+		closeSheet: () => {
+			set({ sheetOpen: false });
+			get().dispatch({ type: "noticed", keys: [] });
+		},
 		review: (key) => set({ reviewKey: key }),
 	}),
 );

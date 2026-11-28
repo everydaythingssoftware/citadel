@@ -132,6 +132,7 @@ export const useUploadController = () => {
 			sections,
 			summary,
 			paused: queue.paused,
+			noticed: queue.noticed,
 			reviewing,
 			deck,
 			matches,

@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { useEffect, useRef } from "react";
 import { BookCover } from "@/components/atoms/BookCover";
 import { UploadProgressRing } from "@/components/atoms/UploadProgressRing";
 import {
@@ -17,6 +18,11 @@ export interface UploadQueueRowProps {
 	files?: number;
 	/** Opens the review at this book; the whole row is its target. */
 	onReview?: () => void;
+	/**
+	 * Set when the book was just chosen again while already waiting: the row
+	 * scrolls into view and glows once. A new value glows again.
+	 */
+	noticed?: number;
 	onRetry?: () => void;
 	onRemove?: () => void;
 }
@@ -85,16 +91,25 @@ const Thumbnail = ({
 export const UploadQueueRow = ({
 	item,
 	files = 1,
+	noticed,
 	onReview,
 	onRetry,
 	onRemove,
 }: UploadQueueRowProps) => {
+	const rowRef = useRef<HTMLLIElement>(null);
+	useEffect(() => {
+		if (noticed !== undefined)
+			rowRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+	}, [noticed]);
 	const problem =
 		item.phase === UploadPhase.failed ||
 		item.phase === UploadPhase.rejected ||
 		(item.phase === UploadPhase.ready && item.message !== undefined);
 	return (
-		<li className={styles.row} data-phase={item.phase}>
+		<li className={styles.row} data-phase={item.phase} ref={rowRef}>
+			{noticed !== undefined && (
+				<span key={noticed} className={styles.notice} aria-hidden />
+			)}
 			{item.phase === UploadPhase.ready && onReview && (
 				<button
 					type="button"

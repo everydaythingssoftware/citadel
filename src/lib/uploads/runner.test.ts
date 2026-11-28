@@ -318,4 +318,20 @@ describe("upload runner", () => {
 		await queue.runner.addNewBooks();
 		expect(queue.fake.committed.map(({ book }) => book.also)).toEqual([[], []]);
 	});
+
+	it("points out a file picked again instead of uploading it twice", async () => {
+		const queue = setup();
+		const walden = file("Walden.epub", "abcd");
+		queue.runner.addFiles([walden]);
+		await until(() => queue.phases()[0] === UploadPhase.ready);
+		queue.runner.addFiles([
+			file("Walden.epub", "abcd"),
+			file("Kim.epub", "efgh"),
+		]);
+		expect(queue.state().items.map((item) => item.fileName)).toEqual([
+			"Walden.epub",
+			"Kim.epub",
+		]);
+		expect(queue.state().noticed?.keys).toEqual([queue.state().items[0]?.key]);
+	});
 });

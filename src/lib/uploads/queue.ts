@@ -58,6 +58,12 @@ export interface QueueState {
 	limits?: UploadLimits;
 	/** Set when the server has no room for another upload yet. */
 	paused?: string;
+	/**
+	 * Books chosen again while already waiting: the queue points them out
+	 * instead of adding them twice. `id` changes each time, so pointing
+	 * out the same book again replays it.
+	 */
+	noticed?: { keys: string[]; id: number };
 }
 
 export const emptyQueue: QueueState = { items: [] };
@@ -96,6 +102,8 @@ export type QueueAction =
 	| { type: "added"; key: string }
 	| { type: "addFailed"; key: string; message: string }
 	| { type: "removed"; key: string }
+	/** Points out books chosen again while already waiting; none clears it. */
+	| { type: "noticed"; keys: string[] }
 	/** The files of one book go their own ways, each a book of its own. */
 	| { type: "split"; keys: string[] }
 	| { type: "cleared" };
@@ -163,6 +171,27 @@ export const itemsForFiles = (
 			message,
 		};
 	});
+
+/**
+ * The queue item already holding a chosen file, if any: the same file on
+ * this computer, or a picked file of the same name and size. Files that
+ * failed or were turned away don't count; choosing them again retries.
+ */
+export const alreadyQueued = (
+	state: QueueState,
+	source: BookSource,
+): QueueItem | undefined =>
+	state.items.find(
+		(item) =>
+			item.phase !== UploadPhase.added &&
+			item.phase !== UploadPhase.rejected &&
+			item.phase !== UploadPhase.failed &&
+			(isLocal(source)
+				? item.path === source.path
+				: item.file !== undefined
+					? item.file.name === source.name && item.file.size === source.size
+					: item.fileName === source.name && item.size === source.size),
+	);
 
 /** Whether the item still has its file, to send or read (again). */
 export const hasSource = (item: QueueItem): boolean =>
@@ -328,6 +357,13 @@ export const queueReducer = (
 					action.keys.includes(item.key) ? { ...item, separate: true } : item,
 				),
 			};
+		case "noticed":
+			return action.keys.length === 0
+				? { ...state, noticed: undefined }
+				: {
+						...state,
+						noticed: { keys: action.keys, id: (state.noticed?.id ?? 0) + 1 },
+					};
 		case "cleared":
 			return { ...state, items: [], paused: undefined };
 	}

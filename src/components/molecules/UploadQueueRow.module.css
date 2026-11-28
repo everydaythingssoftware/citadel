@@ -210,3 +210,30 @@
 .coverSlot {
 	container-type: size;
 }
+
+/* Chosen again while already waiting: the row glows once, in place. */
+.notice {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: var(--ctd-nav-active-bg, var(--ctd-nav-hover-bg));
+	pointer-events: none;
+	opacity: 0;
+	animation: row-notice 1200ms ease-out;
+}
+
+@keyframes row-notice {
+	15% {
+		opacity: 1;
+	}
+
+	45% {
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.notice {
+		animation-duration: 1ms;
+	}
+}

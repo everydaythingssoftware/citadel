@@ -41,6 +41,11 @@ const createFakeImports = () => {
 		}),
 		stage: async (path) => {
 			await hold;
+			if ([...staged.values()].some((entry) => entry.path === path))
+				throw new UploadError(
+					UploadFailure.conflict,
+					"This book is already waiting to be added",
+				);
 			const reason = refused.get(path);
 			if (reason) throw new UploadError(UploadFailure.invalid, reason);
 			const id = `staged-${++next}`;
@@ -116,6 +121,9 @@ const setup = () => {
 		runner,
 		actions,
 		state: () => state,
+		dispatch: (action: QueueAction) => {
+			state = queueReducer(state, action);
+		},
 		phases: () => state.items.map((item) => item.phase),
 		added: () => added,
 	};
@@ -205,5 +213,27 @@ describe("upload runner, files on this computer", () => {
 			},
 		]);
 		expect(first.fake.staged.size).toBe(1);
+	});
+
+	it("points out a book chosen again instead of adding it twice", async () => {
+		const queue = setup();
+		queue.runner.addFiles([local("/books/Walden.epub")]);
+		await until(() => queue.phases()[0] === UploadPhase.ready);
+		const key = queue.state().items[0]?.key;
+		queue.runner.addFiles([local("/books/Walden.epub")]);
+		expect(queue.state().items).toHaveLength(1);
+		expect(queue.state().noticed?.keys).toEqual([key]);
+	});
+
+	it("shows the waiting book when the queue had lost track of it", async () => {
+		const queue = setup();
+		queue.runner.addFiles([local("/books/Walden.epub")]);
+		await until(() => queue.phases()[0] === UploadPhase.ready);
+		// The page reloaded: the backend still holds the book, the queue doesn't.
+		queue.dispatch({ type: "cleared" });
+		queue.runner.addFiles([local("/books/Walden.epub")]);
+		await until(() => queue.state().noticed !== undefined);
+		expect(queue.phases()).toEqual([UploadPhase.ready]);
+		expect(queue.state().noticed?.keys).toEqual([queue.state().items[0]?.key]);
 	});
 });

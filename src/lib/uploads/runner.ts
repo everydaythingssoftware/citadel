@@ -11,6 +11,7 @@ import {
 	UploadFailure,
 } from "@/lib/services/library";
 import {
+	alreadyQueued,
 	type BookSource,
 	bookRows,
 	itemsForFiles,
@@ -121,6 +122,28 @@ export const createUploadRunner = ({
 			dispatch({ type: "received", key: item.key, upload, coverUrl });
 		} catch (error) {
 			if (disposed || current(item.key) === undefined) return;
+			// Already waiting here (the queue lost track of it, say after a
+			// reload): show that book instead of a refusal.
+			if (failureOf(error) === UploadFailure.conflict) {
+				dispatch({ type: "removed", key: item.key });
+				const before = new Set(getState().items.map((other) => other.key));
+				try {
+					const { uploads: staged } = await local.list();
+					dispatch({ type: "restored", uploads: staged, coverUrl });
+				} catch {
+					// The list is out of reach; the book shows on the next visit.
+				}
+				dispatch({
+					type: "noticed",
+					keys: getState()
+						.items.filter(
+							(other) =>
+								!before.has(other.key) && other.fileName === item.fileName,
+						)
+						.map((other) => other.key),
+				});
+				return;
+			}
 			const message =
 				error instanceof Error ? error.message : "Something went wrong";
 			dispatch(
@@ -354,9 +377,17 @@ export const createUploadRunner = ({
 		},
 		addFiles: (files) => {
 			if (files.length === 0) return;
+			// A book already waiting is pointed out, not added twice.
+			const waiting = files.map((file) => alreadyQueued(getState(), file));
+			const fresh = files.filter((_, index) => waiting[index] === undefined);
+			if (fresh.length > 0)
+				dispatch({
+					type: "filesAdded",
+					items: itemsForFiles(fresh, getState().limits),
+				});
 			dispatch({
-				type: "filesAdded",
-				items: itemsForFiles(files, getState().limits),
+				type: "noticed",
+				keys: waiting.flatMap((item) => (item ? [item.key] : [])),
 			});
 			void pump();
 		},
