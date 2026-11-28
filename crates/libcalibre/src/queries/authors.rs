@@ -46,14 +46,31 @@ pub(crate) fn get_many(
         .map_err(CalibreError::from)
 }
 
+/// The author named `author_name`. The comparison uses the `NOCASE`
+/// collation of `authors.name`, which folds ASCII case only. A non-ASCII
+/// name that it misses also matches by the simple Unicode folding
+/// ([`crate::casefold::find_id_by_folded_value`]).
 pub(crate) fn find_by_name(
     conn: &mut SqliteConnection,
     author_name: &str,
 ) -> Result<Option<Author>, CalibreError> {
     use crate::schema::authors::dsl::*;
 
-    authors
+    let indexed = authors
         .filter(name.eq(author_name))
+        .select(Author::as_select())
+        .first(conn)
+        .optional()?;
+    if indexed.is_some() {
+        return Ok(indexed);
+    }
+    let Some(folded_id) =
+        crate::casefold::find_id_by_folded_value(conn, "authors", "name", author_name)?
+    else {
+        return Ok(None);
+    };
+    authors
+        .find(folded_id)
         .select(Author::as_select())
         .first(conn)
         .optional()
@@ -168,6 +185,8 @@ pub(crate) fn find_books(
     Ok(book_ids)
 }
 
+/// Links the book to the author. A link that exists stays as it is, because
+/// two names can fold to one author ([`crate::casefold::fold_simple`]).
 pub(crate) fn link_book(
     conn: &mut SqliteConnection,
     author_id: AuthorId,
@@ -175,7 +194,7 @@ pub(crate) fn link_book(
 ) -> Result<(), CalibreError> {
     use crate::schema::books_authors_link::dsl::*;
 
-    diesel::insert_into(books_authors_link)
+    diesel::insert_or_ignore_into(books_authors_link)
         .values((author.eq(author_id.as_i32()), book.eq(book_id.as_i32())))
         .execute(conn)
         .map_err(CalibreError::from)?;

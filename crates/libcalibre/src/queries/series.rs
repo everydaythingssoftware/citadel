@@ -43,12 +43,27 @@ pub(crate) fn list_with_book_counts(
         .collect())
 }
 
+/// The series named `series_name`, with ASCII case ignored
+/// (`COLLATE NOCASE`). A non-ASCII name that this misses also matches by the
+/// simple Unicode folding ([`crate::casefold::find_id_by_folded_value`]).
 pub(crate) fn find_by_name_case_insensitive(
     conn: &mut SqliteConnection,
     series_name: &str,
 ) -> Result<Option<Series>, CalibreError> {
-    sql_query("SELECT id, name FROM series WHERE name = ? COLLATE NOCASE LIMIT 1")
+    let indexed = sql_query("SELECT id, name FROM series WHERE name = ? COLLATE NOCASE LIMIT 1")
         .bind::<Text, _>(series_name)
+        .get_result(conn)
+        .optional()?;
+    if indexed.is_some() {
+        return Ok(indexed);
+    }
+    let Some(folded_id) =
+        crate::casefold::find_id_by_folded_value(conn, "series", "name", series_name)?
+    else {
+        return Ok(None);
+    };
+    sql_query("SELECT id, name FROM series WHERE id = ?")
+        .bind::<Integer, _>(folded_id)
         .get_result(conn)
         .optional()
         .map_err(CalibreError::from)

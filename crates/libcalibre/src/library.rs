@@ -1439,9 +1439,10 @@ fn unique_tag_names<'a>(tag_names: &'a [String]) -> Vec<&'a str> {
     let mut unique = Vec::new();
 
     for tag_name in tag_names {
+        let folded = crate::casefold::fold_simple(tag_name);
         if !unique
             .iter()
-            .any(|existing: &&str| existing.eq_ignore_ascii_case(tag_name))
+            .any(|existing: &&str| crate::casefold::fold_simple(existing) == folded)
         {
             unique.push(tag_name.as_str());
         }

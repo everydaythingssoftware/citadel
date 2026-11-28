@@ -8,8 +8,12 @@
 //! `casefold_simple`. Only queries may call them: Calibre does not have them,
 //! so a trigger, view or index that uses them breaks the library for Calibre.
 
+use diesel::sql_types::{Integer, Text};
+use diesel::{sql_query, OptionalExtension, QueryableByName, RunQueryDsl, SqliteConnection};
 use icu_casemap::{CaseMapper, CaseMapperBorrowed};
 use icu_normalizer::{ComposingNormalizerBorrowed, DecomposingNormalizerBorrowed};
+
+use crate::CalibreError;
 
 const CASE_MAPPER: CaseMapperBorrowed<'static> = CaseMapper::new();
 const NFC: ComposingNormalizerBorrowed<'static> = ComposingNormalizerBorrowed::new_nfc();
@@ -48,6 +52,38 @@ fn compose(folded: &str) -> String {
         text = NFC.normalize(&text.replace('ё', "е")).into_owned();
     }
     text
+}
+
+#[derive(QueryableByName)]
+struct IdRow {
+    #[diesel(sql_type = Integer)]
+    id: i32,
+}
+
+/// The folded step of a name lookup, for a value that the indexed
+/// `COLLATE NOCASE` lookup does not find: the lowest id in `table` whose
+/// `column` matches `value` by [`fold_simple`]. An ASCII `value` returns
+/// `None` at once, because the indexed lookup already applies the ASCII rule.
+///
+/// `table` and `column` go into the SQL text, so pass only constant names, or
+/// `custom_column_{n}` with an integer `n`, never text from a user.
+pub(crate) fn find_id_by_folded_value(
+    conn: &mut SqliteConnection,
+    table: &str,
+    column: &str,
+    value: &str,
+) -> Result<Option<i32>, CalibreError> {
+    if value.is_ascii() {
+        return Ok(None);
+    }
+    sql_query(format!(
+        "SELECT id FROM {table} WHERE casefold_simple({column}) = ? ORDER BY id LIMIT 1"
+    ))
+    .bind::<Text, _>(fold_simple(value))
+    .get_result::<IdRow>(conn)
+    .optional()
+    .map(|row| row.map(|row| row.id))
+    .map_err(CalibreError::from)
 }
 
 #[cfg(test)]

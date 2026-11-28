@@ -148,13 +148,12 @@ pub fn update_book(
             let tag_names = unique_tag_names(&tag_names);
             let existing_tags = tags::find_for_book(conn, book_id)?;
 
+            let same_tag = |name: &str, tag: &crate::Tag| {
+                crate::casefold::fold_simple(name) == crate::casefold::fold_simple(&tag.name)
+            };
             let to_unlink: Vec<i32> = existing_tags
                 .iter()
-                .filter(|tag| {
-                    !tag_names
-                        .iter()
-                        .any(|name| name.eq_ignore_ascii_case(&tag.name))
-                })
+                .filter(|tag| !tag_names.iter().any(|name| same_tag(name, tag)))
                 .map(|tag| tag.id)
                 .collect();
 
@@ -164,11 +163,7 @@ pub fn update_book(
 
             let to_link: Vec<String> = tag_names
                 .iter()
-                .filter(|name| {
-                    !existing_tags
-                        .iter()
-                        .any(|tag| name.eq_ignore_ascii_case(&tag.name))
-                })
+                .filter(|name| !existing_tags.iter().any(|tag| same_tag(name, tag)))
                 .map(|name| (*name).to_string())
                 .collect();
 
@@ -188,9 +183,10 @@ fn unique_tag_names(tag_names: &[String]) -> Vec<&str> {
     let mut unique = Vec::new();
 
     for tag_name in tag_names {
+        let folded = crate::casefold::fold_simple(tag_name);
         if !unique
             .iter()
-            .any(|existing: &&str| existing.eq_ignore_ascii_case(tag_name))
+            .any(|existing: &&str| crate::casefold::fold_simple(existing) == folded)
         {
             unique.push(tag_name.as_str());
         }
